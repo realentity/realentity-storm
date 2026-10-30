@@ -1,0 +1,43 @@
+{
+  "name": "@ai-me/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prisma schema, migrations, seed and client for AI ME (one PostgreSQL database)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "prisma",
+    "src",
+    "prisma.config.ts"
+  ],
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.tools.json",
+    "lint": "eslint src prisma prisma.config.ts",
+    "test": "echo \"no unit tests in @ai-me/db; schema tests run in the api integration suite\"",
+    "clean": "rimraf dist src/generated"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "catalog:",
+    "@prisma/client": "catalog:",
+    "dotenv": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@ai-me/config": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "prisma": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

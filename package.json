@@ -1,0 +1,46 @@
+{
+  "name": "ai-me",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI ME: a personal, self-hosted agent that proposes and, after approval, acts on my behalf",
+  "engines": {
+    "node": ">=22.12 <23 || >=24"
+  },
+  "packageManager": "pnpm@10.2.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e --concurrency=1",
+    "clean": "turbo run clean",
+    "db:generate": "pnpm --filter @ai-me/db run generate",
+    "db:migrate": "pnpm --filter @ai-me/db exec prisma migrate dev",
+    "db:deploy": "pnpm --filter @ai-me/db exec prisma migrate deploy",
+    "db:status": "pnpm --filter @ai-me/db exec prisma migrate status",
+    "db:seed": "pnpm --filter @ai-me/db exec prisma db seed",
+    "db:studio": "pnpm --filter @ai-me/db exec prisma studio",
+    "auth:setup": "pnpm --silent --filter @ai-me/api run auth:setup",
+    "keys:rotate": "pnpm --silent --filter @ai-me/worker run keys:rotate",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,yml,yaml}\""
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "@prisma/client",
+      "prisma",
+      "argon2",
+      "esbuild",
+      "@nestjs/core",
+      "@swc/core"
+    ]
+  }
+}

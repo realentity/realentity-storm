@@ -1,0 +1,422 @@
+// packages/db/prisma/schema.prisma — AI ME
+// Prisma 7: the connection URL lives in prisma.config.ts, the client uses the pg driver adapter.
+// Conventions: primary keys are named `<entity>Id` (uuid), timestamps are
+// `dateCreated` / `dateUpdated`, tables are PascalCase plural (@@map("Users")).
+// Every user-owned table carries `userId` (single user for now; row-level security later, README §17).
+// Child tables owned through their parent (PipelineVersions, Steps, Decisions) don't.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "cjs"
+  generatedFileExtension = "ts"
+  importFileExtension    = ""
+  previewFeatures        = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector, citext]
+}
+
+// #region Enums
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  WAITING_FOR_USER
+  DONE
+  FAILED
+  ABORTED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  WAITING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+enum ProposalStatus {
+  PENDING_REVIEW
+  APPROVED
+  EXECUTING
+  WAITING_FOR_USER
+  DONE
+  FAILED
+  REJECTED
+  EXPIRED
+}
+
+enum DecisionKind {
+  APPROVED
+  EDITED
+  REJECTED
+}
+
+enum RuleStatus {
+  SUGGESTED
+  ACTIVE
+  DISABLED
+}
+
+enum CredentialKind {
+  PASSWORD
+  TOTP_SEED
+  API_KEY
+  OAUTH_TOKEN
+  STORAGE_STATE
+}
+
+enum JobPostingStatus {
+  NEW
+  SHORTLISTED
+  SKIPPED
+  APPLIED
+}
+
+enum ApplicationStatus {
+  PREPARED
+  SUBMITTED
+  RESPONDED
+  REJECTED
+  INTERVIEW
+}
+
+// #endregion
+
+// #region Identity
+
+/// The owner of everything. Password hash and TOTP secret live in .env (single user, README §14).
+model User {
+  userId      String   @id @default(uuid()) @db.Uuid
+  email       String   @unique @db.Citext
+  displayName String?
+  dateCreated DateTime @default(now())
+  dateUpdated DateTime @updatedAt
+
+  sessions      UserSession[]
+  pipelines     Pipeline[]
+  builderChats  BuilderChat[]
+  siteRecipes   SiteRecipe[]
+  runs          Run[]
+  proposals     Proposal[]
+  rules         Rule[]
+  examples      Example[]
+  credentials   Credential[]
+  modelSettings ModelSetting[]
+  artifacts     Artifact[]
+  jobPostings   JobPosting[]
+  applications  Application[]
+
+  @@map("Users")
+}
+
+/// A signed-in browser. The cookie holds a random token; only its SHA-256 is stored.
+model UserSession {
+  userSessionId String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  tokenHash     String    @unique @db.VarChar(64)
+  expiresAt     DateTime
+  lastSeenAt    DateTime?
+  ipAddress     String?   @db.VarChar(64)
+  userAgent     String?   @db.VarChar(500)
+  dateCreated   DateTime  @default(now())
+
+  @@index([userId])
+  @@map("UserSessions")
+}
+
+// #endregion
+
+// #region Pipelines
+
+model Pipeline {
+  pipelineId       String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  user             User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name             String
+  enabled          Boolean  @default(false)
+  currentVersionId String?  @db.Uuid
+  dateCreated      DateTime @default(now())
+  dateUpdated      DateTime @updatedAt
+
+  versions     PipelineVersion[]
+  builderChats BuilderChat[]
+
+  @@index([userId])
+  @@map("Pipelines")
+}
+
+model PipelineVersion {
+  pipelineVersionId String   @id @default(uuid()) @db.Uuid
+  pipelineId        String   @db.Uuid
+  pipeline          Pipeline @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  version           Int
+  definition        Json // validated pipeline definition (trigger, steps, limits)
+  policy            Json // compiled targets: static lists + provenance rules (README §2.2), enforced at run time
+  changeSummary     String? // human-readable diff summary
+  builderChatId     String?  @db.Uuid
+  dateCreated       DateTime @default(now())
+
+  runs Run[]
+
+  @@unique([pipelineId, version])
+  @@map("PipelineVersions")
+}
+
+model BuilderChat {
+  builderChatId String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineId    String?   @db.Uuid // null while drafting a new pipeline
+  pipeline      Pipeline? @relation(fields: [pipelineId], references: [pipelineId], onDelete: SetNull)
+  messages      Json
+  dateCreated   DateTime  @default(now())
+  dateUpdated   DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("BuilderChats")
+}
+
+model SiteRecipe {
+  siteRecipeId   String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  site           String // host, e.g. "jobs.bg"
+  name           String // e.g. "jobs.bg/search"
+  version        Int
+  steps          Json // selectors + actions
+  lastVerifiedAt DateTime?
+  dateCreated    DateTime  @default(now())
+
+  @@unique([userId, name, version])
+  @@map("SiteRecipes")
+}
+
+// #endregion
+
+// #region Runs
+
+model Run {
+  runId             String          @id @default(uuid()) @db.Uuid
+  userId            String          @db.Uuid
+  user              User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineVersionId String          @db.Uuid
+  pipelineVersion   PipelineVersion @relation(fields: [pipelineVersionId], references: [pipelineVersionId])
+  trigger           String // schedule, manual, event, dry-run
+  dryRun            Boolean         @default(false)
+  status            RunStatus       @default(QUEUED)
+  headed            Boolean         @default(false)
+  startedAt         DateTime        @default(now())
+  finishedAt        DateTime?
+  summary           String?
+
+  steps     Step[]
+  proposals Proposal[]
+  artifacts Artifact[]
+
+  @@index([userId, status])
+  @@map("Runs")
+}
+
+model Step {
+  stepId     String     @id @default(uuid()) @db.Uuid
+  runId      String     @db.Uuid
+  run        Run        @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  stepKey    String // id from the definition, e.g. "score"
+  itemIndex  Int? // for forEach fan-out
+  type       String // e.g. "llm.score"
+  status     StepStatus @default(PENDING)
+  input      Json?
+  output     Json?
+  llmUsage   Json? // model, input/output/cached tokens
+  screenshot String?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  proposals Proposal[]
+
+  @@index([runId])
+  @@map("Steps")
+}
+
+model Proposal {
+  proposalId      String         @id @default(uuid()) @db.Uuid
+  userId          String         @db.Uuid
+  user            User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  runId           String         @db.Uuid
+  run             Run            @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  stepId          String         @db.Uuid // the gate step that created it
+  step            Step           @relation(fields: [stepId], references: [stepId], onDelete: Cascade)
+  stepKey         String
+  itemIndex       Int? // forEach item this proposal belongs to
+  status          ProposalStatus @default(PENDING_REVIEW)
+  target          String // email address / URL / site
+  originalPayload Json
+  finalPayload    Json?
+  payloadHash     String?        @db.VarChar(64) // SHA-256 of the approved payload
+  reasoning       String? // short LLM explanation shown in the UI
+  dateCreated     DateTime       @default(now())
+  expiresAt       DateTime?
+
+  decision Decision?
+
+  @@index([userId, status])
+  @@index([runId])
+  @@map("Proposals")
+}
+
+model Decision {
+  decisionId String       @id @default(uuid()) @db.Uuid
+  proposalId String       @unique @db.Uuid
+  proposal   Proposal     @relation(fields: [proposalId], references: [proposalId], onDelete: Cascade)
+  kind       DecisionKind
+  diff       Json?
+  reason     String?
+  decidedAt  DateTime     @default(now())
+
+  @@map("Decisions")
+}
+
+model Artifact {
+  artifactId  String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  runId       String?  @db.Uuid
+  run         Run?     @relation(fields: [runId], references: [runId], onDelete: SetNull)
+  kind        String // screenshot, trace, download, upload, cv
+  path        String
+  mime        String?
+  sha256      String?  @db.VarChar(64)
+  dateCreated DateTime @default(now())
+
+  @@index([userId])
+  @@index([runId])
+  @@map("Artifacts")
+}
+
+// #endregion
+
+// #region Learning
+
+model Rule {
+  ruleId      String     @id @default(uuid()) @db.Uuid
+  userId      String     @db.Uuid
+  user        User       @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  stepType    String? // e.g. "email.draftReply"; null = global
+  pipelineId  String?    @db.Uuid // optional: rule only for one pipeline
+  text        String
+  status      RuleStatus @default(SUGGESTED)
+  source      String? // "reflection:<runId>" or "manual"
+  dateCreated DateTime   @default(now())
+  dateUpdated DateTime   @updatedAt
+
+  @@index([userId, status])
+  @@map("Rules")
+}
+
+model Example {
+  exampleId   String                       @id @default(uuid()) @db.Uuid
+  userId      String                       @db.Uuid
+  user        User                         @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  stepType    String
+  pipelineId  String?                      @db.Uuid // optional: example only for one pipeline
+  context     String
+  output      String
+  embedding   Unsupported("vector(1024)")? // dimension depends on the embedding model
+  proposalId  String?                      @db.Uuid
+  dateCreated DateTime                     @default(now())
+
+  @@index([userId, stepType])
+  @@map("Examples")
+}
+
+// #endregion
+
+// #region Secrets & settings
+
+/// Envelope-encrypted secret (README §7). `credentialId` is generated before insert: it is the AAD.
+model Credential {
+  credentialId String         @id @db.Uuid
+  userId       String         @db.Uuid
+  user         User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name         String // referenced as {{cred:<name>}}
+  allowedHosts String[] // e.g. ["linkedin.com", "*.linkedin.com"]
+  username     String?
+  kind         CredentialKind
+  ciphertext   Bytes
+  iv           Bytes
+  authTag      Bytes
+  wrappedDek   Bytes // iv(12) + tag(16) + encrypted DEK(32)
+  keyVersion   Int            @default(1)
+  lastUsedAt   DateTime?
+  dateCreated  DateTime       @default(now())
+  dateUpdated  DateTime       @updatedAt
+
+  @@unique([userId, name])
+  @@map("Credentials")
+}
+
+model ModelSetting {
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  taskKey     String // e.g. "builder", "email.draftReply", "llm.score"
+  model       String // e.g. "claude-sonnet-5-5"
+  effort      String?
+  dateUpdated DateTime @updatedAt
+
+  @@id([userId, taskKey])
+  @@map("ModelSettings")
+}
+
+// #endregion
+
+// #region Jobs
+
+model JobPosting {
+  jobPostingId String           @id @default(uuid()) @db.Uuid
+  userId       String           @db.Uuid
+  user         User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  source       String
+  externalId   String?
+  url          String
+  title        String
+  company      String?
+  location     String?
+  description  String
+  score        Float?
+  scoreReason  String?
+  status       JobPostingStatus @default(NEW)
+  firstSeenAt  DateTime         @default(now())
+
+  applications Application[]
+
+  @@unique([userId, url])
+  @@map("JobPostings")
+}
+
+model Application {
+  applicationId String            @id @default(uuid()) @db.Uuid
+  userId        String            @db.Uuid
+  user          User              @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  jobPostingId  String            @db.Uuid
+  jobPosting    JobPosting        @relation(fields: [jobPostingId], references: [jobPostingId], onDelete: Cascade)
+  proposalId    String?           @db.Uuid
+  status        ApplicationStatus @default(PREPARED)
+  cvArtifactId  String?           @db.Uuid
+  submittedAt   DateTime?
+  notes         String?
+  dateCreated   DateTime          @default(now())
+  dateUpdated   DateTime          @updatedAt
+
+  @@index([userId])
+  @@map("Applications")
+}
+
+// #endregion

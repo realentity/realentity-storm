@@ -1,0 +1,43 @@
+{
+  "name": "@ai-me/testing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Integration-test infrastructure for AI ME: PostgreSQL with pgvector (Testcontainers or local), migrations, seed and the test environment",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./jest-global-setup": "./dist/jest-global-setup.js",
+    "./jest-global-teardown": "./dist/jest-global-teardown.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ai-me/db": "workspace:*",
+    "@testcontainers/postgresql": "catalog:",
+    "pg": "catalog:",
+    "testcontainers": "catalog:"
+  },
+  "devDependencies": {
+    "@ai-me/config": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

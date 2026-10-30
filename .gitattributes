@@ -1,0 +1,7 @@
+# Files that run inside Linux containers keep LF line ends on every checkout (autocrlf would break them)
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker/** text eol=lf
+
+# Prisma checksums every migration.sql: the same bytes on every checkout
+packages/db/prisma/migrations/** text eol=lf

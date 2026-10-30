@@ -1,0 +1,32 @@
+{
+  "name": "@ai-me/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared tsconfig and ESLint presets for the AI ME workspace",
+  "files": [
+    "tsconfig",
+    "eslint"
+  ],
+  "exports": {
+    "./tsconfig/*": "./tsconfig/*",
+    "./eslint/*": "./eslint/*"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "eslint-plugin-react-refresh": "catalog:",
+    "globals": "catalog:",
+    "typescript-eslint": "catalog:"
+  },
+  "peerDependencies": {
+    "@eslint/js": "*",
+    "eslint": "*",
+    "eslint-config-prettier": "*",
+    "eslint-plugin-react-hooks": "*",
+    "eslint-plugin-react-refresh": "*",
+    "globals": "*",
+    "typescript-eslint": "*"
+  }
+}

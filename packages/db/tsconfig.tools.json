@@ -1,0 +1,5 @@
+{
+  "extends": "@ai-me/config/tsconfig/library.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["prisma/**/*.ts", "prisma.config.ts", "src/**/*.ts"]
+}

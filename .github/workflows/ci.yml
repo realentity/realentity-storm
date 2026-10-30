@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, lint, typecheck, unit and integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Turbo runs with --env-mode=loose so tasks see these values (prisma generate needs DATABASE_URL).
+    env:
+      # Placeholders: unit tests contact no service; integration tests start their own PostgreSQL (Testcontainers).
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build
+        run: pnpm build --env-mode=loose
+
+      - name: Lint
+        run: pnpm lint --env-mode=loose
+
+      - name: Typecheck
+        run: pnpm typecheck --env-mode=loose
+
+      - name: Unit tests
+        run: pnpm test --env-mode=loose
+
+      - name: Integration tests
+        run: pnpm test:e2e --env-mode=loose

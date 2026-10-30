@@ -1,0 +1,33 @@
+{
+  "name": "@ai-me/crypto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Envelope encryption (AES-256-GCM) for stored credentials: seal, open, rewrap, key ring",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "jest",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "@ai-me/config": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "jest": "catalog:",
+    "rimraf": "catalog:",
+    "ts-jest": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

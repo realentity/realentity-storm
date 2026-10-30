@@ -1,0 +1,22 @@
+# Development: PostgreSQL with pgvector only (README §15). The full stack for the server comes in M5 (README §13).
+# Not needed if you already run PostgreSQL 17 with pgvector locally; point DATABASE_URL there instead.
+name: ai-me
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: aime
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: aime
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aime"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata: {}

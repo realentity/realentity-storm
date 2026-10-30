@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store
+
+# Build output
+dist
+out
+*.tsbuildinfo
+**/src/generated/
+
+# Turbo / tooling caches
+.turbo/
+.cache
+.eslintcache
+.vite/
+vite.config.ts.timestamp-*
+
+# Tests
+coverage
+test-results/
+playwright-report/
+blob-report/
+
+# Logs
+logs/
+*.log
+
+# dotenv environment variable files (secrets, ENCRYPTION_KEY)
+.env
+.env.*
+!.env.example
+
+# ── AI ME ──
+# Runtime data: artifacts, traces, screenshots, downloads (quarantine), backups
+data/
+*.trace.zip
+
+# py-worker (optional)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Claude Code personal settings
+.claude/settings.local.json

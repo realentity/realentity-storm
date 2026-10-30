@@ -1,0 +1,13 @@
+{
+  "extends": "@ai-me/config/tsconfig/library.json",
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "./dist/esm",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/esm/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}
