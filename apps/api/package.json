@@ -59,6 +59,7 @@
     "jest": "catalog:",
     "rimraf": "catalog:",
     "supertest": "catalog:",
+    "testcontainers": "catalog:",
     "ts-jest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
