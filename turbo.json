@@ -28,6 +28,10 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    "test:web": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "clean": {
       "cache": false
     }

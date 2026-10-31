@@ -1,4 +1,6 @@
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+import { EFFORTS, type EffortName } from "@ai-me/shared";
+
+export type Effort = EffortName;
 
 export interface ModelChoice {
   model: string;
@@ -18,8 +20,6 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "llm.summarize": "writing",
 };
 
-const EFFORTS: readonly string[] = ["low", "medium", "high", "xhigh", "max"];
-
 /** A per-user choice from Settings (ModelSetting), if any. */
 export type ModelSettingLookup = (userId: string, taskKey: string) => Promise<{ model: string; effort: string | null } | null>;
 
@@ -34,13 +34,21 @@ export class ModelRouter {
   ) {}
 
   async choose(userId: string, taskKey: string): Promise<ModelChoice> {
-    const group = GROUPS[GROUP_OF_TASK[taskKey] ?? "writing"];
-    const fallback = { model: this.env[group.env] || group.default.model, effort: group.default.effort };
+    const fallback = this.fallback(taskKey);
     const setting = await this.lookup(userId, taskKey);
-    if (!setting) return fallback;
+    if (!setting) return { model: fallback.model, effort: fallback.effort };
     return {
       model: setting.model,
-      effort: setting.effort && EFFORTS.includes(setting.effort) ? (setting.effort as Effort) : fallback.effort,
+      effort: setting.effort && (EFFORTS as readonly string[]).includes(setting.effort) ? (setting.effort as Effort) : fallback.effort,
     };
+  }
+
+  /** What a task uses without a setting, and where that comes from (Settings shows it). */
+  fallback(taskKey: string): ModelChoice & { source: "env" | "default" } {
+    const group = GROUPS[GROUP_OF_TASK[taskKey] ?? "writing"];
+    const fromEnv = this.env[group.env];
+    return fromEnv
+      ? { model: fromEnv, effort: group.default.effort, source: "env" }
+      : { model: group.default.model, effort: group.default.effort, source: "default" };
   }
 }

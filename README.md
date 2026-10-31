@@ -416,9 +416,10 @@ ai-me/
 │  │     ├─ browser/       # Playwright sessions, storageState, recipes, agent, takeover, CAPTCHA detection
 │  │     ├─ secrets/       # decrypt + {{cred:*}} resolution + domain binding + LLM masking
 │  │     └─ reflection/    # nightly rule + pipeline-improvement suggestions
-│  └─ web/            # React + Vite
-│     └─ src/pages/   # Builder, Pipelines, PipelineDetail (chat + diff), Inbox, ProposalDetail,
-│                     # RunDetail (live view), History, Rules, Recipes, Jobs, Credentials, Settings
+│  ├─ web/            # React + Vite
+│  │  └─ src/pages/   # Builder, Pipelines, PipelineDetail (chat + diff), Inbox, ProposalDetail,
+│  │                  # RunDetail (live view), History, Rules, Recipes, Jobs, Credentials, Settings
+│  └─ web-e2e/        # Playwright browser tests against the composed stack (test-only steps stand in for side effects)
 ├─ packages/
 │  ├─ config/         # shared tsconfig + eslint configs
 │  ├─ db/             # Prisma schema, migrations, seed, generated client (src/generated)
@@ -602,6 +603,11 @@ pnpm db:migrate                # prisma migrate dev in packages/db
 pnpm --filter @ai-me/worker exec playwright install chromium
 
 pnpm dev                       # turbo: api, worker (headless: false → browser opens on the dev machine), web
+
+pnpm test                      # unit tests (Jest; Vitest for web)
+pnpm test:e2e                  # integration tests: PostgreSQL in Testcontainers (E2E_INFRA=local: a temporary database)
+pnpm --filter @ai-me/web-e2e exec playwright install chromium
+pnpm test:web                  # browser tests (Playwright) against the composed stack: database, api, worker, web
 ```
 
 ---

@@ -1,19 +1,6 @@
-import { canonicalJson, type CompiledDefinition, type CompiledStep } from "@ai-me/shared";
+import { canonicalJson, type CompiledDefinition, type CompiledStep, type DefinitionChange, type DefinitionDiff } from "@ai-me/shared";
 
-export type DefinitionChange =
-  | { kind: "pipeline"; field: "name" | "description" | "trigger"; before: unknown; after: unknown }
-  | { kind: "limit"; stepType: string; before?: string; after?: string }
-  | { kind: "policy"; list: "allowedDomains" | "allowedRecipients"; added: string[]; removed: string[] }
-  | { kind: "step-added"; stepId: string; type: string; autoInserted: boolean }
-  | { kind: "step-removed"; stepId: string; type: string; autoInserted: boolean }
-  | { kind: "step-moved"; stepId: string; from: number; to: number }
-  | { kind: "step-changed"; stepId: string; field: string; before: unknown; after: unknown };
-
-export interface DefinitionDiff {
-  changes: DefinitionChange[];
-  /** One line per change, for PipelineVersion.changeSummary and the review screen. */
-  summary: string;
-}
+export type { DefinitionChange, DefinitionDiff };
 
 /** What changed between two compiled versions of a pipeline (v3 → v4). */
 export function diffDefinitions(before: CompiledDefinition, after: CompiledDefinition): DefinitionDiff {

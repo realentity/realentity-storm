@@ -1,5 +1,12 @@
-import { StartRunSchema, type RunDetailView, type RunSummaryView, type StartRunRequest } from "@ai-me/shared";
-import { Body, Controller, DefaultValuePipe, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query } from "@nestjs/common";
+import {
+  RunFilterSchema,
+  StartRunSchema,
+  type RunDetailView,
+  type RunFilter,
+  type RunSummaryView,
+  type StartRunRequest,
+} from "@ai-me/shared";
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { RunsService } from "./runs.service";
@@ -19,13 +26,10 @@ export class RunsController {
     return this.runs.start(user.userId, pipelineId, body.dryRun);
   }
 
+  /** History, newest first; page with `before` (the last row's startedAt). */
   @Get("runs")
-  list(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query("pipelineId", new ParseUUIDPipe({ optional: true })) pipelineId?: string,
-    @Query("limit", new DefaultValuePipe(50), ParseIntPipe) limit = 50,
-  ): Promise<RunSummaryView[]> {
-    return this.runs.list(user.userId, pipelineId, Math.min(Math.max(limit, 1), 200));
+  list(@CurrentUser() user: AuthenticatedUser, @Query(new ZodBodyPipe(RunFilterSchema)) filter: RunFilter): Promise<RunSummaryView[]> {
+    return this.runs.list(user.userId, filter);
   }
 
   @Get("runs/:runId")

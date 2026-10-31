@@ -1,0 +1,36 @@
+{
+  "name": "@ai-me/web-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser tests (Playwright) against the composed stack: PostgreSQL, api, worker and the web app",
+  "scripts": {
+    "test:web": "playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src tests playwright.config.ts"
+  },
+  "devDependencies": {
+    "@ai-me/api": "workspace:*",
+    "@ai-me/config": "workspace:*",
+    "@ai-me/db": "workspace:*",
+    "@ai-me/shared": "workspace:*",
+    "@ai-me/steps": "workspace:*",
+    "@ai-me/testing": "workspace:*",
+    "@ai-me/web": "workspace:*",
+    "@ai-me/worker": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/testing": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "argon2": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "otplib": "catalog:",
+    "reflect-metadata": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "zod": "catalog:"
+  }
+}

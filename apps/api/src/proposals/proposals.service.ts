@@ -13,6 +13,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { z } from "zod";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
+import { EventsService } from "../events/events.service";
 import { PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./proposal-view";
 
 const ReviewSelectionSchema = z.object({ items: z.array(z.unknown()) }).strict();
@@ -28,6 +29,7 @@ export class ProposalsService {
     private readonly catalog: StepCatalog,
     private readonly controls: ControlsService,
     private readonly queue: JobQueue,
+    private readonly events: EventsService,
   ) {}
 
   async list(userId: string, status: ProposalStatusName): Promise<ProposalView[]> {
@@ -73,7 +75,10 @@ export class ProposalsService {
   /** Saves the decision unless another one got there first, then queues the run to continue. */
   private async decide(
     proposal: ProposalWithContext,
-    change: { proposal: Prisma.ProposalUpdateManyMutationInput; decision: Omit<Prisma.DecisionCreateManyInput, "proposalId"> },
+    change: {
+      proposal: Prisma.ProposalUpdateManyMutationInput & { status: "APPROVED" | "REJECTED" };
+      decision: Omit<Prisma.DecisionCreateManyInput, "proposalId">;
+    },
   ): Promise<void> {
     await this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.proposal.updateMany({
@@ -82,6 +87,12 @@ export class ProposalsService {
       });
       if (updated.count === 0) throw new ConflictException("This proposal was already decided");
       await tx.decision.create({ data: { ...change.decision, proposalId: proposal.proposalId } });
+    });
+    await this.events.publish(proposal.userId, {
+      type: "proposal",
+      proposalId: proposal.proposalId,
+      runId: proposal.runId,
+      status: change.proposal.status,
     });
     await this.queue.enqueueRun({ runId: proposal.runId, headed: proposal.run.headed });
   }

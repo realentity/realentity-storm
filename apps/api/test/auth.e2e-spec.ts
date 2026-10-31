@@ -21,22 +21,21 @@ describe("auth", () => {
     await http().get("/api/health").expect(200, { status: "ok" });
   });
 
-  // M3-E7 (first part): everything else needs a session
-  it.each([
-    ["GET", "/api/auth/session"],
-    ["POST", "/api/auth/logout"],
-    ["GET", "/api/credentials"],
-    ["POST", "/api/credentials"],
-    ["PUT", "/api/credentials/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90/secret"],
-    ["DELETE", "/api/credentials/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90"],
-    ["POST", "/api/pipelines/compile"],
-    ["GET", "/api/pipelines"],
-    ["POST", "/api/pipelines"],
-    ["GET", "/api/pipelines/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90"],
-    ["POST", "/api/pipelines/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90/versions"],
-    ["GET", "/api/pipelines/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90/versions/1"],
-  ])("rejects %s %s without a session", async (method, path) => {
-    await http()[method.toLowerCase() as "get" | "post" | "put" | "delete"](path).expect(401);
+  // M3-E7: every route but health and login needs a session. The routes come from the running app, so a new
+  // route is covered without being listed here (the WebSocket is covered in events.e2e-spec).
+  it("rejects every other route without a session", async () => {
+    const PUBLIC = ["GET /api/health", "POST /api/auth/login"];
+    const routes = registeredRoutes(api);
+    expect(routes).toEqual(
+      expect.arrayContaining([...PUBLIC, "GET /api/runs", "POST /api/proposals/:proposalId/approve", "PUT /api/kill-switch"]),
+    );
+
+    for (const route of routes.filter((r) => !PUBLIC.includes(r))) {
+      const [method, path] = route.split(" ") as [string, string];
+      const concrete = path.replace(/:version\b/, "1").replace(/:\w+/g, "4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90");
+      const response = await http()[method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete"](concrete);
+      expect(`${route} → ${response.status}`).toBe(`${route} → 401`);
+    }
   });
 
   it("signs in with password + TOTP and sets a strict, httpOnly session cookie", async () => {
@@ -98,3 +97,14 @@ describe("auth when not configured", () => {
     }
   });
 });
+
+/** "METHOD /path" of every route the Express app serves. */
+function registeredRoutes(api: TestApp): string[] {
+  interface Layer {
+    route?: { path: string; methods: Record<string, boolean> };
+  }
+  const express = api.app.getHttpAdapter().getInstance() as { router: { stack: Layer[] } };
+  return express.router.stack.flatMap((layer) =>
+    layer.route ? Object.keys(layer.route.methods).map((method) => `${method.toUpperCase()} ${layer.route!.path}`) : [],
+  );
+}

@@ -1,6 +1,7 @@
 import { payloadHash } from "@ai-me/crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
 import { emptyUsage } from "@ai-me/llm";
+import { type AppEvent } from "@ai-me/shared";
 import { TestEnvironment } from "@ai-me/testing";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { RunControls } from "../src/runner/run-controls";
@@ -94,6 +95,47 @@ steps:
     expect(telegram.calls).toEqual([{ text: `note: Jobs: ${JSON.stringify(JOBS)}` }]);
     const run = await db.client.run.findUniqueOrThrow({ where: { runId } });
     expect(run.finishedAt).not.toBeNull();
+  });
+
+  // M3-T2
+  it("reports run, step and proposal changes as events, and a failing event sink never fails the run", async () => {
+    const events: AppEvent[] = [];
+    const recording = new PipelineRunner(
+      db.client,
+      catalog,
+      new ExecutorRegistry([search, note, send, submit, telegram]),
+      undefined,
+      (owner, event) => {
+        expect(owner).toBe(userId);
+        events.push(event);
+        return Promise.resolve();
+      },
+    );
+    const pipelineVersionId = await version(APPLY);
+    const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
+    const runId = await recording.start(pipelineVersionId, { trigger: "manual" });
+    await expect(recording.advance(runId)).resolves.toBe("WAITING_FOR_USER");
+
+    const runEvents = events.filter((e) => e.type === "run");
+    expect(runEvents).toEqual([
+      { type: "run", runId, pipelineId, status: "QUEUED" },
+      { type: "run", runId, pipelineId, status: "RUNNING" },
+      { type: "run", runId, pipelineId, status: "WAITING_FOR_USER" },
+    ]);
+    const open = await proposals(runId);
+    expect(events.filter((e) => e.type === "proposal")).toEqual(
+      open.map((p) => ({ type: "proposal", proposalId: p.proposalId, runId, status: "PENDING_REVIEW" })),
+    );
+    expect(events).toContainEqual({ type: "step", runId, stepKey: "search", itemIndex: null, status: "RUNNING" });
+    expect(events).toContainEqual({ type: "step", runId, stepKey: "search", itemIndex: null, status: "DONE" });
+    // Every event names ids and statuses only, never a payload.
+    for (const event of events) expect(Object.keys(event).sort()).not.toContain("payload");
+
+    const failing = new PipelineRunner(db.client, catalog, new ExecutorRegistry([search, note, send, submit, telegram]), undefined, () =>
+      Promise.reject(new Error("database gone")),
+    );
+    const digest = await failing.start(await version(DIGEST), { trigger: "manual" });
+    await expect(failing.advance(digest)).resolves.toBe("DONE");
   });
 
   const APPLY = `

@@ -1,0 +1,66 @@
+/* AI ME on top of Tabler: only what Tabler doesn't have. */
+
+/* Tabler's <pre> is dark-on-light inverted; payloads read better as plain text on a light surface. */
+.json-block {
+  color: var(--tblr-body-color);
+  background: var(--tblr-bg-surface-secondary);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.payload-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--tblr-bg-surface-secondary);
+  border-radius: var(--tblr-border-radius);
+  padding: 0.5rem 0.75rem;
+}
+
+.source-editor {
+  min-height: 28rem;
+  field-sizing: fixed;
+  font-size: 0.8125rem;
+  resize: vertical;
+  border-radius: 0;
+  tab-size: 2;
+}
+
+.step-graph {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.step-graph-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step-graph-node {
+  min-width: 10rem;
+  border: 2px solid;
+  border-radius: var(--tblr-border-radius);
+  padding: 0.375rem 0.625rem;
+  background: var(--tblr-bg-surface);
+}
+
+.step-graph-arrow {
+  flex-shrink: 0;
+  color: var(--tblr-secondary);
+}
+
+.text-pre-line {
+  white-space: pre-line;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}

@@ -19,6 +19,7 @@
   "dependencies": {
     "@ai-me/shared": "workspace:*",
     "cron-parser": "catalog:",
+    "pg": "catalog:",
     "pg-boss": "catalog:"
   },
   "devDependencies": {
@@ -26,6 +27,7 @@
     "@eslint/js": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "eslint": "catalog:",
     "eslint-config-prettier": "catalog:",
     "globals": "catalog:",

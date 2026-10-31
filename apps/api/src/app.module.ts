@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { ControlsModule } from "./controls/controls.module";
 import { CredentialsModule } from "./credentials/credentials.module";
+import { EventsModule } from "./events/events.module";
 import { PrismaService } from "./database/prisma.service";
 import { HealthController } from "./health/health.controller";
 import { PipelinesModule } from "./pipelines/pipelines.module";
@@ -27,6 +28,7 @@ export class CoreModule {}
     StepsModule,
     ThrottlerModule.forRoot([{ name: "default", ttl: 60_000, limit: 300 }]),
     AuthModule,
+    EventsModule,
     CredentialsModule,
     PipelinesModule,
     ProposalsModule,

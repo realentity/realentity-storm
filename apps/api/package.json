@@ -17,6 +17,7 @@
   "dependencies": {
     "@ai-me/crypto": "workspace:*",
     "@ai-me/db": "workspace:*",
+    "@ai-me/llm": "workspace:*",
     "@ai-me/queue": "workspace:*",
     "@ai-me/shared": "workspace:*",
     "@ai-me/steps": "workspace:*",
@@ -33,6 +34,7 @@
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
     "source-map-support": "catalog:",
+    "ws": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -48,6 +50,7 @@
     "@types/node": "catalog:",
     "@types/qrcode": "catalog:",
     "@types/supertest": "catalog:",
+    "@types/ws": "catalog:",
     "eslint": "catalog:",
     "eslint-config-prettier": "catalog:",
     "globals": "catalog:",

@@ -2,6 +2,7 @@ export * from "./auth";
 export * from "./canonical-json";
 export * from "./credentials";
 export * from "./env";
+export * from "./events";
 export * from "./pipeline";
 export * from "./pipeline-api";
 export * from "./runs-api";

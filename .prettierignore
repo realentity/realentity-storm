@@ -7,3 +7,6 @@ coverage
 pnpm-lock.yaml
 README.md
 .infisical.yaml
+apps/web-e2e/.auth
+apps/web-e2e/test-results
+apps/web-e2e/playwright-report

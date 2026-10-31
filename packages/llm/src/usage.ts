@@ -35,6 +35,10 @@ export interface LlmUsage extends TokenCounts {
   costUsd: number;
 }
 
+export function isPriced(model: string): boolean {
+  return model in PRICES;
+}
+
 export function costUsd(model: string, tokens: TokenCounts): number {
   const price = PRICES[model] ?? MOST_EXPENSIVE;
   const usd =

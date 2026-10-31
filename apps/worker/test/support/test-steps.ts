@@ -78,6 +78,7 @@ export async function createVersion(prisma: PrismaClient, userId: string, source
       version: 1,
       definition: result.definition as unknown as Prisma.InputJsonValue,
       policy: result.policy as unknown as Prisma.InputJsonValue,
+      savedAt: new Date(),
     },
   });
   await prisma.pipeline.update({ where: { pipelineId: pipeline.pipelineId }, data: { currentVersionId: v.pipelineVersionId } });

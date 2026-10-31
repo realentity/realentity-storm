@@ -15,8 +15,13 @@
   },
   "dependencies": {
     "@ai-me/shared": "workspace:*",
+    "@tabler/core": "catalog:",
+    "@tabler/icons-react": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-router-dom": "catalog:",
+    "react-toastify": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@ai-me/config": "workspace:*",

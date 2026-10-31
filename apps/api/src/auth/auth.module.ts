@@ -8,5 +8,6 @@ import { SessionService } from "./session.service";
 @Module({
   controllers: [AuthController],
   providers: [AuthService, SessionService, { provide: APP_GUARD, useClass: SessionGuard }],
+  exports: [SessionService],
 })
 export class AuthModule {}

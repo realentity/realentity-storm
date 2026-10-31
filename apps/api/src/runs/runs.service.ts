@@ -1,10 +1,11 @@
 import { type Prisma } from "@ai-me/db";
 import { JobQueue } from "@ai-me/queue";
-import { type CompiledDefinition, type RunDetailView, type RunSummaryView } from "@ai-me/shared";
+import { type CompiledDefinition, type RunDetailView, type RunFilter, type RunSummaryView, type StepUsageView } from "@ai-me/shared";
 import { StepCatalog } from "@ai-me/steps";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
+import { EventsService } from "../events/events.service";
 import { PROPOSAL_INCLUDE, proposalView } from "../proposals/proposal-view";
 
 const RUN_INCLUDE = {
@@ -20,14 +21,21 @@ export class RunsService {
     private readonly catalog: StepCatalog,
     private readonly controls: ControlsService,
     private readonly queue: JobQueue,
+    private readonly events: EventsService,
   ) {}
 
   /** A run of the pipeline's current version. A dry run proposes but never executes a side effect. */
   async start(userId: string, pipelineId: string, dryRun: boolean): Promise<RunDetailView> {
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
     if (!pipeline?.currentVersionId) throw new NotFoundException();
+    return this.startVersion(userId, pipeline.currentVersionId, dryRun);
+  }
+
+  /** A run of one version (the current one, or a draft's dry run). */
+  async startVersion(userId: string, pipelineVersionId: string, dryRun: boolean): Promise<RunDetailView> {
     await this.controls.assertNotPaused(userId);
-    const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: pipeline.currentVersionId } });
+    const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
+    if (!version.savedAt && !dryRun) throw new ConflictException("A draft only gets dry runs; save it first");
     const definition = version.definition as unknown as CompiledDefinition;
 
     const run = await this.prisma.client.run.create({
@@ -40,16 +48,33 @@ export class RunsService {
         status: "QUEUED",
       },
     });
+    await this.events.publish(userId, { type: "run", runId: run.runId, pipelineId: version.pipelineId, status: "QUEUED" });
     await this.queue.enqueueRun(run);
     return this.get(userId, run.runId);
   }
 
-  async list(userId: string, pipelineId: string | undefined, limit: number): Promise<RunSummaryView[]> {
+  async list(userId: string, filter: RunFilter): Promise<RunSummaryView[]> {
+    // `to` (a day, inclusive) and `before` (paging) both bound startedAt from above: the tighter one wins.
+    const upper = [filter.to ? dayAfter(filter.to) : null, filter.before ? new Date(filter.before) : null]
+      .filter((d): d is Date => d !== null)
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    const startedAt: Prisma.DateTimeFilter = {
+      ...(filter.from ? { gte: new Date(`${filter.from}T00:00:00.000Z`) } : {}),
+      ...(upper ? { lt: upper } : {}),
+    };
     const runs = await this.prisma.client.run.findMany({
-      where: { userId, ...(pipelineId ? { pipelineVersion: { pipelineId } } : {}) },
+      where: {
+        userId,
+        ...(filter.status ? { status: filter.status } : {}),
+        ...(filter.pipelineId
+          ? { pipelineVersion: { pipelineId: filter.pipelineId, ...(filter.version ? { version: filter.version } : {}) } }
+          : {}),
+        ...(Object.keys(startedAt).length > 0 ? { startedAt } : {}),
+        ...(filter.target ? { proposals: { some: { target: { contains: filter.target, mode: "insensitive" } } } } : {}),
+      },
       include: RUN_INCLUDE,
-      orderBy: { startedAt: "desc" },
-      take: limit,
+      orderBy: [{ startedAt: "desc" }, { runId: "desc" }],
+      take: filter.limit,
     });
     return runs.map(runSummary);
   }
@@ -64,9 +89,11 @@ export class RunsService {
       },
     });
     if (!run) throw new NotFoundException();
+    const usage = run.steps.map((s) => stepUsage(s.llmUsage));
     return {
       ...runSummary(run),
-      steps: run.steps.map((s) => ({
+      costUsd: Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000,
+      steps: run.steps.map((s, index) => ({
         stepId: s.stepId,
         stepKey: s.stepKey,
         itemIndex: s.itemIndex,
@@ -77,10 +104,29 @@ export class RunsService {
         error: s.error,
         startedAt: s.startedAt?.toISOString() ?? null,
         finishedAt: s.finishedAt?.toISOString() ?? null,
+        llmUsage: usage[index] ?? null,
       })),
       proposals: run.proposals.map(proposalView),
     };
   }
+}
+
+function dayAfter(day: string): Date {
+  return new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000);
+}
+
+/** The part of Step.llmUsage the run page shows (the stored shape is @ai-me/llm's LlmUsage). */
+function stepUsage(value: Prisma.JsonValue): StepUsageView | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const usage = value as Record<string, unknown>;
+  const count = (field: string) => (typeof usage[field] === "number" ? usage[field] : 0);
+  return {
+    models: Array.isArray(usage.models) ? usage.models.filter((m): m is string => typeof m === "string") : [],
+    calls: count("calls"),
+    inputTokens: count("inputTokens"),
+    outputTokens: count("outputTokens"),
+    costUsd: count("costUsd"),
+  };
 }
 
 function runSummary(run: RunWithPipeline): RunSummaryView {

@@ -1,8 +1,20 @@
-import { type KillSwitchView, type ServerEnv, type SettingsRequest, type SettingsView } from "@ai-me/shared";
+import { ModelRouter } from "@ai-me/llm";
+import {
+  EFFORTS,
+  LLM_TASKS,
+  type EffortName,
+  type KillSwitchView,
+  type LlmTask,
+  type ModelChoiceView,
+  type ServerEnv,
+  type SettingsRequest,
+  type SettingsView,
+} from "@ai-me/shared";
 import { StepCatalog } from "@ai-me/steps";
 import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
+import { EventsService } from "../events/events.service";
 
 export const KILL_SWITCH_SUMMARY = "Stopped by the kill switch";
 
@@ -13,6 +25,7 @@ export class ControlsService {
     private readonly prisma: PrismaService,
     private readonly catalog: StepCatalog,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly events: EventsService,
   ) {}
 
   async isPaused(userId: string): Promise<boolean> {
@@ -43,6 +56,7 @@ export class ControlsService {
         create: { userId, paused: false },
         update: { paused: false, pausedAt: null },
       });
+      await this.events.publish(userId, { type: "killSwitch", engaged: false });
       return { engaged: false, engagedAt: null };
     }
     const stopped = await this.prisma.client.$transaction(async (tx) => {
@@ -62,14 +76,32 @@ export class ControlsService {
       });
       return runs.length;
     });
+    await this.events.publish(userId, { type: "killSwitch", engaged: true });
     return { engaged: true, engagedAt: now.toISOString(), stoppedRuns: stopped };
   }
 
   async settings(userId: string): Promise<SettingsView> {
-    const settings = await this.prisma.client.userSetting.findUnique({ where: { userId } });
+    const [settings, modelSettings] = await Promise.all([
+      this.prisma.client.userSetting.findUnique({ where: { userId } }),
+      this.prisma.client.modelSetting.findMany({ where: { userId, taskKey: { in: [...LLM_TASKS] } } }),
+    ]);
+    const router = new ModelRouter(() => Promise.resolve(null), {
+      LLM_MODEL_CLASSIFY: this.env.LLM_MODEL_CLASSIFY,
+      LLM_MODEL_WRITING: this.env.LLM_MODEL_WRITING,
+    });
+    const models = Object.fromEntries(
+      LLM_TASKS.map((task): [LlmTask, ModelChoiceView] => {
+        const fallback = router.fallback(task);
+        const own = modelSettings.find((s) => s.taskKey === task);
+        if (!own) return [task, fallback];
+        const effort = (EFFORTS as readonly string[]).includes(own.effort ?? "") ? (own.effort as EffortName) : fallback.effort;
+        return [task, { model: own.model, effort, source: "settings" }];
+      }),
+    ) as Record<LlmTask, ModelChoiceView>;
     const own = settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : null;
     const fromEnv = this.env.LLM_MONTHLY_BUDGET_USD ?? null;
     return {
+      models,
       rateLimits: (settings?.rateLimits as Record<string, string> | null) ?? {},
       monthlyBudgetUsd: own ?? fromEnv,
       budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
@@ -88,7 +120,19 @@ export class ControlsService {
       ...(body.rateLimits !== undefined ? { rateLimits: body.rateLimits } : {}),
       ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
     };
-    await this.prisma.client.userSetting.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+    const models = Object.entries(body.models ?? {});
+    await this.prisma.client.$transaction([
+      this.prisma.client.userSetting.upsert({ where: { userId }, create: { userId, ...data }, update: data }),
+      ...models.map(([taskKey, choice]) =>
+        choice
+          ? this.prisma.client.modelSetting.upsert({
+              where: { userId_taskKey: { userId, taskKey } },
+              create: { userId, taskKey, model: choice.model, effort: choice.effort },
+              update: { model: choice.model, effort: choice.effort },
+            })
+          : this.prisma.client.modelSetting.deleteMany({ where: { userId, taskKey } }),
+      ),
+    ]);
     return this.settings(userId);
   }
 }

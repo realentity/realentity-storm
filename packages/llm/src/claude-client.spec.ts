@@ -1,8 +1,9 @@
+import { CLAUDE_MODELS } from "@ai-me/shared";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { ClaudeClient, LlmError, usageOf } from "./claude-client";
 import { ModelRouter } from "./models";
-import { costUsd } from "./usage";
+import { costUsd, isPriced } from "./usage";
 
 const Answer = z.object({ label: z.enum(["keep", "drop"]), reason: z.string().min(3) });
 
@@ -143,5 +144,15 @@ describe("ModelRouter", () => {
       model: "claude-haiku-5-5",
       effort: "low",
     });
+  });
+
+  it("tells where a task's model comes from without a setting", () => {
+    const router = new ModelRouter(async () => null, { LLM_MODEL_CLASSIFY: "claude-sonnet-5-5" });
+    expect(router.fallback("llm.score")).toEqual({ model: "claude-sonnet-5-5", effort: "low", source: "env" });
+    expect(router.fallback("llm.generate")).toEqual({ model: "claude-sonnet-5-5", effort: "medium", source: "default" });
+  });
+
+  it("has a price for every model Settings offers", () => {
+    expect(CLAUDE_MODELS.filter((model) => !isPriced(model))).toEqual([]);
   });
 });

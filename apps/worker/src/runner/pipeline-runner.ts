@@ -1,12 +1,24 @@
 import { payloadHash } from "@ai-me/crypto";
 import { addUsage, type LlmUsage } from "@ai-me/llm";
 import { type Prisma, type PrismaClient, type Proposal, type RunStatus, type Step } from "@ai-me/db";
-import { canonicalJson, type CompiledDefinition, type CompiledPolicy, type CompiledStep } from "@ai-me/shared";
+import {
+  canonicalJson,
+  type AppEvent,
+  type CompiledDefinition,
+  type CompiledPolicy,
+  type CompiledStep,
+  type ProposalStatusName,
+} from "@ai-me/shared";
 import { type StepCatalog, type StepDefinition } from "@ai-me/steps";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
 import { RunValues, sourceOf, type ItemScope } from "./run-values";
 import { type ExecutorRegistry, type StepContext } from "./step-executor";
+
+/** Where the runner reports progress (the web app's live updates). Must not throw; a lost event only delays a refresh. */
+export type EventSink = (userId: string, event: AppEvent) => Promise<void>;
+
+const noEvents: EventSink = () => Promise.resolve();
 
 export interface StartOptions {
   trigger: "schedule" | "manual" | "event" | "dry-run";
@@ -61,6 +73,7 @@ export class PipelineRunner {
     private readonly catalog: StepCatalog,
     private readonly executors: ExecutorRegistry,
     private readonly controls: RunControls = new RunControls(prisma),
+    private readonly events: EventSink = noEvents,
   ) {}
 
   async start(pipelineVersionId: string, options: StartOptions): Promise<string> {
@@ -76,6 +89,7 @@ export class PipelineRunner {
         status: "QUEUED",
       },
     });
+    await this.emit(run.userId, { type: "run", runId: run.runId, pipelineId: version.pipelineId, status: "QUEUED" });
     return run.runId;
   }
 
@@ -91,6 +105,13 @@ export class PipelineRunner {
         data: { status: "RUNNING", resumeAt: null },
       });
       if (claimed.count === 0) return (await this.prisma.run.findUniqueOrThrow({ where: { runId } })).status;
+      const owner = await this.prisma.run.findUniqueOrThrow({
+        where: { runId },
+        select: { userId: true, pipelineVersion: { select: { pipelineId: true } } },
+      });
+      const runEvent = (status: RunStatus) =>
+        this.emit(owner.userId, { type: "run", runId, pipelineId: owner.pipelineVersion.pipelineId, status });
+      await runEvent("RUNNING");
 
       const outcome = await this.executeSafely(runId);
       const finished = outcome.status === "DONE" || outcome.status === "FAILED" || outcome.status === "ABORTED";
@@ -104,6 +125,7 @@ export class PipelineRunner {
         },
       });
       if (outcome.status === "ABORTED") await this.expireOpenProposals(runId);
+      await runEvent(outcome.status);
       // A decision made during this advance isn't in its state, and the job sent for it found the run claimed.
       // The status is saved first, so either that job claims the run now, or this check sees the decision.
       if (outcome.status !== "WAITING_FOR_USER" || !(await this.hasUnreadDecision(runId))) return outcome.status;
@@ -342,7 +364,7 @@ export class PipelineRunner {
         originalPayload: payload as Prisma.InputJsonValue,
       },
     });
-    state.proposals.push(proposal);
+    await this.proposalCreated(state, proposal);
 
     if (state.dryRun) {
       // Dry run: the proposal is a preview; continue as if approved, and the side-effect step is skipped.
@@ -350,7 +372,7 @@ export class PipelineRunner {
       return { kind: "done", output: { approved: true } };
     }
     const waiting = await this.prisma.step.update({ where: { stepId: gateRow.stepId }, data: { status: "WAITING" } });
-    state.rows.set(key(step.id, scope?.index ?? null), waiting);
+    await this.saved(state, waiting);
     return { kind: "waiting" };
   }
 
@@ -400,9 +422,9 @@ export class PipelineRunner {
         originalPayload: { items: input.items } as Prisma.InputJsonValue,
       },
     });
-    state.proposals.push(proposal);
+    await this.proposalCreated(state, proposal);
     const waiting = await this.prisma.step.update({ where: { stepId: reviewRow.stepId }, data: { status: "WAITING" } });
-    state.rows.set(key(step.id, scope?.index ?? null), waiting);
+    await this.saved(state, waiting);
     return { kind: "waiting" };
   }
 
@@ -433,7 +455,7 @@ export class PipelineRunner {
     const payload = (proposal.finalPayload ?? proposal.originalPayload) as Record<string, unknown>;
     if (payloadHash(payload) !== proposal.payloadHash) {
       await this.fail(state, step, row, scope, "The payload changed after approval; refusing to act");
-      await this.prisma.proposal.update({ where: { proposalId: proposal.proposalId }, data: { status: "FAILED" } });
+      await this.setProposalStatus(state, proposal.proposalId, "FAILED");
       return { kind: "failed" };
     }
 
@@ -456,7 +478,7 @@ export class PipelineRunner {
         scope,
         error instanceof PolicyViolation ? error.message : `Invalid approved payload: ${message(error)}`,
       );
-      await this.prisma.proposal.update({ where: { proposalId: proposal.proposalId }, data: { status: "FAILED" } });
+      await this.setProposalStatus(state, proposal.proposalId, "FAILED");
       return { kind: "failed" };
     }
 
@@ -464,16 +486,16 @@ export class PipelineRunner {
     if (until) return { kind: "deferred", until };
 
     const running = await this.markRunning(state, step, row, scope, input);
-    await this.prisma.proposal.update({ where: { proposalId: proposal.proposalId }, data: { status: "EXECUTING" } });
+    await this.setProposalStatus(state, proposal.proposalId, "EXECUTING");
     try {
       const output = definition.output.parse(await this.executor(step).execute(input, this.context(state, running)));
       await this.finish(state, running, output);
-      await this.prisma.proposal.update({ where: { proposalId: proposal.proposalId }, data: { status: "DONE" } });
+      await this.setProposalStatus(state, proposal.proposalId, "DONE");
       return { kind: "done", output };
     } catch (error) {
       // Never retried automatically (README §2.6).
       await this.fail(state, step, running, scope, message(error));
-      await this.prisma.proposal.update({ where: { proposalId: proposal.proposalId }, data: { status: "FAILED" } });
+      await this.setProposalStatus(state, proposal.proposalId, "FAILED");
       return { kind: "failed" };
     }
   }
@@ -514,7 +536,7 @@ export class PipelineRunner {
       : await this.prisma.step.create({
           data: { ...data, runId: state.runId, stepKey: step.id, itemIndex: scope?.index ?? null, type: step.type },
         });
-    state.rows.set(key(step.id, scope?.index ?? null), saved);
+    await this.saved(state, saved);
     return saved;
   }
 
@@ -523,7 +545,7 @@ export class PipelineRunner {
       where: { stepId: row.stepId },
       data: { status: "DONE", output: output as Prisma.InputJsonValue, finishedAt: new Date(), ...usageData(llmUsage) },
     });
-    state.rows.set(key(saved.stepKey, saved.itemIndex), saved);
+    await this.saved(state, saved);
   }
 
   private async skip(state: RunState, step: CompiledStep, itemIndex: number | null, reason: string): Promise<void> {
@@ -533,7 +555,7 @@ export class PipelineRunner {
     const saved = existing
       ? await this.prisma.step.update({ where: { stepId: existing.stepId }, data })
       : await this.prisma.step.create({ data: { ...data, runId: state.runId, stepKey: step.id, itemIndex, type: step.type } });
-    state.rows.set(key(step.id, itemIndex), saved);
+    await this.saved(state, saved);
   }
 
   private async fail(
@@ -550,7 +572,27 @@ export class PipelineRunner {
       : await this.prisma.step.create({
           data: { ...data, runId: state.runId, stepKey: step.id, itemIndex: scope?.index ?? null, type: step.type },
         });
-    state.rows.set(key(step.id, scope?.index ?? null), saved);
+    await this.saved(state, saved);
+  }
+
+  /** Keeps the run's state in step with a saved Step row, and reports it. */
+  private async saved(state: RunState, row: Step): Promise<void> {
+    state.rows.set(key(row.stepKey, row.itemIndex), row);
+    await this.emit(state.userId, { type: "step", runId: state.runId, stepKey: row.stepKey, itemIndex: row.itemIndex, status: row.status });
+  }
+
+  private async proposalCreated(state: RunState, proposal: Proposal): Promise<void> {
+    state.proposals.push(proposal);
+    await this.emit(state.userId, { type: "proposal", proposalId: proposal.proposalId, runId: state.runId, status: proposal.status });
+  }
+
+  private async setProposalStatus(state: RunState, proposalId: string, status: ProposalStatusName): Promise<void> {
+    await this.prisma.proposal.update({ where: { proposalId }, data: { status } });
+    await this.emit(state.userId, { type: "proposal", proposalId, runId: state.runId, status });
+  }
+
+  private async emit(userId: string, event: AppEvent): Promise<void> {
+    await this.events(userId, event).catch(() => undefined);
   }
 }
 

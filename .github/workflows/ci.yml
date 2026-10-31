@@ -48,3 +48,41 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:e2e --env-mode=loose
+
+  browser:
+    name: Browser tests (Playwright, composed stack)
+    # README test strategy: end-to-end web tests run on PRs to main.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Install Chromium
+        run: pnpm --filter @ai-me/web-e2e exec playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: pnpm test:web --env-mode=loose
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web-e2e/playwright-report
+          retention-days: 7

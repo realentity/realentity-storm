@@ -173,15 +173,17 @@ model Pipeline {
 }
 
 model PipelineVersion {
-  pipelineVersionId String   @id @default(uuid()) @db.Uuid
-  pipelineId        String   @db.Uuid
-  pipeline          Pipeline @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  pipelineVersionId String    @id @default(uuid()) @db.Uuid
+  pipelineId        String    @db.Uuid
+  pipeline          Pipeline  @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
   version           Int
   definition        Json // validated pipeline definition (trigger, steps, limits)
   policy            Json // compiled targets: static lists + provenance rules (README §2.2), enforced at run time
   changeSummary     String? // human-readable diff summary
-  builderChatId     String?  @db.Uuid
-  dateCreated       DateTime @default(now())
+  builderChatId     String?   @db.Uuid
+  dateCreated       DateTime  @default(now())
+  /// Null: a draft (one per pipeline, numbered after the latest saved version). Drafts only ever get dry runs.
+  savedAt           DateTime?
 
   runs Run[]
 

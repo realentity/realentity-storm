@@ -1,0 +1,73 @@
+import { expect, test } from "@playwright/test";
+import { REPLIES, createPipeline, startRun, unique } from "./support";
+
+test.describe("pipelines", () => {
+  // M3-E1
+  test("paste YAML → review → dry run → save v1 → enable", async ({ page }) => {
+    const name = unique("E1 replies");
+    await page.goto("/pipelines/new");
+    await page.getByTestId("pipeline-source").fill(REPLIES(name, '{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }'));
+
+    await page.getByTestId("check").click();
+    await expect(page.getByTestId("policy-summary")).toContainText(
+      "reply (test.send) acts outside AI ME, once per item; it waits for my approval at replyGate.",
+    );
+    await expect(page.getByTestId("policy-summary")).toContainText("reply.to (recipient) must come from {{item.recruiter}}");
+    await expect(page.getByTestId("step-graph")).toContainText("replyGate");
+    await expect(page.getByText("On schedule 0 8 * * 1-5 (Europe/Sofia)")).toBeVisible();
+
+    await page.getByTestId("dry-run").click();
+    const dryRun = page.getByTestId("dry-run-status");
+    await expect(dryRun).toContainText("done");
+    await expect(dryRun).toContainText("Would act: reply #1 → ana@acme.test");
+    await expect(dryRun).toContainText("Would act: reply #2 → bob@other.test");
+
+    await page.getByTestId("save").click();
+    await expect(page).toHaveURL(/\/pipelines\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await expect(page.getByTestId("versions")).toContainText("v1");
+    // The dry run previewed the draft that became v1, so it stays with v1.
+    await expect(page.getByTestId("runs")).toContainText("dry-run");
+
+    // The switch shows the saved state: it turns on once the api has enabled the pipeline.
+    const enable = page.getByTestId("enable-pipeline");
+    await enable.click();
+    await expect(enable).toBeChecked();
+    await page.reload();
+    await expect(page.getByTestId("enable-pipeline")).toBeChecked();
+  });
+
+  // M3-E4
+  test("saving v2 shows the diff against v1; runs reference their version", async ({ page }) => {
+    const name = unique("E4 replies");
+    const pipeline = await createPipeline(page, REPLIES(name));
+    await startRun(page, pipeline.pipelineId);
+
+    await page.goto(`/pipelines/${pipeline.pipelineId}/edit`);
+    const source = page.getByTestId("pipeline-source");
+    await expect(source).toHaveValue(/query: dotnet/);
+    await source.fill((await source.inputValue()).replace("query: dotnet", "query: golang"));
+    await page.getByTestId("check").click();
+    const diff = page.getByTestId("version-diff");
+    await expect(diff).toContainText("Changes against v1");
+    await expect(diff).toContainText('step search with.query: "dotnet" → "golang"');
+    await expect(diff.locator("li")).toHaveCount(1);
+
+    await page.getByTestId("save").click();
+    await expect(page.getByTestId("versions")).toContainText("v2");
+    await expect(page.getByTestId("versions")).toContainText("step search: with.query");
+
+    await page.getByTestId("run-now").click();
+    await expect(page).toHaveURL(/\/runs\//);
+    await expect(page.getByRole("link", { name: `${name} · v2` })).toBeVisible();
+
+    await page.goto(`/history?pipelineId=${pipeline.pipelineId}`);
+    const rows = page.getByTestId("runs").locator("tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("v2");
+    await expect(rows.nth(1)).toContainText("v1");
+
+    await page.goto(`/history?pipelineId=${pipeline.pipelineId}&version=1`);
+    await expect(page.getByTestId("runs").locator("tbody tr")).toHaveCount(1);
+  });
+});

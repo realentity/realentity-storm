@@ -78,6 +78,7 @@ describe("runs, proposals and controls", () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
     await db.client.userSetting.deleteMany();
+    await db.client.modelSetting.deleteMany();
     await db.client.$executeRaw`DELETE FROM pgboss.job`;
   });
 
@@ -268,6 +269,86 @@ describe("runs, proposals and controls", () => {
       expect(detail.proposals.map((p) => p.status)).toEqual(["PENDING_REVIEW"]);
       await agent.get("/api/runs/00000000-0000-4000-8000-000000000000").expect(404);
     });
+
+    // M3-T7
+    it("filters history by pipeline and version, status, date and target, and pages with `before`", async () => {
+      const { runId: waiting } = await waitingAt("act");
+      const replies = await db.client.pipeline.findFirstOrThrow({ where: { name: "Replies" } });
+      await agent
+        .post(`/api/pipelines/${replies.pipelineId}/versions`)
+        .send({ source: REPLY.replace("dotnet", "golang") })
+        .expect(201);
+      const v2 = (await agent.post(`/api/pipelines/${replies.pipelineId}/runs`).send({}).expect(202)).body as RunDetailView;
+      const old = await db.client.run.create({
+        data: {
+          userId,
+          pipelineVersionId: (await db.client.pipelineVersion.findFirstOrThrow({ where: { pipelineId: replies.pipelineId, version: 1 } }))
+            .pipelineVersionId,
+          trigger: "schedule",
+          status: "DONE",
+          startedAt: new Date("2026-10-01T08:00:00Z"),
+        },
+      });
+      const ids = async (query: string) =>
+        ((await agent.get(`/api/runs?${query}`).expect(200)).body as RunSummaryView[]).map((r) => r.runId);
+
+      expect(await ids(`pipelineId=${replies.pipelineId}&version=1`)).toEqual([waiting, old.runId]);
+      expect(await ids(`pipelineId=${replies.pipelineId}&version=2`)).toEqual([v2.runId]);
+      expect(await ids("status=WAITING_FOR_USER")).toEqual([waiting]);
+      expect(await ids("from=2026-10-01&to=2026-10-01")).toEqual([old.runId]);
+      expect(await ids("target=ANA@acme")).toEqual([waiting]);
+      const [first, ...rest] = await ids("limit=1");
+      expect(rest).toEqual([]);
+      const startedAt = ((await agent.get(`/api/runs/${first}`).expect(200)).body as RunDetailView).startedAt;
+      expect(await ids(`before=${encodeURIComponent(startedAt)}`)).not.toContain(first);
+
+      await agent.get("/api/runs?version=1").expect(400);
+      await agent.get("/api/runs?status=LOST").expect(400);
+      await agent.get("/api/runs?from=yesterday").expect(400);
+      await agent.get("/api/runs?sort=name").expect(400);
+    });
+
+    // M3-T6
+    it("shows each step's LLM usage and the run's total cost", async () => {
+      const { runId } = await waitingAt("review");
+      const usage = {
+        models: ["claude-haiku-5-5"],
+        calls: 2,
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsd: 0.0002,
+      };
+      await db.client.step.create({
+        data: { runId, stepKey: "search", type: "llm.classify", status: "DONE", startedAt: new Date(0), llmUsage: usage },
+      });
+      await db.client.step.create({
+        data: {
+          runId,
+          stepKey: "summary",
+          type: "llm.summarize",
+          status: "FAILED",
+          startedAt: new Date(1),
+          llmUsage: { ...usage, costUsd: 0.0031 },
+        },
+      });
+
+      const detail = (await agent.get(`/api/runs/${runId}`).expect(200)).body as RunDetailView;
+      expect(detail.costUsd).toBe(0.0033);
+      expect(detail.steps.map((s) => [s.stepKey, s.llmUsage?.costUsd ?? null])).toEqual([
+        ["search", 0.0002],
+        ["summary", 0.0031],
+        ["shortlist", null],
+      ]);
+      expect(detail.steps[0]?.llmUsage).toEqual({
+        models: ["claude-haiku-5-5"],
+        calls: 2,
+        inputTokens: 1000,
+        outputTokens: 200,
+        costUsd: 0.0002,
+      });
+    });
   });
 
   describe("pipelines", () => {
@@ -336,7 +417,11 @@ describe("runs, proposals and controls", () => {
 
   describe("settings", () => {
     it("global rate limits for side-effect steps, and the monthly budget", async () => {
-      expect((await agent.get("/api/settings").expect(200)).body).toEqual({ rateLimits: {}, monthlyBudgetUsd: null, budgetSource: null });
+      expect((await agent.get("/api/settings").expect(200)).body).toMatchObject({
+        rateLimits: {},
+        monthlyBudgetUsd: null,
+        budgetSource: null,
+      });
 
       const saved = (
         await agent
@@ -344,10 +429,54 @@ describe("runs, proposals and controls", () => {
           .send({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: 25.5 })
           .expect(200)
       ).body as SettingsView;
-      expect(saved).toEqual({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: 25.5, budgetSource: "settings" });
+      expect(saved).toMatchObject({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: 25.5, budgetSource: "settings" });
 
       const cleared = (await agent.put("/api/settings").send({ monthlyBudgetUsd: null }).expect(200)).body as SettingsView;
-      expect(cleared).toEqual({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: null, budgetSource: null });
+      expect(cleared).toMatchObject({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: null, budgetSource: null });
+    });
+
+    // M3-T9
+    it("a model per LLM task: my choice, or the default and where it comes from", async () => {
+      const initial = (await agent.get("/api/settings").expect(200)).body as SettingsView;
+      expect(initial.models).toEqual({
+        "llm.classify": { model: "claude-haiku-5-5", effort: "low", source: "default" },
+        "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "default" },
+        "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+        "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+      });
+
+      const chosen = (
+        await agent
+          .put("/api/settings")
+          .send({ models: { "llm.generate": { model: "claude-opus-5-5", effort: "high" } } })
+          .expect(200)
+      ).body as SettingsView;
+      expect(chosen.models["llm.generate"]).toEqual({ model: "claude-opus-5-5", effort: "high", source: "settings" });
+      expect(await db.client.modelSetting.findMany({ select: { taskKey: true, model: true, effort: true } })).toEqual([
+        { taskKey: "llm.generate", model: "claude-opus-5-5", effort: "high" },
+      ]);
+
+      const reset = (
+        await agent
+          .put("/api/settings")
+          .send({ models: { "llm.generate": null } })
+          .expect(200)
+      ).body as SettingsView;
+      expect(reset.models["llm.generate"].source).toBe("default");
+      expect(await db.client.modelSetting.count()).toBe(0);
+
+      await agent
+        .put("/api/settings")
+        .send({ models: { "llm.generate": { model: "gpt-9", effort: "high" } } })
+        .expect(400);
+      await agent
+        .put("/api/settings")
+        .send({ models: { "email.send": { model: "claude-opus-5-5", effort: "high" } } })
+        .expect(400);
+      await agent
+        .put("/api/settings")
+        .send({ models: { "llm.score": { model: "claude-opus-5-5", effort: "huge" } } })
+        .expect(400);
     });
 
     it("refuses limits on unknown or non-side-effect steps, and malformed limits", async () => {

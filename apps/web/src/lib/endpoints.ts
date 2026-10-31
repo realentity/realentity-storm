@@ -1,0 +1,75 @@
+import {
+  type ApproveProposalRequest,
+  type CompilePipelineResponse,
+  type CreateCredentialRequest,
+  type CredentialView,
+  type DryRunPipelineResponse,
+  type KillSwitchView,
+  type LoginRequest,
+  type PipelineDetailView,
+  type PipelineSummaryView,
+  type PipelineVersionView,
+  type ProposalStatusName,
+  type ProposalView,
+  type RunDetailView,
+  type RunFilter,
+  type RunSummaryView,
+  type SessionView,
+  type SettingsRequest,
+  type SettingsView,
+  type StepTypeView,
+  type UpdatePipelineRequest,
+} from "@ai-me/shared";
+import { query, request } from "./api";
+
+/** Every api route the web app uses, typed with the shared DTOs. */
+export const api = {
+  auth: {
+    session: () => request<SessionView>("GET", "/auth/session"),
+    login: (body: LoginRequest) => request<SessionView>("POST", "/auth/login", body),
+    logout: () => request<void>("POST", "/auth/logout"),
+  },
+  steps: {
+    list: () => request<StepTypeView[]>("GET", "/steps"),
+  },
+  pipelines: {
+    list: () => request<PipelineSummaryView[]>("GET", "/pipelines"),
+    get: (pipelineId: string) => request<PipelineDetailView>("GET", `/pipelines/${pipelineId}`),
+    version: (pipelineId: string, version: number) => request<PipelineVersionView>("GET", `/pipelines/${pipelineId}/versions/${version}`),
+    compile: (source: string, pipelineId?: string) =>
+      request<CompilePipelineResponse>("POST", "/pipelines/compile", { source, pipelineId }),
+    dryRun: (source: string, pipelineId?: string) => request<DryRunPipelineResponse>("POST", "/pipelines/dry-run", { source, pipelineId }),
+    create: (source: string) => request<PipelineDetailView>("POST", "/pipelines", { source }),
+    addVersion: (pipelineId: string, source: string) =>
+      request<PipelineDetailView>("POST", `/pipelines/${pipelineId}/versions`, { source }),
+    discardDraft: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}/draft`),
+    update: (pipelineId: string, body: UpdatePipelineRequest) => request<PipelineDetailView>("PATCH", `/pipelines/${pipelineId}`, body),
+    run: (pipelineId: string, dryRun: boolean) => request<RunDetailView>("POST", `/pipelines/${pipelineId}/runs`, { dryRun }),
+  },
+  runs: {
+    list: (filter: Partial<RunFilter> = {}) => request<RunSummaryView[]>("GET", `/runs${query(filter)}`),
+    get: (runId: string) => request<RunDetailView>("GET", `/runs/${runId}`),
+  },
+  proposals: {
+    list: (status: ProposalStatusName = "PENDING_REVIEW") => request<ProposalView[]>("GET", `/proposals${query({ status })}`),
+    get: (proposalId: string) => request<ProposalView>("GET", `/proposals/${proposalId}`),
+    approve: (proposalId: string, body: Partial<ApproveProposalRequest>) =>
+      request<ProposalView>("POST", `/proposals/${proposalId}/approve`, body),
+    reject: (proposalId: string, reason?: string) => request<ProposalView>("POST", `/proposals/${proposalId}/reject`, { reason }),
+  },
+  credentials: {
+    list: () => request<CredentialView[]>("GET", "/credentials"),
+    create: (body: CreateCredentialRequest) => request<CredentialView>("POST", "/credentials", body),
+    replaceSecret: (credentialId: string, secret: string) =>
+      request<CredentialView>("PUT", `/credentials/${credentialId}/secret`, { secret }),
+    remove: (credentialId: string) => request<void>("DELETE", `/credentials/${credentialId}`),
+  },
+  killSwitch: {
+    get: () => request<KillSwitchView>("GET", "/kill-switch"),
+    set: (engaged: boolean) => request<KillSwitchView>("PUT", "/kill-switch", { engaged }),
+  },
+  settings: {
+    get: () => request<SettingsView>("GET", "/settings"),
+    update: (body: SettingsRequest) => request<SettingsView>("PUT", "/settings", body),
+  },
+};

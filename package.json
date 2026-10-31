@@ -14,6 +14,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e --concurrency=1",
+    "test:web": "turbo run test:web",
     "clean": "turbo run clean",
     "db:generate": "pnpm --filter @ai-me/db run generate",
     "db:migrate": "pnpm --filter @ai-me/db exec prisma migrate dev",
