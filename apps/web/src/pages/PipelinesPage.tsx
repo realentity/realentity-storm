@@ -1,4 +1,4 @@
-import { IconPlus } from "@tabler/icons-react";
+import { IconMessage, IconPlus } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
@@ -12,15 +12,21 @@ export function PipelinesPage() {
       <PageHeader
         title="Pipelines"
         actions={
-          <Link to="/pipelines/new" className="btn btn-primary" data-testid="new-pipeline">
-            <IconPlus size={18} className="me-1" />
-            New pipeline
-          </Link>
+          <>
+            <Link to="/pipelines/new" className="btn" data-testid="new-pipeline">
+              <IconPlus size={18} className="me-1" />
+              From YAML
+            </Link>
+            <Link to="/builder" className="btn btn-primary" data-testid="describe-pipeline">
+              <IconMessage size={18} className="me-1" />
+              Describe a pipeline
+            </Link>
+          </>
         }
       />
       <ErrorAlert error={pipelines.error} />
       {!pipelines.data && pipelines.loading && <Loading />}
-      {pipelines.data?.length === 0 && <Empty>No pipelines yet. Paste or upload a YAML definition to create one.</Empty>}
+      {pipelines.data?.length === 0 && <Empty>No pipelines yet. Describe one in chat, or paste or upload a YAML definition.</Empty>}
       {pipelines.data && pipelines.data.length > 0 && (
         <div className="card">
           <div className="table-responsive">

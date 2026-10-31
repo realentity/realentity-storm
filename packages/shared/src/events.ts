@@ -13,4 +13,6 @@ export type AppEvent =
   | { type: "proposal"; proposalId: string; runId: string; status: ProposalStatusName }
   | { type: "killSwitch"; engaged: boolean }
   /** Rules, pipeline suggestions or a reflection changed (the Rules page). */
-  | { type: "learning" };
+  | { type: "learning" }
+  /** A builder chat got a message or saved a proposal. */
+  | { type: "builder"; chatId: string };

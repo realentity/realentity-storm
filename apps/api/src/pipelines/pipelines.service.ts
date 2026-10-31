@@ -49,7 +49,8 @@ export class PipelinesService {
     return { result, diff: diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition) };
   }
 
-  async create(userId: string, source: string): Promise<PipelineDetailView> {
+  /** `builderChatId`: the builder chat the source came from (README §2.1), kept with the version. */
+  async create(userId: string, source: string, builderChatId?: string): Promise<PipelineDetailView> {
     const compiled = this.compileOrThrow(source);
     const pipeline = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.pipeline.create({ data: { userId, name: compiled.definition.name } });
@@ -59,6 +60,7 @@ export class PipelinesService {
           version: 1,
           definition: toJson(compiled.definition),
           policy: toJson(compiled.policy),
+          builderChatId,
           savedAt: new Date(),
         },
       });
@@ -71,7 +73,7 @@ export class PipelinesService {
    * Saves the next version with a change summary (v1 for a pipeline that only had a draft). Refuses a source that
    * changes nothing.
    */
-  async addVersion(userId: string, pipelineId: string, source: string): Promise<PipelineDetailView> {
+  async addVersion(userId: string, pipelineId: string, source: string, builderChatId?: string): Promise<PipelineDetailView> {
     const compiled = this.compileOrThrow(source);
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
     if (!pipeline) throw new NotFoundException();
@@ -88,7 +90,7 @@ export class PipelinesService {
           // What I dry-ran is what I save: the draft and its dry runs become this version.
           saved = await tx.pipelineVersion.update({
             where: { pipelineVersionId: draft.pipelineVersionId },
-            data: { savedAt: now, changeSummary: diff?.summary ?? null },
+            data: { savedAt: now, changeSummary: diff?.summary ?? null, ...(builderChatId ? { builderChatId } : {}) },
           });
         } else {
           if (draft) await this.deleteDraft(tx, draft);
@@ -99,6 +101,7 @@ export class PipelinesService {
               definition: toJson(compiled.definition),
               policy: toJson(compiled.policy),
               changeSummary: diff?.summary ?? null,
+              builderChatId,
               savedAt: now,
             },
           });

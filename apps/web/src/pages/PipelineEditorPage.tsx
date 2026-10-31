@@ -1,7 +1,7 @@
 import { type CompilePipelineResponse, type PipelineDetailView, type RunDetailView } from "@ai-me/shared";
 import { IconChecks, IconDeviceFloppy, IconEye, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { CompileErrors, DiffList, PlanView, StepGraphView } from "../components/PlanView";
 import { ErrorAlert, Loading, PageHeader, StatusBadge } from "../components/ui";
@@ -23,7 +23,9 @@ export function PipelineEditorPage() {
   const catalog = useCatalog();
   const [pipelineId, setPipelineId] = useState<string | undefined>(params.pipelineId);
   const existing = useLoad(() => (params.pipelineId ? api.pipelines.get(params.pipelineId) : Promise.resolve(null)), [params.pipelineId]);
-  const [source, setSource] = useState<string | null>(params.pipelineId ? null : NEW_PIPELINE_TEMPLATE);
+  // A builder proposal opened here from the chat ("Open in the editor").
+  const handed = (useLocation().state as { source?: string } | null)?.source;
+  const [source, setSource] = useState<string | null>(handed ?? (params.pipelineId ? null : NEW_PIPELINE_TEMPLATE));
   const [checked, setChecked] = useState<{ source: string; response: CompilePipelineResponse } | null>(null);
   const [dryRunId, setDryRunId] = useState<string | null>(null);
   const [pipeline, setPipeline] = useState<PipelineDetailView | null>(null);
@@ -32,13 +34,16 @@ export function PipelineEditorPage() {
 
   // Editing: start from the draft if there is one, else the current version.
   useEffect(() => {
+    const loaded = existing.data;
+    if (loaded) setPipeline((shown) => shown ?? loaded);
+  }, [existing.data]);
+  useEffect(() => {
     if (!existing.data || source !== null) return;
-    setPipeline(existing.data);
     const from = existing.data.draft ?? existing.data.current;
     setSource(from ? definitionToSource(from.definition) : NEW_PIPELINE_TEMPLATE);
   }, [existing.data, source]);
 
-  if (params.pipelineId && source === null) return existing.error ? <ErrorAlert error={existing.error} /> : <Loading />;
+  if (params.pipelineId && (source === null || !pipeline)) return existing.error ? <ErrorAlert error={existing.error} /> : <Loading />;
   const text = source ?? "";
   const upToDate = checked?.source === text;
   const result = upToDate ? checked.response.result : null;

@@ -3,6 +3,7 @@ import { IconEye, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { PipelineChat } from "../components/PipelineChat";
 import { PlanView, StepGraphView } from "../components/PlanView";
 import { RunsTable } from "../components/RunsTable";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
@@ -101,6 +102,7 @@ export function PipelinePage() {
               </div>
             </div>
           )}
+          <PipelineChat pipelineId={pipelineId} onSaved={() => pipeline.reload()} />
           <div className="card">
             <div className="card-header">
               <h3 className="card-title">Recent runs</h3>

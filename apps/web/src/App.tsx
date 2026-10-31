@@ -3,6 +3,7 @@ import { ToastContainer } from "react-toastify";
 import { Loading } from "./components/ui";
 import { useSession } from "./context/use-session";
 import { AppLayout } from "./layout/AppLayout";
+import { BuilderPage } from "./pages/BuilderPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { InboxPage } from "./pages/InboxPage";
@@ -35,6 +36,8 @@ export function App() {
             <Route path="proposals/:proposalId" element={<ProposalPage />} />
             <Route path="pipelines" element={<PipelinesPage />} />
             <Route path="pipelines/new" element={<PipelineEditorPage />} />
+            <Route path="builder" element={<BuilderPage />} />
+            <Route path="builder/:chatId" element={<BuilderPage />} />
             <Route path="pipelines/:pipelineId" element={<PipelinePage />} />
             <Route path="pipelines/:pipelineId/edit" element={<PipelineEditorPage />} />
             <Route path="runs/:runId" element={<RunPage />} />

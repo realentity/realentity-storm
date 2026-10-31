@@ -8,5 +8,6 @@ import { PipelinesService } from "./pipelines.service";
   imports: [ControlsModule, RunsModule],
   controllers: [PipelinesController],
   providers: [PipelinesService],
+  exports: [PipelinesService],
 })
 export class PipelinesModule {}

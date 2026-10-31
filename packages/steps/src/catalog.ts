@@ -212,7 +212,9 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "email.fetch",
-    description: "Reads new emails from my mailbox (IMAP), oldest first; read-only, nothing is marked or moved.",
+    description:
+      "Reads the emails that arrived since this pipeline's last run (its first run looks back `sinceDays`), oldest first, " +
+      "so each email is read once; read-only (IMAP), nothing is marked or moved.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -260,7 +262,9 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "email.send",
-    description: "Sends an email from my mailbox (SMTP); as a reply when `inReplyTo` is set.",
+    description:
+      "Sends an email from my mailbox (SMTP); with `inReplyTo` (and the original's `references`) a reply in the same " +
+      "thread: the message replied to is added to the references.",
     sideEffect: true,
     targets: { to: "recipient" },
     saasSafe: true,

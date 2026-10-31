@@ -119,7 +119,7 @@ limits:
 
 ### 2.3 Step catalog
 
-The builder can only use these. Each step type is a TypeScript class in the worker with zod schemas for inputs and outputs, and these schemas are passed to the builder as tool definitions, so it can't invent steps or parameters.
+The builder can only use these. Each step type is a TypeScript class in the worker with zod schemas for inputs and outputs, and these schemas are what the builder is given (rendered into its system prompt) and what its proposals are compiled against, so a step or parameter it invents never becomes a pipeline.
 
 | Group | Steps | Side effect? |
 | --- | --- | --- |
@@ -149,6 +149,15 @@ Each pipeline page has a chat panel bound to that pipeline:
 - "Also include Plovdiv" changes the parameters of the `search` step. It's shown as a diff, and saved as a new version after I confirm.
 - "Why did it skip the Acme job?" makes the builder read that run's step outputs and answer from them.
 - Suggestions from the reflection job ("you rejected 8 of 10 agency jobs that passed the filter; tighten it") appear in the same chat as a proposed diff.
+
+**How the builder works** ([apps/api/src/builder](apps/api/src/builder)): Claude Opus with the step catalog in its cached system prompt (every step's parameters, bounds, defaults and flags, rendered from the zod schemas) and three tools:
+
+| Tool | What it does |
+| --- | --- |
+| `propose_pipeline` | The whole definition, compiled at once by the same compiler as hand-written YAML. Compile errors go back to the builder to fix; what compiles (gates inserted, policy derived) is shown as a proposal with its plan, step graph and diff against the current version. |
+| `list_runs`, `read_run` | The pipeline's runs: each step's status, input and output, long texts shortened and marked as data. |
+
+Nothing the builder does is saved or run: a proposal becomes the next version (or v1 of a new pipeline) only when I press **Save**, a **Dry run** stores it as the draft first, and **Open in the editor** hands it to the YAML editor. It asks back when something essential is open, and says plainly when the catalog has no step for a request (a website before M8) instead of imitating it. A new pipeline is described on the **Describe a pipeline** page. Each chat keeps its conversation exactly as the API saw it (thinking blocks included, append-only) and stops at `BUILDER_CHAT_MAX_TOKENS`. Run data and emails could try to steer the builder; that can only produce a proposal, which I review as a diff, and gates are still inserted by the compiler.
 
 ### 2.6 Execution
 
@@ -276,10 +285,10 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 **Usage patterns:**
 
 - **Structured output:** every LLM call sets `output_config.format` to a JSON schema generated from a zod schema (`@anthropic-ai/sdk` zod helper), and the answer is validated again with zod: an answer that doesn't match fails the step with a clear error, and nothing partial is saved. Per-item steps (`llm.classify`, `llm.score`) send items in chunks of 20 and require exactly one answer per item. Sonnet and Opus calls use the server-side refusal fallback (`fallbacks: "default"`).
-- **Model routing** ([packages/llm](packages/llm)): my setting for the step type (`ModelSetting`), else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING` / `LLM_MODEL_REFLECTION`, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection).
+- **Model routing** ([packages/llm](packages/llm)): my setting for the step type (`ModelSetting`), else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING` / `LLM_MODEL_REFLECTION` / `LLM_MODEL_BUILDER`, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection and the builder). A builder chat keeps the model it started with: Claude's thinking blocks in its history are bound to that model.
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
-- **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
+- **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices) and builder turn (`BuilderMessage.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
 
 **Embeddings:** Anthropic doesn't provide an embeddings model. AI ME uses **OpenAI** `text-embedding-3-large` (multilingual, Bulgarian + English) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
 
@@ -361,7 +370,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 1. **Decision capture.** Every proposal stores `originalPayload` and `finalPayload` plus a diff, a decision (`APPROVED`, `EDITED`, `REJECTED`) and an optional reason.
 2. **Few-shot retrieval.** When I approve a proposal (as drafted or edited), each payload field that is exactly the output an LLM step writes for me (`{{draft.body}}`; the catalog marks it with `learns`) becomes an `Example` of that step type: the step's input (the incoming email) as context, my approved text as output, embedded with pgvector. When drafting, `email.draftReply` and `llm.generate` retrieve my 3 most similar approved outputs of the same step type (cosine distance) as `<examples>`: tone, length and structure, never facts.
 3. **Rules.** A nightly reflection (03:30 Europe/Sofia; also "Reflect now" on the Rules page) sends my edits and rejections since the last one to Claude Opus through the Batch API and **suggests** rules ("Shorten recruiter replies; drop 'I hope this finds you well'"). Suggestions are checked (known step types, my own pipelines, no duplicates) and saved as `SUGGESTED`; nothing is active before I approve or edit it on the Rules page. Active rules go into the cached system prompt of every LLM step of their step type (or every step) and pipeline (or every pipeline), after the step's own rules, which they never override.
-4. **Pipeline improvements.** Reflection can also suggest a change to a pipeline (tighter filter, different threshold); it is listed on the Rules page, and the builder chat (M7) turns it into a diff for approval.
+4. **Pipeline improvements.** Reflection can also suggest a change to a pipeline (tighter filter, different threshold); it is listed on the Rules page and in that pipeline's chat, where "Turn into a change" has the builder make it a diff for approval. Saving that diff marks the suggestion done.
 5. **Run feedback.** After each run and in the daily digest: failure patterns, selectors that broke, rules worth adding.
 
 There's no fine-tuning. Everything learned is visible and editable.
@@ -373,13 +382,13 @@ There's no fine-tuning. Everything learned is visible and editable.
 The schema is [packages/db/prisma/schema.prisma](packages/db/prisma/schema.prisma) (Prisma 7.10.0, PostgreSQL 17 + `pgvector` + `citext`). Conventions:
 
 - Primary keys are named `<entity>Id` (uuid); timestamps are `dateCreated` / `dateUpdated`; tables are PascalCase plural (`@@map("Users")`).
-- Every user-owned table carries a non-null `userId` from day one (single user for now; Postgres row-level security later, see §17). Child tables owned through their parent (`PipelineVersions`, `Steps`, `Decisions`) don't; an integration test enforces this.
+- Every user-owned table carries a non-null `userId` from day one (single user for now; Postgres row-level security later, see §17). Child tables owned through their parent (`PipelineVersions`, `Steps`, `Decisions`, `BuilderMessages`) don't; an integration test enforces this.
 - `Credential.credentialId` is generated before insert because it is the AAD of the encrypted value (§7).
 
 | Area | Models |
 | --- | --- |
 | Identity | `User`, `UserSession` (cookie token stored as SHA-256 only) |
-| Pipelines | `Pipeline` (`enabled`: on its schedule; `essential`: exempt from the budget), `PipelineVersion` (`definition`, compiled `policy`), `BuilderChat`, `SiteRecipe` |
+| Pipelines | `Pipeline` (`enabled`: on its schedule; `essential`: exempt from the budget), `PipelineVersion` (`definition`, compiled `policy`, the `builderChatId` it came from), `BuilderChat` (model, tokens used), `BuilderMessage` (transcript, proposal, cost), `SiteRecipe` |
 | Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Artifact` |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
 | Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
@@ -550,6 +559,8 @@ ENCRYPTION_KEY_VERSION=1
 # LLM (Claude API) — defaults; overridable per task in Settings
 ANTHROPIC_API_KEY=
 LLM_MODEL_BUILDER=claude-opus-5-5
+# A builder chat stops once its calls used this many tokens (cache reads included); a new chat starts over
+BUILDER_CHAT_MAX_TOKENS=2000000
 LLM_MODEL_REFLECTION=claude-opus-5-5
 LLM_MODEL_WRITING=claude-sonnet-5-5
 LLM_MODEL_BROWSER=claude-sonnet-5-5

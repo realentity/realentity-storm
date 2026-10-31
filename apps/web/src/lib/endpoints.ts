@@ -1,5 +1,8 @@
 import {
   type ApproveProposalRequest,
+  type BuilderChatSummaryView,
+  type BuilderChatView,
+  type BuilderDryRunResponse,
   type CompilePipelineResponse,
   type CreateCredentialRequest,
   type CreateRuleRequest,
@@ -85,5 +88,16 @@ export const api = {
     updateSuggestion: (suggestionId: string, status: SuggestionStatusName) =>
       request<void>("PATCH", `/suggestions/${suggestionId}`, { status }),
     reflect: () => request<void>("POST", "/reflection"),
+  },
+  builder: {
+    /** Without a pipeline: chats about new pipelines, not saved yet. */
+    list: (pipelineId?: string) => request<BuilderChatSummaryView[]>("GET", `/builder/chats${query({ pipelineId })}`),
+    create: (pipelineId?: string) => request<BuilderChatView>("POST", "/builder/chats", { pipelineId }),
+    get: (chatId: string) => request<BuilderChatView>("GET", `/builder/chats/${chatId}`),
+    send: (chatId: string, text: string, suggestionId?: string) =>
+      request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages`, { text, suggestionId }),
+    save: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save`),
+    dryRun: (chatId: string, messageId: string) =>
+      request<BuilderDryRunResponse>("POST", `/builder/chats/${chatId}/messages/${messageId}/dry-run`),
   },
 };

@@ -284,6 +284,9 @@ importers:
       ws:
         specifier: 'catalog:'
         version: 8.22.0
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -505,6 +508,9 @@ importers:
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.72.1(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -840,6 +846,9 @@ importers:
 
   packages/shared:
     dependencies:
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
       zod:
         specifier: 'catalog:'
         version: 4.6.7

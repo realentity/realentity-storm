@@ -8,11 +8,12 @@
     "dev": "nest start --watch --preserveWatchOutput",
     "start": "node dist/main",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src test",
+    "lint": "eslint src test evals",
     "test": "jest --passWithNoTests",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "clean": "rimraf dist",
-    "auth:setup": "tsx src/tools/auth-setup.ts"
+    "auth:setup": "tsx src/tools/auth-setup.ts",
+    "eval:builder": "tsx evals/builder.eval.ts"
   },
   "dependencies": {
     "@ai-me/crypto": "workspace:*",
@@ -35,6 +36,7 @@
     "rxjs": "catalog:",
     "source-map-support": "catalog:",
     "ws": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

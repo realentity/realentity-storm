@@ -89,6 +89,7 @@ export class ControlsService {
       LLM_MODEL_CLASSIFY: this.env.LLM_MODEL_CLASSIFY,
       LLM_MODEL_WRITING: this.env.LLM_MODEL_WRITING,
       LLM_MODEL_REFLECTION: this.env.LLM_MODEL_REFLECTION,
+      LLM_MODEL_BUILDER: this.env.LLM_MODEL_BUILDER,
     });
     const models = Object.fromEntries(
       LLM_TASKS.map((task): [LlmTask, ModelChoiceView] => {

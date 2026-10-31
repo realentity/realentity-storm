@@ -7,6 +7,7 @@ import { argon2id, hash } from "argon2";
 import { writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { authenticator } from "otplib";
+import { TEST_BUILDER_LLM } from "./test-builder";
 import { TEST_EXECUTORS, TEST_STEPS } from "./test-steps";
 
 export const API_PORT = 3199;
@@ -49,9 +50,12 @@ export async function startStack(): Promise<Stack> {
     const catalog = defaultCatalog().with(...TEST_STEPS);
     const { AppModule } = await dist<{ AppModule: Type }>("api/dist/app.module.js");
     const { configureApp } = await dist<{ configureApp: (app: INestApplication) => void }>("api/dist/bootstrap.js");
+    const { BUILDER_LLM } = await dist<{ BUILDER_LLM: symbol }>("api/dist/builder/builder.service.js");
     const apiModule = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(StepCatalog)
       .useValue(catalog)
+      .overrideProvider(BUILDER_LLM)
+      .useValue(TEST_BUILDER_LLM)
       .compile();
     const api = apiModule.createNestApplication();
     configureApp(api);

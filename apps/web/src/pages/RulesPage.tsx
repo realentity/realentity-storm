@@ -124,6 +124,13 @@ export function RulesPage() {
                         {s.rationale && <div className="small text-secondary">{s.rationale}</div>}
                       </div>
                       <div className="col-auto text-nowrap">
+                        <Link
+                          to={`/pipelines/${s.pipelineId}`}
+                          className="btn btn-sm btn-primary me-1"
+                          title="The pipeline's chat turns it into a diff"
+                        >
+                          Change in chat
+                        </Link>
                         <button
                           type="button"
                           className="btn btn-sm"

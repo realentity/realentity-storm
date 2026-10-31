@@ -39,6 +39,9 @@ export const ServerEnvSchema = z
     LLM_MODEL_CLASSIFY: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-haiku-5-5")),
     LLM_MODEL_WRITING: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-sonnet-5-5")),
     LLM_MODEL_REFLECTION: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
+    LLM_MODEL_BUILDER: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
+    /** Builder chat (README §2.1): a chat stops answering once its calls used this many tokens; a new chat starts over. */
+    BUILDER_CHAT_MAX_TOKENS: z.coerce.number().int().positive().default(2_000_000),
     /** Non-essential pipelines pause when this month's LLM cost reaches it. Settings override it; unset = no limit. */
     LLM_MONTHLY_BUDGET_USD: optional(z.coerce.number().positive()),
 

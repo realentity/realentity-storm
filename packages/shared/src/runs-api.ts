@@ -159,7 +159,7 @@ export interface KillSwitchView {
   stoppedRuns?: number;
 }
 
-/** Steps that call the LLM, and the nightly reflection; each can have its own model (README §5). */
+/** Steps that call the LLM, the nightly reflection and the builder chat; each can have its own model (README §5). */
 export const LLM_TASKS = [
   "email.classify",
   "email.draftReply",
@@ -168,6 +168,7 @@ export const LLM_TASKS = [
   "llm.generate",
   "llm.summarize",
   "reflection",
+  "builder",
 ] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
@@ -201,7 +202,7 @@ export type SettingsRequest = z.infer<typeof SettingsSchema>;
 export interface ModelChoiceView {
   model: string;
   effort: EffortName;
-  /** settings: chosen here; env: LLM_MODEL_CLASSIFY / _WRITING / _REFLECTION; default: built in. */
+  /** settings: chosen here; env: LLM_MODEL_CLASSIFY / _WRITING / _REFLECTION / _BUILDER; default: built in. */
   source: "settings" | "env" | "default";
 }
 

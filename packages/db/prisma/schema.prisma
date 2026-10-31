@@ -226,18 +226,49 @@ model PipelineVersion {
   @@map("PipelineVersions")
 }
 
+/// A chat with the pipeline builder (README §2.1, §2.5). Its model is fixed when it starts: Claude's thinking blocks
+/// in the history are bound to the model that wrote them.
 model BuilderChat {
   builderChatId String    @id @default(uuid()) @db.Uuid
   userId        String    @db.Uuid
   user          User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
   pipelineId    String?   @db.Uuid // null while drafting a new pipeline
   pipeline      Pipeline? @relation(fields: [pipelineId], references: [pipelineId], onDelete: SetNull)
-  messages      Json
+  model         String
+  effort        String
+  /// All tokens of the chat's calls, failed turns included: the per-chat cap (BUILDER_CHAT_MAX_TOKENS).
+  tokensUsed    Int       @default(0)
   dateCreated   DateTime  @default(now())
   dateUpdated   DateTime  @updatedAt
 
-  @@index([userId])
+  messages BuilderMessage[]
+
+  @@index([userId, pipelineId])
   @@map("BuilderChats")
+}
+
+/// One message of a builder chat: what I wrote, or the builder's whole turn (its tool calls included).
+model BuilderMessage {
+  builderMessageId String      @id @default(uuid()) @db.Uuid
+  builderChatId    String      @db.Uuid
+  chat             BuilderChat @relation(fields: [builderChatId], references: [builderChatId], onDelete: Cascade)
+  role             String // user | assistant
+  text             String
+  /// The API messages this one adds to the conversation, exactly as sent and received. Null for a failed turn: it
+  /// and the message before it are left out of what the model sees.
+  transcript       Json?
+  /// Assistant: the definition it proposed (source, compiled definition and policy, status).
+  proposal         Json?
+  /// Assistant: compile errors of its last attempt when it ended without a valid proposal.
+  compileErrors    Json?
+  error            String?
+  /// User: the reflection suggestion this message asks to apply.
+  suggestionId     String?     @db.Uuid
+  llmUsage         Json?
+  dateCreated      DateTime    @default(now())
+
+  @@index([builderChatId, dateCreated])
+  @@map("BuilderMessages")
 }
 
 model SiteRecipe {

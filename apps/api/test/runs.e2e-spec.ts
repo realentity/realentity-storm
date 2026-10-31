@@ -454,6 +454,7 @@ describe("runs, proposals and controls", () => {
         "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         reflection: { model: "claude-opus-5-5", effort: "high", source: "default" },
+        builder: { model: "claude-opus-5-5", effort: "high", source: "default" },
       });
 
       const chosen = (
