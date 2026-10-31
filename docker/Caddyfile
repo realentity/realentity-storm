@@ -21,10 +21,13 @@
 	}
 
 	# Live view (README §6): noVNC's WebSocket to the worker's websockify, only for a signed-in session (the api
-	# answers 204 or 401); x11vnc then asks for its own password, view-only until I take over.
+	# answers 204 or 401); x11vnc then asks for its own password, view-only until I take over. The check goes without
+	# the WebSocket's Upgrade headers: with them, Node hands it to the api's upgrade listener, not its routes, and it hangs.
 	handle_path /vnc/* {
 		forward_auth api:3000 {
 			uri /api/live/authorize
+			header_up -Connection
+			header_up -Upgrade
 		}
 		reverse_proxy worker:6080
 	}
