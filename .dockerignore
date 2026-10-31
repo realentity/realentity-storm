@@ -1,0 +1,16 @@
+# Build context for docker/Dockerfile: sources only. Never secrets.
+.env
+.env.*
+!.env.example
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/test-results
+**/playwright-report
+apps/web-e2e/.auth
+.git
+.github
+.vscode
+.idea
+*.log

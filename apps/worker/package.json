@@ -13,6 +13,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "clean": "rimraf dist",
     "keys:rotate": "tsx src/tools/rotate-keys.ts",
+    "check:credentials": "tsx src/tools/check-credentials.ts",
     "eval:email": "tsx evals/email.eval.ts"
   },
   "dependencies": {
@@ -30,7 +31,8 @@
     "nodemailer": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
-    "source-map-support": "catalog:"
+    "source-map-support": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@ai-me/config": "workspace:*",
@@ -50,7 +52,6 @@
     "ts-jest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "typescript-eslint": "catalog:",
-    "zod": "catalog:"
+    "typescript-eslint": "catalog:"
   }
 }

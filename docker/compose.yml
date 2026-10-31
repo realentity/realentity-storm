@@ -1,0 +1,89 @@
+# AI ME on the server (app 10; docs/deployment.md). Lives in /opt/ai-me (a clone of this repository); secrets in
+# /opt/ai-me/.env. The database is the server's native PostgreSQL (storm), which the server's nightly backup dumps.
+# Only the web container publishes a port, on 127.0.0.1:7100; `tailscale serve` publishes that as :8100 (tailnet only).
+name: ai-me
+
+x-node: &node
+  env_file: ${AIME_ENV_FILE:-../.env}
+  environment:
+    NODE_ENV: production
+    TZ: Europe/Sofia
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  # Migrations and the seed, before api and worker start (the extensions are enabled once by postgres: see the guide).
+  migrate:
+    <<: *node
+    build: { context: .., dockerfile: docker/Dockerfile, target: migrate }
+    image: ai-me/migrate:local
+    restart: "no"
+    read_only: false
+    mem_limit: 768m
+
+  api:
+    <<: *node
+    build: { context: .., dockerfile: docker/Dockerfile, target: api }
+    image: ai-me/api:local
+    environment:
+      NODE_ENV: production
+      TZ: Europe/Sofia
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    mem_limit: 512m
+    pids_limit: 128
+
+  worker:
+    <<: *node
+    build: { context: .., dockerfile: docker/Dockerfile, target: worker }
+    image: ai-me/worker:local
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    volumes:
+      # Files the pipelines produce (M8+: screenshots, documents); in the app folder, so in the nightly config backup.
+      - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts
+    # Unhealthy when its heartbeat file is older than 2 minutes (it beats every 30 s); the api alerts on Telegram.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s = require('fs').statSync(require('os').tmpdir() + '/aime-worker.alive'); process.exit(Date.now() - s.mtimeMs < 120000 ? 0 : 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    # Time for the queue to hand back its jobs on stop; an interrupted step runs again on start (README §2.6).
+    stop_grace_period: 60s
+    mem_limit: 1g
+    pids_limit: 256
+
+  web:
+    build: { context: .., dockerfile: docker/Dockerfile, target: web }
+    image: ai-me/web:local
+    ports:
+      - "127.0.0.1:${AIME_PORT:-7100}:8080" # app 10 (the server's port convention: 7NNE local, 8NNE tailnet)
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/data, /config]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m

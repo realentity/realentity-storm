@@ -6,3 +6,4 @@ export * from "./events";
 export * from "./pipeline";
 export * from "./pipeline-api";
 export * from "./runs-api";
+export * from "./telegram";

@@ -28,6 +28,11 @@ export const ServerEnvSchema = z
     /** Base32 TOTP secret; login is refused until it is set (pnpm auth:setup). */
     APP_TOTP_SECRET: optional(z.string().regex(/^[A-Z2-7]{16,}=*$/, "must be a base32 TOTP secret (pnpm auth:setup)")),
     SESSION_TTL_HOURS: z.coerce.number().int().positive().default(168),
+    /**
+     * The address the browser uses (behind tailscale serve: https://storm.example.com:8100). The live events
+     * socket then accepts only this Origin; unset, the Origin must match the Host header (development).
+     */
+    APP_ORIGIN: optional(z.url({ protocol: /^https?$/ }).transform((url) => new URL(url).origin)),
 
     ANTHROPIC_API_KEY: optional(z.string()),
     /** Default models per task group; Settings (ModelSetting) override them per task. */

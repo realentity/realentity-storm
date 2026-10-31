@@ -536,6 +536,8 @@ volumes: { pgdata: {}, artifacts: {} }
 
 Expose services only on the Tailscale interface (Caddy with Tailscale HTTPS certs in front). No public ports.
 
+The real setup follows the server's conventions (native PostgreSQL, `tailscale serve`, the existing nightly backup): [docker/compose.yml](docker/compose.yml), images from [docker/Dockerfile](docker/Dockerfile), run with [docker/aime](docker/aime). Install, updates, restore and checks: [docs/deployment.md](docs/deployment.md).
+
 ---
 
 ## 14. Environment variables (`.env.example`)
@@ -581,6 +583,8 @@ MAIL_CREDENTIAL=mail
 # API
 API_HOST=127.0.0.1
 API_PORT=3000
+# The address the browser uses behind a proxy (server: https://storm.example.com:8100)
+APP_ORIGIN=
 
 # App auth (single user): pnpm auth:setup prints the hash and a new TOTP secret
 APP_ADMIN_EMAIL=me@localhost

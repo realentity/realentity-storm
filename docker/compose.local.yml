@@ -1,0 +1,22 @@
+# Local test of the server setup (Docker Desktop on a workstation): a PostgreSQL container in place of the server's native one.
+#   AIME_ENV_FILE=<a test env> docker compose -f docker/compose.yml -f docker/compose.local.yml up -d --build
+# The test env sets DATABASE_URL=postgresql://aime:aime@postgres:5432/aime and APP_ORIGIN=http://localhost:7100.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: aime
+      POSTGRES_PASSWORD: aime
+      POSTGRES_DB: aime
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aime -d aime"]
+      interval: 5s
+      retries: 12
+
+  migrate:
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pgdata: {}

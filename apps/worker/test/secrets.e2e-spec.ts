@@ -3,6 +3,7 @@ import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { TestEnvironment } from "@ai-me/testing";
 import { Test } from "@nestjs/testing";
 import { randomBytes, randomUUID } from "node:crypto";
+import { checkCredentials } from "../src/secrets/credential-check";
 import { CredentialHostMismatchError, CredentialNotFoundError, CredentialVault } from "../src/secrets/credential-vault";
 import { KeyRotation } from "../src/secrets/key-rotation";
 import { WorkerModule } from "../src/worker.module";
@@ -81,6 +82,21 @@ describe("worker secrets", () => {
 
       const again = await new KeyRotation(db.client, ring(2, { 1: v1, 2: v2 })).run();
       expect(again.rewrapped).toBe(0);
+    });
+  });
+
+  // M5-I1 (the check the restore drill runs)
+  it("checks that every credential opens with the key, naming the ones that don't", async () => {
+    const key = randomBytes(32);
+    await insert(ring(1, { 1: key }), "mail", "app-password");
+    await insert(ring(1, { 1: key }), "site", "s3cret");
+    await expect(checkCredentials(db.client, ring(1, { 1: key }))).resolves.toEqual({ ok: ["mail", "site"], failed: [] });
+    await expect(checkCredentials(db.client, ring(1, { 1: randomBytes(32) }))).resolves.toEqual({
+      ok: [],
+      failed: [
+        { name: "mail", keyVersion: 1 },
+        { name: "site", keyVersion: 1 },
+      ],
     });
   });
 

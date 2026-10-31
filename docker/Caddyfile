@@ -1,0 +1,33 @@
+# AI ME's front door inside Docker: the web app, and /api (REST and the live events WebSocket) to the api.
+# Plain HTTP on 127.0.0.1 only; on the server, `tailscale serve` adds HTTPS and publishes it to the tailnet (port 8100).
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# Live view (noVNC on the worker) arrives in M8; until then this answers 502.
+	handle_path /vnc/* {
+		reverse_proxy worker:6080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

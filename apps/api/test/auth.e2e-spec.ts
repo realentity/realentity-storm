@@ -18,7 +18,7 @@ describe("auth", () => {
   const login = (body: object) => http().post("/api/auth/login").send(body);
 
   it("serves health without a session", async () => {
-    await http().get("/api/health").expect(200, { status: "ok" });
+    await http().get("/api/health").expect(200, { status: "ok", worker: "unknown" });
   });
 
   // M3-E7: every route but health and login needs a session. The routes come from the running app, so a new

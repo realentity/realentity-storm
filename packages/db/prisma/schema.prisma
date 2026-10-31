@@ -467,3 +467,17 @@ model Application {
 }
 
 // #endregion
+
+// #region System
+
+/// Liveness of a long-running process (the worker): it writes every 30 s; the api alerts when it goes stale.
+/// Not user data, so no userId.
+model ServiceHeartbeat {
+  service    String   @id
+  startedAt  DateTime
+  lastSeenAt DateTime
+
+  @@map("ServiceHeartbeats")
+}
+
+// #endregion

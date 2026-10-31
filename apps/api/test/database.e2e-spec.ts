@@ -2,6 +2,8 @@ import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 
 /** Tables owned through their parent; every other table must carry userId (README §9, §17). */
 const OWNED_THROUGH_PARENT = ["Decisions", "PipelineVersions", "Steps"];
+/** System tables: not user data. */
+const SYSTEM = ["ServiceHeartbeats"];
 
 describe("database schema", () => {
   let db: PrismaConnection;
@@ -30,7 +32,9 @@ describe("database schema", () => {
       SELECT table_name, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'userId'`;
 
     const withUserId = new Map(userIdColumns.map((c) => [c.table_name, c.is_nullable]));
-    const missing = tables.map((t) => t.table_name).filter((name) => !withUserId.has(name) && !OWNED_THROUGH_PARENT.includes(name));
+    const missing = tables
+      .map((t) => t.table_name)
+      .filter((name) => !withUserId.has(name) && !OWNED_THROUGH_PARENT.includes(name) && !SYSTEM.includes(name));
     const nullable = [...withUserId].filter(([, isNullable]) => isNullable === "YES").map(([name]) => name);
 
     expect(missing).toEqual([]);

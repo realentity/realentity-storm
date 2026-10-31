@@ -34,6 +34,7 @@ export class EventsService implements OnApplicationBootstrap, OnApplicationShutd
   private readonly listener: EventListener;
   private server: Server | null = null;
   private timers: NodeJS.Timeout[] = [];
+  private readonly appOrigin: string | null;
 
   constructor(
     private readonly adapterHost: HttpAdapterHost,
@@ -41,6 +42,7 @@ export class EventsService implements OnApplicationBootstrap, OnApplicationShutd
     private readonly prisma: PrismaService,
     @Inject(SERVER_ENV) env: ServerEnv,
   ) {
+    this.appOrigin = env.APP_ORIGIN ?? null;
     this.listener = new EventListener({
       connectionString: env.DATABASE_URL,
       onEvent: (message) => this.forward(message),
@@ -90,10 +92,16 @@ export class EventsService implements OnApplicationBootstrap, OnApplicationShutd
   private async authenticate(request: IncomingMessage): Promise<Omit<Client, "socket" | "alive"> | null> {
     // Cross-site WebSocket hijacking: browsers send cookies on cross-origin handshakes, so the origin must match.
     const origin = request.headers.origin;
-    if (!origin || !request.headers.host || hostOf(origin) !== request.headers.host.toLowerCase()) return null;
+    if (!origin || !this.originAllowed(origin, request.headers.host)) return null;
     const token = readCookie(request.headers.cookie, SESSION_COOKIE);
     const user = token ? await this.sessions.resolve(token) : null;
     return user && token ? { userId: user.userId, token } : null;
+  }
+
+  /** APP_ORIGIN when set (behind a proxy that may rewrite Host), else the same host as the request. */
+  private originAllowed(origin: string, host: string | undefined): boolean {
+    if (this.appOrigin) return originOf(origin) === this.appOrigin;
+    return !!host && hostOf(origin) === host.toLowerCase();
   }
 
   private accept(socket: WebSocket, identity: Omit<Client, "socket" | "alive">): void {
@@ -129,6 +137,14 @@ export class EventsService implements OnApplicationBootstrap, OnApplicationShutd
       client.alive = false;
       client.socket.ping();
     }
+  }
+}
+
+function originOf(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
   }
 }
 

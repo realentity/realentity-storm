@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# AI ME's docker compose, from anywhere in the repository (docs/deployment.md).
+#   ./docker/aime up       build and start (or update) everything
+#   ./docker/aime check    every credential opens with this ENCRYPTION_KEY (values are never printed)
+#   ./docker/aime <args>   passed to docker compose: ps, logs -f worker, restart worker, down, ...
+# AIME_LOCAL=1 adds compose.local.yml (a PostgreSQL container, for testing on a workstation).
+set -euo pipefail
+# Git Bash on Windows (local tests): a native path (pwd -W), and no rewriting of container paths.
+here="$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))"
+export MSYS_NO_PATHCONV=1
+
+files=(-f "$here/compose.yml")
+[ "${AIME_LOCAL:-0}" = "1" ] && files+=(-f "$here/compose.local.yml")
+compose() { docker compose "${files[@]}" "$@"; }
+
+case "${1:-}" in
+  up)
+    shift
+    compose up -d --build --remove-orphans "$@"
+    compose ps
+    ;;
+  check)
+    compose exec worker node dist/tools/check-credentials.js
+    ;;
+  *)
+    compose "$@"
+    ;;
+esac

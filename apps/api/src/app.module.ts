@@ -8,6 +8,7 @@ import { CredentialsModule } from "./credentials/credentials.module";
 import { EventsModule } from "./events/events.module";
 import { PrismaService } from "./database/prisma.service";
 import { HealthController } from "./health/health.controller";
+import { WorkerWatchdog } from "./health/worker-watchdog";
 import { PipelinesModule } from "./pipelines/pipelines.module";
 import { ProposalsModule } from "./proposals/proposals.module";
 import { QueueModule } from "./queue/queue.module";
@@ -36,6 +37,6 @@ export class CoreModule {}
     ControlsModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }, WorkerWatchdog],
 })
 export class AppModule {}
