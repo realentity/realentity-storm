@@ -91,11 +91,12 @@ steps:
       files: ["{{prepare.cv}}", "{{prepare.coverLetter}}"]
   - id: approve
     type: gate.act                  # every field value, every file, target URL; I press Act
-    forEach: "{{map.items}}"
+    forEach: "{{shortlist.selected}}"
+    with: { for: apply }
   - id: apply
     type: browser.fillAndSubmit     # headed, watchable; executes exactly the approved payload
-    forEach: "{{approve.approved}}"
-    with: { stopBeforeSubmit: false }
+    forEach: "{{shortlist.selected}}"
+    with: { url: "{{item.applyUrl}}", payload: "{{map.payload}}", stopBeforeSubmit: false }
 limits:
   browser.fillAndSubmit: 10/day
 ```
@@ -103,11 +104,11 @@ limits:
 **Definition rules:**
 
 - `{{stepId.field}}` references outputs of earlier steps. The compiler validates references and types against each step's zod output schema.
-- `forEach` fans a step out over a list. Each item gets its own proposal and approval.
-- **Gates:** authors may place `gate.*` steps explicitly. The compiler **inserts** a `gate.act` before any side-effect step that isn't already preceded by a gate covering the same item. In v1 gates can't be removed, only added.
+- `forEach` fans a step out over a list. Each item gets its own proposal and approval. Steps that iterate over the same list are aligned per item: inside them, `{{prepare.cv}}` is the current item's value (elsewhere it is the list of all items' values), and an item rejected at a gate skips the following steps for that item.
+- **Gates:** a `gate.act` names the side-effect step it approves (`with: { for: apply }`), comes before it and iterates over the same items. Its proposal is that step's exact resolved input. Authors may place gates explicitly; the compiler **inserts** one (`<step>Gate`) before any side-effect step without one. In v1 gates can't be removed, only added.
 - **Map → gate → act:** steps that interact with external forms are split into a read-only mapping step that produces the payload, a gate, and a single side-effect step that executes it. No browser is held open while a proposal waits for me.
 - **Attaching a file counts as an upload.** Any step that selects files on an external site is a side-effect step, since many ATSs upload on file selection.
-- **Limits:** a pipeline may declare per-step-type rate limits (`limits`). Global defaults live in Settings. When a limit is reached, further side-effect steps wait for the next window.
+- **Limits:** a pipeline may declare rate limits for its side-effect step types (`limits: { browser.fillAndSubmit: 10/day }`, `N/day` or `N/hour`, a rolling window), counted over its own runs. Settings hold global caps per step type, counted over every pipeline. When a limit is reached, the run waits (`Run.resumeAt`) and continues once the window allows.
 - **Policy:** each pipeline version declares what its side-effect steps may target, shown on the review screen and enforced by the policy layer at run time:
 
   | Kind | Example | Enforced how |
@@ -157,7 +158,9 @@ The worker interprets a `PipelineVersion` step by step:
 - Gates pause the run (`WAITING_FOR_USER`) and create a `Proposal`. The run resumes when I decide.
 - Runs are resumable: after a restart, the worker continues from the last completed step.
 - Retries are per step and configurable. Side-effect steps are never retried automatically.
-- **Kill switch:** one button in the UI (and an API endpoint) pauses all pipelines and cancels every queued side-effect step. Runs already in progress stop at their next step boundary.
+- **Kill switch:** one button in the UI (`PUT /api/kill-switch`) pauses all pipelines (schedules fire but start nothing), stops queued and waiting runs and expires their open proposals, so no queued side effect can execute. Runs already in progress stop at their next step boundary. Releasing it doesn't restart stopped runs.
+- **Budget:** when this month's LLM cost (`Step.llmUsage`) reaches the budget (Settings, else `LLM_MONTHLY_BUDGET_USD`), runs of non-essential pipelines stop before their next LLM step. Pipelines marked essential keep running.
+- **Queue:** pg-boss in PostgreSQL. `runs` advances runs in parallel; `runs-headed` is a singleton queue, so one headed run at a time across all workers; `pipeline-trigger` fires cron schedules in the pipeline's time zone (keyed by pipeline); the worker reconciles schedules with the enabled pipelines at startup and whenever the api asks. A decision queues its run again. The runner claims a run before advancing it, so a duplicate or retried job is harmless.
 
 ---
 
@@ -193,8 +196,12 @@ PENDING_REVIEW ──► APPROVED ──► EXECUTING ──► DONE | FAILED
       │                            ▲  │
       │                            │  ▼
       │                      WAITING_FOR_USER
-      └──► REJECTED | EXPIRED
+      └──► REJECTED | EXPIRED (kill switch)
+
+PREVIEW: a dry run's proposal; never approved, never executed
 ```
+
+Decisions go through `POST /api/proposals/:id/approve` (optionally with an edited payload, still validated against the step's input schema, and any new targets it introduces) and `POST /api/proposals/:id/reject` (optional reason). Each records a `Decision` (approved, edited with the changed fields, or rejected) and queues the run.
 
 **Payload integrity:** the payload I approve is hashed. The worker executes only that exact payload. If a page requires anything not in it (an extra field, a different URL), the worker **pauses** and asks. It never improvises.
 
@@ -260,7 +267,7 @@ All LLM work uses the Claude API (`@anthropic-ai/sdk`). The model is chosen **pe
 | --- | --- | --- |
 | Pipeline builder (chat → definition, diffs) | **Claude Opus 5.5** (`claude-opus-5-5`) | Low volume, needs careful reasoning and correct structured output |
 | Reflection (rules, pipeline improvements) | **Claude Opus 5.5** via Batch API | Runs nightly, not latency-sensitive, batch pricing |
-| `email.draftReply`, `llm.generate` (CV, cover letter) | **Claude Sonnet 5.5** (`claude-sonnet-5-5`) | Writing quality in my voice, moderate volume |
+| `email.draftReply`, `llm.generate` (CV, cover letter), `llm.summarize` | **Claude Sonnet 5.5** (`claude-sonnet-5-5`) | Writing quality in my voice, moderate volume |
 | `browser.mapForm` field mapping, `browser.agent` | **Claude Sonnet 5.5** | Good speed/intelligence balance for multi-step tool use; escalate to Opus 5.5 on repeated failure |
 | `email.classify`, `llm.classify`, `llm.score`, extraction | **Claude Haiku 5.5** (`claude-haiku-5-5`) | High volume, cheap and fast |
 
@@ -268,10 +275,11 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 
 **Usage patterns:**
 
-- **Structured output via tool use:** every LLM step returns data through a tool whose input schema is generated from the step's zod schema (`zod-to-json-schema`), then validated again on our side.
+- **Structured output:** every LLM call sets `output_config.format` to a JSON schema generated from a zod schema (`@anthropic-ai/sdk` zod helper), and the answer is validated again with zod: an answer that doesn't match fails the step with a clear error, and nothing partial is saved. Per-item steps (`llm.classify`, `llm.score`) send items in chunks of 20 and require exactly one answer per item. Sonnet and Opus calls use the server-side refusal fallback (`fallbacks: "default"`).
+- **Model routing** ([packages/llm](packages/llm)): my setting for the step type (`ModelSetting`), else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING`, else the defaults above (effort `low` for classify/score, `medium` for writing).
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
-- **Cost tracking:** token usage is stored per step (`Step.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines.
+- **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines.
 
 **Embeddings:** Anthropic doesn't provide an embeddings model. Options:
 
@@ -376,10 +384,10 @@ The schema is [packages/db/prisma/schema.prisma](packages/db/prisma/schema.prism
 | Area | Models |
 | --- | --- |
 | Identity | `User`, `UserSession` (cookie token stored as SHA-256 only) |
-| Pipelines | `Pipeline`, `PipelineVersion` (`definition`, compiled `policy`), `BuilderChat`, `SiteRecipe` |
-| Runs | `Run`, `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Artifact` |
+| Pipelines | `Pipeline` (`enabled`: on its schedule; `essential`: exempt from the budget), `PipelineVersion` (`definition`, compiled `policy`), `BuilderChat`, `SiteRecipe` |
+| Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Artifact` |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
-| Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting` |
+| Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
 | Jobs | `JobPosting`, `Application` |
 
 ---
@@ -395,17 +403,18 @@ ai-me/
 │  │     ├─ pipelines/    # pipelines, versions, enable/schedule
 │  │     ├─ runs/  proposals/  decisions/  rules/  recipes/  jobs/  artifacts/
 │  │     ├─ credentials/  # create / replace / delete (encrypt only, never returns values)
-│  │     ├─ settings/     # model routing, budgets
+│  │     ├─ controls/     # kill switch, settings (global rate limits, budget)
+│  │     ├─ settings/     # model routing
 │  │     ├─ auth/         # single-user auth (password + TOTP)
 │  │     └─ events/       # WebSocket gateway: run progress, WAITING_FOR_USER
 │  ├─ worker/         # NestJS standalone: queue consumers
 │  │  └─ src/
-│  │     ├─ runner/        # interprets PipelineVersion, resume, retries, gates
+│  │     ├─ runner/        # interprets PipelineVersion, resume, retries, gates; policy guard; kill switch, rate limits, budget
+│  │     ├─ jobs/          # pg-boss consumers: runs, scheduled triggers, schedule sync, recovery at startup
 │  │     ├─ steps/         # one class per step type (email.*, browser.*, llm.*, data.*, file.*, gate.*, notify.*)
 │  │     ├─ connectors/    # MailConnector (imap/smtp, later gmail api), job sources
 │  │     ├─ browser/       # Playwright sessions, storageState, recipes, agent, takeover, CAPTCHA detection
 │  │     ├─ secrets/       # decrypt + {{cred:*}} resolution + domain binding + LLM masking
-│  │     ├─ policy/        # static/provenance targets, side-effect checks, rate limits, kill switch
 │  │     └─ reflection/    # nightly rule + pipeline-improvement suggestions
 │  └─ web/            # React + Vite
 │     └─ src/pages/   # Builder, Pipelines, PipelineDetail (chat + diff), Inbox, ProposalDetail,
@@ -419,6 +428,7 @@ ai-me/
 │  ├─ steps/          # step catalog metadata: names, input/output schemas, side-effect flags
 │  ├─ llm/            # Claude client, model routing, caching, tool-use structured output
 │  ├─ crypto/         # envelope encryption (seal / open / rewrap, key ring)
+│  ├─ queue/          # pg-boss queues (shared by api and worker), cron schedule helpers
 │  └─ testing/        # integration-test infrastructure: PostgreSQL (Testcontainers or local), migrate + seed
 ├─ py-worker/         # optional: local embeddings, OCR
 ├─ docker/
@@ -545,6 +555,7 @@ LLM_MODEL_REFLECTION=claude-opus-5-5
 LLM_MODEL_WRITING=claude-sonnet-5-5
 LLM_MODEL_BROWSER=claude-sonnet-5-5
 LLM_MODEL_CLASSIFY=claude-haiku-5-5
+# Non-essential pipelines pause when this month's LLM cost reaches it; Settings override it; empty = no limit
 LLM_MONTHLY_BUDGET_USD=
 
 # Embeddings: "local" (py-worker) or "voyage"
@@ -572,7 +583,7 @@ SESSION_TTL_HOURS=168
 # Browser / live view
 DISPLAY=:99
 NOVNC_PASSWORD=
-HEADED_CONCURRENCY=1
+# Headed runs are always one at a time (one display): the runs-headed queue is a pg-boss singleton queue
 
 # Notifications
 TELEGRAM_BOT_TOKEN=

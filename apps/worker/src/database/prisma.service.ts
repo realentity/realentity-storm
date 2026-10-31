@@ -1,11 +1,11 @@
 import { createPrismaConnection, type PrismaClient, type PrismaConnection } from "@ai-me/db";
-import { Inject, Injectable, type OnModuleDestroy } from "@nestjs/common";
+import { Inject, Injectable, type OnApplicationShutdown } from "@nestjs/common";
 import { type ServerEnv } from "@ai-me/shared";
 import { SERVER_ENV } from "../config/server-env";
 
-/** One Prisma client (and pg pool) per process. */
+/** One Prisma client (and pg pool) per process. Closed last on shutdown, after the queue stopped running jobs. */
 @Injectable()
-export class PrismaService implements OnModuleDestroy {
+export class PrismaService implements OnApplicationShutdown {
   private readonly connection: PrismaConnection;
 
   constructor(@Inject(SERVER_ENV) env: ServerEnv) {
@@ -16,7 +16,7 @@ export class PrismaService implements OnModuleDestroy {
     return this.connection.client;
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     await this.connection.close();
   }
 }

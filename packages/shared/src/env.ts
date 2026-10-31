@@ -26,6 +26,15 @@ export const ServerEnvSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(168),
 
   ANTHROPIC_API_KEY: optional(z.string()),
+  /** Default models per task group; Settings (ModelSetting) override them per task. */
+  LLM_MODEL_CLASSIFY: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-haiku-5-5")),
+  LLM_MODEL_WRITING: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-sonnet-5-5")),
+  /** Non-essential pipelines pause when this month's LLM cost reaches it. Settings override it; unset = no limit. */
+  LLM_MONTHLY_BUDGET_USD: optional(z.coerce.number().positive()),
+
+  /** notify.telegram: messages go to this chat only. */
+  TELEGRAM_BOT_TOKEN: optional(z.string().regex(/^\d+:[\w-]{30,}$/, "a bot token from @BotFather (123456:ABC...)")),
+  TELEGRAM_CHAT_ID: optional(z.string().regex(/^-?\d+$/, "a numeric chat id")),
 });
 
 export type ServerEnv = z.infer<typeof ServerEnvSchema>;

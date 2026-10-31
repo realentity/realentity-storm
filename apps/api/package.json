@@ -17,7 +17,9 @@
   "dependencies": {
     "@ai-me/crypto": "workspace:*",
     "@ai-me/db": "workspace:*",
+    "@ai-me/queue": "workspace:*",
     "@ai-me/shared": "workspace:*",
+    "@ai-me/steps": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",

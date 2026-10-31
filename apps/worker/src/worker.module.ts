@@ -1,6 +1,7 @@
 import { Global, Module } from "@nestjs/common";
 import { serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { PrismaService } from "./database/prisma.service";
+import { JobsModule } from "./jobs/jobs.module";
 import { SecretsModule } from "./secrets/secrets.module";
 
 @Global()
@@ -10,8 +11,8 @@ import { SecretsModule } from "./secrets/secrets.module";
 })
 export class CoreModule {}
 
-/** Pipeline runner, steps and queue consumers join in M2. */
+/** Credentials (decrypted only here), the pipeline runner and the queue consumers. */
 @Module({
-  imports: [CoreModule, SecretsModule],
+  imports: [CoreModule, SecretsModule, JobsModule],
 })
 export class WorkerModule {}

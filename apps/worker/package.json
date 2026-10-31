@@ -17,7 +17,10 @@
   "dependencies": {
     "@ai-me/crypto": "workspace:*",
     "@ai-me/db": "workspace:*",
+    "@ai-me/llm": "workspace:*",
+    "@ai-me/queue": "workspace:*",
     "@ai-me/shared": "workspace:*",
+    "@ai-me/steps": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "dotenv": "catalog:",
@@ -42,6 +45,7 @@
     "ts-jest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "typescript-eslint": "catalog:"
+    "typescript-eslint": "catalog:",
+    "zod": "catalog:"
   }
 }

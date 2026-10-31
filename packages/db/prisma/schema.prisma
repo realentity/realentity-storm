@@ -41,6 +41,7 @@ enum StepStatus {
 }
 
 enum ProposalStatus {
+  PREVIEW // dry run: shows what would be proposed, never executes
   PENDING_REVIEW
   APPROVED
   EXECUTING
@@ -99,6 +100,7 @@ model User {
   dateUpdated DateTime @updatedAt
 
   sessions      UserSession[]
+  settings      UserSetting?
   pipelines     Pipeline[]
   builderChats  BuilderChat[]
   siteRecipes   SiteRecipe[]
@@ -131,6 +133,22 @@ model UserSession {
   @@map("UserSessions")
 }
 
+/// Run-time controls (README §2.2, §2.6, §5). One row per user, created on first change.
+model UserSetting {
+  userId           String    @id @db.Uuid
+  user             User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// Kill switch: no run starts or continues, no side effect executes.
+  paused           Boolean   @default(false)
+  pausedAt         DateTime?
+  /// Step type → "N/day" | "N/hour": caps across all pipelines (a pipeline's own `limits` count only its runs).
+  rateLimits       Json      @default("{}")
+  /// Overrides LLM_MONTHLY_BUDGET_USD.
+  monthlyBudgetUsd Decimal?  @db.Decimal(10, 2)
+  dateUpdated      DateTime  @updatedAt
+
+  @@map("UserSettings")
+}
+
 // #endregion
 
 // #region Pipelines
@@ -140,7 +158,9 @@ model Pipeline {
   userId           String   @db.Uuid
   user             User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
   name             String
-  enabled          Boolean  @default(false)
+  enabled          Boolean  @default(false) // runs on its schedule
+  /// Keeps running when the monthly LLM budget is exhausted (README §5).
+  essential        Boolean  @default(false)
   currentVersionId String?  @db.Uuid
   dateCreated      DateTime @default(now())
   dateUpdated      DateTime @updatedAt
@@ -214,6 +234,8 @@ model Run {
   headed            Boolean         @default(false)
   startedAt         DateTime        @default(now())
   finishedAt        DateTime?
+  /// Held back by a rate limit: the next side-effect step may run from this time.
+  resumeAt          DateTime?
   summary           String?
 
   steps     Step[]
@@ -247,23 +269,26 @@ model Step {
 }
 
 model Proposal {
-  proposalId      String         @id @default(uuid()) @db.Uuid
-  userId          String         @db.Uuid
-  user            User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  runId           String         @db.Uuid
-  run             Run            @relation(fields: [runId], references: [runId], onDelete: Cascade)
-  stepId          String         @db.Uuid // the gate step that created it
-  step            Step           @relation(fields: [stepId], references: [stepId], onDelete: Cascade)
-  stepKey         String
-  itemIndex       Int? // forEach item this proposal belongs to
-  status          ProposalStatus @default(PENDING_REVIEW)
-  target          String // email address / URL / site
-  originalPayload Json
-  finalPayload    Json?
-  payloadHash     String?        @db.VarChar(64) // SHA-256 of the approved payload
-  reasoning       String? // short LLM explanation shown in the UI
-  dateCreated     DateTime       @default(now())
-  expiresAt       DateTime?
+  proposalId         String         @id @default(uuid()) @db.Uuid
+  userId             String         @db.Uuid
+  user               User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  runId              String         @db.Uuid
+  run                Run            @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  stepId             String         @db.Uuid // the gate step that created it
+  step               Step           @relation(fields: [stepId], references: [stepId], onDelete: Cascade)
+  stepKey            String // the step to act (gate.act) or the review step itself (gate.review)
+  itemIndex          Int? // forEach item this proposal belongs to
+  status             ProposalStatus @default(PENDING_REVIEW)
+  target             String // email address / URL / site
+  targets            Json? // per target: field, value, kind, basis (static | provenance) and whether it is new
+  /// Targets outside the static lists that I explicitly approved with this proposal ("New domain: X").
+  approvedNewTargets String[]       @default([])
+  originalPayload    Json
+  finalPayload       Json?
+  payloadHash        String?        @db.VarChar(64) // SHA-256 of the approved payload
+  reasoning          String? // short LLM explanation shown in the UI
+  dateCreated        DateTime       @default(now())
+  expiresAt          DateTime?
 
   decision Decision?
 

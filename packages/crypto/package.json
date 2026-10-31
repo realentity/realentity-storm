@@ -16,6 +16,9 @@
     "test": "jest",
     "clean": "rimraf dist"
   },
+  "dependencies": {
+    "@ai-me/shared": "workspace:*"
+  },
   "devDependencies": {
     "@ai-me/config": "workspace:*",
     "@eslint/js": "catalog:",

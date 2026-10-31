@@ -1,0 +1,38 @@
+{
+  "name": "@ai-me/llm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude client: model routing per task, structured output validated with zod, usage and cost per call",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "jest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ai-me/shared": "workspace:*",
+    "@anthropic-ai/sdk": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ai-me/config": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "jest": "catalog:",
+    "rimraf": "catalog:",
+    "ts-jest": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

@@ -29,6 +29,12 @@ describe("auth", () => {
     ["POST", "/api/credentials"],
     ["PUT", "/api/credentials/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90/secret"],
     ["DELETE", "/api/credentials/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90"],
+    ["POST", "/api/pipelines/compile"],
+    ["GET", "/api/pipelines"],
+    ["POST", "/api/pipelines"],
+    ["GET", "/api/pipelines/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90"],
+    ["POST", "/api/pipelines/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90/versions"],
+    ["GET", "/api/pipelines/4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90/versions/1"],
   ])("rejects %s %s without a session", async (method, path) => {
     await http()[method.toLowerCase() as "get" | "post" | "put" | "delete"](path).expect(401);
   });

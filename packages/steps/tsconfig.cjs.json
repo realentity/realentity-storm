@@ -1,0 +1,11 @@
+{
+  "extends": "@ai-me/config/tsconfig/library.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist/cjs",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/cjs/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}
