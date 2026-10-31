@@ -236,6 +236,9 @@ model BuilderChat {
   pipeline      Pipeline? @relation(fields: [pipelineId], references: [pipelineId], onDelete: SetNull)
   model         String
   effort        String
+  /// The system prompt the chat started with (catalog included), kept for its lifetime: earlier thinking blocks are
+  /// bound to it. Null for chats from before it was kept: they get the current one.
+  system        String?
   /// All tokens of the chat's calls, failed turns included: the per-chat cap (BUILDER_CHAT_MAX_TOKENS).
   tokensUsed    Int       @default(0)
   dateCreated   DateTime  @default(now())
@@ -278,8 +281,14 @@ model SiteRecipe {
   site           String // host, e.g. "jobs.bg"
   name           String // e.g. "jobs.bg/search"
   version        Int
-  steps          Json // selectors + actions
+  steps          Json // the recipe (@ai-me/steps RecipeSchema): selectors, fields, paging
+  // Last run that read items with it (browser.extract or teach mode).
   lastVerifiedAt DateTime?
+  // The page stopped matching it; cleared when it works again or a new version is saved.
+  brokenAt       DateTime?
+  brokenReason   String?
+  // The teach-mode run that made it; null: imported.
+  taughtInRunId  String?   @db.Uuid
   dateCreated    DateTime  @default(now())
 
   @@unique([userId, name, version])
@@ -560,15 +569,18 @@ model JobPosting {
   title        String
   company      String?
   location     String?
-  description  String
+  description  String           @default("")
   score        Float?
   scoreReason  String?
   status       JobPostingStatus @default(NEW)
   firstSeenAt  DateTime         @default(now())
+  lastSeenAt   DateTime         @default(now())
+  dateUpdated  DateTime         @updatedAt
 
   applications Application[]
 
   @@unique([userId, url])
+  @@index([userId, status])
   @@map("JobPostings")
 }
 

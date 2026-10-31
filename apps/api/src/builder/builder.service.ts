@@ -17,7 +17,7 @@ import {
   type EffortName,
   type ServerEnv,
 } from "@ai-me/shared";
-import { diffDefinitions } from "@ai-me/steps";
+import { diffDefinitions, RecipeSchema } from "@ai-me/steps";
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
@@ -82,7 +82,8 @@ export class BuilderService {
     if (pipelineId) await this.findPipeline(userId, pipelineId);
     const choice = await this.router.choose(userId, "builder");
     const chat = await this.prisma.client.builderChat.create({
-      data: { userId, pipelineId: pipelineId ?? null, model: choice.model, effort: choice.effort },
+      // The system prompt is kept with the chat: a later catalog change must not rewrite what earlier turns saw.
+      data: { userId, pipelineId: pipelineId ?? null, model: choice.model, effort: choice.effort, system: this.builder.system },
     });
     return this.get(userId, chat.builderChatId);
   }
@@ -192,6 +193,8 @@ export class BuilderService {
         `<current_pipeline version="${current.version}" id="${current.pipelineVersionId}">\n${definitionToSource(definition)}</current_pipeline>`,
       );
     }
+    const recipes = await this.recipesBlock(userId);
+    if (recipes !== lastShown(history, "saved_recipes")) parts.push(recipes);
     if (suggestion) {
       parts.push(
         `<reflection_suggestion>\n${suggestion.text}${suggestion.rationale ? `\nWhy: ${suggestion.rationale}` : ""}\n</reflection_suggestion>`,
@@ -206,6 +209,7 @@ export class BuilderService {
       user,
       current: (current?.definition as unknown as CompiledDefinition | undefined) ?? null,
       runs: chat.pipelineId ? this.runsOf(userId, chat.pipelineId) : null,
+      system: chat.system ?? undefined,
       tokensLeft: this.env.BUILDER_CHAT_MAX_TOKENS - chat.tokensUsed,
     });
 
@@ -316,6 +320,21 @@ export class BuilderService {
     if (!pipeline) throw new NotFoundException();
   }
 
+  /** The recipes browser.extract can use (latest versions), as the builder sees them in my message. */
+  private async recipesBlock(userId: string): Promise<string> {
+    const rows = await this.prisma.client.siteRecipe.findMany({ where: { userId }, orderBy: [{ name: "asc" }, { version: "desc" }] });
+    const lines: string[] = [];
+    for (const row of rows) {
+      if (lines.some((line) => line.startsWith(`- ${row.name} `))) continue;
+      const parsed = RecipeSchema.safeParse(row.steps);
+      const params = parsed.success
+        ? Object.entries(parsed.data.params).map(([name, p]) => `${name}${p.description ? ` (${p.description})` : ""}`)
+        : [];
+      lines.push(`- ${row.name} v${row.version}: params ${params.join(", ") || "none"}${row.brokenAt ? "; broken: needs teaching again" : ""}`);
+    }
+    return `<saved_recipes>\n${lines.length > 0 ? lines.join("\n") : "none yet"}\n</saved_recipes>`;
+  }
+
   private async currentVersion(pipelineId: string | null) {
     if (!pipelineId) return null;
     const pipeline = await this.prisma.client.pipeline.findUnique({ where: { pipelineId }, select: { currentVersionId: true } });
@@ -327,6 +346,19 @@ export class BuilderService {
     await this.events.publish(userId, { type: "builder", chatId });
     if (learning) await this.events.publish(userId, { type: "learning" });
   }
+}
+
+/** The last <tag> block my messages showed the builder, or null: shown again only when it changed. */
+function lastShown(history: ChatMessage[], tag: string): string | null {
+  const pattern = new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, "g");
+  let last: string | null = null;
+  for (const message of history) {
+    if (message.role !== "user") continue;
+    for (const block of message.content) {
+      if (block.type === "text" && typeof block.text === "string") for (const match of block.text.matchAll(pattern)) last = match[0];
+    }
+  }
+  return last;
 }
 
 function summary(chat: BuilderChat, first: BuilderMessage | undefined): BuilderChatSummaryView {

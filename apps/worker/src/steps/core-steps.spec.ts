@@ -51,7 +51,7 @@ const indexesIn = (prompt: string) => [...prompt.matchAll(/\{"index":(\d+),/g)].
 describe("data steps", () => {
   it("data.dedupe keeps the first item per key; items without the key stay", async () => {
     const items = [...JOBS.slice(0, 22), { title: "no url" }, { title: "no url" }];
-    const result = output("data.dedupe", await new DedupeStep().execute(input("data.dedupe", { from: items, key: "url" })));
+    const result = output("data.dedupe", await new DedupeStep().execute(input("data.dedupe", { from: items, key: "url" }), context()));
     expect(result).toMatchObject({ duplicates: 2 });
     expect((result.items as unknown[]).length).toBe(22);
   });

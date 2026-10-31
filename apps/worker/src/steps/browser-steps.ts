@@ -37,6 +37,8 @@ export interface BrowserDependencies {
   sessions: SessionStore;
   vault: CredentialVault;
   artifacts: ArtifactStore;
+  /** A Telegram message to me (a broken recipe). */
+  notify?: (text: string) => Promise<void>;
 }
 
 /**

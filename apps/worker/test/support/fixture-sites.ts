@@ -17,7 +17,9 @@ export interface FixtureSites {
   /** Session cookies the app handed out (the S4 test looks for them on disk). */
   sessions: Set<string>;
   solveCaptcha(): void;
-  /** Back to a fresh state between tests: no posts or hits, the CAPTCHA unsolved. */
+  /** jobs.localhost redesigned: its cards get other classes, so a recipe taught before no longer matches. */
+  redesignJobs(): void;
+  /** Back to a fresh state between tests: no posts or hits, the CAPTCHA unsolved, the job board as first built. */
   reset(): void;
   stop(): Promise<void>;
 }
@@ -30,6 +32,15 @@ export const FILES: Record<string, { type: string; content: Buffer }> = {
   "setup.exe": { type: "application/octet-stream", content: Buffer.from("MZ\x90\x00", "latin1") },
   "scan.pdf": { type: "application/pdf", content: Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(4096, 0x20)]) },
 };
+
+/** The job board's postings: 12 for "net" (pages of 5), none for anything else. */
+export const JOBS = Array.from({ length: 12 }, (_, i) => ({
+  id: 100 + i,
+  title: i === 0 ? "Senior .NET Developer" : `${["Senior", "Mid", "Lead"][i % 3]} .NET Engineer ${i}`,
+  company: i % 4 === 0 ? "Talent Hunters Recruitment" : `Company ${i}`,
+  location: i % 2 === 0 ? "Sofia" : "Remote",
+}));
+const JOBS_PER_PAGE = 5;
 
 const page = (title: string, body: string) =>
   `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
@@ -51,12 +62,45 @@ const loginForm = (action: string, error = "") =>
  *   shows a CAPTCHA until solveCaptcha(), without reloading; /slow never shows #ready; /files/* downloads.
  * - sso.localhost: the identity provider's sign-in.
  * - app.localhost.evil.localhost: a look-alike sign-in page (phishing).
+ * - jobs.localhost: a job board, /search?q=net in three pages (JOBS), an ad between the cards; redesignJobs() changes
+ *   its markup.
  */
 export async function startFixtureSites(): Promise<FixtureSites> {
   const posts: FixtureSites["posts"] = [];
   const hits: string[] = [];
   const sessions = new Set<string>();
   let solved = false;
+  let redesigned = false;
+
+  /** jobs.localhost/search?q=…&page=N: a filter form, an ad between the cards, a pager with page numbers and Next. */
+  const jobBoard = (url: URL): string => {
+    const query = url.searchParams.get("q") ?? "";
+    const pageNo = Number(url.searchParams.get("page") ?? "1");
+    const all = query === "net" ? JOBS : [];
+    const shown = all.slice((pageNo - 1) * JOBS_PER_PAGE, pageNo * JOBS_PER_PAGE);
+    const card = (job: (typeof JOBS)[number]) =>
+      redesigned
+        ? `<li class="posting-card"><h3><a href="/jobs/${job.id}">${job.title}</a></h3><p>${job.company} · ${job.location}</p></li>`
+        : `<article class="job" data-id="${job.id}">
+             <a class="job-title" href="/jobs/${job.id}">${job.title}</a>
+             <span class="company">${job.company}</span><span class="location">${job.location}</span><time>29 Oct</time>
+           </article>`;
+    const cards = shown.map(card);
+    if (cards.length > 2) cards.splice(2, 0, `<div class="ad"><a href="/promo">Promoted: learn Rust</a></div>`);
+    const pages = Math.ceil(all.length / JOBS_PER_PAGE);
+    const pager =
+      pages > 1
+        ? `<nav class="pager">${Array.from({ length: pages }, (_, i) => `<a class="page" href="/search?q=${query}&page=${i + 1}">${i + 1}</a>`).join("")}${
+            pageNo < pages ? `<a class="next" rel="next" href="/search?q=${query}&page=${pageNo + 1}">Next</a>` : ""
+          }</nav>`
+        : "";
+    return page(
+      "Jobs",
+      `<header><a href="/">Job board</a><form action="/search"><input name="q" value="${query}"><button>Search</button></form></header>
+       <main><h1>${all.length} jobs</h1>${shown.length === 0 ? '<p class="no-results">No jobs match your search</p>' : ""}
+       ${redesigned ? `<ul class="results">${cards.join("")}</ul>` : `<section class="results">${cards.join("")}</section>`}${pager}</main>`,
+    );
+  };
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const host = (req.headers.host ?? "").split(":")[0];
@@ -90,6 +134,11 @@ export async function startFixtureSites(): Promise<FixtureSites> {
       return html(200, loginForm(`/authorize?return=${encodeURIComponent(back)}`, "Wrong email or password"));
     }
     if (host === "app.localhost.evil.localhost") return html(200, loginForm("/login"));
+    if (host === "jobs.localhost") {
+      if (url.pathname === "/search") return html(200, jobBoard(url));
+      const job = JOBS.find((j) => url.pathname === `/jobs/${j.id}`);
+      return job ? html(200, page(job.title, `<h1>${job.title}</h1><p>${job.company}</p>`)) : html(404, page("Not found", "No such job"));
+    }
     if (host !== "app.localhost") return html(404, page("Not found", "No such site"));
 
     switch (url.pathname) {
@@ -163,10 +212,12 @@ export async function startFixtureSites(): Promise<FixtureSites> {
     hits,
     sessions,
     solveCaptcha: () => (solved = true),
+    redesignJobs: () => (redesigned = true),
     reset: () => {
       posts.length = 0;
       hits.length = 0;
       solved = false;
+      redesigned = false;
     },
     stop: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };

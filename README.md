@@ -62,8 +62,8 @@ steps:
   - id: search
     type: browser.extract          # headless
     with:
-      recipes: [jobs.bg/search, dev.bg/search]
-      query: { keywords: "senior .NET", locations: [Sofia, Remote] }
+      recipes: [dev.bg/search]
+      params: { category: net }   # a list runs one search per value
   - id: dedupe
     type: data.dedupe
     with: { from: "{{search.items}}", key: url, against: JobPosting }
@@ -140,7 +140,9 @@ New capabilities are added by writing a new step class, never by the LLM.
 1. **Recipe steps** (`browser.extract`, `browser.mapForm`, `browser.fillAndSubmit` on a known site) follow saved selectors and flows (`SiteRecipe`). They're fast, cheap and predictable.
 2. **`browser.agent`** is a bounded LLM browser agent for sites without a recipe ("find the apply button and fill the form"). It's limited to the pipeline's allowed domains, a step budget, and a fixed action set (navigate, click, type, select, upload-from-approved-files, read page). It works from the page's accessibility snapshot, with screenshots only when needed.
 
-**Teach mode:** the first time a pipeline hits an unknown site, the agent explores it headed while I watch in the live view and correct it. The successful path is saved as a versioned recipe, and later runs use it. When a recipe breaks, the run falls back to the agent (with a gate) and proposes a recipe update.
+A list recipe ([packages/steps/src/recipe.ts](packages/steps/src/recipe.ts)) is data, not code: the list's address with `{param}` placeholders, a selector per item, a selector (and attribute) per field, the field that identifies an item, an optional "no results" selector, and paging by next link or by page number. It never opens a page off its own site (the host in its name, `dev.bg/search`), reads at most 20 pages, and waits at least half a second between them (1.5 s by default). Example: [recipes/dev.bg-search.yaml](recipes/dev.bg-search.yaml). `browser.extract` uses the latest version; when the page stops matching (nothing matches the item selector, or no item has the required fields), the step fails saying what didn't match, the recipe is marked broken on the Recipes page and in the digest, and I get one Telegram message.
+
+**Teach mode** (Recipes page → **Teach**): a run of a "Teach <recipe>" pipeline whose `browser.teach` step opens the site in the live browser. I bring it to the list (search, filters, cookie banner) and press Continue. The LLM (the builder's model) gets the page's outline (tags, classes, links, short texts; long runs of similar elements shortened, no scripts) and proposes a recipe; it is checked on the page: the address rebuilt from the params must be the page's, the items must have the fields, the next page (opened in another tab) must show other items. What fails goes back to the LLM, up to three times. The items it reads are outlined on the page; Continue saves the recipe as the next version, Abort discards it. Recipes can also be imported as YAML. Later (M11), when a recipe breaks, a run falls back to `browser.agent` (with a gate) and proposes a recipe update.
 
 ### 2.5 Editing via chat
 

@@ -7,11 +7,13 @@ import { BuilderPage } from "./pages/BuilderPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { InboxPage } from "./pages/InboxPage";
+import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PipelineEditorPage } from "./pages/PipelineEditorPage";
 import { PipelinePage } from "./pages/PipelinePage";
 import { PipelinesPage } from "./pages/PipelinesPage";
 import { ProposalPage } from "./pages/ProposalPage";
+import { RecipePage, RecipesPage } from "./pages/RecipesPage";
 import { RunPage } from "./pages/RunPage";
 import { RulesPage } from "./pages/RulesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -41,8 +43,11 @@ export function App() {
             <Route path="pipelines/:pipelineId" element={<PipelinePage />} />
             <Route path="pipelines/:pipelineId/edit" element={<PipelineEditorPage />} />
             <Route path="runs/:runId" element={<RunPage />} />
+            <Route path="jobs" element={<JobsPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="rules" element={<RulesPage />} />
+            <Route path="recipes" element={<RecipesPage />} />
+            <Route path="recipes/:site/:what" element={<RecipePage />} />
             <Route path="credentials" element={<CredentialsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route

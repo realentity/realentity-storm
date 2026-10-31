@@ -12,7 +12,7 @@ import { Builder, type TurnResult } from "../src/builder/builder";
  * The builder (its prompt, tools and model) recreates the hand-written pipelines from a plain description of what
  * they do, and the result must be equivalent: same trigger, steps, fan-out, gates, recipient provenance and limits.
  * Also: an edit in a pipeline's chat changes only what I asked (M7-T3), and a request the catalog can't serve yet is
- * answered with what is missing instead of a pipeline (M7-T2). The M9 job-search pipeline joins when its steps exist.
+ * answered with what is missing instead of a pipeline (M7-T2). M9-V3: the dev.bg job pipeline, from its description.
  * Writes evals/results/<date>-builder.json.
  */
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
@@ -24,6 +24,8 @@ interface Case {
   expected: string | null;
   /** A pipeline-bound chat: this pipeline is the current version. */
   current?: string;
+  /** The <saved_recipes> lines the builder sees (none by default). */
+  recipes?: string;
 }
 
 const CASES: Case[] = [
@@ -50,9 +52,20 @@ const CASES: Case[] = [
     description: "Check every 30 minutes instead.",
   },
   {
-    name: "missing capability: a job board (M7-T2)",
+    name: "missing capability: applying to jobs (M7-T2)",
     expected: null,
-    description: "Every weekday at 8, check jobs.bg for senior .NET roles in Sofia and send me the top 5 on Telegram.",
+    description: "Every weekday at 8, apply to the 3 best .NET jobs on dev.bg with my CV and a short cover letter.",
+  },
+  {
+    name: "daily .NET jobs (M9-V3)",
+    expected: "dev-bg-jobs.yaml",
+    recipes: "- dev.bg/search v1: params category (dev.bg's category slug, e.g. net, java)",
+    description:
+      "Every weekday at 8, read the .NET jobs on dev.bg (category net) and keep only the ones I haven't seen before. " +
+      "Label each as posted by a recruitment agency or by the employer itself, and save the agency ones as skipped. " +
+      "Score the others against my profile: senior or lead .NET (C#) backend, ASP.NET Core, Azure, SQL, Sofia hybrid " +
+      "or fully remote; no junior, front-end, QA, support or other stacks. Save every scored job, let me pick from the " +
+      "best 10, and save the ones I pick as shortlisted.",
   },
 ];
 
@@ -79,7 +92,8 @@ async function main(): Promise<void> {
     const turns: TurnResult[] = [];
     const say = async (text: string, showCurrent: boolean) => {
       const shown = showCurrent && current ? `<current_pipeline version="1" id="eval">\n${definitionToSource(current)}</current_pipeline>\n\n` : "";
-      const user: ChatMessage = { role: "user", content: [{ type: "text", text: `${shown}${text}` }] };
+      const recipes = showCurrent ? `<saved_recipes>\n${c.recipes ?? "none yet"}\n</saved_recipes>\n\n` : "";
+      const user: ChatMessage = { role: "user", content: [{ type: "text", text: `${shown}${recipes}${text}` }] };
       const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000 });
       usage = addUsage(usage, turn.usage);
       if (turn.transcript) history.push(user, ...turn.transcript);
@@ -106,7 +120,7 @@ async function main(): Promise<void> {
       }
     } else {
       if (proposed) problems.push(`proposed a pipeline: ${proposed.steps.map((s) => s.type).join(", ")}`);
-      if (!/jobs\.bg|browser|website|web site|site|job board/i.test(turns.map((t) => t.text).join(" "))) problems.push("didn't say what is missing");
+      if (!/apply|application|submit|form|upload|CV/i.test(turns.map((t) => t.text).join(" "))) problems.push("didn't say what is missing");
     }
 
     const pass = problems.length === 0;

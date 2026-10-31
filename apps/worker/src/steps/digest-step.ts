@@ -12,6 +12,8 @@ const STATUS_WORDS: Record<string, string> = {
   QUEUED: "queued",
 };
 const MAX_FAILURES = 10;
+/** Of a list waiting for me to pick from (gate.review): the best few, by score. */
+const TOP_TO_PICK = 3;
 
 /** What notify.digest needs from notify.telegram: sending one text. */
 export interface TextSender {
@@ -48,7 +50,12 @@ export class DigestStep implements StepExecutor {
     });
     const waiting = await this.prisma.proposal.findMany({
       where: { userId, status: "PENDING_REVIEW" },
-      select: { run: { select: { pipelineVersion: { select: { pipeline: { select: { name: true } } } } } } },
+      select: {
+        originalPayload: true,
+        step: { select: { type: true } },
+        run: { select: { pipelineVersion: { select: { pipeline: { select: { name: true } } } } } },
+      },
+      orderBy: { dateCreated: "asc" },
     });
 
     const lines = [`AI ME · last ${hours} h`];
@@ -65,6 +72,13 @@ export class DigestStep implements StepExecutor {
       for (const p of waiting)
         byPipeline.set(p.run.pipelineVersion.pipeline.name, (byPipeline.get(p.run.pipelineVersion.pipeline.name) ?? 0) + 1);
       lines.push(`Waiting for me: ${waiting.length} (${[...byPipeline].map(([name, n]) => `${name}: ${n}`).join(", ")})`);
+      for (const review of waiting.filter((p) => p.step.type === "gate.review")) {
+        const items = ((review.originalPayload as { items?: unknown[] }).items ?? []).filter(isRecord);
+        const best = [...items].sort((a, b) => scoreOf(b) - scoreOf(a)).slice(0, TOP_TO_PICK);
+        lines.push(
+          `• To pick in ${review.run.pipelineVersion.pipeline.name}: ${items.length}${best.length ? `, best: ${best.map(label).join("; ")}` : ""}`,
+        );
+      }
     } else {
       lines.push("Waiting for me: nothing");
     }
@@ -88,6 +102,9 @@ export class DigestStep implements StepExecutor {
       lines.push(`Suggested by reflection: ${rules} rule(s), ${suggestions} pipeline change(s) (Rules page)`);
     }
 
+    const broken = await this.brokenRecipes(userId);
+    if (broken.length > 0) lines.push(`Broken recipes: ${broken.join(", ")} (Recipes page)`);
+
     const [window, month] = await Promise.all([
       llmSpendSince(this.prisma, userId, since),
       new RunControls(this.prisma).monthlySpendUsd(userId, now),
@@ -95,4 +112,32 @@ export class DigestStep implements StepExecutor {
     lines.push(`LLM: $${window.toFixed(4)} (this month $${month.toFixed(2)})`);
     return lines.join("\n");
   }
+
+  /** Recipes whose latest version no longer matches its page (M9-T7). */
+  private async brokenRecipes(userId: string): Promise<string[]> {
+    const rows = await this.prisma.siteRecipe.findMany({
+      where: { userId },
+      select: { name: true, version: true, brokenAt: true },
+      orderBy: { version: "desc" },
+    });
+    const latest = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) if (!latest.has(row.name)) latest.set(row.name, row);
+    return [...latest.values()].filter((row) => row.brokenAt).map((row) => `${row.name} v${row.version}`);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function scoreOf(item: Record<string, unknown>): number {
+  return typeof item.score === "number" ? item.score : -1;
+}
+
+/** "Senior .NET Developer · Acme (91)": a job's title, company and score; other items by their title or subject. */
+function label(item: Record<string, unknown>): string {
+  const text = (key: string) => (typeof item[key] === "string" ? item[key].slice(0, 80) : "");
+  const name = text("title") || text("subject") || text("name") || "an item";
+  const company = text("company");
+  return `${name}${company ? ` · ${company}` : ""}${typeof item.score === "number" ? ` (${item.score})` : ""}`;
 }

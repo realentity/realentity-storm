@@ -1,0 +1,330 @@
+import { KeyRing } from "@ai-me/crypto";
+import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
+import { TestEnvironment } from "@ai-me/testing";
+import { defaultCatalog, type Recipe } from "@ai-me/steps";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type z } from "zod";
+import { ArtifactStore } from "../src/browser/artifact-store";
+import { BrowserPool } from "../src/browser/browser-pool";
+import { SessionStore } from "../src/browser/session-store";
+import { PipelineRunner } from "../src/runner/pipeline-runner";
+import { RunControls } from "../src/runner/run-controls";
+import { ExecutorRegistry } from "../src/runner/step-executor";
+import { TakeoverDesk } from "../src/runner/takeovers";
+import { CredentialVault } from "../src/secrets/credential-vault";
+import { DedupeStep, SaveStep } from "../src/steps/data-steps";
+import { BrowserExtractStep } from "../src/steps/recipe-steps";
+import { BrowserTeachStep } from "../src/steps/teach-step";
+import { JOBS, startFixtureSites, type FixtureSites } from "./support/fixture-sites";
+import { createVersion } from "./support/test-steps";
+
+jest.setTimeout(60_000);
+
+/** Answers the teach step with the proposals given, in order; records the prompts. */
+class ScriptedLlm implements LlmClient {
+  prompts: string[] = [];
+  constructor(private readonly answers: unknown[]) {}
+  structured<S extends z.ZodObject>(request: StructuredRequest<S>) {
+    this.prompts.push(request.prompt);
+    const answer = this.answers.shift();
+    if (!answer) return Promise.reject(new Error("no more answers"));
+    return Promise.resolve({ output: request.schema.parse(answer), usage: { ...emptyUsage(), calls: 1, costUsd: 0.02 } });
+  }
+}
+
+// M9: recipes (browser.extract), job postings (data.dedupe against JobPosting, data.save) and teach mode against the
+// local job board (no real site)
+describe("recipes and job postings", () => {
+  let db: PrismaConnection;
+  let userId: string;
+  let sites: FixtureSites;
+  let artifactsDir: string;
+  let pool: BrowserPool;
+  let llm: ScriptedLlm;
+  let runner: PipelineRunner;
+  const notified: string[] = [];
+
+  /** The job board as recipe "jobs.localhost/search" (the port is the fixture server's). */
+  const boardRecipe = (next: Recipe["next"] = { kind: "link", selector: "a.next" }): Recipe => ({
+    url: sites.url("jobs", "/search?q={query}"),
+    params: { query: { description: "what to search" } },
+    item: "article.job",
+    fields: {
+      url: { selector: "a.job-title", attr: "href", required: true },
+      title: { selector: "a.job-title", required: true },
+      company: { selector: ".company", required: false },
+      location: { selector: ".location", required: false },
+    },
+    key: "url",
+    empty: ".no-results",
+    next,
+    maxPages: 5,
+    delayMs: 500,
+  });
+
+  beforeAll(async () => {
+    db = createPrismaConnection();
+    userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
+    sites = await startFixtureSites();
+    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
+    pool = new BrowserPool({ invisible: true });
+    const keys = KeyRing.fromEnv(process.env);
+    const vault = new CredentialVault(db.client, keys);
+    const deps = {
+      prisma: db.client,
+      pool,
+      sessions: new SessionStore(db.client, keys, vault),
+      vault,
+      artifacts: new ArtifactStore(artifactsDir),
+      notify: (text: string) => {
+        notified.push(text);
+        return Promise.resolve();
+      },
+    };
+    llm = new ScriptedLlm([]);
+    const teach = new BrowserTeachStep(deps, { structured: (request) => llm.structured(request) }, new ModelRouter(() => Promise.resolve(null)));
+    const executors = new ExecutorRegistry([
+      new BrowserExtractStep(deps, () => Promise.resolve()),
+      new DedupeStep(db.client),
+      new SaveStep(db.client),
+      teach,
+    ]);
+    const desk = new TakeoverDesk(db.client, () => Promise.resolve(), { timeoutMs: 10_000, pollMs: 100 });
+    runner = new PipelineRunner(db.client, defaultCatalog(), executors, new RunControls(db.client), undefined, desk);
+  });
+
+  afterEach(async () => {
+    await db.client.run.deleteMany();
+    await db.client.pipeline.deleteMany();
+    await db.client.siteRecipe.deleteMany();
+    await db.client.jobPosting.deleteMany();
+    notified.length = 0;
+    sites.reset();
+  });
+
+  afterAll(async () => {
+    await pool.close();
+    await sites.stop();
+    await rm(artifactsDir, { recursive: true, force: true });
+    await db.close();
+  });
+
+  const saveRecipe = (recipe: Recipe, version = 1) =>
+    db.client.siteRecipe.create({
+      data: { userId, name: "jobs.localhost/search", site: "jobs.localhost", version, steps: recipe },
+    });
+  const run = async (source: string) => {
+    const runId = await runner.start(await createVersion(db.client, userId, source), { trigger: "manual" });
+    return { runId, status: await runner.advance(runId) };
+  };
+  const output = async (runId: string, stepKey: string) =>
+    (await db.client.step.findFirstOrThrow({ where: { runId, stepKey } })).output as Record<string, unknown>;
+  const until = async <T>(read: () => Promise<T | null | undefined>, what: string): Promise<T> => {
+    for (let i = 0; i < 200; i++) {
+      const value = await read();
+      if (value) return value;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`Timed out waiting for ${what}`);
+  };
+
+  const SEARCH = (query = "net", timeoutSeconds = 30) => `name: Jobs
+steps:
+  - id: search
+    type: browser.extract
+    with:
+      recipes: [jobs.localhost/search]
+      params: { query: ${query} }
+      timeoutSeconds: ${timeoutSeconds}
+`;
+  const DAILY = `${SEARCH()}  - id: fresh
+    type: data.dedupe
+    with: { from: "{{search.items}}", key: url, against: JobPosting }
+  - id: save
+    type: data.save
+    with: { items: "{{fresh.items}}" }
+`;
+
+  it("M9-I1: reads every item of the list across its pages, by next link or by page number, without the ad", async () => {
+    // Page numbers have no "last page" mark: the fourth, empty, page ends the list.
+    for (const [version, next, opened] of [
+      [1, { kind: "link", selector: "a.next" }, 3],
+      [2, { kind: "page", url: sites.url("jobs", "/search?q={query}&page={page}"), start: 2 }, 4],
+    ] as const) {
+      const recipe = await saveRecipe(boardRecipe(next), version);
+      const { runId, status } = await run(SEARCH());
+      expect(status).toBe("DONE");
+      const { items, pages } = await output(runId, "search");
+      expect(pages).toBe(opened);
+      expect(items).toEqual(
+        JOBS.map((job) => ({
+          url: sites.url("jobs", `/jobs/${job.id}`),
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          source: "jobs.localhost/search",
+        })),
+      );
+      expect((await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } })).lastVerifiedAt).not.toBeNull();
+    }
+    // Only the latest version runs.
+    expect(sites.hits.filter((hit) => hit.startsWith("jobs.localhost /search"))).toHaveLength(7);
+  });
+
+  it("a search without results is an empty list, not a broken recipe", async () => {
+    await saveRecipe(boardRecipe());
+    const { runId, status } = await run(SEARCH("cobol"));
+    expect(status).toBe("DONE");
+    expect(await output(runId, "search")).toEqual({ items: [], pages: 1 });
+    expect((await db.client.siteRecipe.findFirstOrThrow()).brokenAt).toBeNull();
+  });
+
+  it("M9-I2: a second run over the same list saves no new postings", async () => {
+    await saveRecipe(boardRecipe());
+    const first = await run(DAILY);
+    expect(first.status).toBe("DONE");
+    expect(await output(first.runId, "save")).toEqual({ saved: 12, created: 12, skipped: 0 });
+    const saved = await db.client.jobPosting.findMany({ orderBy: { title: "asc" } });
+    expect(saved).toHaveLength(12);
+    expect(saved[0]).toMatchObject({ source: "jobs.localhost/search", status: "NEW", company: expect.any(String) as unknown });
+
+    const second = await run(DAILY);
+    expect(second.status).toBe("DONE");
+    expect(await output(second.runId, "fresh")).toEqual({ items: [], duplicates: 12 });
+    expect(await output(second.runId, "save")).toEqual({ saved: 0, created: 0, skipped: 0 });
+    expect(await db.client.jobPosting.count()).toBe(12);
+  });
+
+  it("data.save moves a posting's status forward only, and a dry run saves nothing", async () => {
+    const url = sites.url("jobs", "/jobs/100");
+    await db.client.jobPosting.create({ data: { userId, source: "x", url, title: "Senior .NET Developer", status: "APPLIED" } });
+    const source = (status: string) => `name: Save
+steps:
+  - id: save
+    type: data.save
+    with:
+      status: ${status}
+      items:
+        - { url: "${url}", title: "Senior .NET Developer", score: 91, scoreReason: "Fits" }
+        - { url: "${sites.url("jobs", "/jobs/101")}", title: "Mid .NET Engineer 1" }
+        - { title: "no address" }
+`;
+    const dry = await runner.start(await createVersion(db.client, userId, source("SHORTLISTED")), { trigger: "manual", dryRun: true });
+    expect(await runner.advance(dry)).toBe("DONE");
+    expect(await output(dry, "save")).toEqual({ saved: 2, created: 1, skipped: 1 });
+    expect(await db.client.jobPosting.count()).toBe(1);
+
+    const { runId } = await run(source("SHORTLISTED"));
+    expect(await output(runId, "save")).toEqual({ saved: 2, created: 1, skipped: 1 });
+    expect(await db.client.jobPosting.findFirstOrThrow({ where: { url } })).toMatchObject({ status: "APPLIED", score: 91, scoreReason: "Fits" });
+    expect(await db.client.jobPosting.findFirstOrThrow({ where: { title: "Mid .NET Engineer 1" } })).toMatchObject({ status: "SHORTLISTED" });
+
+    await run(source("NEW"));
+    expect(await db.client.jobPosting.findFirstOrThrow({ where: { title: "Mid .NET Engineer 1" } })).toMatchObject({ status: "SHORTLISTED" });
+  });
+
+  it("M9-I3: a redesigned page fails the step clearly, marks the recipe broken and tells me once", async () => {
+    const recipe = await saveRecipe(boardRecipe());
+    sites.redesignJobs();
+    for (let i = 0; i < 2; i++) {
+      const { runId, status } = await run(SEARCH("net", 5));
+      expect(status).toBe("FAILED");
+      const step = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "search" } });
+      expect(step.error).toBe(
+        `Recipe jobs.localhost/search v1 no longer matches the page: "article.job" matched nothing on ${sites.url("jobs", "/search?q=net")}`,
+      );
+      expect(await db.client.artifact.count({ where: { runId, kind: "screenshot" } })).toBe(1);
+    }
+    expect(await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } })).toMatchObject({
+      brokenAt: expect.any(Date) as unknown,
+      brokenReason: expect.stringContaining('"article.job" matched nothing') as unknown,
+    });
+    expect(notified).toEqual([expect.stringContaining("recipe jobs.localhost/search v1 is broken") as unknown]);
+
+    sites.reset(); // the site is back (or a new version taught): it works and is no longer marked broken
+    expect((await run(SEARCH())).status).toBe("DONE");
+    expect((await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } })).brokenAt).toBeNull();
+  });
+
+  it("a recipe that would leave its site, or no recipe at all, fails before opening anything", async () => {
+    expect((await run(SEARCH())).status).toBe("FAILED");
+    expect((await db.client.step.findFirstOrThrow()).error).toContain('There is no recipe "jobs.localhost/search" yet');
+    await db.client.run.deleteMany();
+    await saveRecipe({ ...boardRecipe(), url: sites.url("app", "/search?q={query}") });
+    expect((await run(SEARCH())).status).toBe("FAILED");
+    expect((await db.client.step.findFirstOrThrow()).error).toContain("is not on jobs.localhost");
+    expect(sites.hits).toEqual([]);
+  });
+
+  describe("M9-T2: teach mode", () => {
+    const TEACH = () => `name: Teach
+steps:
+  - id: teach
+    type: browser.teach
+    with:
+      recipe: jobs.localhost/search
+      url: "${sites.url("jobs", "/search?q=net")}"
+      params: { query: net }
+      fields: [url, title, company, location]
+`;
+    const proposal = (item: string) => ({
+      url: sites.url("jobs", "/search?q={query}"),
+      params: [{ name: "query", description: "what to search" }],
+      item,
+      fields: [
+        { name: "url", selector: "a.job-title", attr: "href", required: true },
+        { name: "title", selector: "a.job-title", required: true },
+        { name: "company", selector: ".company", required: false },
+        { name: "location", selector: ".location", required: false },
+      ],
+      key: "url",
+      empty: ".no-results",
+      next: { kind: "page", url: sites.url("jobs", "/search?q={query}&page={page}"), start: 2 },
+      notes: "Cards are article.job.",
+    });
+    const continueTakeover = async (runId: string, reason: RegExp, status: "CONTINUED" | "ABORTED" = "CONTINUED") => {
+      const takeover = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the takeover");
+      expect(takeover.reason).toMatch(reason);
+      await db.client.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { status, resolvedAt: new Date() } });
+    };
+
+    it("I show the list, the LLM's recipe is checked on the page and fixed, and Continue saves it as the next version", async () => {
+      await saveRecipe(boardRecipe(), 1);
+      llm = new ScriptedLlm([proposal(".card"), proposal("article.job")]);
+      const runId = await runner.start(await createVersion(db.client, userId, TEACH()), { trigger: "manual" });
+      const advancing = runner.advance(runId);
+
+      await continueTakeover(runId, /^Teach jobs.localhost\/search: show the list to read/);
+      await continueTakeover(runId, /^jobs.localhost\/search: 5 items read on this page \(outlined\).*Continue saves it as v2/);
+      expect(await advancing).toBe("DONE");
+
+      // The LLM read the page's outline; its first proposal matched nothing and went back with what failed.
+      expect(llm.prompts).toHaveLength(2);
+      expect(llm.prompts[0]).toContain('<article.job data-id="100">');
+      expect(llm.prompts[0]).toContain('<a.job-title href="/jobs/100"> Senior .NET Developer');
+      expect(llm.prompts[1]).toMatch(/<problems>[\s\S]*item ".card" matched 0 elements/);
+
+      const saved = await db.client.siteRecipe.findFirstOrThrow({ where: { version: 2 } });
+      expect(saved).toMatchObject({ name: "jobs.localhost/search", site: "jobs.localhost", taughtInRunId: runId });
+      expect((saved.steps as Recipe).item).toBe("article.job");
+      expect(await output(runId, "teach")).toMatchObject({ recipe: "jobs.localhost/search", version: 2, items: expect.any(Array) as unknown });
+      expect(((await output(runId, "teach")).items as unknown[]).length).toBe(5);
+      // The taught recipe reads the whole list.
+      const { runId: searchRun } = await run(SEARCH());
+      expect(((await output(searchRun, "search")).items as unknown[]).length).toBe(12);
+    });
+
+    it("Abort discards the recipe", async () => {
+      llm = new ScriptedLlm([proposal("article.job")]);
+      const runId = await runner.start(await createVersion(db.client, userId, TEACH()), { trigger: "manual" });
+      const advancing = runner.advance(runId);
+      await continueTakeover(runId, /show the list/);
+      await continueTakeover(runId, /Continue saves it as v1/, "ABORTED");
+      expect(await advancing).toBe("ABORTED");
+      expect(await db.client.siteRecipe.count()).toBe(0);
+    });
+  });
+});

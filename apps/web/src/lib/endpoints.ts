@@ -8,6 +8,10 @@ import {
   type CreateRuleRequest,
   type CredentialView,
   type DryRunPipelineResponse,
+  type ImportRecipeRequest,
+  type JobFilter,
+  type JobPostingView,
+  type JobStatusName,
   type KillSwitchView,
   type LearningView,
   type LiveView,
@@ -18,6 +22,8 @@ import {
   type PipelineVersionView,
   type ProposalStatusName,
   type ProposalView,
+  type RecipeDetailView,
+  type RecipeSummaryView,
   type RunDetailView,
   type RunFilter,
   type RuleView,
@@ -27,6 +33,8 @@ import {
   type SettingsView,
   type StepTypeView,
   type SuggestionStatusName,
+  type TeachRecipeRequest,
+  type TeachStartedView,
   type UpdatePipelineRequest,
   type UpdateRuleRequest,
 } from "@ai-me/shared";
@@ -98,6 +106,17 @@ export const api = {
     updateSuggestion: (suggestionId: string, status: SuggestionStatusName) =>
       request<void>("PATCH", `/suggestions/${suggestionId}`, { status }),
     reflect: () => request<void>("POST", "/reflection"),
+  },
+  jobs: {
+    list: (filter: Partial<JobFilter> = {}) => request<JobPostingView[]>("GET", `/jobs${query(filter)}`),
+    setStatus: (jobPostingId: string, status: JobStatusName) => request<JobPostingView>("PATCH", `/jobs/${jobPostingId}`, { status }),
+  },
+  recipes: {
+    list: () => request<RecipeSummaryView[]>("GET", "/recipes"),
+    /** `name` is "<site>/<what>", the two path segments. */
+    get: (name: string) => request<RecipeDetailView>("GET", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}`),
+    import: (body: ImportRecipeRequest) => request<RecipeDetailView>("POST", "/recipes", body),
+    teach: (body: TeachRecipeRequest) => request<TeachStartedView>("POST", "/recipes/teach", body),
   },
   builder: {
     /** Without a pipeline: chats about new pipelines, not saved yet. */

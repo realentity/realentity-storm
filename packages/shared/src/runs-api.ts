@@ -205,7 +205,7 @@ export interface KillSwitchView {
   stoppedRuns?: number;
 }
 
-/** Steps that call the LLM, the nightly reflection and the builder chat; each can have its own model (README §5). */
+/** Steps that call the LLM, the nightly reflection, the builder chat and teach mode; each can have its own model (README §5). */
 export const LLM_TASKS = [
   "email.classify",
   "email.draftReply",
@@ -215,6 +215,7 @@ export const LLM_TASKS = [
   "llm.summarize",
   "reflection",
   "builder",
+  "browser.teach",
 ] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 

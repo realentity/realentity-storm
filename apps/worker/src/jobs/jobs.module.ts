@@ -105,7 +105,14 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         artifacts: ArtifactStore,
       ): StepExecutor[] => {
         return coreSteps({
-          browser: { prisma: db.client, pool, sessions, vault, artifacts },
+          browser: {
+            prisma: db.client,
+            pool,
+            sessions,
+            vault,
+            artifacts,
+            notify: (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text),
+          },
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
           router,
           telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },

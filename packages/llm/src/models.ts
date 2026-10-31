@@ -24,6 +24,7 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "email.draftReply": "writing",
   reflection: "reflection",
   builder: "builder",
+  "browser.teach": "builder",
 };
 
 /** A per-user choice from Settings (ModelSetting), if any. */

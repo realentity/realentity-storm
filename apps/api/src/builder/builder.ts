@@ -36,6 +36,8 @@ export interface TurnRequest {
   /** The current version (null: a new pipeline): proposals are compared with it. */
   current: CompiledDefinition | null;
   runs: BuilderRuns | null;
+  /** The chat's own system prompt (the one it started with); default: the current one. */
+  system?: string;
   /** Tokens the chat may still use (the per-chat cap). */
   tokensLeft: number;
 }
@@ -114,7 +116,7 @@ export class Builder {
       try {
         response = await this.llm.send({
           choice: request.choice,
-          system: this.system,
+          system: request.system ?? this.system,
           tools: this.tools,
           messages: [...request.history, ...added],
         });
@@ -224,8 +226,11 @@ tool. I review every proposal (plan, step graph, diff) and save it myself; nothi
 How to work:
 - If something essential is missing or ambiguous (which mailbox, what to keep, how often, who gets it), ask me short
   numbered questions first. Where a sensible default exists, use it and say so instead of asking.
-- When something I ask for can't be built from the catalog (no step for it yet, e.g. browsing a website, files,
-  job boards), say plainly what is missing. Never imitate a missing capability with other steps.
+- When something I ask for can't be built from the catalog (no step for it yet, e.g. submitting forms or
+  applications, files), say plainly what is missing. Never imitate a missing capability with other steps.
+- Lists on websites are read by browser.extract with a saved recipe. <saved_recipes> in my messages lists the
+  recipes that exist (name and params). A site without one can't be read yet: say that I have to teach it first
+  (Recipes page, Teach); you may still propose the pipeline with the name the recipe will have ("<site>/search").
 - Propose the whole definition every time, never a fragment. When propose_pipeline returns compile errors, fix them
   and propose again. Keep everything I didn't ask to change exactly as it is (ids, wording, parameters).
 - After a successful proposal, answer in a few sentences: what it does or what changed, and any assumption I should

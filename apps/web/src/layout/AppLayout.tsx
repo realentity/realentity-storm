@@ -1,4 +1,15 @@
-import { IconBulb, IconHistory, IconInbox, IconKey, IconLogout, IconMenu2, IconRoute, IconSettings } from "@tabler/icons-react";
+import {
+  IconBriefcase,
+  IconBulb,
+  IconHistory,
+  IconInbox,
+  IconKey,
+  IconListSearch,
+  IconLogout,
+  IconMenu2,
+  IconRoute,
+  IconSettings,
+} from "@tabler/icons-react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { KillSwitchButton } from "../components/KillSwitchButton";
@@ -10,8 +21,10 @@ import { useLoad } from "../lib/use-load";
 const NAVIGATION = [
   { to: "/inbox", label: "Inbox", icon: IconInbox },
   { to: "/pipelines", label: "Pipelines", icon: IconRoute },
+  { to: "/jobs", label: "Jobs", icon: IconBriefcase },
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/rules", label: "Rules", icon: IconBulb },
+  { to: "/recipes", label: "Recipes", icon: IconListSearch },
   { to: "/credentials", label: "Credentials", icon: IconKey },
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];

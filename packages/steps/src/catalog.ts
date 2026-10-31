@@ -1,5 +1,6 @@
 import { type TargetKind } from "@ai-me/shared";
 import { z } from "zod";
+import { RecipeNameSchema } from "./recipe";
 
 /**
  * One step type in the catalog (README §2.3). The builder may only use catalog steps, and new capabilities are
@@ -109,14 +110,23 @@ const FilterCondition = z.object({
 
 const Selector = z.string().min(1).max(500);
 
-/** The steps available so far: data, LLM, gates and notifications (M2), email (M4), browser (M8). More browser and file steps join in M9–M11. */
+/** Where data.save and data.dedupe keep and look up items. */
+export const SAVED_LISTS = ["JobPosting"] as const;
+
+/** The steps available so far: data, LLM, gates and notifications (M2), email (M4), browser (M8), recipes and jobs (M9). More browser and file steps join in M10–M11. */
 export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.dedupe",
-    description: "Removes items whose `key` field repeats, keeping the first.",
+    description:
+      "Removes items whose `key` field repeats, keeping the first; with `against: JobPosting`, also the jobs saved " +
+      "before (by data.save), so each posting comes through once.",
     sideEffect: false,
     saasSafe: true,
-    input: z.object({ from: Items, key: z.string().min(1) }),
+    input: z.object({
+      from: Items,
+      key: z.string().min(1),
+      against: z.enum(SAVED_LISTS).optional().describe("also drop items whose key is already saved there (key: the posting's url)"),
+    }),
     output: z.object({ items: Items, duplicates: z.number().int() }),
   },
   {
@@ -126,6 +136,21 @@ export const CORE_STEPS: StepDefinition[] = [
     saasSafe: true,
     input: z.object({ items: Items, where: z.array(FilterCondition).min(1) }),
     output: z.object({ items: Items, removed: z.number().int() }),
+  },
+  {
+    type: "data.save",
+    description:
+      "Saves items as job postings (by `url`; title, company, location, description, score, scoreReason, source), " +
+      "for the Jobs page and later deduplication. A posting saved again keeps its first-seen date; `status` only moves " +
+      "forward (NEW → SKIPPED or SHORTLISTED; APPLIED stays).",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      items: Items,
+      into: z.enum(SAVED_LISTS).default("JobPosting"),
+      status: z.enum(["NEW", "SKIPPED", "SHORTLISTED"]).default("NEW"),
+    }),
+    output: z.object({ saved: z.number().int(), created: z.number().int(), skipped: z.number().int() }),
   },
   {
     type: "llm.classify",
@@ -317,6 +342,51 @@ export const CORE_STEPS: StepDefinition[] = [
       text: z.string(),
       signedIn: z.boolean().describe("it filled the sign-in form in this run"),
     }),
+  },
+  {
+    type: "browser.extract",
+    description:
+      "Reads a list (e.g. job postings) from a site with saved recipes (Recipes page), headless and without an LLM: " +
+      "every page up to the recipe's limit, each item's fields plus `source` (the recipe). A list param runs one " +
+      "search per value. Read-only. Fails clearly, and marks the recipe broken, when the page no longer matches it.",
+    sideEffect: false,
+    saasSafe: false,
+    input: z.object({
+      recipes: z.array(RecipeNameSchema).min(1).max(5).describe('saved recipes, e.g. ["dev.bg/search"]'),
+      params: z
+        .record(z.string(), z.union([z.string(), z.array(z.string()).min(1).max(10)]))
+        .default({})
+        .describe("the recipes' params; a list: one search per value"),
+      maxItems: z.number().int().min(1).max(500).default(200),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({ items: Items, pages: z.number().int() }),
+  },
+  {
+    type: "browser.teach",
+    description:
+      "Teach mode: opens `url` in the live browser; I bring it to the list to read and press Continue; the LLM " +
+      "proposes a recipe from the page, it is checked on the page (items outlined), and Continue saves it as the next " +
+      "version of `recipe`. Used once per site, not in scheduled pipelines.",
+    sideEffect: false,
+    headed: true,
+    llmOutput: true,
+    saasSafe: false,
+    input: z.object({
+      recipe: RecipeNameSchema,
+      url: z.url({ protocol: /^https?$/ }),
+      params: z
+        .record(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/), z.string().min(1).max(200))
+        .default({})
+        .describe('values in the list address that become params, e.g. { category: "net" }'),
+      fields: z
+        .array(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/))
+        .min(1)
+        .max(15)
+        .default(["url", "title", "company", "location", "posted"]),
+      hint: z.string().max(1000).optional().describe("what to read or avoid, for the LLM"),
+    }),
+    output: z.object({ recipe: z.string(), version: z.number().int().nullable(), url: z.string(), items: Items }),
   },
 ];
 

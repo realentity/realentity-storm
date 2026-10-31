@@ -15,7 +15,8 @@
     "keys:rotate": "tsx src/tools/rotate-keys.ts",
     "check:credentials": "tsx src/tools/check-credentials.ts",
     "eval:email": "tsx evals/email.eval.ts",
-    "eval:learning": "tsx evals/learning.eval.ts"
+    "eval:learning": "tsx evals/learning.eval.ts",
+    "eval:jobs": "tsx evals/jobs.eval.ts"
   },
   "dependencies": {
     "@ai-me/crypto": "workspace:*",

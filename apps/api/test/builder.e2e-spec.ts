@@ -283,7 +283,48 @@ describe("builder chat", () => {
     llm.answer(say("Hi"));
     await send(chat.chatId, "Second try");
     expect(llm.last.messages).toHaveLength(1);
-    expect(userText(llm.last)).toBe("Second try");
+    // The failed turn's recipe list never reached the builder: shown again.
+    expect(userText(llm.last)).toBe("<saved_recipes>\nnone yet\n</saved_recipes>\n\nSecond try");
+  });
+
+  it("M9: the builder sees the saved recipes in my message when they change; a chat keeps the system prompt it started with", async () => {
+    const chat = await newChat();
+    llm.answer(say("Which site?"));
+    await send(chat.chatId, "Find .NET jobs on dev.bg every morning");
+    expect(userText(llm.last)).toBe("<saved_recipes>\nnone yet\n</saved_recipes>\n\nFind .NET jobs on dev.bg every morning");
+    const started = llm.last.system;
+    expect((await db.client.builderChat.findUniqueOrThrow({ where: { builderChatId: chat.chatId } })).system).toBe(started);
+
+    await db.client.siteRecipe.create({
+      data: {
+        userId,
+        name: "dev.bg/search",
+        site: "dev.bg",
+        version: 1,
+        steps: {
+          url: "https://dev.bg/company/jobs/{category}/",
+          params: { category: { description: "a dev.bg category" } },
+          item: ".job-list-item",
+          fields: { url: { selector: "a", attr: "href", required: true } },
+        },
+      },
+    });
+    try {
+      llm.answer(say("Proposing"));
+      await send(chat.chatId, "dev.bg");
+      expect(userText(llm.last)).toBe("<saved_recipes>\n- dev.bg/search v1: params category (a dev.bg category)\n</saved_recipes>\n\ndev.bg");
+      llm.answer(say("Done"));
+      await send(chat.chatId, "Thanks");
+      expect(userText(llm.last)).toBe("Thanks");
+
+      // Earlier thinking is bound to the system prompt it was produced with: a later catalog doesn't replace it.
+      await db.client.builderChat.update({ where: { builderChatId: chat.chatId }, data: { system: "The prompt this chat started with" } });
+      llm.answer(say("Still here"));
+      await send(chat.chatId, "Again");
+      expect(llm.last.system).toBe("The prompt this chat started with");
+    } finally {
+      await db.client.siteRecipe.deleteMany();
+    }
   });
 
   it(`a turn that keeps calling tools stops after ${MAX_CALLS_PER_TURN} calls`, async () => {
