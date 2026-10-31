@@ -309,9 +309,39 @@ model Run {
   steps     Step[]
   proposals Proposal[]
   artifacts Artifact[]
+  takeovers Takeover[]
 
   @@index([userId, status])
   @@map("Runs")
+}
+
+/// The live browser waits for me (README §6): OPEN when the worker met a blocking state, TAKEN_OVER when I took over
+/// on my own; CONTINUED or ABORTED when I pressed the button; EXPIRED when nobody did in time or the worker restarted.
+enum TakeoverStatus {
+  OPEN
+  TAKEN_OVER
+  CONTINUED
+  ABORTED
+  EXPIRED
+}
+
+/// A pause of a headed step with its page kept open, for me to act in the live view.
+model Takeover {
+  takeoverId  String         @id @default(uuid()) @db.Uuid
+  runId       String         @db.Uuid
+  run         Run            @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  stepKey     String?
+  itemIndex   Int?
+  status      TakeoverStatus
+  /// Why: "CAPTCHA", "2FA prompt", "taken over", …
+  reason      String
+  /// The page it stopped on.
+  url         String?
+  requestedAt DateTime       @default(now())
+  resolvedAt  DateTime?
+
+  @@index([runId, status])
+  @@map("Takeovers")
 }
 
 model Step {
@@ -384,7 +414,12 @@ model Artifact {
   runId       String?  @db.Uuid
   run         Run?     @relation(fields: [runId], references: [runId], onDelete: SetNull)
   kind        String // screenshot, trace, download, upload, cv
+  /// The step that made it, if any.
+  stepKey     String?
+  itemIndex   Int?
+  /// Relative to the artifacts folder (ARTIFACTS_DIR).
   path        String
+  size        Int?
   mime        String?
   sha256      String?  @db.VarChar(64)
   dateCreated DateTime @default(now())

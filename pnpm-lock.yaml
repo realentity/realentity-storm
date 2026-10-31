@@ -33,6 +33,9 @@ catalogs:
     '@nestjs/throttler':
       specifier: ^6.4.0
       version: 6.7.1
+    '@novnc/novnc':
+      specifier: ^1.7.0
+      version: 1.7.0
     '@playwright/test':
       specifier: ^1.63.0
       version: 1.64.1
@@ -135,6 +138,9 @@ catalogs:
     pg-boss:
       specifier: 11.1.2
       version: 11.1.2
+    playwright:
+      specifier: ^1.63.0
+      version: 1.64.1
     prettier:
       specifier: ^3.4.2
       version: 3.9.10
@@ -366,6 +372,9 @@ importers:
       '@ai-me/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@novnc/novnc':
+        specifier: 'catalog:'
+        version: 1.7.0
       '@tabler/core':
         specifier: 'catalog:'
         version: 1.7.3
@@ -553,6 +562,9 @@ importers:
       nodemailer:
         specifier: 'catalog:'
         version: 10.3.1
+      playwright:
+        specifier: 'catalog:'
+        version: 1.64.1
       reflect-metadata:
         specifier: 'catalog:'
         version: 0.2.2
@@ -1955,6 +1967,9 @@ packages:
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
+
+  '@novnc/novnc@1.7.0':
+    resolution: {integrity: sha512-ucEJOx4T2avIRCleodk7YobZj5O2Ga2AeLfQ69A/yjG9HHba2+PDgwSkN3FttrmG+70ZGx21sElNFouK13RzyA==}
 
   '@opentelemetry/api@1.10.0':
     resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
@@ -6719,6 +6734,8 @@ snapshots:
       reflect-metadata: 0.2.2
 
   '@noble/hashes@1.8.0': {}
+
+  '@novnc/novnc@1.7.0': {}
 
   '@opentelemetry/api@1.10.0': {}
 

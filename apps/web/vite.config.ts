@@ -13,10 +13,20 @@ export default defineConfig(({ mode }) => {
   const host = process.env.API_HOST || rootEnv.API_HOST || "127.0.0.1";
   const api = `http://${host}:${process.env.API_PORT || rootEnv.API_PORT || 3000}`;
 
+  // The live view's websockify (README §6), when one runs locally; in production Caddy serves /vnc.
+  const vnc = `ws://127.0.0.1:${process.env.VNC_WS_PORT || rootEnv.VNC_WS_PORT || 6080}`;
+
   return {
     plugins: [react()],
     // ws: the live events socket (/api/events). The Host header is kept, so the api's same-origin check passes.
-    server: { host: "127.0.0.1", port: 5173, strictPort: true, proxy: { "/api": { target: api, ws: true } } },
-    build: { sourcemap: mode !== "production" },
+    server: {
+      host: "127.0.0.1",
+      port: 5173,
+      strictPort: true,
+      proxy: { "/api": { target: api, ws: true }, "/vnc": { target: vnc, ws: true, rewrite: (path) => path.replace(/^\/vnc/, "") } },
+    },
+    // noVNC (the live view) uses a top-level await.
+    build: { sourcemap: mode !== "production", target: "es2022" },
+    optimizeDeps: { esbuildOptions: { target: "es2022" } },
   };
 });

@@ -30,6 +30,7 @@
     "imapflow": "catalog:",
     "mailparser": "catalog:",
     "nodemailer": "catalog:",
+    "playwright": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
     "source-map-support": "catalog:",

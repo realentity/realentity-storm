@@ -10,6 +10,8 @@ import {
   type DryRunPipelineResponse,
   type KillSwitchView,
   type LearningView,
+  type LiveView,
+  type TakeoverView,
   type LoginRequest,
   type PipelineDetailView,
   type PipelineSummaryView,
@@ -57,7 +59,15 @@ export const api = {
   runs: {
     list: (filter: Partial<RunFilter> = {}) => request<RunSummaryView[]>("GET", `/runs${query(filter)}`),
     get: (runId: string) => request<RunDetailView>("GET", `/runs/${runId}`),
+    live: (runId: string) => request<LiveView>("GET", `/runs/${runId}/live`),
+    takeOver: (runId: string) => request<void>("POST", `/runs/${runId}/takeover`),
+    continue: (runId: string) => request<void>("POST", `/runs/${runId}/continue`),
+    abort: (runId: string) => request<void>("POST", `/runs/${runId}/abort`),
   },
+  /** Runs waiting for me in the live view. */
+  takeovers: () => request<(TakeoverView & { runId: string; pipelineName: string })[]>("GET", "/takeovers"),
+  /** A run's file (screenshot, trace, download): an address for <img> or a download link. */
+  artifactUrl: (artifactId: string) => `/api/artifacts/${artifactId}`,
   proposals: {
     list: (status: ProposalStatusName = "PENDING_REVIEW") => request<ProposalView[]>("GET", `/proposals${query({ status })}`),
     get: (proposalId: string) => request<ProposalView>("GET", `/proposals/${proposalId}`),

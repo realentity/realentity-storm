@@ -9,7 +9,7 @@ import { type z } from "zod";
 import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
 import { type MailConnector } from "../src/mail/mail-connector";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
-import { ExecutorRegistry } from "../src/runner/step-executor";
+import { ExecutorRegistry, NO_ATTENTION } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { coreSteps } from "../src/steps/core-steps";
 import { EmailFetchStep } from "../src/steps/email-steps";
@@ -370,5 +370,15 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
 });
 
 function baseContext(userId: string, pipelineId: string) {
-  return { runId: "r", userId, pipelineId, stepId: "s", stepKey: "fetch", itemIndex: null, dryRun: false, recordUsage: () => undefined };
+  return {
+    runId: "r",
+    userId,
+    pipelineId,
+    stepId: "s",
+    stepKey: "fetch",
+    itemIndex: null,
+    dryRun: false,
+    recordUsage: () => undefined,
+    attention: NO_ATTENTION,
+  };
 }

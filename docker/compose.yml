@@ -35,8 +35,12 @@ services:
       TZ: Europe/Sofia
       API_HOST: 0.0.0.0
       API_PORT: "3000"
+      ARTIFACTS_DIR: /data/artifacts
     depends_on:
       migrate: { condition: service_completed_successfully }
+    volumes:
+      # Screenshots, traces and downloads the worker stored: the api only reads them, to serve them to me.
+      - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts:ro
     healthcheck:
       test:
         ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
@@ -53,9 +57,17 @@ services:
     image: ai-me/worker:local
     depends_on:
       migrate: { condition: service_completed_successfully }
+    environment:
+      NODE_ENV: production
+      TZ: Europe/Sofia
+      ARTIFACTS_DIR: /data/artifacts
     volumes:
-      # Files the pipelines produce (M8+: screenshots, documents); in the app folder, so in the nightly config backup.
+      # Files the pipelines produce (screenshots, traces, downloads); in the app folder, so in the nightly config backup.
       - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts
+    # The browser stack (README §6): Chromium needs a large /dev/shm; tini reaps Chromium's and Xvfb's processes.
+    # Port 6080 (websockify, the live view) is reachable only on the compose network, through Caddy's /vnc.
+    shm_size: 1gb
+    init: true
     # Unhealthy when its heartbeat file is older than 2 minutes (it beats every 30 s); the api alerts on Telegram.
     healthcheck:
       test:
@@ -71,8 +83,8 @@ services:
       retries: 3
     # Time for the queue to hand back its jobs on stop; an interrupted step runs again on start (README §2.6).
     stop_grace_period: 60s
-    mem_limit: 1g
-    pids_limit: 256
+    mem_limit: 2g
+    pids_limit: 512
 
   web:
     build: { context: .., dockerfile: docker/Dockerfile, target: web }

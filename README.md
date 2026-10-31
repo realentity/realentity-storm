@@ -124,7 +124,7 @@ The builder can only use these. Each step type is a TypeScript class in the work
 | Group | Steps | Side effect? |
 | --- | --- | --- |
 | Email | `email.fetch`, `email.classify`, `email.draftReply`, `email.send` | `send` |
-| Browser | `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent` | `fillAndSubmit`, `upload`, `agent`* |
+| Browser | `browser.open`, `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent` | `fillAndSubmit`, `upload`, `agent`* |
 | LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize` | no |
 | Data | `data.dedupe`, `data.filter`, `data.save`, `data.lookup` | no (internal DB only) |
 | Files | `file.read`, `file.generate` (CV/PDF), `file.store` | no |
@@ -324,6 +324,15 @@ rfb.viewOnly = !takeover;   // watch-only until I press "Take over"
 
 During local development the worker simply runs with `headless: false`, so the browser opens on the dev machine and no Xvfb/noVNC is needed.
 
+**How it is built** ([apps/worker/src/browser](apps/worker/src/browser), [docker/worker-entrypoint.sh](docker/worker-entrypoint.sh)):
+
+- **Browsers:** one shared headless Chromium (a few contexts at once) and one headed slot, launched for the step and closed after. Every step gets a fresh context: the only login it has is the site's sealed storageState, loaded into memory and saved back after the step (credential `session.<host>`, kind `STORAGE_STATE`, bound to that host).
+- **`browser.open`** (the first browser step; M9–M11 add the recipe and agent steps on the same layer): opens a page, signs in when it shows a password field (username and password on one page, or one after the other as SSO providers do), waits for a selector, returns the page text. `headed: true` puts it in the live view.
+- **Blocking states:** a CAPTCHA (reCAPTCHA, hCaptcha, Turnstile frames and markers), a 2FA prompt, a sign-in that didn't go through, a selector that doesn't appear. The step then waits **with the page open**: a `Takeover` row (`OPEN`, or `TAKEN_OVER` when I pressed Take over, picked up at the step's next safe point), the run shows `WAITING_FOR_USER` (no other job can claim it meanwhile), the inbox lists it and Telegram says "AI ME needs you". Continue goes on from the page as I left it; Abort stops the run; nobody within `TAKEOVER_TIMEOUT_MINUTES` fails the step; the kill switch stops it. After a restart the page is gone: the takeover expires and the step runs again. A headless step can't be taken over: it fails with the reason.
+- **Live view security:** Caddy lets `/vnc` through only for a signed-in session (`forward_auth` to the api), and x11vnc (on localhost inside the container, reached through websockify) asks for its own password. The api hands out the **view-only** one (x11vnc ignores input on it) while the worker acts, and the full one only while a takeover is open. Checked in the real container: typing with the view-only password changes nothing.
+- **Nothing secret in what it keeps:** the page text and any snapshot for the LLM have every filled value masked (also URL-, form- and JSON-encoded); screenshots cover password fields and the fields it filled; the Playwright trace is rewritten with credential values, cookie values and stored tokens masked, and dropped if anything is still found. storageState is never written to a file.
+- **Files:** screenshots, traces and accepted downloads are `Artifact`s under `ARTIFACTS_DIR` by run, served to me by the api (images inline, everything else as a download, with `Content-Security-Policy: sandbox`). Downloads go to a quarantine folder first: kept only within `DOWNLOAD_MAX_MB` and when their content (magic bytes) matches an allowed type for their extension (PDF, images, Office documents, text); anything else is deleted.
+
 ---
 
 ## 7. Secrets: encrypted in PostgreSQL
@@ -382,14 +391,14 @@ There's no fine-tuning. Everything learned is visible and editable.
 The schema is [packages/db/prisma/schema.prisma](packages/db/prisma/schema.prisma) (Prisma 7.10.0, PostgreSQL 17 + `pgvector` + `citext`). Conventions:
 
 - Primary keys are named `<entity>Id` (uuid); timestamps are `dateCreated` / `dateUpdated`; tables are PascalCase plural (`@@map("Users")`).
-- Every user-owned table carries a non-null `userId` from day one (single user for now; Postgres row-level security later, see §17). Child tables owned through their parent (`PipelineVersions`, `Steps`, `Decisions`, `BuilderMessages`) don't; an integration test enforces this.
+- Every user-owned table carries a non-null `userId` from day one (single user for now; Postgres row-level security later, see §17). Child tables owned through their parent (`PipelineVersions`, `Steps`, `Decisions`, `BuilderMessages`, `Takeovers`) don't; an integration test enforces this.
 - `Credential.credentialId` is generated before insert because it is the AAD of the encrypted value (§7).
 
 | Area | Models |
 | --- | --- |
 | Identity | `User`, `UserSession` (cookie token stored as SHA-256 only) |
 | Pipelines | `Pipeline` (`enabled`: on its schedule; `essential`: exempt from the budget), `PipelineVersion` (`definition`, compiled `policy`, the `builderChatId` it came from), `BuilderChat` (model, tokens used), `BuilderMessage` (transcript, proposal, cost), `SiteRecipe` |
-| Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Artifact` |
+| Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Takeover` (the live browser waiting for me), `Artifact` (screenshots, traces, downloads) |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
 | Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
 | Jobs | `JobPosting`, `Application` |
@@ -598,9 +607,13 @@ APP_ADMIN_PASSWORD_HASH=
 APP_TOTP_SECRET=
 SESSION_TTL_HOURS=168
 
-# Browser / live view
-DISPLAY=:99
-NOVNC_PASSWORD=
+# Browser / live view (the worker image sets DISPLAY=:99 and ARTIFACTS_DIR=/data/artifacts)
+# x11vnc's passwords: full control, and view-only (input ignored); VNC uses the first 8 characters. Empty: no live view
+VNC_PASSWORD=
+VNC_VIEW_PASSWORD=
+# A run waiting for me in the live view gives up after this long; downloads over this size are rejected
+TAKEOVER_TIMEOUT_MINUTES=30
+DOWNLOAD_MAX_MB=25
 # Headed runs are always one at a time (one display): the runs-headed queue is a pg-boss singleton queue
 
 # Notifications

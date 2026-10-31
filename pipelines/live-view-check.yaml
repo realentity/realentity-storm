@@ -1,0 +1,12 @@
+# M8's check on the server (docs/deployment.md, "Live browser"): the watchable browser opens Google's public reCAPTCHA
+# demo, sees the CAPTCHA and hands the page to me. In the run's live view: solve the CAPTCHA, press the page's Submit
+# (the CAPTCHA is gone once it says "Verification Success"), then Continue. Read-only: it signs in nowhere.
+name: Live view check
+description: Opens a CAPTCHA demo in the live browser; I solve it, submit, and press Continue.
+steps:
+  - id: open
+    type: browser.open
+    with:
+      url: https://www.google.com/recaptcha/api2/demo
+      headed: true
+      timeoutSeconds: 60

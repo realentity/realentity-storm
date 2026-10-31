@@ -52,6 +52,19 @@ export const ServerEnvSchema = z
     OPENAI_API_KEY: optional(z.string()),
     EMBEDDINGS_MODEL: z.enum(["text-embedding-3-large", "text-embedding-3-small"]).default("text-embedding-3-large"),
 
+    /**
+     * Browser (README §6). Files the pipelines produce (screenshots, traces, downloads) live here; the worker writes,
+     * the api serves them to me.
+     */
+    ARTIFACTS_DIR: z.string().min(1).default("data/artifacts"),
+    /** Live view: x11vnc's passwords, full control and view-only (VNC uses the first 8 characters). Unset: no live view. */
+    VNC_PASSWORD: optional(z.string().min(8)),
+    VNC_VIEW_PASSWORD: optional(z.string().min(8)),
+    /** A run waiting for me in the live view gives up after this long (its step fails). */
+    TAKEOVER_TIMEOUT_MINUTES: z.coerce.number().int().min(1).max(120).default(30),
+    /** Downloads larger than this are rejected in quarantine. */
+    DOWNLOAD_MAX_MB: z.coerce.number().int().min(1).max(500).default(25),
+
     /** notify.telegram: messages go to this chat only. */
     TELEGRAM_BOT_TOKEN: optional(z.string().regex(/^\d+:[\w-]{30,}$/, "a bot token from @BotFather (123456:ABC...)")),
     TELEGRAM_CHAT_ID: optional(z.string().regex(/^-?\d+$/, "a numeric chat id")),

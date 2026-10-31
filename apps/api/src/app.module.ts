@@ -11,6 +11,7 @@ import { PrismaService } from "./database/prisma.service";
 import { HealthController } from "./health/health.controller";
 import { WorkerWatchdog } from "./health/worker-watchdog";
 import { LearningModule } from "./learning/learning.module";
+import { LiveModule } from "./live/live.module";
 import { PipelinesModule } from "./pipelines/pipelines.module";
 import { ProposalsModule } from "./proposals/proposals.module";
 import { QueueModule } from "./queue/queue.module";
@@ -39,6 +40,7 @@ export class CoreModule {}
     ControlsModule,
     LearningModule,
     BuilderModule,
+    LiveModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }, WorkerWatchdog],

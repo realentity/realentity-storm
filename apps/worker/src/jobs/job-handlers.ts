@@ -16,6 +16,7 @@ import { Logger } from "@nestjs/common";
 import { type Learning } from "../learning/learning";
 import { type Reflector } from "../learning/reflection";
 import { type PipelineRunner } from "../runner/pipeline-runner";
+import { type TakeoverDesk } from "../runner/takeovers";
 
 export interface ConsumeOptions {
   /** Headless runs advanced at once by this process. Headed runs are always one at a time. */
@@ -37,6 +38,8 @@ export class JobHandlers {
     /** README §8; the runner's tests leave them out. */
     private readonly learning?: Learning,
     private readonly reflector?: Reflector,
+    /** README §6: open takeovers lost their page in a restart. */
+    private readonly takeovers?: TakeoverDesk,
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -110,6 +113,7 @@ export class JobHandlers {
    * queued run gets a job again (a duplicate is harmless).
    */
   async recover(): Promise<void> {
+    await this.takeovers?.recover();
     const interrupted = await this.runner.recoverInterrupted();
     if (interrupted.length > 0) this.logger.log(`Resuming ${interrupted.length} interrupted run(s)`);
     for (const run of await this.prisma.run.findMany({ where: { status: "QUEUED" } })) {

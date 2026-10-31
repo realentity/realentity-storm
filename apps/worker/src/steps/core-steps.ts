@@ -3,6 +3,7 @@ import { type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { type StepLearning } from "../learning/learning";
 import { type MailConnector } from "../mail/mail-connector";
 import { type StepExecutor } from "../runner/step-executor";
+import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
 import { DedupeStep, FilterStep } from "./data-steps";
 import { DigestStep } from "./digest-step";
 import { emailSteps } from "./email-steps";
@@ -18,6 +19,8 @@ export interface CoreStepDependencies {
   prisma: PrismaClient;
   /** Active rules and few-shot examples (README §8); none in tests unless given. */
   learning?: StepLearning;
+  /** Browser steps (README §6); left out where no browser is needed. */
+  browser?: BrowserDependencies;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
@@ -33,5 +36,6 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     telegram,
     new DigestStep(deps.prisma, telegram),
     ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router, learning: deps.learning }),
+    ...(deps.browser ? [new BrowserOpenStep(deps.browser)] : []),
   ];
 }

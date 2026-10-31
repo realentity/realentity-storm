@@ -1,4 +1,4 @@
-import { type ProposalStatusName, type RunStatusName, type StepStatusName } from "./runs-api";
+import { type ProposalStatusName, type RunStatusName, type StepStatusName, type TakeoverStatusName } from "./runs-api";
 
 /** The WebSocket the web app listens on (same origin, session cookie). */
 export const EVENTS_PATH = "/api/events";
@@ -14,5 +14,7 @@ export type AppEvent =
   | { type: "killSwitch"; engaged: boolean }
   /** Rules, pipeline suggestions or a reflection changed (the Rules page). */
   | { type: "learning" }
+  /** A headed run needs me, or I took over, continued or aborted it (README §6). */
+  | { type: "takeover"; runId: string; status: TakeoverStatusName }
   /** A builder chat got a message or saved a proposal. */
   | { type: "builder"; chatId: string };

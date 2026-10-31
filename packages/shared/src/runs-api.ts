@@ -141,8 +141,54 @@ export interface StepUsageView {
 export interface RunDetailView extends RunSummaryView {
   /** LLM cost of the whole run. */
   costUsd: number;
+  /** Uses the headed browser: it can be watched in the live view. */
+  headed: boolean;
   steps: RunStepView[];
   proposals: ProposalView[];
+  /** The live browser waiting for me now, if it is. */
+  takeover: TakeoverView | null;
+  artifacts: ArtifactView[];
+}
+
+export const TAKEOVER_STATUSES = ["OPEN", "TAKEN_OVER", "CONTINUED", "ABORTED", "EXPIRED"] as const;
+export type TakeoverStatusName = (typeof TAKEOVER_STATUSES)[number];
+
+export interface TakeoverView {
+  takeoverId: string;
+  /** OPEN: the worker needs me; TAKEN_OVER: I took over. Both wait for Continue or Abort. */
+  status: TakeoverStatusName;
+  reason: string;
+  stepKey: string | null;
+  itemIndex: number | null;
+  url: string | null;
+  requestedAt: string;
+  /** When the run gives up waiting. */
+  expiresAt: string;
+}
+
+export interface ArtifactView {
+  artifactId: string;
+  kind: string;
+  stepKey: string | null;
+  itemIndex: number | null;
+  mime: string | null;
+  size: number | null;
+  dateCreated: string;
+}
+
+/**
+ * The live view of a run (README §6): where noVNC connects and with which password. The view-only password until I
+ * take over (x11vnc ignores input on it); the full one while the run waits for me.
+ */
+export interface LiveView {
+  /** VNC passwords are configured (VNC_PASSWORD, VNC_VIEW_PASSWORD). */
+  available: boolean;
+  /** The run is using the headed browser right now. */
+  active: boolean;
+  /** WebSocket path on this origin (behind the session check). */
+  path: string;
+  password: string | null;
+  control: boolean;
 }
 
 // #endregion

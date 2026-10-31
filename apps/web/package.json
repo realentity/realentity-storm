@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@ai-me/shared": "workspace:*",
+    "@novnc/novnc": "catalog:",
     "@tabler/core": "catalog:",
     "@tabler/icons-react": "catalog:",
     "react": "catalog:",

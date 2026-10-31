@@ -16,8 +16,11 @@ export interface StepDefinition {
   acceptsCredentials?: boolean;
   /** Usable in the multi-user product: no stored site passwords, no restricted scopes (README §17). */
   saasSafe: boolean;
-  /** Drives the headed browser: runs containing it are serialized (one virtual display, README §6). */
-  headed?: boolean;
+  /**
+   * Drives the headed browser: runs containing it are serialized (one virtual display, README §6). "input": only when
+   * the step's `headed` parameter is true.
+   */
+  headed?: boolean | "input";
   /** Its output may contain text an LLM wrote: a side-effect target can never come from it (README §2.2). */
   llmOutput?: boolean;
   /**
@@ -63,8 +66,11 @@ export class StepCatalog {
   }
 
   /** Whether a pipeline needs the headed browser for any of its steps. */
-  needsHeaded(steps: readonly { type: string }[]): boolean {
-    return steps.some((step) => this.get(step.type)?.headed === true);
+  needsHeaded(steps: readonly { type: string; with?: Record<string, unknown> }[]): boolean {
+    return steps.some((step) => {
+      const headed = this.get(step.type)?.headed;
+      return headed === true || (headed === "input" && step.with?.headed === true);
+    });
   }
 }
 
@@ -101,7 +107,9 @@ const FilterCondition = z.object({
   value: z.unknown(),
 });
 
-/** The steps available so far: data, LLM, gates and notifications (M2), email (M4). Browser and file steps join in M8–M11. */
+const Selector = z.string().min(1).max(500);
+
+/** The steps available so far: data, LLM, gates and notifications (M2), email (M4), browser (M8). More browser and file steps join in M9–M11. */
 export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.dedupe",
@@ -276,6 +284,39 @@ export const CORE_STEPS: StepDefinition[] = [
       references: z.array(z.string()).max(100).optional(),
     }),
     output: z.object({ messageId: z.string(), accepted: z.array(z.string()) }),
+  },
+  {
+    type: "browser.open",
+    description:
+      "Opens a page in the browser and returns its text; can sign in with a stored credential first (kept signed in " +
+      "between runs). Read-only: it submits nothing but the sign-in. Headed runs can be watched live, and I take over " +
+      "when it meets a CAPTCHA, a 2FA prompt or a page it doesn't recognize.",
+    sideEffect: false,
+    acceptsCredentials: true,
+    headed: "input",
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      /** The watchable browser (live view): for sign-ins and anything I may have to take over. */
+      headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
+      login: z
+        .object({
+          credential: z.string().regex(/^\{\{\s*cred:[a-z0-9][a-z0-9._-]{0,63}\s*\}\}$/, 'a credential reference, e.g. "{{cred:jobs-bg}}"'),
+          username: Selector.optional().describe("the username field; default: the first email/text field of the sign-in form"),
+          password: Selector.optional().describe("default: the password field"),
+          submit: Selector.optional().describe("default: the form's submit button"),
+        })
+        .optional()
+        .describe("signs in when the page shows a password field; only on the credential's allowed hosts"),
+      waitFor: Selector.optional().describe("the page is ready when this appears; if it doesn't, I take over"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({
+      url: z.string(),
+      title: z.string(),
+      text: z.string(),
+      signedIn: z.boolean().describe("it filled the sign-in form in this run"),
+    }),
   },
 ];
 

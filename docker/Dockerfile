@@ -32,9 +32,18 @@ CMD ["node", "dist/main.js"]
 FROM base AS worker
 WORKDIR /app
 COPY --from=build --chown=node:node /out/worker .
-ENV NODE_ENV=production
+# The browser stack (README §6): Playwright's Chromium with its system libraries, a virtual display (Xvfb + fluxbox),
+# and the live view (x11vnc on localhost, websockify on 6080 for noVNC). DejaVu for Cyrillic pages.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN node node_modules/playwright/cli.js install --with-deps chromium && \
+    apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc websockify fonts-dejavu-core && \
+    rm -rf /var/lib/apt/lists/*
+COPY --chmod=755 docker/worker-entrypoint.sh /usr/local/bin/worker-entrypoint
+# HOME on the tmpfs: fluxbox and Chromium write there; the image itself is read-only.
+ENV NODE_ENV=production DISPLAY=:99 HOME=/tmp ARTIFACTS_DIR=/data/artifacts
 USER node
-CMD ["node", "dist/main.js"]
+EXPOSE 6080
+CMD ["worker-entrypoint"]
 
 # The full workspace: the prisma CLI and the seed are dev tools.
 FROM build AS migrate

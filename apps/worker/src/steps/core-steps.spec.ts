@@ -1,7 +1,7 @@
 import { emptyUsage, LlmError, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@ai-me/llm";
 import { defaultCatalog } from "@ai-me/steps";
 import { type z } from "zod";
-import { type StepContext } from "../runner/step-executor";
+import { NO_ATTENTION, type StepContext } from "../runner/step-executor";
 import { DedupeStep, FilterStep } from "./data-steps";
 import { ClassifyStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
 import { TelegramStep } from "./telegram-step";
@@ -23,6 +23,7 @@ function context(dryRun = false): StepContext & { usage: LlmUsage[] } {
     dryRun,
     usage,
     recordUsage: (u) => usage.push(u),
+    attention: NO_ATTENTION,
   };
 }
 

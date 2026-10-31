@@ -1,8 +1,17 @@
-import { type Prisma } from "@ai-me/db";
+import { type Prisma, type Takeover } from "@ai-me/db";
 import { JobQueue } from "@ai-me/queue";
-import { type CompiledDefinition, type RunDetailView, type RunFilter, type RunSummaryView, type StepUsageView } from "@ai-me/shared";
+import {
+  type CompiledDefinition,
+  type RunDetailView,
+  type RunFilter,
+  type RunSummaryView,
+  type ServerEnv,
+  type StepUsageView,
+  type TakeoverView,
+} from "@ai-me/shared";
 import { StepCatalog } from "@ai-me/steps";
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { SERVER_ENV } from "../config/server-env";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
@@ -22,6 +31,7 @@ export class RunsService {
     private readonly controls: ControlsService,
     private readonly queue: JobQueue,
     private readonly events: EventsService,
+    @Inject(SERVER_ENV) private readonly env: ServerEnv,
   ) {}
 
   /** A run of the pipeline's current version. A dry run proposes but never executes a side effect. */
@@ -86,13 +96,27 @@ export class RunsService {
         ...RUN_INCLUDE,
         steps: { orderBy: [{ startedAt: { sort: "asc", nulls: "last" } }, { itemIndex: "asc" }] },
         proposals: { include: PROPOSAL_INCLUDE, orderBy: [{ dateCreated: "asc" }, { itemIndex: "asc" }] },
+        takeovers: { where: { status: { in: ["OPEN", "TAKEN_OVER"] } }, orderBy: { requestedAt: "desc" }, take: 1 },
+        artifacts: { orderBy: { dateCreated: "asc" } },
       },
     });
     if (!run) throw new NotFoundException();
     const usage = run.steps.map((s) => stepUsage(s.llmUsage));
+    const takeover = run.takeovers[0];
     return {
       ...runSummary(run),
       costUsd: Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000,
+      headed: run.headed,
+      takeover: takeover ? takeoverView(takeover, this.env.TAKEOVER_TIMEOUT_MINUTES) : null,
+      artifacts: run.artifacts.map((a) => ({
+        artifactId: a.artifactId,
+        kind: a.kind,
+        stepKey: a.stepKey,
+        itemIndex: a.itemIndex,
+        mime: a.mime,
+        size: a.size,
+        dateCreated: a.dateCreated.toISOString(),
+      })),
       steps: run.steps.map((s, index) => ({
         stepId: s.stepId,
         stepKey: s.stepKey,
@@ -109,6 +133,19 @@ export class RunsService {
       proposals: run.proposals.map(proposalView),
     };
   }
+}
+
+export function takeoverView(takeover: Takeover, timeoutMinutes: number): TakeoverView {
+  return {
+    takeoverId: takeover.takeoverId,
+    status: takeover.status,
+    reason: takeover.reason,
+    stepKey: takeover.stepKey,
+    itemIndex: takeover.itemIndex,
+    url: takeover.url,
+    requestedAt: takeover.requestedAt.toISOString(),
+    expiresAt: new Date(takeover.requestedAt.getTime() + timeoutMinutes * 60_000).toISOString(),
+  };
 }
 
 function dayAfter(day: string): Date {

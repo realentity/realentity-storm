@@ -13,7 +13,8 @@ import { type StepCatalog, type StepDefinition } from "@ai-me/steps";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
 import { RunValues, sourceOf, type ItemScope } from "./run-values";
-import { type ExecutorRegistry, type StepContext } from "./step-executor";
+import { NO_ATTENTION, RunStopped, type ExecutorRegistry, type StepContext } from "./step-executor";
+import { type TakeoverDesk } from "./takeovers";
 
 /** Where the runner reports progress (the web app's live updates). Must not throw; a lost event only delays a refresh. */
 export type EventSink = (userId: string, event: AppEvent) => Promise<void>;
@@ -74,6 +75,8 @@ export class PipelineRunner {
     private readonly executors: ExecutorRegistry,
     private readonly controls: RunControls = new RunControls(prisma),
     private readonly events: EventSink = noEvents,
+    /** Headed steps pausing for me; without it, a step that needs me fails. */
+    private readonly takeovers?: TakeoverDesk,
   ) {}
 
   async start(pipelineVersionId: string, options: StartOptions): Promise<string> {
@@ -99,9 +102,10 @@ export class PipelineRunner {
    */
   async advance(runId: string): Promise<RunStatus> {
     for (;;) {
-      // Claim the run, so two workers (or a retried job) never advance it at the same time.
+      // Claim the run, so two workers (or a retried job) never advance it at the same time. A run waiting in the
+      // live view is still being advanced (its step holds the page): not claimable.
       const claimed = await this.prisma.run.updateMany({
-        where: { runId, status: { in: ["QUEUED", "WAITING_FOR_USER"] } },
+        where: { runId, status: { in: ["QUEUED", "WAITING_FOR_USER"] }, takeovers: { none: { status: { in: ["OPEN", "TAKEN_OVER"] } } } },
         data: { status: "RUNNING", resumeAt: null },
       });
       if (claimed.count === 0) return (await this.prisma.run.findUniqueOrThrow({ where: { runId } })).status;
@@ -308,6 +312,10 @@ export class PipelineRunner {
         await this.finish(state, running, output, usage);
         return { kind: "done", output };
       } catch (error) {
+        if (error instanceof RunStopped) {
+          await this.fail(state, step, running, scope, error.message, usage);
+          return { kind: "stopped", reason: error.message };
+        }
         lastError = error;
       }
     }
@@ -521,6 +529,15 @@ export class PipelineRunner {
       itemIndex: row.itemIndex,
       dryRun: state.dryRun,
       recordUsage,
+      attention: this.takeovers
+        ? this.takeovers.for({
+            runId: state.runId,
+            userId: state.userId,
+            pipelineId: state.controlled.pipelineId,
+            stepKey: row.stepKey,
+            itemIndex: row.itemIndex,
+          })
+        : NO_ATTENTION,
     };
   }
 

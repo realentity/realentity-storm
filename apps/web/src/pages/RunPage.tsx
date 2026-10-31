@@ -1,6 +1,7 @@
 import { type RunDetailView, type RunStepView } from "@ai-me/shared";
 import { Fragment, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { LiveView } from "../components/LiveView";
 import { ErrorAlert, Json, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
@@ -16,7 +17,8 @@ export function RunPage() {
     () => api.runs.get(runId),
     [runId],
     (signal) =>
-      ((signal.type === "run" || signal.type === "step" || signal.type === "proposal") && signal.runId === runId) ||
+      ((signal.type === "run" || signal.type === "step" || signal.type === "proposal" || signal.type === "takeover") &&
+        signal.runId === runId) ||
       signal.type === "killSwitch",
   );
   if (!run.data) return run.error ? <ErrorAlert error={run.error} /> : <Loading />;
@@ -50,9 +52,52 @@ export function RunPage() {
         <div className={`alert ${r.status === "ABORTED" || r.status === "FAILED" ? "alert-warning" : "alert-info"}`}>{r.summary}</div>
       )}
       {r.resumeAt && <div className="alert alert-info">Held back by a rate limit; continues {formatDateTime(r.resumeAt)}.</div>}
+      <LiveView run={r} />
       {r.proposals.length > 0 && <Proposals run={r} />}
       <Timeline steps={r.steps} />
+      {r.artifacts.length > 0 && <Artifacts run={r} />}
     </>
+  );
+}
+
+/** Screenshots as thumbnails; traces (redacted) and downloads as files. */
+function Artifacts({ run }: { run: RunDetailView }) {
+  const label = (a: RunDetailView["artifacts"][number]) => `${a.stepKey ?? ""}${a.itemIndex !== null ? ` #${a.itemIndex + 1}` : ""}`;
+  const shots = run.artifacts.filter((a) => a.kind === "screenshot");
+  const files = run.artifacts.filter((a) => a.kind !== "screenshot");
+  return (
+    <div className="card mt-3" data-testid="artifacts">
+      <div className="card-header">
+        <h3 className="card-title">Files</h3>
+      </div>
+      {shots.length > 0 && (
+        <div className="card-body d-flex flex-wrap gap-3">
+          {shots.map((a) => (
+            <a key={a.artifactId} href={api.artifactUrl(a.artifactId)} target="_blank" rel="noreferrer" className="text-center small">
+              <img
+                src={api.artifactUrl(a.artifactId)}
+                alt={`Screenshot of ${label(a)}`}
+                style={{ maxWidth: 320 }}
+                className="border rounded d-block mb-1"
+              />
+              {label(a)}
+            </a>
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="list-group list-group-flush">
+          {files.map((a) => (
+            <a key={a.artifactId} href={api.artifactUrl(a.artifactId)} className="list-group-item list-group-item-action d-flex gap-2">
+              <span className="badge bg-secondary-lt">{a.kind}</span>
+              <span>{label(a)}</span>
+              {a.kind === "trace" && <span className="text-secondary small">open with npx playwright show-trace</span>}
+              <span className="ms-auto text-secondary small">{a.size !== null ? `${Math.max(1, Math.round(a.size / 1024))} KB` : ""}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

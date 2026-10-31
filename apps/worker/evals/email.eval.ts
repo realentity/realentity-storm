@@ -4,7 +4,7 @@ import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@ai-me/step
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { type StepContext } from "../src/runner/step-executor";
+import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { DraftReplyStep, emailBlock, EmailClassifyStep } from "../src/steps/email-steps";
 import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
 
@@ -42,6 +42,7 @@ async function main(): Promise<void> {
     itemIndex: null,
     dryRun: true,
     recordUsage: (more) => (usage = addUsage(usage, more)),
+    attention: NO_ATTENTION,
   };
   const report: Record<string, unknown> = { date: new Date().toISOString(), emails: EMAILS.length };
 

@@ -18,6 +18,6 @@ import { KeyRotation } from "./key-rotation";
       useFactory: (db: PrismaService, keys: KeyRing) => new KeyRotation(db.client, keys),
     },
   ],
-  exports: [CredentialVault, KeyRotation],
+  exports: [KeyRing, CredentialVault, KeyRotation],
 })
 export class SecretsModule {}

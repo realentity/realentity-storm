@@ -1,11 +1,16 @@
 import { ClaudeBatches, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmClient } from "@ai-me/llm";
 import { JobQueue, publishEvent } from "@ai-me/queue";
-import { type ServerEnv } from "@ai-me/shared";
+import { KeyRing } from "@ai-me/crypto";
+import { sendTelegram, type ServerEnv } from "@ai-me/shared";
 import { defaultCatalog, StepCatalog } from "@ai-me/steps";
 import { Injectable, Logger, Module, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
+import { ArtifactStore } from "../browser/artifact-store";
+import { BrowserPool } from "../browser/browser-pool";
+import { SessionStore } from "../browser/session-store";
 import { PipelineRunner, type EventSink } from "../runner/pipeline-runner";
+import { TakeoverDesk } from "../runner/takeovers";
 import { RunControls } from "../runner/run-controls";
 import { ExecutorRegistry, type StepExecutor } from "../runner/step-executor";
 import { ImapSmtpConnector } from "../mail/imap-smtp-connector";
@@ -31,6 +36,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
   constructor(
     private readonly handlers: JobHandlers,
     private readonly queue: JobQueue,
+    private readonly browsers: BrowserPool,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -42,6 +48,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
   /** First shutdown phase: active jobs finish (or fail back to the queue) while the database is still open. */
   async onModuleDestroy(): Promise<void> {
     await this.queue.stop();
+    await this.browsers.close();
   }
 }
 
@@ -77,11 +84,28 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       useFactory: (db: PrismaService, env: ServerEnv, catalog: StepCatalog) =>
         new Learning(db.client, catalog, env.OPENAI_API_KEY ? new OpenAiEmbeddings(env.OPENAI_API_KEY, env.EMBEDDINGS_MODEL) : null),
     },
+    { provide: BrowserPool, useFactory: () => new BrowserPool() },
+    { provide: ArtifactStore, inject: [SERVER_ENV], useFactory: (env: ServerEnv) => new ArtifactStore(env.ARTIFACTS_DIR) },
+    {
+      provide: SessionStore,
+      inject: [PrismaService, KeyRing, CredentialVault],
+      useFactory: (db: PrismaService, keys: KeyRing, vault: CredentialVault) => new SessionStore(db.client, keys, vault),
+    },
     {
       provide: STEP_EXECUTORS,
-      inject: [PrismaService, SERVER_ENV, CredentialVault, ModelRouter, Learning],
-      useFactory: (db: PrismaService, env: ServerEnv, vault: CredentialVault, router: ModelRouter, learning: Learning): StepExecutor[] => {
+      inject: [PrismaService, SERVER_ENV, CredentialVault, ModelRouter, Learning, BrowserPool, SessionStore, ArtifactStore],
+      useFactory: (
+        db: PrismaService,
+        env: ServerEnv,
+        vault: CredentialVault,
+        router: ModelRouter,
+        learning: Learning,
+        pool: BrowserPool,
+        sessions: SessionStore,
+        artifacts: ArtifactStore,
+      ): StepExecutor[] => {
         return coreSteps({
+          browser: { prisma: db.client, pool, sessions, vault, artifacts },
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
           router,
           telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },
@@ -119,10 +143,26 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       useFactory: (db: PrismaService, env: ServerEnv) => new RunControls(db.client, { monthlyBudgetUsd: env.LLM_MONTHLY_BUDGET_USD }),
     },
     {
+      provide: TakeoverDesk,
+      inject: [PrismaService, SERVER_ENV, EVENT_SINK],
+      useFactory: (db: PrismaService, env: ServerEnv, events: EventSink) =>
+        new TakeoverDesk(db.client, events, {
+          timeoutMs: env.TAKEOVER_TIMEOUT_MINUTES * 60_000,
+          appOrigin: env.APP_ORIGIN,
+          notify: (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text),
+        }),
+    },
+    {
       provide: PipelineRunner,
-      inject: [PrismaService, StepCatalog, ExecutorRegistry, RunControls, EVENT_SINK],
-      useFactory: (db: PrismaService, catalog: StepCatalog, executors: ExecutorRegistry, controls: RunControls, events: EventSink) =>
-        new PipelineRunner(db.client, catalog, executors, controls, events),
+      inject: [PrismaService, StepCatalog, ExecutorRegistry, RunControls, EVENT_SINK, TakeoverDesk],
+      useFactory: (
+        db: PrismaService,
+        catalog: StepCatalog,
+        executors: ExecutorRegistry,
+        controls: RunControls,
+        events: EventSink,
+        takeovers: TakeoverDesk,
+      ) => new PipelineRunner(db.client, catalog, executors, controls, events, takeovers),
     },
     {
       provide: Reflector,
@@ -148,9 +188,15 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector],
-      useFactory: (db: PrismaService, runner: PipelineRunner, queue: JobQueue, learning: Learning, reflector: Reflector) =>
-        new JobHandlers(db.client, runner, queue, learning, reflector),
+      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk],
+      useFactory: (
+        db: PrismaService,
+        runner: PipelineRunner,
+        queue: JobQueue,
+        learning: Learning,
+        reflector: Reflector,
+        takeovers: TakeoverDesk,
+      ) => new JobHandlers(db.client, runner, queue, learning, reflector, takeovers),
     },
     JobsLifecycle,
   ],

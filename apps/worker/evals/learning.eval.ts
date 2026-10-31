@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NO_LEARNING, type StepLearning } from "../src/learning/learning";
 import { REFLECTION_SYSTEM, ReflectionAnswerSchema, reflectionPrompt, type ReflectedDecision } from "../src/learning/reflection";
-import { type StepContext } from "../src/runner/step-executor";
+import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { emailBlock } from "../src/steps/email-block";
 import { DraftReplyStep } from "../src/steps/email-steps";
 import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     itemIndex: null,
     dryRun: true,
     recordUsage: (more) => (usage = addUsage(usage, more)),
+    attention: NO_ATTENTION,
   };
 
   const replies = (lang: LabeledEmail["lang"]) => EMAILS.filter((e) => e.label === "reply" && e.lang === lang);

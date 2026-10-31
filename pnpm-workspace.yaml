@@ -87,3 +87,5 @@ catalog:
   "@tabler/icons-react": ^3.48.0
   # browser tests (apps/web-e2e)
   "@playwright/test": ^1.63.0
+  playwright: ^1.63.0
+  "@novnc/novnc": ^1.7.0

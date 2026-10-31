@@ -1,6 +1,6 @@
 import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { TestEnvironment } from "@ai-me/testing";
-import { type StepContext } from "../src/runner/step-executor";
+import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { DigestStep } from "../src/steps/digest-step";
 import { createVersion } from "./support/test-steps";
 
@@ -92,6 +92,7 @@ describe("notify.digest", () => {
       itemIndex: null,
       dryRun: false,
       recordUsage: () => undefined,
+      attention: NO_ATTENTION,
     };
     const result = (await step.execute({ hours: 24 }, context)) as { sent: boolean; text: string };
 

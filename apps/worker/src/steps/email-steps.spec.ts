@@ -2,7 +2,7 @@ import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type Structured
 import { defaultCatalog, type EmailMessage } from "@ai-me/steps";
 import { type z } from "zod";
 import { type MailConnector, type OutgoingMail } from "../mail/mail-connector";
-import { type StepContext } from "../runner/step-executor";
+import { NO_ATTENTION, type StepContext } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock as emailBlockOf } from "./email-block";
 import { DraftReplyStep, EmailClassifyStep, EmailSendStep, replySubject } from "./email-steps";
@@ -19,6 +19,7 @@ const context: StepContext = {
   itemIndex: null,
   dryRun: false,
   recordUsage: () => undefined,
+  attention: NO_ATTENTION,
 };
 const router = new ModelRouter(() => Promise.resolve(null));
 
