@@ -221,7 +221,7 @@ export class PipelineCompiler {
       const values = Array.isArray(value) ? (value as unknown[]) : [value];
       for (const [i, entry] of values.entries()) {
         const path = `${scope.path}.with.${field}${Array.isArray(value) ? `[${i}]` : ""}`;
-        const issue = addTarget(entry, kind, scope.step.id, field, policy, (root) => known.get(root)?.definition.type);
+        const issue = addTarget(entry, kind, scope.step.id, field, policy, (root) => known.get(root)?.definition);
         if (issue) errors.push({ path, message: issue });
       }
     }
@@ -295,7 +295,7 @@ function addTarget(
   stepId: string,
   field: string,
   policy: CompiledPolicy,
-  stepTypeOf: (stepId: string) => string | undefined,
+  stepOf: (stepId: string) => StepDefinition | undefined,
 ): string | null {
   if (typeof value !== "string") return `a ${kind} target must be text or a single reference`;
   const whole = WHOLE_REFERENCE.exec(value);
@@ -303,8 +303,8 @@ function addTarget(
     const source = whole[1].trim();
     if (source.startsWith("cred:")) return "a credential can't be a target";
     // Targets come from data (a fetched email, a job posting), never from text an LLM wrote (README §1.4).
-    const rootType = stepTypeOf(source.split(".")[0] ?? "");
-    if (rootType?.startsWith("llm.")) return `a ${kind} can't come from LLM output ({{${source}}} is written by ${rootType})`;
+    const root = stepOf(source.split(".")[0] ?? "");
+    if (root?.llmOutput) return `a ${kind} can't come from LLM output ({{${source}}} is written by ${root.type})`;
     const rule: ProvenanceRule = { stepId, field, kind, source };
     policy.provenance.push(rule);
     return null;

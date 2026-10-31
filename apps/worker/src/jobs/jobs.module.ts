@@ -8,6 +8,9 @@ import { PrismaService } from "../database/prisma.service";
 import { PipelineRunner, type EventSink } from "../runner/pipeline-runner";
 import { RunControls } from "../runner/run-controls";
 import { ExecutorRegistry, type StepExecutor } from "../runner/step-executor";
+import { ImapSmtpConnector } from "../mail/imap-smtp-connector";
+import { CredentialVault } from "../secrets/credential-vault";
+import { SecretsModule } from "../secrets/secrets.module";
 import { coreSteps } from "../steps/core-steps";
 import { JobHandlers } from "./job-handlers";
 
@@ -40,6 +43,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
 }
 
 @Module({
+  imports: [SecretsModule],
   providers: [
     {
       provide: JobQueue,
@@ -56,8 +60,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     { provide: StepCatalog, useFactory: (): StepCatalog => defaultCatalog() },
     {
       provide: STEP_EXECUTORS,
-      inject: [PrismaService, SERVER_ENV],
-      useFactory: (db: PrismaService, env: ServerEnv): StepExecutor[] => {
+      inject: [PrismaService, SERVER_ENV, CredentialVault],
+      useFactory: (db: PrismaService, env: ServerEnv, vault: CredentialVault): StepExecutor[] => {
         const router = new ModelRouter(
           (userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }),
           { LLM_MODEL_CLASSIFY: env.LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING: env.LLM_MODEL_WRITING },
@@ -66,6 +70,18 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
           router,
           telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },
+          mail: new ImapSmtpConnector(
+            {
+              imapHost: env.IMAP_HOST,
+              imapPort: env.IMAP_PORT,
+              smtpHost: env.SMTP_HOST,
+              smtpPort: env.SMTP_PORT,
+              tls: env.MAIL_TLS,
+              credential: env.MAIL_CREDENTIAL,
+            },
+            vault,
+          ),
+          prisma: db.client,
         });
       },
     },

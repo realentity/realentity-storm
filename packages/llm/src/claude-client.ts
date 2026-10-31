@@ -13,6 +13,11 @@ export interface StructuredRequest<S extends z.ZodObject> {
   /** What the answer must be: validated before it is returned. */
   schema: S;
   maxTokens?: number;
+  /**
+   * Caches the system prompt (README §5): for calls that repeat it within minutes (per-item drafts, chunked
+   * classification). Below the model's minimum prefix it simply isn't cached; a cache write costs 1.25× input.
+   */
+  cacheSystem?: boolean;
 }
 
 export interface StructuredResult<T> {
@@ -58,7 +63,7 @@ export class ClaudeClient implements LlmClient {
     const response = await this.client.beta.messages.create({
       model,
       max_tokens: request.maxTokens ?? 16_000,
-      system: request.system,
+      system: request.cacheSystem ? [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }] : request.system,
       messages: [{ role: "user", content: request.prompt }],
       output_config: { effort, format: { type: "json_schema", schema: betaZodOutputFormat(request.schema).schema } },
       ...(fallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),

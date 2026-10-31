@@ -439,6 +439,8 @@ describe("runs, proposals and controls", () => {
     it("a model per LLM task: my choice, or the default and where it comes from", async () => {
       const initial = (await agent.get("/api/settings").expect(200)).body as SettingsView;
       expect(initial.models).toEqual({
+        "email.classify": { model: "claude-haiku-5-5", effort: "low", source: "default" },
+        "email.draftReply": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         "llm.classify": { model: "claude-haiku-5-5", effort: "low", source: "default" },
         "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "default" },
         "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },

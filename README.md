@@ -431,6 +431,7 @@ ai-me/
 │  ├─ crypto/         # envelope encryption (seal / open / rewrap, key ring)
 │  ├─ queue/          # pg-boss queues (shared by api and worker), cron schedule helpers
 │  └─ testing/        # integration-test infrastructure: PostgreSQL (Testcontainers or local), migrate + seed
+├─ pipelines/         # hand-written pipeline definitions (YAML) to paste into the web app; a test keeps them compiling
 ├─ py-worker/         # optional: local embeddings, OCR
 ├─ docker/
 │  ├─ docker-compose.yml
@@ -563,10 +564,16 @@ LLM_MONTHLY_BUDGET_USD=
 EMBEDDINGS_PROVIDER=local
 VOYAGE_API_KEY=
 
-# Mail: v1 uses IMAP/SMTP with a Google app password, stored encrypted in the DB (not here)
+# Mail: v1 uses IMAP/SMTP with a Google app password, stored encrypted in the DB (not here): a credential named
+# MAIL_CREDENTIAL (username = the address; allowed hosts = imap.gmail.com, smtp.gmail.com)
 MAIL_CONNECTOR=imap
 IMAP_HOST=imap.gmail.com
+IMAP_PORT=993
 SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+# TLS from the first byte; "false" only for a local test server
+MAIL_TLS=true
+MAIL_CREDENTIAL=mail
 # Later, Gmail API (OAuth app; refresh token stored encrypted in the DB)
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
@@ -608,7 +615,13 @@ pnpm test                      # unit tests (Jest; Vitest for web)
 pnpm test:e2e                  # integration tests: PostgreSQL in Testcontainers (E2E_INFRA=local: a temporary database)
 pnpm --filter @ai-me/web-e2e exec playwright install chromium
 pnpm test:web                  # browser tests (Playwright) against the composed stack: database, api, worker, web
+pnpm --filter @ai-me/worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
 ```
+
+**Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. On the Credentials page add a
+`password` credential named `mail` with the Gmail address as username, the app password as secret, and allowed hosts
+`imap.gmail.com, smtp.gmail.com`. Then paste [pipelines/recruiter-replies.yaml](pipelines/recruiter-replies.yaml) on
+the Pipelines page, dry run, save and enable. Every reply waits in the inbox until I press Act.
 
 ---
 

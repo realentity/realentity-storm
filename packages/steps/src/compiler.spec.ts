@@ -1,4 +1,6 @@
 import { type CompileResult, type CompiledDefinition } from "@ai-me/shared";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { CORE_STEPS, defaultCatalog, type StepDefinition } from "./catalog";
 import { PipelineCompiler } from "./compiler";
@@ -33,6 +35,9 @@ const TEST_STEPS: StepDefinition[] = [
     output: z.object({ items: z.array(z.object({ title: z.string(), applyUrl: z.string(), recruiter: z.string() })), total: z.number() }),
   },
 ];
+
+/** Hand-written pipelines, ready to paste into the web app. */
+const PIPELINES = join(__dirname, "../../../pipelines");
 
 const compiler = new PipelineCompiler(defaultCatalog().with(...TEST_STEPS));
 
@@ -370,6 +375,60 @@ limits:
         { id: "s", type, with: input },
       ];
       expect(errorsOf(compiler.compile(pipeline(steps))).join("\n")).toMatch(message);
+    });
+  });
+
+  // M4-T4, M4-S2 (compile time)
+  describe("email", () => {
+    const REPLIES = (to: string) => `
+name: Recruiter replies
+trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+steps:
+  - id: fetch
+    type: email.fetch
+  - id: triage
+    type: email.classify
+    with: { messages: "{{fetch.messages}}", instruction: "Recruiters or clients writing to me personally" }
+  - id: draft
+    type: email.draftReply
+    forEach: "{{triage.kept}}"
+    with: { message: "{{item}}", instruction: "Reply briefly; offer a call" }
+  - id: send
+    type: email.send
+    forEach: "{{triage.kept}}"
+    with:
+      to: "${to}"
+      subject: "{{draft.subject}}"
+      body: "{{draft.body}}"
+      inReplyTo: "{{item.messageId}}"
+      references: "{{item.references}}"
+`;
+
+    it("compiles fetch → classify → draft → gate → send, the recipient bound to the fetched sender", () => {
+      const result = ok(compiler.compileText(REPLIES("{{item.from}}")));
+      expect(ids(result.definition)).toEqual(["fetch", "triage", "draft", "sendGate", "send"]);
+      expect(result.policy.provenance).toEqual([{ stepId: "send", field: "to", kind: "recipient", source: "item.from" }]);
+    });
+
+    it.each(["{{draft.subject}}", "{{triage.results}}"])("refuses a recipient written by an LLM step (%s)", (to) => {
+      expect(errorsOf(compiler.compileText(REPLIES(to))).join("\n")).toMatch(/recipient can't come from LLM output/);
+    });
+
+    // M4-T6: the hand-written pipelines in /pipelines stay valid.
+    it.each(readdirSync(PIPELINES).filter((f) => f.endsWith(".yaml")))("pipelines/%s compiles", (file) => {
+      const result = ok(compiler.compileText(readFileSync(join(PIPELINES, file), "utf8")));
+      if (file === "recruiter-replies.yaml") {
+        expect(ids(result.definition)).toEqual(["fetch", "triage", "draft", "sendGate", "send"]);
+        expect(result.policy).toEqual({
+          allowedDomains: [],
+          allowedRecipients: [],
+          provenance: [{ stepId: "send", field: "to", kind: "recipient", source: "item.from" }],
+        });
+      }
+    });
+
+    it("type-checks fields of fetched emails", () => {
+      expect(errorsOf(compiler.compileText(REPLIES("{{item.sender}}"))).join("\n")).toMatch(/has no field "sender"/);
     });
   });
 

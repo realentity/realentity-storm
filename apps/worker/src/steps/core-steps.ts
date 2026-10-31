@@ -1,6 +1,10 @@
+import { type PrismaClient } from "@ai-me/db";
 import { type LlmClient, type ModelRouter } from "@ai-me/llm";
+import { type MailConnector } from "../mail/mail-connector";
 import { type StepExecutor } from "../runner/step-executor";
 import { DedupeStep, FilterStep } from "./data-steps";
+import { DigestStep } from "./digest-step";
+import { emailSteps } from "./email-steps";
 import { ClassifyStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
 
@@ -9,10 +13,13 @@ export interface CoreStepDependencies {
   router: ModelRouter;
   telegram: TelegramConfig;
   fetch?: typeof fetch;
+  mail: MailConnector;
+  prisma: PrismaClient;
 }
 
-/** Implementations of the M2 catalog steps (gates need none: the runner handles them). */
+/** Implementations of the catalog's steps (gates need none: the runner handles them). */
 export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
+  const telegram = new TelegramStep(deps.telegram, deps.fetch);
   return [
     new DedupeStep(),
     new FilterStep(),
@@ -20,6 +27,8 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new ScoreStep(deps.llm, deps.router),
     new GenerateStep(deps.llm, deps.router),
     new SummarizeStep(deps.llm, deps.router),
-    new TelegramStep(deps.telegram, deps.fetch),
+    telegram,
+    new DigestStep(deps.prisma, telegram),
+    ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router }),
   ];
 }

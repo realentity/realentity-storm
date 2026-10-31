@@ -71,6 +71,15 @@ describe("ClaudeClient", () => {
     expect(firstCall(create)).toMatchObject({ betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
   });
 
+  // M4-T5
+  it("marks the system prompt for caching when asked", async () => {
+    const { client, create } = fakeClient({ stop_reason: "end_turn", answer: { label: "keep", reason: "fits the profile" } });
+    await client.structured({ ...request(), cacheSystem: true });
+    expect(firstCall(create)).toMatchObject({
+      system: [{ type: "text", text: "Label the item.", cache_control: { type: "ephemeral" } }],
+    });
+  });
+
   // M2-U6
   it("fails with a clear error, and no output, when the answer doesn't match the schema", async () => {
     const { client } = fakeClient({ stop_reason: "end_turn", answer: "Sure! Here is the label: keep" });

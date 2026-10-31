@@ -160,7 +160,7 @@ export interface KillSwitchView {
 }
 
 /** Steps that call the LLM; each can have its own model (README §5). */
-export const LLM_TASKS = ["llm.classify", "llm.score", "llm.generate", "llm.summarize"] as const;
+export const LLM_TASKS = ["email.classify", "email.draftReply", "llm.classify", "llm.score", "llm.generate", "llm.summarize"] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 /** Models that can be chosen in Settings (each has a price in @ai-me/llm). */

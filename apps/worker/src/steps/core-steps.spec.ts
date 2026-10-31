@@ -13,7 +13,17 @@ const output = (type: string, value: unknown) => catalog.get(type)!.output.parse
 
 function context(dryRun = false): StepContext & { usage: LlmUsage[] } {
   const usage: LlmUsage[] = [];
-  return { runId: "r", userId: "u", stepId: "s", stepKey: "k", itemIndex: null, dryRun, usage, recordUsage: (u) => usage.push(u) };
+  return {
+    runId: "r",
+    userId: "u",
+    pipelineId: "p",
+    stepId: "s",
+    stepKey: "k",
+    itemIndex: null,
+    dryRun,
+    usage,
+    recordUsage: (u) => usage.push(u),
+  };
 }
 
 const usage = (costUsd: number): LlmUsage => ({ ...emptyUsage(), models: ["claude-haiku-5-5"], calls: 1, costUsd });

@@ -4,6 +4,7 @@ import { type LlmUsage } from "@ai-me/llm";
 export interface StepContext {
   runId: string;
   userId: string;
+  pipelineId: string;
   stepId: string;
   stepKey: string;
   itemIndex: number | null;

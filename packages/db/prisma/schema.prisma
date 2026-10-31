@@ -113,6 +113,7 @@ model User {
   artifacts     Artifact[]
   jobPostings   JobPosting[]
   applications  Application[]
+  mailCursors   MailCursor[]
 
   @@map("Users")
 }
@@ -167,9 +168,28 @@ model Pipeline {
 
   versions     PipelineVersion[]
   builderChats BuilderChat[]
+  mailCursors  MailCursor[]
 
   @@index([userId])
   @@map("Pipelines")
+}
+
+/// Where a pipeline's email.fetch stopped in a mailbox: messages with a higher UID are new. A new UIDVALIDITY (the
+/// server renumbered the mailbox) starts over from the look-back window.
+model MailCursor {
+  mailCursorId String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineId   String   @db.Uuid
+  pipeline     Pipeline @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  mailbox      String
+  uidValidity  BigInt
+  lastUid      BigInt
+  dateUpdated  DateTime @updatedAt
+
+  @@unique([pipelineId, mailbox])
+  @@index([userId])
+  @@map("MailCursors")
 }
 
 model PipelineVersion {

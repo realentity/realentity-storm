@@ -18,6 +18,8 @@ export interface StepDefinition {
   saasSafe: boolean;
   /** Drives the headed browser: runs containing it are serialized (one virtual display, README §6). */
   headed?: boolean;
+  /** Its output may contain text an LLM wrote: a side-effect target can never come from it (README §2.2). */
+  llmOutput?: boolean;
   input: z.ZodObject;
   output: z.ZodObject;
 }
@@ -60,13 +62,38 @@ export class StepCatalog {
 
 const Items = z.array(z.record(z.string(), z.unknown())).describe("list of objects");
 
+/**
+ * One fetched email (email.fetch). Text only: attachments are listed, never downloaded. `from` and `replyTo` are
+ * addresses as the message carries them, so a reply's recipient can be checked against them (provenance).
+ */
+export const EmailMessageSchema = z.object({
+  uid: z.number().int(),
+  messageId: z.string(),
+  /** The thread's first Message-ID (References, else In-Reply-To, else its own). */
+  threadId: z.string(),
+  inReplyTo: z.string().nullable(),
+  references: z.array(z.string()),
+  from: z.string(),
+  fromName: z.string().nullable(),
+  replyTo: z.string(),
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
+  subject: z.string(),
+  date: z.string(),
+  text: z.string(),
+  attachments: z.array(z.object({ filename: z.string().nullable(), contentType: z.string(), size: z.number().int() })),
+});
+export type EmailMessage = z.infer<typeof EmailMessageSchema>;
+
+const Messages = z.array(EmailMessageSchema).describe("list of emails");
+
 const FilterCondition = z.object({
   field: z.string().min(1),
   op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"]),
   value: z.unknown(),
 });
 
-/** The steps available from M2 on. Email, browser and file steps join in their milestones (M4, M8–M11). */
+/** The steps available so far: data, LLM, gates and notifications (M2), email (M4). Browser and file steps join in M8–M11. */
 export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.dedupe",
@@ -88,6 +115,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.classify",
     description: "Labels each item with the LLM following `instruction`; items with a `keep` label go to `kept`.",
     sideEffect: false,
+    llmOutput: true,
     saasSafe: true,
     input: z.object({
       items: Items,
@@ -105,6 +133,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.score",
     description: "Scores each item 0–100 against `against` (a profile or criteria text); `top` keeps the best N.",
     sideEffect: false,
+    llmOutput: true,
     saasSafe: true,
     input: z.object({
       items: Items,
@@ -118,6 +147,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.generate",
     description: "Writes text following `instruction`, using `context`.",
     sideEffect: false,
+    llmOutput: true,
     saasSafe: true,
     input: z.object({
       instruction: z.string().min(1),
@@ -130,6 +160,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.summarize",
     description: "Summarizes `content`.",
     sideEffect: false,
+    llmOutput: true,
     saasSafe: true,
     input: z.object({
       content: z.unknown(),
@@ -161,6 +192,76 @@ export const CORE_STEPS: StepDefinition[] = [
     saasSafe: true,
     input: z.object({ text: z.string().min(1).max(4000) }),
     output: z.object({ sent: z.boolean() }),
+  },
+  {
+    type: "notify.digest",
+    description: "Sends me a Telegram digest of the last `hours`: what ran, what waits for me, what failed.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({ hours: z.number().int().min(1).max(168).default(24) }),
+    output: z.object({ sent: z.boolean(), text: z.string() }),
+  },
+  {
+    type: "email.fetch",
+    description: "Reads new emails from my mailbox (IMAP), oldest first; read-only, nothing is marked or moved.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      mailbox: z.string().min(1).max(200).default("INBOX"),
+      limit: z.number().int().min(1).max(200).default(50),
+      /** The first run of a pipeline looks back this far; later runs continue where the last one stopped. */
+      sinceDays: z.number().int().min(1).max(60).default(2),
+    }),
+    output: z.object({ messages: Messages }),
+  },
+  {
+    type: "email.classify",
+    description: "Labels each email with the LLM following `instruction`; emails with a `keep` label go to `kept`.",
+    sideEffect: false,
+    llmOutput: true,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      instruction: z.string().min(1),
+      labels: z.array(z.string().min(1)).min(2).default(["reply", "skip"]),
+      keep: z.array(z.string().min(1)).min(1).default(["reply"]),
+    }),
+    output: z.object({
+      kept: Messages,
+      dropped: Messages,
+      results: z.array(z.object({ index: z.number().int(), label: z.string(), reason: z.string() })),
+    }),
+  },
+  {
+    type: "email.draftReply",
+    description: "Drafts a reply to `message` in my voice, in the email's language, without inventing facts.",
+    sideEffect: false,
+    llmOutput: true,
+    saasSafe: true,
+    input: z.object({
+      message: EmailMessageSchema,
+      instruction: z.string().min(1),
+      /** What the reply may draw on besides the email (my availability, rates, links). */
+      context: z.unknown().optional(),
+      signature: z.string().max(500).optional(),
+    }),
+    // No recipient: it always comes from the fetched email, never from the LLM.
+    output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
+  },
+  {
+    type: "email.send",
+    description: "Sends an email from my mailbox (SMTP); as a reply when `inReplyTo` is set.",
+    sideEffect: true,
+    targets: { to: "recipient" },
+    saasSafe: true,
+    input: z.object({
+      to: z.email(),
+      subject: z.string().min(1).max(998),
+      body: z.string().min(1).max(100_000),
+      inReplyTo: z.string().optional(),
+      references: z.array(z.string()).max(100).optional(),
+    }),
+    output: z.object({ messageId: z.string(), accepted: z.array(z.string()) }),
   },
 ];
 

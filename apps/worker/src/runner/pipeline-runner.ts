@@ -515,6 +515,7 @@ export class PipelineRunner {
     return {
       runId: state.runId,
       userId: state.userId,
+      pipelineId: state.controlled.pipelineId,
       stepId: row.stepId,
       stepKey: row.stepKey,
       itemIndex: row.itemIndex,

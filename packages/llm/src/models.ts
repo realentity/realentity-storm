@@ -18,6 +18,8 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "llm.score": "classify",
   "llm.generate": "writing",
   "llm.summarize": "writing",
+  "email.classify": "classify",
+  "email.draftReply": "writing",
 };
 
 /** A per-user choice from Settings (ModelSetting), if any. */

@@ -1,0 +1,44 @@
+# Phase 1 (README §11): every 15 minutes, read new mail, keep what recruiters and clients wrote to me personally,
+# and draft a reply to each. Every reply waits in the inbox until I press Act (the compiler adds the gate).
+# Paste it on the Pipelines page, check, dry run, save, enable. Needs IMAP_HOST/SMTP_HOST and the "mail" credential.
+name: Recruiter and client replies
+description: Drafts replies to recruiters and clients; I review, edit and Act on each.
+trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "reply": a recruiter, hiring manager, client or prospective client writing to me personally about a role,
+        a project, an interview or a contract, where a reply from me is expected.
+        "skip": everything else: job alerts and digests, newsletters, notifications, automated or mass mail,
+        marketing, personal mail, and messages that need no reply.
+      labels: [reply, skip]
+      keep: [reply]
+  - id: draft
+    type: email.draftReply
+    forEach: "{{triage.kept}}"
+    with:
+      message: "{{item}}"
+      instruction: >-
+        Reply briefly and warmly as me. If the role or project could fit, show interest, ask for what is missing
+        (rate or salary range, remote or on-site, start date, duration) and propose a short call. If it clearly
+        doesn't fit, decline politely in one or two sentences.
+      # What the drafts may draw on besides the email (who I am, what I'm looking for, availability):
+      # context: |
+      #   ...
+  - id: send
+    type: email.send
+    forEach: "{{triage.kept}}"
+    with:
+      to: "{{item.from}}" # the sender of the fetched email; never a value the LLM wrote
+      subject: "{{draft.subject}}"
+      body: "{{draft.body}}"
+      inReplyTo: "{{item.messageId}}"
+      references: "{{item.references}}"
+limits:
+  email.send: 20/day

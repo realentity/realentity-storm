@@ -15,6 +15,17 @@ describe("parseServerEnv", () => {
     expect(env.APP_ADMIN_PASSWORD_HASH).toBeUndefined();
   });
 
+  it("mail: TLS by default; plain text only to a local test server", () => {
+    expect(parseServerEnv({ ...valid(), IMAP_HOST: "imap.gmail.com", SMTP_HOST: "smtp.gmail.com" })).toMatchObject({
+      IMAP_PORT: 993,
+      SMTP_PORT: 465,
+      MAIL_TLS: true,
+      MAIL_CREDENTIAL: "mail",
+    });
+    expect(parseServerEnv({ ...valid(), IMAP_HOST: "127.0.0.1", SMTP_HOST: "localhost", MAIL_TLS: "false" }).MAIL_TLS).toBe(false);
+    expect(() => parseServerEnv({ ...valid(), IMAP_HOST: "imap.gmail.com", MAIL_TLS: "false" })).toThrow(/MAIL_TLS: can be false only/);
+  });
+
   it("treats empty values as not set", () => {
     const env = parseServerEnv({ ...valid(), APP_TOTP_SECRET: "", ANTHROPIC_API_KEY: "" });
     expect(env.APP_TOTP_SECRET).toBeUndefined();

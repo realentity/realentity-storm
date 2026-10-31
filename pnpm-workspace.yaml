@@ -65,6 +65,11 @@ catalog:
   ws: ^8.18.0
   "@types/ws": ^8.5.13
 
+  # mail: IMAP (imapflow), SMTP (nodemailer), MIME parsing (mailparser); each ships CommonJS and its own types
+  imapflow: ^2.10.0
+  nodemailer: ^10.3.0
+  mailparser: ^3.14.0
+
   # llm
   "@anthropic-ai/sdk": ^1.3.0
 
