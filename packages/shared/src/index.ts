@@ -3,6 +3,7 @@ export * from "./canonical-json";
 export * from "./credentials";
 export * from "./env";
 export * from "./events";
+export * from "./learning-api";
 export * from "./pipeline";
 export * from "./pipeline-api";
 export * from "./runs-api";

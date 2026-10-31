@@ -38,8 +38,16 @@ export const ServerEnvSchema = z
     /** Default models per task group; Settings (ModelSetting) override them per task. */
     LLM_MODEL_CLASSIFY: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-haiku-5-5")),
     LLM_MODEL_WRITING: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-sonnet-5-5")),
+    LLM_MODEL_REFLECTION: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
     /** Non-essential pipelines pause when this month's LLM cost reaches it. Settings override it; unset = no limit. */
     LLM_MONTHLY_BUDGET_USD: optional(z.coerce.number().positive()),
+
+    /**
+     * Embeddings for few-shot retrieval (README §8): OpenAI, 1024 dimensions (the Examples.embedding column).
+     * Unset: drafts are written without examples; nothing else changes.
+     */
+    OPENAI_API_KEY: optional(z.string()),
+    EMBEDDINGS_MODEL: z.enum(["text-embedding-3-large", "text-embedding-3-small"]).default("text-embedding-3-large"),
 
     /** notify.telegram: messages go to this chat only. */
     TELEGRAM_BOT_TOKEN: optional(z.string().regex(/^\d+:[\w-]{30,}$/, "a bot token from @BotFather (123456:ABC...)")),

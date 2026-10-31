@@ -12,6 +12,7 @@ import { PipelinePage } from "./pages/PipelinePage";
 import { PipelinesPage } from "./pages/PipelinesPage";
 import { ProposalPage } from "./pages/ProposalPage";
 import { RunPage } from "./pages/RunPage";
+import { RulesPage } from "./pages/RulesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 /** Signed out: the login page for every path (the path is kept, so it opens after signing in). */
@@ -38,6 +39,7 @@ export function App() {
             <Route path="pipelines/:pipelineId/edit" element={<PipelineEditorPage />} />
             <Route path="runs/:runId" element={<RunPage />} />
             <Route path="history" element={<HistoryPage />} />
+            <Route path="rules" element={<RulesPage />} />
             <Route path="credentials" element={<CredentialsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route

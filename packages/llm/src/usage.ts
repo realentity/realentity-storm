@@ -6,7 +6,7 @@ interface Price {
 }
 
 /**
- * First-party API prices (cached 2026-10). Haiku 5.5 is priced for prompts up to 100K tokens. An unknown model is
+ * First-party API prices (cached 2026-10), and OpenAI's for the embedding models. Haiku 5.5 is priced for prompts up to 100K tokens. An unknown model is
  * charged at the most expensive known rate, so the budget errs on the safe side.
  */
 const PRICES: Record<string, Price> = {
@@ -17,6 +17,9 @@ const PRICES: Record<string, Price> = {
   "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01 },
+  // Embeddings (few-shot examples): input only.
+  "text-embedding-3-large": { input: 0.13, output: 0, cacheRead: 0 },
+  "text-embedding-3-small": { input: 0.02, output: 0, cacheRead: 0 },
 };
 const MOST_EXPENSIVE = PRICES["claude-fable-5-1"];
 

@@ -1,5 +1,6 @@
 import { type PrismaClient } from "@ai-me/db";
 import { type LlmClient, type ModelRouter } from "@ai-me/llm";
+import { type StepLearning } from "../learning/learning";
 import { type MailConnector } from "../mail/mail-connector";
 import { type StepExecutor } from "../runner/step-executor";
 import { DedupeStep, FilterStep } from "./data-steps";
@@ -15,6 +16,8 @@ export interface CoreStepDependencies {
   fetch?: typeof fetch;
   mail: MailConnector;
   prisma: PrismaClient;
+  /** Active rules and few-shot examples (README §8); none in tests unless given. */
+  learning?: StepLearning;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
@@ -23,12 +26,12 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
   return [
     new DedupeStep(),
     new FilterStep(),
-    new ClassifyStep(deps.llm, deps.router),
-    new ScoreStep(deps.llm, deps.router),
-    new GenerateStep(deps.llm, deps.router),
-    new SummarizeStep(deps.llm, deps.router),
+    new ClassifyStep(deps.llm, deps.router, deps.learning),
+    new ScoreStep(deps.llm, deps.router, deps.learning),
+    new GenerateStep(deps.llm, deps.router, deps.learning),
+    new SummarizeStep(deps.llm, deps.router, deps.learning),
     telegram,
     new DigestStep(deps.prisma, telegram),
-    ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router }),
+    ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router, learning: deps.learning }),
   ];
 }

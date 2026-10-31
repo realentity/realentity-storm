@@ -2,9 +2,11 @@ import {
   type ApproveProposalRequest,
   type CompilePipelineResponse,
   type CreateCredentialRequest,
+  type CreateRuleRequest,
   type CredentialView,
   type DryRunPipelineResponse,
   type KillSwitchView,
+  type LearningView,
   type LoginRequest,
   type PipelineDetailView,
   type PipelineSummaryView,
@@ -13,12 +15,15 @@ import {
   type ProposalView,
   type RunDetailView,
   type RunFilter,
+  type RuleView,
   type RunSummaryView,
   type SessionView,
   type SettingsRequest,
   type SettingsView,
   type StepTypeView,
+  type SuggestionStatusName,
   type UpdatePipelineRequest,
+  type UpdateRuleRequest,
 } from "@ai-me/shared";
 import { query, request } from "./api";
 
@@ -71,5 +76,14 @@ export const api = {
   settings: {
     get: () => request<SettingsView>("GET", "/settings"),
     update: (body: SettingsRequest) => request<SettingsView>("PUT", "/settings", body),
+  },
+  learning: {
+    get: () => request<LearningView>("GET", "/learning"),
+    createRule: (body: CreateRuleRequest) => request<RuleView>("POST", "/rules", body),
+    updateRule: (ruleId: string, body: UpdateRuleRequest) => request<RuleView>("PATCH", `/rules/${ruleId}`, body),
+    deleteRule: (ruleId: string) => request<void>("DELETE", `/rules/${ruleId}`),
+    updateSuggestion: (suggestionId: string, status: SuggestionStatusName) =>
+      request<void>("PATCH", `/suggestions/${suggestionId}`, { status }),
+    reflect: () => request<void>("POST", "/reflection"),
   },
 };

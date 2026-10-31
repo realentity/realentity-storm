@@ -1,3 +1,5 @@
+import { type EmailMessage } from "@ai-me/steps";
+
 /**
  * Labeled emails for the M4 evals (README test strategy: LLM eval, run by hand). Written for this purpose: no real
  * people or companies. `reply` follows the triage instruction of pipelines/recruiter-replies.yaml: a recruiter,
@@ -514,3 +516,24 @@ export const EMAILS: LabeledEmail[] = [
     text: "Абонаментът Ви беше подновен успешно за още един месец. Сума: 15,99 лв. Не е нужно да правите нищо.",
   },
 ];
+
+/** An email of the dataset as email.fetch returns it. */
+export function toMessage(email: LabeledEmail, index: number): EmailMessage {
+  const messageId = `<${email.id}@eval.aime>`;
+  return {
+    uid: index + 1,
+    messageId,
+    threadId: messageId,
+    inReplyTo: null,
+    references: [],
+    from: email.from,
+    fromName: email.fromName,
+    replyTo: email.from,
+    to: ["me@example.org"],
+    cc: [],
+    subject: email.subject,
+    date: "2026-10-30T09:00:00.000Z",
+    text: email.text,
+    attachments: [],
+  };
+}

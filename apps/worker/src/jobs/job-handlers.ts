@@ -1,7 +1,20 @@
 import { type PrismaClient, type RunStatus } from "@ai-me/db";
 import { type CompiledDefinition } from "@ai-me/shared";
-import { isScheduled, QUEUES, type JobQueue, type RunJob, type ScheduleTrigger, type TriggerJob } from "@ai-me/queue";
+import {
+  isScheduled,
+  QUEUES,
+  REFLECTION_SCHEDULE,
+  type JobQueue,
+  type LearningJob,
+  type ReflectionJob,
+  type ReflectionPollJob,
+  type RunJob,
+  type ScheduleTrigger,
+  type TriggerJob,
+} from "@ai-me/queue";
 import { Logger } from "@nestjs/common";
+import { type Learning } from "../learning/learning";
+import { type Reflector } from "../learning/reflection";
 import { type PipelineRunner } from "../runner/pipeline-runner";
 
 export interface ConsumeOptions {
@@ -21,6 +34,9 @@ export class JobHandlers {
     private readonly prisma: PrismaClient,
     private readonly runner: PipelineRunner,
     private readonly queue: JobQueue,
+    /** README §8; the runner's tests leave them out. */
+    private readonly learning?: Learning,
+    private readonly reflector?: Reflector,
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -32,6 +48,15 @@ export class JobHandlers {
     await boss.work<RunJob>(QUEUES.runsHeaded, work, async ([job]) => job && this.advance(job.data.runId));
     await boss.work<TriggerJob>(QUEUES.trigger, work, async ([job]) => job && this.trigger(job.data.pipelineId));
     await boss.work(QUEUES.syncSchedules, work, () => this.syncSchedules());
+    const { learning, reflector } = this;
+    if (learning) {
+      await boss.work<LearningJob>(QUEUES.learning, work, async ([job]) => job && learning.fromProposal(job.data.proposalId));
+    }
+    if (reflector) {
+      await boss.work<ReflectionJob>(QUEUES.reflection, work, async ([job]) => job && reflector.run(job.data.userId));
+      await boss.work<ReflectionPollJob>(QUEUES.reflectionPoll, work, async ([job]) => job && reflector.check(job.data.reflectionId));
+      await boss.schedule(QUEUES.reflection, REFLECTION_SCHEDULE.cron, {}, { tz: REFLECTION_SCHEDULE.tz });
+    }
   }
 
   /** Advances a run; one held back by a rate limit is sent again for when the limit allows. */
@@ -90,5 +115,11 @@ export class JobHandlers {
     for (const run of await this.prisma.run.findMany({ where: { status: "QUEUED" } })) {
       await this.queue.enqueueRun(run, run.resumeAt ?? undefined);
     }
+    await this.reflector?.recover();
+    // Examples kept while OpenAI was unavailable, or made by another embedding model.
+    await this.learning?.backfill().then(
+      (n) => n > 0 && this.logger.log(`Embedded ${n} example(s)`),
+      (error: Error) => this.logger.warn(`Examples not embedded yet: ${error.message}`),
+    );
   }
 }

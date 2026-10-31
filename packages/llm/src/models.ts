@@ -11,6 +11,7 @@ export interface ModelChoice {
 const GROUPS: Record<string, { env: string; default: ModelChoice }> = {
   classify: { env: "LLM_MODEL_CLASSIFY", default: { model: "claude-haiku-5-5", effort: "low" } },
   writing: { env: "LLM_MODEL_WRITING", default: { model: "claude-sonnet-5-5", effort: "medium" } },
+  reflection: { env: "LLM_MODEL_REFLECTION", default: { model: "claude-opus-5-5", effort: "high" } },
 };
 
 const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
@@ -20,6 +21,7 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "llm.summarize": "writing",
   "email.classify": "classify",
   "email.draftReply": "writing",
+  reflection: "reflection",
 };
 
 /** A per-user choice from Settings (ModelSetting), if any. */
@@ -27,7 +29,7 @@ export type ModelSettingLookup = (userId: string, taskKey: string) => Promise<{ 
 
 /**
  * Which model and effort a task uses: my setting for that task (ModelSetting), else the group's model from the
- * environment (LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING), else the group default.
+ * environment (LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING, LLM_MODEL_REFLECTION), else the group default.
  */
 export class ModelRouter {
   constructor(

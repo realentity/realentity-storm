@@ -95,6 +95,10 @@ export class ProposalsService {
       status: change.proposal.status,
     });
     await this.queue.enqueueRun({ runId: proposal.runId, headed: proposal.run.headed });
+    // What I approve to be sent becomes a few-shot example of the step that wrote it (README §8).
+    if (change.proposal.status === "APPROVED" && proposal.step.type === "gate.act") {
+      await this.queue.enqueueLearning(proposal.proposalId);
+    }
   }
 
   /** An edited payload must still be valid input of the step it approves (gate.act) or a selection (gate.review). */

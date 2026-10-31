@@ -159,8 +159,16 @@ export interface KillSwitchView {
   stoppedRuns?: number;
 }
 
-/** Steps that call the LLM; each can have its own model (README §5). */
-export const LLM_TASKS = ["email.classify", "email.draftReply", "llm.classify", "llm.score", "llm.generate", "llm.summarize"] as const;
+/** Steps that call the LLM, and the nightly reflection; each can have its own model (README §5). */
+export const LLM_TASKS = [
+  "email.classify",
+  "email.draftReply",
+  "llm.classify",
+  "llm.score",
+  "llm.generate",
+  "llm.summarize",
+  "reflection",
+] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 /** Models that can be chosen in Settings (each has a price in @ai-me/llm). */
@@ -193,7 +201,7 @@ export type SettingsRequest = z.infer<typeof SettingsSchema>;
 export interface ModelChoiceView {
   model: string;
   effort: EffortName;
-  /** settings: chosen here; env: LLM_MODEL_CLASSIFY / LLM_MODEL_WRITING; default: built in. */
+  /** settings: chosen here; env: LLM_MODEL_CLASSIFY / _WRITING / _REFLECTION; default: built in. */
   source: "settings" | "env" | "default";
 }
 

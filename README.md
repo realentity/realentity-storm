@@ -276,17 +276,12 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 **Usage patterns:**
 
 - **Structured output:** every LLM call sets `output_config.format` to a JSON schema generated from a zod schema (`@anthropic-ai/sdk` zod helper), and the answer is validated again with zod: an answer that doesn't match fails the step with a clear error, and nothing partial is saved. Per-item steps (`llm.classify`, `llm.score`) send items in chunks of 20 and require exactly one answer per item. Sonnet and Opus calls use the server-side refusal fallback (`fallbacks: "default"`).
-- **Model routing** ([packages/llm](packages/llm)): my setting for the step type (`ModelSetting`), else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING`, else the defaults above (effort `low` for classify/score, `medium` for writing).
+- **Model routing** ([packages/llm](packages/llm)): my setting for the step type (`ModelSetting`), else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING` / `LLM_MODEL_REFLECTION`, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection).
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
-- **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines.
+- **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
 
-**Embeddings:** Anthropic doesn't provide an embeddings model. Options:
-
-- **Voyage AI** (hosted, multilingual) via API key, or
-- **Local** multilingual model (e.g. `bge-m3` or `multilingual-e5`) in `py-worker`, which works well for Bulgarian + English and keeps email content local.
-
-Start with local if the server has enough RAM/CPU; otherwise Voyage.
+**Embeddings:** Anthropic doesn't provide an embeddings model. AI ME uses **OpenAI** `text-embedding-3-large` (multilingual, Bulgarian + English) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
 
 ---
 
@@ -364,9 +359,9 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 ## 8. Learning from my decisions
 
 1. **Decision capture.** Every proposal stores `originalPayload` and `finalPayload` plus a diff, a decision (`APPROVED`, `EDITED`, `REJECTED`) and an optional reason.
-2. **Few-shot retrieval.** Context (e.g. incoming email) is embedded with pgvector. When drafting, the agent retrieves my most similar *approved* past outputs for that step type as examples.
-3. **Rules.** A nightly reflection job analyzes recent edits and **suggests** rules ("Shorten recruiter replies; drop 'I hope this finds you well'"). I approve or edit them, and approved rules are injected into prompts for the relevant step type (or a specific pipeline).
-4. **Pipeline improvements.** Reflection can also propose pipeline diffs (tighter filter, different threshold), shown in that pipeline's chat for approval.
+2. **Few-shot retrieval.** When I approve a proposal (as drafted or edited), each payload field that is exactly the output an LLM step writes for me (`{{draft.body}}`; the catalog marks it with `learns`) becomes an `Example` of that step type: the step's input (the incoming email) as context, my approved text as output, embedded with pgvector. When drafting, `email.draftReply` and `llm.generate` retrieve my 3 most similar approved outputs of the same step type (cosine distance) as `<examples>`: tone, length and structure, never facts.
+3. **Rules.** A nightly reflection (03:30 Europe/Sofia; also "Reflect now" on the Rules page) sends my edits and rejections since the last one to Claude Opus through the Batch API and **suggests** rules ("Shorten recruiter replies; drop 'I hope this finds you well'"). Suggestions are checked (known step types, my own pipelines, no duplicates) and saved as `SUGGESTED`; nothing is active before I approve or edit it on the Rules page. Active rules go into the cached system prompt of every LLM step of their step type (or every step) and pipeline (or every pipeline), after the step's own rules, which they never override.
+4. **Pipeline improvements.** Reflection can also suggest a change to a pipeline (tighter filter, different threshold); it is listed on the Rules page, and the builder chat (M7) turns it into a diff for approval.
 5. **Run feedback.** After each run and in the daily digest: failure patterns, selectors that broke, rules worth adding.
 
 There's no fine-tuning. Everything learned is visible and editable.
@@ -562,9 +557,9 @@ LLM_MODEL_CLASSIFY=claude-haiku-5-5
 # Non-essential pipelines pause when this month's LLM cost reaches it; Settings override it; empty = no limit
 LLM_MONTHLY_BUDGET_USD=
 
-# Embeddings: "local" (py-worker) or "voyage"
-EMBEDDINGS_PROVIDER=local
-VOYAGE_API_KEY=
+# Embeddings for few-shot examples (OpenAI, 1024 dimensions); empty key = drafts without examples
+OPENAI_API_KEY=
+EMBEDDINGS_MODEL=text-embedding-3-large
 
 # Mail: v1 uses IMAP/SMTP with a Google app password, stored encrypted in the DB (not here): a credential named
 # MAIL_CREDENTIAL (username = the address; allowed hosts = imap.gmail.com, smtp.gmail.com)

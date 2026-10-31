@@ -1,5 +1,5 @@
 import PgBoss from "pg-boss";
-import { QUEUE_DEFINITIONS, QUEUES, type RunJob } from "./queues";
+import { QUEUE_DEFINITIONS, QUEUES, type LearningJob, type ReflectionJob, type ReflectionPollJob, type RunJob } from "./queues";
 
 export interface JobQueueOptions {
   connectionString: string;
@@ -39,6 +39,23 @@ export class JobQueue {
 
   async requestScheduleSync(): Promise<void> {
     await this.boss.send(QUEUES.syncSchedules, {});
+  }
+
+  /** An approved proposal: the worker turns its approved text into a few-shot example. */
+  async enqueueLearning(proposalId: string): Promise<void> {
+    const data: LearningJob = { proposalId };
+    await this.boss.send(QUEUES.learning, data);
+  }
+
+  /** A reflection now (Rules page), besides the nightly one. */
+  async requestReflection(userId: string): Promise<void> {
+    const data: ReflectionJob = { userId };
+    await this.boss.send(QUEUES.reflection, data);
+  }
+
+  async pollReflection(reflectionId: string, startAfter: Date): Promise<void> {
+    const data: ReflectionPollJob = { reflectionId };
+    await this.boss.send(QUEUES.reflectionPoll, data, { startAfter });
   }
 
   async stop(): Promise<void> {

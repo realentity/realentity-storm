@@ -64,6 +64,18 @@ enum RuleStatus {
   DISABLED
 }
 
+enum ReflectionStatus {
+  SUBMITTED
+  DONE
+  FAILED
+}
+
+enum SuggestionStatus {
+  OPEN
+  DONE
+  DISMISSED
+}
+
 enum CredentialKind {
   PASSWORD
   TOTP_SEED
@@ -114,6 +126,8 @@ model User {
   jobPostings   JobPosting[]
   applications  Application[]
   mailCursors   MailCursor[]
+  reflections   Reflection[]
+  suggestions   PipelineSuggestion[]
 
   @@map("Users")
 }
@@ -169,6 +183,7 @@ model Pipeline {
   versions     PipelineVersion[]
   builderChats BuilderChat[]
   mailCursors  MailCursor[]
+  suggestions  PipelineSuggestion[]
 
   @@index([userId])
   @@map("Pipelines")
@@ -359,8 +374,10 @@ model Rule {
   stepType    String? // e.g. "email.draftReply"; null = global
   pipelineId  String?    @db.Uuid // optional: rule only for one pipeline
   text        String
+  /// Why reflection suggested it (the edits it is based on).
+  rationale   String?
   status      RuleStatus @default(SUGGESTED)
-  source      String? // "reflection:<runId>" or "manual"
+  source      String? // "reflection:<reflectionId>" or "manual"
   dateCreated DateTime   @default(now())
   dateUpdated DateTime   @updatedAt
 
@@ -369,19 +386,60 @@ model Rule {
 }
 
 model Example {
-  exampleId   String                       @id @default(uuid()) @db.Uuid
-  userId      String                       @db.Uuid
-  user        User                         @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  stepType    String
-  pipelineId  String?                      @db.Uuid // optional: example only for one pipeline
-  context     String
-  output      String
-  embedding   Unsupported("vector(1024)")? // dimension depends on the embedding model
-  proposalId  String?                      @db.Uuid
-  dateCreated DateTime                     @default(now())
+  exampleId      String                       @id @default(uuid()) @db.Uuid
+  userId         String                       @db.Uuid
+  user           User                         @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  stepType       String
+  pipelineId     String?                      @db.Uuid // optional: example only for one pipeline
+  context        String
+  output         String
+  embedding      Unsupported("vector(1024)")? // dimension depends on the embedding model
+  /// The model that made `embedding`: only vectors of the current model are compared.
+  embeddingModel String?
+  proposalId     String?                      @db.Uuid
+  dateCreated    DateTime                     @default(now())
 
+  @@unique([proposalId, stepType])
   @@index([userId, stepType])
   @@map("Examples")
+}
+
+/// A nightly reflection (README §8): my recent edits and rejections, sent to Claude as a batch; its answer becomes
+/// SUGGESTED rules and pipeline suggestions, never active ones.
+model Reflection {
+  reflectionId String           @id @default(uuid()) @db.Uuid
+  userId       String           @db.Uuid
+  user         User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  status       ReflectionStatus @default(SUBMITTED)
+  batchId      String?
+  /// The decisions it covers: decidedAt in [since, until).
+  since        DateTime
+  until        DateTime
+  decisions    Int
+  llmUsage     Json?
+  error        String?
+  startedAt    DateTime         @default(now())
+  finishedAt   DateTime?
+
+  @@index([userId, startedAt])
+  @@map("Reflections")
+}
+
+/// A change to a pipeline that reflection suggests; the builder chat (M7) turns it into a definition diff.
+model PipelineSuggestion {
+  suggestionId String           @id @default(uuid()) @db.Uuid
+  userId       String           @db.Uuid
+  user         User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineId   String           @db.Uuid
+  pipeline     Pipeline         @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  text         String
+  rationale    String?
+  status       SuggestionStatus @default(OPEN)
+  source       String? // "reflection:<reflectionId>"
+  dateCreated  DateTime         @default(now())
+
+  @@index([userId, status])
+  @@map("PipelineSuggestions")
 }
 
 // #endregion

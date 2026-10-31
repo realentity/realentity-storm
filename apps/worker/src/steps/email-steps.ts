@@ -4,7 +4,11 @@ import { type EmailMessage } from "@ai-me/steps";
 import { z } from "zod";
 import { type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
-import { DATA_ONLY, LlmStep } from "./llm-steps";
+import { type StepLearning } from "../learning/learning";
+import { emailBlock } from "./email-block";
+import { DATA_ONLY, EXAMPLES_RULE, LlmStep } from "./llm-steps";
+
+export { emailBlock };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Per email in a classification prompt: the opening is enough to triage. */
@@ -42,22 +46,6 @@ export class EmailFetchStep implements StepExecutor {
     }
     return { messages: result.messages };
   }
-}
-
-/** An email as the LLM sees it: headers that matter and the text, inside <email> (data, not instructions). */
-export function emailBlock(message: EmailMessage, textLimit?: number, index?: number): string {
-  const text = textLimit && message.text.length > textLimit ? `${message.text.slice(0, textLimit)}\n[…]` : message.text;
-  const attachments = message.attachments.map((a) => a.filename ?? a.contentType).join(", ");
-  return [
-    `<email${index === undefined ? "" : ` index="${index}"`}>`,
-    `From: ${message.fromName ? `${message.fromName} <${message.from}>` : message.from}`,
-    `Date: ${message.date}`,
-    `Subject: ${message.subject}`,
-    ...(attachments ? [`Attachments: ${attachments}`] : []),
-    "",
-    text,
-    "</email>",
-  ].join("\n");
 }
 
 /** email.classify: one label per email (Haiku by default); emails with a `keep` label go to `kept`. */
@@ -122,6 +110,7 @@ export class DraftReplyStep extends LlmStep {
         "and don't promise follow-ups with a deadline.",
       "- Plain text, no subject line, no quoted original. Start with the greeting.",
       signature ? "- End with my signature exactly as given." : "- End with a short sign-off, without a name.",
+      `- ${EXAMPLES_RULE}`,
       DATA_ONLY,
       `<instruction>${instruction}</instruction>`,
       ...(background === undefined
@@ -133,7 +122,9 @@ export class DraftReplyStep extends LlmStep {
       body: z.string().min(1),
       language: z.string().min(2).max(16).describe("ISO 639-1 code of the reply's language, e.g. en, bg"),
     });
-    const draft = await this.call(context, system, emailBlock(message), schema, true);
+    const email = emailBlock(message);
+    const examples = await this.examplesFor(context, email);
+    const draft = await this.call(context, system, `${examples}${email}`, schema, true);
     return { subject: replySubject(message.subject), body: draft.body.trim(), language: draft.language.toLowerCase() };
   }
 }
@@ -168,13 +159,14 @@ export interface EmailStepDependencies {
   prisma: PrismaClient;
   llm: LlmClient;
   router: ModelRouter;
+  learning?: StepLearning;
 }
 
 export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
   return [
     new EmailFetchStep(deps.mail, deps.prisma),
-    new EmailClassifyStep(deps.llm, deps.router),
-    new DraftReplyStep(deps.llm, deps.router),
+    new EmailClassifyStep(deps.llm, deps.router, deps.learning),
+    new DraftReplyStep(deps.llm, deps.router, deps.learning),
     new EmailSendStep(deps.mail),
   ];
 }

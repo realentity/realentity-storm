@@ -1,5 +1,6 @@
 import { type PrismaClient, type UserSetting } from "@ai-me/db";
 import { LIMIT } from "@ai-me/shared";
+import { llmSpendSince } from "./llm-spend";
 
 export interface RunControlsOptions {
   /** LLM_MONTHLY_BUDGET_USD; a UserSetting overrides it. */
@@ -52,17 +53,14 @@ export class RunControls {
     return until[0] ?? null;
   }
 
-  /** LLM cost of the user's steps this calendar month (UTC), from Step.llmUsage.costUsd. */
+  /** LLM cost of the user's steps and reflections this calendar month (UTC). */
   async monthlySpendUsd(userId: string, now = new Date()): Promise<number> {
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const rows = await this.prisma.$queryRaw<{ spent: string | null }[]>`
-      SELECT SUM((s."llmUsage"->>'costUsd')::numeric)::text AS spent
-      FROM "Steps" s JOIN "Runs" r ON r."runId" = s."runId"
-      WHERE r."userId" = ${userId}::uuid AND s."startedAt" >= ${monthStart} AND s."llmUsage" ? 'costUsd'`;
-    return Number(rows[0]?.spent ?? 0);
+    return llmSpendSince(this.prisma, userId, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
   }
 
-  private async overBudget(userId: string, settings: UserSetting | null): Promise<boolean> {
+  /** The monthly budget is reached (the nightly reflection is non-essential too). */
+  async overBudget(userId: string, known?: UserSetting | null): Promise<boolean> {
+    const settings = known === undefined ? await this.settings(userId) : known;
     const budget = settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : this.options.monthlyBudgetUsd;
     if (budget === undefined) return false;
     return (await this.monthlySpendUsd(userId)) >= budget;

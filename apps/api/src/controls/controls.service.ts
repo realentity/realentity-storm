@@ -88,6 +88,7 @@ export class ControlsService {
     const router = new ModelRouter(() => Promise.resolve(null), {
       LLM_MODEL_CLASSIFY: this.env.LLM_MODEL_CLASSIFY,
       LLM_MODEL_WRITING: this.env.LLM_MODEL_WRITING,
+      LLM_MODEL_REFLECTION: this.env.LLM_MODEL_REFLECTION,
     });
     const models = Object.fromEntries(
       LLM_TASKS.map((task): [LlmTask, ModelChoiceView] => {

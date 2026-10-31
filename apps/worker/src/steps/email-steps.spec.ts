@@ -3,6 +3,8 @@ import { defaultCatalog, type EmailMessage } from "@ai-me/steps";
 import { type z } from "zod";
 import { type MailConnector, type OutgoingMail } from "../mail/mail-connector";
 import { type StepContext } from "../runner/step-executor";
+import { type StepLearning } from "../learning/learning";
+import { emailBlock as emailBlockOf } from "./email-block";
 import { DraftReplyStep, EmailClassifyStep, EmailSendStep, replySubject } from "./email-steps";
 
 const catalog = defaultCatalog();
@@ -105,6 +107,42 @@ describe("email steps", () => {
     expect(request?.system).toContain("<signature>\nAlex\n</signature>");
     expect(request?.prompt).toMatch(/^<email>\nFrom: Sender 3 <sender3@acme.test>/);
     expect(Object.keys(request.schema.shape)).toEqual(["body", "language"]);
+  });
+
+  // M6-T4, M6-T6
+  it("email.draftReply: my active rules go into the (cached) system prompt, similar approved replies before the email", async () => {
+    const llm = new FakeLlm(() => ({ body: "Hi Ana,\n\nThanks.", language: "en" }));
+    const asked: { rules: unknown[][]; examples: unknown[][] } = { rules: [], examples: [] };
+    const learning: StepLearning = {
+      rules: (...args) => (asked.rules.push(args), Promise.resolve(["Keep it under 80 words.", "Sign off with 'Best,'."])),
+      examples: (...args) => (
+        asked.examples.push(args.slice(0, 3)),
+        Promise.resolve([{ context: "<email>\nFrom: old@acme.test\n</email>", output: "Hi Bob, thanks!" }])
+      ),
+    };
+    await new DraftReplyStep(llm, router, learning).execute(
+      input("email.draftReply", { message: email(2), instruction: "Reply" }),
+      context,
+    );
+
+    const [request] = llm.requests;
+    expect(asked.rules).toEqual([["u", "email.draftReply", "p"]]);
+    expect(asked.examples).toEqual([["u", "email.draftReply", emailBlockOf(email(2))]]);
+    expect(request?.system).toContain(
+      "<my_rules>\nRules I set for this kind of output. Follow them, except where they conflict with the rules above:\n" +
+        "- Keep it under 80 words.\n- Sign off with 'Best,'.\n</my_rules>",
+    );
+    expect(request?.system.indexOf("<my_rules>")).toBeGreaterThan(request.system.indexOf("Never invent dates"));
+    expect(request?.prompt).toMatch(
+      /^<examples>\n<example>\n<input>\n<email>\nFrom: old@acme.test\n<\/email>\n<\/input>\n<approved>\nHi Bob, thanks!\n<\/approved>\n<\/example>\n<\/examples>\n\n<email>\nFrom: Sender 2/,
+    );
+  });
+
+  it("email.draftReply without rules or examples: the prompt is the email alone", async () => {
+    const llm = new FakeLlm(() => ({ body: "Hi", language: "en" }));
+    await new DraftReplyStep(llm, router).execute(input("email.draftReply", { message: email(2), instruction: "Reply" }), context);
+    expect(llm.requests[0]?.system).not.toContain("<my_rules>");
+    expect(llm.requests[0]?.prompt).toMatch(/^<email>/);
   });
 
   it("reply subjects: Re: once, recognizing Re/AW/Отн", () => {

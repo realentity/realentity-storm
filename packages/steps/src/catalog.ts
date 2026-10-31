@@ -20,6 +20,11 @@ export interface StepDefinition {
   headed?: boolean;
   /** Its output may contain text an LLM wrote: a side-effect target can never come from it (README §2.2). */
   llmOutput?: boolean;
+  /**
+   * The output field that is my text once I approve it (README §8): when a side-effect payload field is exactly
+   * {{thisStep.<field>}}, its approved value becomes a few-shot example for this step type.
+   */
+  learns?: string;
   input: z.ZodObject;
   output: z.ZodObject;
 }
@@ -36,6 +41,9 @@ export class StepCatalog {
     if (definition.targets && !definition.sideEffect) throw new Error(`${definition.type}: only side-effect steps have targets`);
     for (const field of Object.keys(definition.targets ?? {})) {
       if (!(field in definition.input.shape)) throw new Error(`${definition.type}: target "${field}" is not an input field`);
+    }
+    if (definition.learns && !(definition.learns in definition.output.shape)) {
+      throw new Error(`${definition.type}: learns "${definition.learns}" is not an output field`);
     }
     this.steps.set(definition.type, definition);
     return this;
@@ -148,6 +156,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description: "Writes text following `instruction`, using `context`.",
     sideEffect: false,
     llmOutput: true,
+    learns: "text",
     saasSafe: true,
     input: z.object({
       instruction: z.string().min(1),
@@ -237,6 +246,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description: "Drafts a reply to `message` in my voice, in the email's language, without inventing facts.",
     sideEffect: false,
     llmOutput: true,
+    learns: "body",
     saasSafe: true,
     input: z.object({
       message: EmailMessageSchema,

@@ -11,4 +11,6 @@ export type AppEvent =
   | { type: "run"; runId: string; pipelineId: string; status: RunStatusName }
   | { type: "step"; runId: string; stepKey: string; itemIndex: number | null; status: StepStatusName }
   | { type: "proposal"; proposalId: string; runId: string; status: ProposalStatusName }
-  | { type: "killSwitch"; engaged: boolean };
+  | { type: "killSwitch"; engaged: boolean }
+  /** Rules, pipeline suggestions or a reflection changed (the Rules page). */
+  | { type: "learning" };

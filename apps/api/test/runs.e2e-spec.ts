@@ -158,7 +158,15 @@ describe("runs, proposals and controls", () => {
       expect(view.decision).toMatchObject({ kind: "APPROVED", reason: null });
       const row = await db.client.proposal.findUniqueOrThrow({ where: { proposalId } });
       expect(row.payloadHash).toBe(payloadHash({ to: "ana@acme.test", body: "Thanks for Senior .NET" }));
-      expect(await queued()).toEqual([{ name: QUEUES.runs, data: { runId } }]);
+      // M6-T3: what I approve to be sent is learned from (the worker makes it an example).
+      const jobs = await queued();
+      expect(jobs).toHaveLength(2);
+      expect(jobs).toEqual(
+        expect.arrayContaining([
+          { name: QUEUES.runs, data: { runId } },
+          { name: QUEUES.learning, data: { proposalId } },
+        ]),
+      );
     });
 
     it("approve with an edit: the edited payload is what gets hashed; the decision lists the changed fields", async () => {
@@ -221,7 +229,7 @@ describe("runs, proposals and controls", () => {
       await agent.post(`/api/proposals/${proposalId}/approve`).send({}).expect(200);
       await agent.post(`/api/proposals/${proposalId}/approve`).send({}).expect(409);
       await agent.post(`/api/proposals/${proposalId}/reject`).send({}).expect(409);
-      expect(await queued()).toHaveLength(1);
+      expect((await queued()).map((job) => job.name).sort()).toEqual([QUEUES.learning, QUEUES.runs]);
     });
 
     it("previews of a dry run can't be approved", async () => {
@@ -402,7 +410,7 @@ describe("runs, proposals and controls", () => {
       await agent.put("/api/kill-switch").send({ engaged: true }).expect(200);
 
       // The job is still queued, but the run can't be claimed and the approval expired.
-      expect(await queued()).toEqual([{ name: QUEUES.runs, data: { runId } }]);
+      expect((await queued()).filter((job) => job.name === QUEUES.runs)).toEqual([{ name: QUEUES.runs, data: { runId } }]);
       expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).status).toBe("ABORTED");
       expect((await db.client.proposal.findUniqueOrThrow({ where: { proposalId } })).status).toBe("EXPIRED");
     });
@@ -445,6 +453,7 @@ describe("runs, proposals and controls", () => {
         "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "default" },
         "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+        reflection: { model: "claude-opus-5-5", effort: "high", source: "default" },
       });
 
       const chosen = (

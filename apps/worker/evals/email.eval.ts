@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { type StepContext } from "../src/runner/step-executor";
 import { DraftReplyStep, emailBlock, EmailClassifyStep } from "../src/steps/email-steps";
-import { EMAILS, type LabeledEmail } from "./email-dataset";
+import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
 
 /**
  * M4-V1 and M4-V2 (README test strategy: LLM eval with the real Claude API, run by hand):
@@ -159,26 +159,6 @@ async function judge(
   });
   record(result.usage);
   return result.output;
-}
-
-function toMessage(email: LabeledEmail, index: number): EmailMessage {
-  const messageId = `<${email.id}@eval.aime>`;
-  return {
-    uid: index + 1,
-    messageId,
-    threadId: messageId,
-    inReplyTo: null,
-    references: [],
-    from: email.from,
-    fromName: email.fromName,
-    replyTo: email.from,
-    to: ["me@example.org"],
-    cc: [],
-    subject: email.subject,
-    date: "2026-10-30T09:00:00.000Z",
-    text: email.text,
-    attachments: [],
-  };
 }
 
 /** Bulgarian or English by script: the share of Cyrillic among letters. */

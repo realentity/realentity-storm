@@ -1,5 +1,6 @@
 import { type PrismaClient } from "@ai-me/db";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { llmSpendSince } from "../runner/llm-spend";
 import { RunControls } from "../runner/run-controls";
 
 const STATUS_WORDS: Record<string, string> = {
@@ -18,8 +19,8 @@ export interface TextSender {
 }
 
 /**
- * notify.digest (README §12): what ran in the last `hours`, what waits for me, what failed, and what the LLM cost,
- * as one Telegram message. Run summaries and step errors only: no payloads or email text.
+ * notify.digest (README §12): what ran in the last `hours`, what waits for me, what failed, what reflection suggests
+ * and what the LLM cost, as one Telegram message. Run summaries and step errors only: no payloads or email text.
  */
 export class DigestStep implements StepExecutor {
   readonly type = "notify.digest";
@@ -79,16 +80,19 @@ export class DigestStep implements StepExecutor {
       if (failed.length > MAX_FAILURES) lines.push(`• … and ${failed.length - MAX_FAILURES} more`);
     }
 
-    const [window, month] = await Promise.all([this.spentSince(userId, since), new RunControls(this.prisma).monthlySpendUsd(userId, now)]);
+    const [rules, suggestions] = await Promise.all([
+      this.prisma.rule.count({ where: { userId, status: "SUGGESTED" } }),
+      this.prisma.pipelineSuggestion.count({ where: { userId, status: "OPEN" } }),
+    ]);
+    if (rules + suggestions > 0) {
+      lines.push(`Suggested by reflection: ${rules} rule(s), ${suggestions} pipeline change(s) (Rules page)`);
+    }
+
+    const [window, month] = await Promise.all([
+      llmSpendSince(this.prisma, userId, since),
+      new RunControls(this.prisma).monthlySpendUsd(userId, now),
+    ]);
     lines.push(`LLM: $${window.toFixed(4)} (this month $${month.toFixed(2)})`);
     return lines.join("\n");
-  }
-
-  private async spentSince(userId: string, since: Date): Promise<number> {
-    const rows = await this.prisma.$queryRaw<{ spent: string | null }[]>`
-      SELECT SUM((s."llmUsage"->>'costUsd')::numeric)::text AS spent
-      FROM "Steps" s JOIN "Runs" r ON r."runId" = s."runId"
-      WHERE r."userId" = ${userId}::uuid AND s."startedAt" >= ${since} AND s."llmUsage" ? 'costUsd'`;
-    return Number(rows[0]?.spent ?? 0);
   }
 }
