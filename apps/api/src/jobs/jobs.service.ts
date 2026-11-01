@@ -88,6 +88,11 @@ export class RecipesService {
     } catch (error) {
       throw new BadRequestException(`Not valid YAML: ${error instanceof Error ? error.message : String(error)}`);
     }
+    if (parsed && typeof parsed === "object" && "steps" in parsed) {
+      throw new BadRequestException(
+        "This is a pipeline (it has steps): paste it on Pipelines → New pipeline. A recipe has url, item and fields, like recipes/dev.bg-search.yaml",
+      );
+    }
     const recipe = RecipeSchema.safeParse(parsed);
     if (!recipe.success) throw new BadRequestException(recipe.error.issues.map((i) => `${i.path.join(".") || "recipe"}: ${i.message}`).join("; "));
     const problems = recipeProblems(name, recipe.data);

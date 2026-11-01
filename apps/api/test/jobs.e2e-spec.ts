@@ -71,6 +71,12 @@ describe("jobs and recipes", () => {
     const offSite = await agent.post("/api/recipes").send({ name: "dev.bg/search", source: RECIPE.replace("https://dev.bg/company", "https://evil.example/company") }).expect(400);
     expect((offSite.body as { message: string }).message).toContain("is not on dev.bg");
     await agent.post("/api/recipes").send({ name: "dev.bg/search", source: "item: 3" }).expect(400);
+    // A pipeline pasted here by mistake says where it belongs.
+    const pipeline = await agent
+      .post("/api/recipes")
+      .send({ name: "dev.bg/search", source: "name: Daily .NET jobs\nsteps:\n  - id: search\n    type: browser.extract\n" })
+      .expect(400);
+    expect((pipeline.body as { message: string }).message).toMatch(/^This is a pipeline \(it has steps\): paste it on Pipelines → New pipeline/);
     await agent.post("/api/recipes").send({ name: "dev.bg", source: RECIPE }).expect(400);
 
     await db.client.siteRecipe.updateMany({ where: { version: 2 }, data: { brokenAt: new Date(), brokenReason: '".job-list-item" matched nothing' } });
