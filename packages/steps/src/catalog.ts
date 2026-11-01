@@ -32,6 +32,11 @@ export interface StepDefinition {
    */
   learns?: string;
   /**
+   * An output field holding a short plain-text account of what the step read (shop.product: each product's price): a
+   * run that ends with nothing to tell (its message skipped by `when`) shows it in its summary.
+   */
+  reports?: string;
+  /**
    * Input fields that are addresses the step reads from (http.fetch, M13): a literal one must be on the pipeline's
    * `policy.allowedDomains`, and at run time every one is checked against it.
    */
@@ -52,6 +57,9 @@ export class StepCatalog {
     if (definition.targets && !definition.sideEffect) throw new Error(`${definition.type}: only side-effect steps have targets`);
     for (const field of Object.keys(definition.targets ?? {})) {
       if (!(field in definition.input.shape)) throw new Error(`${definition.type}: target "${field}" is not an input field`);
+    }
+    if (definition.reports && !(definition.reports in definition.output.shape)) {
+      throw new Error(`${definition.type}: reports "${definition.reports}" is not an output field`);
     }
     if (definition.learns && !(definition.learns in definition.output.shape)) {
       throw new Error(`${definition.type}: learns "${definition.learns}" is not an output field`);
@@ -311,6 +319,7 @@ export const CORE_STEPS: StepDefinition[] = [
     sideEffect: false,
     saasSafe: true,
     reads: ["url", "urls", "products"],
+    reports: "report",
     input: z.object({
       url: z.string().url().optional(),
       urls: z.array(z.string().url()).min(1).max(25).optional(),
@@ -325,7 +334,11 @@ export const CORE_STEPS: StepDefinition[] = [
       llm: z.boolean().default(true).describe("no product data even in the browser: the cheap model reads the page's text"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
-    output: z.object({ items: Items, problems: z.array(z.string()) }),
+    output: z.object({
+      items: Items,
+      problems: z.array(z.string()),
+      report: z.string().describe('one line per product: "Jacket (M, Black): 343.16 EUR, in stock"'),
+    }),
   },
   {
     type: "llm.classify",

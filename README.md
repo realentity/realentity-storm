@@ -138,7 +138,7 @@ The builder can only use these. Each step type is a TypeScript class in the work
 
 New capabilities are added by writing a new step class, never by the LLM.
 
-**Conditions (`when`):** any step can carry `when: "{{step.field}}"`: it runs only when that value isn't empty (a non-empty list or text, true, a number other than 0); otherwise it is skipped, and so is every later step that uses its output. A watch tells me only about changes this way: `http.fetch` → `data.save` into a collection → `llm.summarize` with `when: "{{save.added}}"` → `notify.telegram` (see `pipelines/release-watch.yaml`, `pipelines/price-watch.yaml`, `pipelines/product-watch.yaml`).
+**Conditions (`when`):** any step can carry `when: "{{step.field}}"`: it runs only when that value isn't empty (a non-empty list or text, true, a number other than 0); otherwise it is skipped, and so is every later step that uses its output. A watch tells me only about changes this way: `http.fetch` → `data.save` into a collection → `llm.summarize` with `when: "{{save.added}}"` → `notify.telegram` (see `pipelines/release-watch.yaml`, `pipelines/price-watch.yaml`, `pipelines/product-watch.yaml`). A run that skipped steps this way says so at the top of its page ("Done, nothing to tell: cheaper.items was empty, so tell was skipped"), with what it read where a step reports it (`shop.product`: each product's price and stock).
 
 ### 2.4 Browser steps: recipes vs agent
 

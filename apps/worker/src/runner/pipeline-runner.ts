@@ -72,6 +72,8 @@ interface RunState {
   rejectedSingles: Set<string>;
   /** Steps skipped by `when` (M13), or because they use one: later steps that use them are skipped too. */
   skippedSteps: Set<string>;
+  /** The `when` paths that were empty, for a quiet run's summary. */
+  emptyWhens: Set<string>;
 }
 
 const key = (stepKey: string, itemIndex: number | null): string => `${stepKey}#${itemIndex ?? ""}`;
@@ -273,6 +275,7 @@ export class PipelineRunner {
       blocked: new Map(),
       rejectedSingles: new Set(),
       skippedSteps: new Set(),
+      emptyWhens: new Set(),
     };
   }
 
@@ -336,7 +339,33 @@ export class PipelineRunner {
       }
       state.values.set(step, outputs);
     }
-    return { status: [...state.blocked.values()].some((items) => items.size > 0) ? "WAITING_FOR_USER" : "DONE" };
+    if ([...state.blocked.values()].some((items) => items.size > 0)) return { status: "WAITING_FOR_USER" };
+    return { status: "DONE", ...(state.emptyWhens.size ? { summary: this.quietSummary(state) } : {}) };
+  }
+
+  /**
+   * A run with steps skipped by `when` says why, and what it read (catalog `reports`): "Done, nothing to tell:
+   * cheaper.items was empty, so lines and tell were skipped." + "Jacket (M, Black): 343.16 EUR, in stock". "Nothing to
+   * tell" only when no message or side effect ran.
+   */
+  private quietSummary(state: RunState): string {
+    const list = (values: string[]) => (values.length > 1 ? `${values.slice(0, -1).join(", ")} and ${values.at(-1)!}` : values[0]);
+    const whens = [...state.emptyWhens];
+    const skipped = [...state.skippedSteps];
+    const told = state.definition.steps.some(
+      (step) => (step.type.startsWith("notify.") || this.catalog.get(step.type)?.sideEffect) && !state.skippedSteps.has(step.id),
+    );
+    const reports = state.definition.steps.flatMap((step) => {
+      const field = this.catalog.get(step.type)?.reports;
+      const value = field && !step.forEach ? (state.values.lookup(`${step.id}.${field}`)) : undefined;
+      return typeof value === "string" && value.trim() ? [value.trim()] : [];
+    });
+    return (
+      `${told ? "Done." : "Done, nothing to tell:"} ${list(whens)} ${whens.length > 1 ? "were" : "was"} empty` +
+      (skipped.length ? `, so ${list(skipped)} ${skipped.length > 1 ? "were" : "was"} skipped.` : ", so some items were skipped.") +
+      (state.dryRun ? " A dry run saves nothing, so each one starts from scratch." : "") +
+      (reports.length ? `\n${reports.join("\n")}` : "")
+    );
   }
 
   /** Why a step (or one item of it) doesn't run now: it uses a skipped step, or its `when` is empty (M13). */
@@ -345,7 +374,9 @@ export class PipelineRunner {
     if (unused) return unused;
     if (!step.when) return null;
     const path = sourceOf(step.when);
-    return isEmpty(state.values.lookup(path, scope)) ? `Skipped: {{${path}}} is empty` : null;
+    if (!isEmpty(state.values.lookup(path, scope))) return null;
+    state.emptyWhens.add(path);
+    return `Skipped: {{${path}}} is empty`;
   }
 
   private usesSkipped(state: RunState, step: CompiledStep): string | null {

@@ -118,6 +118,10 @@ steps:
     type: notify.telegram
     when: "{{cheaper.items}}"
     with: { text: "Cheaper: {{cheaper.items}}" }
+  - id: trouble
+    type: notify.telegram
+    when: "{{product.problems}}"
+    with: { text: "Can't read: {{product.problems}}" }
 `;
 
 // M13 follow-up: a product's price, or one variant's, from its page; the browser and the cheap model only when needed.
@@ -243,16 +247,25 @@ describe("shop.product: watching a product page", () => {
     const telegram = new Counting("notify.telegram", () => ({ sent: true }));
     const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([step, new HistoryStep(db.client), new FilterStep(), telegram]));
     const versionId = await createVersion(db.client, userId, WATCH(shop.url("/p/jacket")), new PipelineCompiler(defaultCatalog()));
-    const day = async () => {
-      const runId = await runner.start(versionId, { trigger: "manual" });
+    const day = async (dryRun = false) => {
+      const runId = await runner.start(versionId, { trigger: "manual", dryRun });
       expect(await runner.advance(runId)).toBe("DONE");
+      return (await db.client.run.findUniqueOrThrow({ where: { runId } })).summary;
     };
-    await day();
+    // A quiet run says why it said nothing, and what it read.
+    expect(await day(true)).toBe(
+      "Done, nothing to tell: cheaper.items and product.problems were empty, so tell and trouble were skipped. " +
+        "A dry run saves nothing, so each one starts from scratch.\nSkogsö Padded Jacket (Black, M): 343.16 EUR, in stock",
+    );
+    expect(await day()).toBe(
+      "Done, nothing to tell: cheaper.items and product.problems were empty, so tell and trouble were skipped.\nSkogsö Padded Jacket (Black, M): 343.16 EUR, in stock",
+    );
     shop.price = 359;
     await day();
     expect(telegram.calls).toHaveLength(0);
     shop.price = 299.95;
-    await day();
+    // A message went out: no "nothing to tell".
+    expect(await day()).toBe("Done. product.problems was empty, so trouble was skipped.\nSkogsö Padded Jacket (Black, M): 299.95 EUR, in stock");
     expect(telegram.calls).toHaveLength(1);
     expect(String(telegram.calls[0].text)).toContain("299.95");
     expect((await db.client.dataPoint.findMany({ orderBy: { at: "asc" } })).map((p) => [p.key, p.value])).toEqual([

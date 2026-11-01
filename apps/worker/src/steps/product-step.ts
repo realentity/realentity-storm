@@ -99,7 +99,7 @@ export class ProductStep extends LlmStep {
     }
     const problems = items.filter((item) => item.problem).map((item) => `${String(item.url)}: ${String(item.problem)}`);
     if (items.every((item) => item.price === null)) throw new Error(`No price read: ${problems.join("; ")}`);
-    return { items, problems };
+    return { items, problems, report: items.map(reportOf).join("\n") };
   }
 
   private async read(
@@ -214,6 +214,15 @@ export function itemOf(url: string, select: Select, data: ProductData): Item {
           ? `the cheapest of ${data.offers.length} variants${inStock.length ? " in stock" : ""}: choose one with select`
           : null,
   };
+}
+
+/** "Skogsö Padded Jacket (M, Black): 343.16 EUR, in stock", or what went wrong. */
+function reportOf(item: Item): string {
+  const variant = item.variant ? ` (${Object.values(item.variant as Record<string, string>).join(", ")})` : "";
+  const name = `${String(item.title ?? item.url)}${variant}`;
+  if (item.price === null) return `${name}: ${String(item.problem)}`;
+  const stock = item.inStock === true ? ", in stock" : item.inStock === false ? ", sold out" : "";
+  return `${name}: ${item.price as number}${typeof item.currency === "string" ? ` ${item.currency}` : ""}${stock}`;
 }
 
 /** An item without a price yet: `id` is the product and the variant asked for, the key for data.history. */

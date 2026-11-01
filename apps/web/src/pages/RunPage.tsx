@@ -49,7 +49,13 @@ export function RunPage() {
         <Fact label="LLM cost" value={formatUsd(r.costUsd)} />
       </div>
       {r.summary && (
-        <div className={`alert ${r.status === "ABORTED" || r.status === "FAILED" ? "alert-warning" : "alert-info"}`}>{r.summary}</div>
+        <div
+          className={`alert ${r.status === "ABORTED" || r.status === "FAILED" ? "alert-warning" : "alert-info"}`}
+          style={{ whiteSpace: "pre-line" }}
+          data-testid="run-summary"
+        >
+          {r.summary}
+        </div>
       )}
       {r.resumeAt && <div className="alert alert-info">Held back by a rate limit; continues {formatDateTime(r.resumeAt)}.</div>}
       {["QUEUED", "RUNNING", "WAITING_FOR_USER"].includes(r.status) && r.steps.some((s) => s.type === "browser.teach") && (
