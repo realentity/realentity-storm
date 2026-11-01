@@ -1,8 +1,9 @@
 import { type GoogleStatusView } from "@ai-me/shared";
 import { Body, Controller, Delete, Get, HttpCode, Post, Query, Req, Res } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { type Request, type Response } from "express";
 import { z } from "zod";
-import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
+import { CurrentUser, Public, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { GoogleService } from "./google.service";
 
@@ -23,15 +24,19 @@ export class GoogleController {
     return this.google.connect(user.userId, originOf(request), body.returnTo);
   }
 
-  /** Google sends the browser here after the consent screen (my session cookie comes along: a top-level GET). */
+  /**
+   * Google sends the browser here after the consent screen. Public: coming from accounts.google.com, the browser
+   * doesn't send the SameSite=Strict session cookie; the sign-in's one-time state says whose it is.
+   */
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get("callback")
   async callback(
-    @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
     @Res() response: Response,
     @Query() query: { code?: string; state?: string; error?: string },
   ): Promise<void> {
-    response.redirect(302, await this.google.callback(user.userId, originOf(request), query));
+    response.redirect(302, await this.google.callback(originOf(request), query));
   }
 
   @Delete()

@@ -3,6 +3,7 @@ import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, type GoogleStatusView } from "@ai-me/shared";
 import { TestEnvironment } from "@ai-me/testing";
 import { createHash } from "node:crypto";
+import request from "supertest";
 import type TestAgent from "supertest/lib/agent";
 import { GOOGLE_FETCH } from "../src/google/google.service";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -69,7 +70,8 @@ describe("Google Calendar connection", () => {
     const { url } = (await agent.post("/api/google/connect").send(returnTo ? { returnTo } : {}).expect(201)).body as { url: string };
     return new URL(url);
   };
-  const callback = (query: Record<string, string>) => agent.get(`/api/google/callback?${new URLSearchParams(query).toString()}`).expect(302);
+  /** Google's redirect back: from accounts.google.com, so the browser sends no SameSite=Strict session cookie. */
+  const callback = (query: Record<string, string>) => request(api.http).get(`/api/google/callback?${new URLSearchParams(query).toString()}`).expect(302);
 
   it("sends me to Google's consent screen for offline calendar access, and back to the redirect URI", async () => {
     const status = (await agent.get("/api/google").expect(200)).body as GoogleStatusView;

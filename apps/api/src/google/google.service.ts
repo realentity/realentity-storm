@@ -70,11 +70,16 @@ export class GoogleService {
     return { url: googleAuthUrl(client, state, challenge, known?.email) };
   }
 
-  /** Back from Google: the page to go to, with ?google=connected or ?google=<what went wrong>. */
-  async callback(userId: string, origin: string, query: { code?: string; state?: string; error?: string }): Promise<string> {
+  /**
+   * Back from Google: the page to go to, with ?google=connected or ?google=<what went wrong>. The browser comes from
+   * accounts.google.com, so my SameSite=Strict session cookie isn't sent: the user is the one who started this sign-in,
+   * known by its state (random, used once, 10 minutes, and bound to the PKCE verifier Google checks).
+   */
+  async callback(origin: string, query: { code?: string; state?: string; error?: string }): Promise<string> {
     const pending = query.state ? this.pending.get(query.state) : undefined;
     if (query.state) this.pending.delete(query.state);
-    if (!pending || pending.userId !== userId || pending.expiresAt < Date.now()) return back("/settings", "the sign-in expired or wasn't started here: connect again");
+    if (!pending || pending.expiresAt < Date.now()) return back("/settings", "the sign-in expired or wasn't started here: connect again");
+    const { userId } = pending;
     if (query.error) return back(pending.returnTo, query.error === "access_denied" ? "you didn't allow access" : `Google said ${query.error}`);
     if (!query.code) return back(pending.returnTo, "Google sent no code");
 
