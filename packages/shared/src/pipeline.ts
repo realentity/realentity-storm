@@ -30,7 +30,7 @@ function isTimeZone(value: string): boolean {
 }
 
 /** What happens in AI ME that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
-export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified"] as const;
+export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later"] as const;
 export type TriggerEventName = (typeof TRIGGER_EVENTS)[number];
 
 const list = <T extends z.ZodType>(schema: T) => z.array(schema).min(1).optional();
@@ -49,6 +49,8 @@ export const EventTriggerSchema = z.discriminatedUnion("on", [
   z.object({ on: z.literal("recipe.broken"), site: z.string().trim().toLowerCase().min(1).optional() }).strict(),
   /** One event per email an email.classify step labelled; `label` filters them. */
   z.object({ on: z.literal("email.classified"), label: list(z.string().min(1)) }).strict(),
+  /** Started by another pipeline's flow.later (M14-T3), with the data it gave: {{trigger.data}}. */
+  z.object({ on: z.literal("flow.later") }).strict(),
 ]);
 export type EventTrigger = z.infer<typeof EventTriggerSchema>;
 

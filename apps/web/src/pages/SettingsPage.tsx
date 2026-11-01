@@ -2,6 +2,7 @@ import { CLAUDE_MODELS, EFFORTS, LLM_TASKS, type LlmTask, type SettingsRequest, 
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
+import { GoogleCalendarCard } from "../components/GoogleCalendarCard";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
@@ -23,6 +24,7 @@ export function SettingsPage() {
         </div>
         <div className="col-lg-5 d-flex flex-column gap-3">
           <Budget settings={settings.data} onSaved={settings.reload} />
+          <GoogleCalendarCard />
           <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
           <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
         </div>

@@ -143,6 +143,7 @@ export function takeoverView(takeover: Takeover, timeoutMinutes: number): Takeov
     stepKey: takeover.stepKey,
     itemIndex: takeover.itemIndex,
     url: takeover.url,
+    waitsFor: takeover.waitsFor,
     requestedAt: takeover.requestedAt.toISOString(),
     expiresAt: new Date(takeover.requestedAt.getTime() + timeoutMinutes * 60_000).toISOString(),
   };

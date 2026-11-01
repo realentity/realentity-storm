@@ -101,6 +101,13 @@ export const ServerEnvSchema = z
       .string()
       .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "a credential name")
       .default("mail"),
+
+    /**
+     * Google Calendar (calendar.* steps, M14): the OAuth client of my Google Cloud project (a Web application client
+     * whose redirect URI is APP_ORIGIN + /api/google/callback). Unset: Settings says how to set it up.
+     */
+    GOOGLE_CLIENT_ID: optional(z.string().regex(/^[\w.-]+\.apps\.googleusercontent\.com$/, "…apps.googleusercontent.com")),
+    GOOGLE_CLIENT_SECRET: optional(z.string().min(10).max(200)),
   })
   .refine((env) => env.MAIL_TLS || [env.IMAP_HOST, env.SMTP_HOST].every((host) => !host || LOCAL_HOSTS.includes(host)), {
     path: ["MAIL_TLS"],

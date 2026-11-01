@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import { PipelineChat } from "../components/PipelineChat";
 import { PlanView, StepGraphView } from "../components/PlanView";
 import { RunsTable } from "../components/RunsTable";
+import { ScheduledStartsCard } from "../components/ScheduledStartsCard";
 import { WebhookCard } from "../components/WebhookCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { errorMessage } from "../lib/api";
@@ -120,6 +121,10 @@ export function PipelinePage() {
           {p.current && typeof p.current.definition.trigger === "object" && "webhook" in p.current.definition.trigger && (
             <WebhookCard pipelineId={pipelineId} auth={p.current.definition.trigger.webhook} />
           )}
+          {p.current && typeof p.current.definition.trigger === "object" && "on" in p.current.definition.trigger && p.current.definition.trigger.on === "flow.later" && (
+            <ScheduledStartsCard pipelineId={pipelineId} />
+          )}
+          {p.current?.definition.steps.some((s) => s.type.startsWith("calendar.")) && <CalendarNotice />}
           <div className="card">
             <div className="card-header">
               <h3 className="card-title">Versions</h3>
@@ -188,6 +193,19 @@ function Switches({
           <div className="small text-secondary">Keeps running when the monthly LLM budget is spent.</div>
         </label>
       </div>
+    </div>
+  );
+}
+
+/** A pipeline with calendar steps while Google Calendar isn't connected: said before a run waits for it (M14-T1). */
+function CalendarNotice() {
+  const google = useLoad(() => api.google.status(), []);
+  const g = google.data;
+  if (!g || g.status === "CONNECTED") return null;
+  return (
+    <div className="alert alert-warning mb-0" data-testid="calendar-notice">
+      This pipeline uses Google Calendar, which {g.connected ? "needs reconnecting" : "isn't connected"}: <Link to="/settings#google">connect it in Settings</Link>,
+      or its runs wait for it.
     </div>
   );
 }

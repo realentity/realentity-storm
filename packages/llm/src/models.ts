@@ -20,6 +20,8 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "llm.score": "classify",
   "llm.generate": "writing",
   "llm.summarize": "writing",
+  // A time and its zone out of an email: worth the writing model (M14-T2).
+  "llm.extract": "writing",
   "email.classify": "classify",
   "email.draftReply": "writing",
   reflection: "reflection",

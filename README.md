@@ -126,11 +126,13 @@ The builder can only use these. Each step type is a TypeScript class in the work
 | --- | --- | --- |
 | Email | `email.fetch`, `email.classify`, `email.draftReply`, `email.send` | `send` |
 | Browser | `browser.open`, `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent`, `browser.submit` | `fillAndSubmit`, `upload`, `submit`* |
-| LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize` | no |
+| LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` (named fields out of an email or page: times as ISO 8601 with their offset) | no |
 | Data | `data.dedupe`, `data.filter`, `data.save` (job postings, or a collection of mine with `added` / `changed` / `removed`), `data.history` (a number per key over time: previous, change, min, max, lowest), `data.lookup` | no (internal DB only) |
 | HTTP | `http.fetch`: GET without a browser; RSS/Atom feeds become items, JSON stays data, pages become text; only hosts on `policy.allowedDomains`, never private or tailnet addresses (also after DNS and redirects); an unchanged address (ETag / Last-Modified, 304) reuses what was read | no |
 | Shop | `shop.product`: the price of a product, or of one variant (`select: { size: M, color: Black }`), from its page: the page's schema.org data (Product, ProductGroup and its variants) or price meta tags, without a browser; a page without them, or one that refuses plain requests, in the headless browser; with no data there either, the cheap model reads the price from the text. `id` (product + variant) is the key for `data.history`. Same host and address rules as `http.fetch`; in the browser, every page and redirect is checked before it is followed | no |
 | Files | `file.read` (a document's or a download's text: text files, PDFs, parsed in a child process); my documents (CV, cover letters) are uploaded on the Profile page, not generated or stored by a step | no |
+| Calendar | `calendar.find` (my Google Calendar's events in a window), `calendar.create` (an event; with `attendees`, Google emails them an invitation from my account; guests are recipients, like `email.send`'s `to`; the same title at the same start isn't created twice) | `create` |
+| Flow | `flow.later` (start another pipeline later with data, once, unless `flow.cancel` with its key or an event matching `cancelOn` cancels it first), `flow.cancel` | no |
 | Gates | `gate.review`, `gate.act`, `gate.takeover` | — |
 | Notify | `notify.digest`, `notify.telegram` | to me only |
 
@@ -711,6 +713,8 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Executed payload must match the hash of the approved payload
 - [ ] Untrusted content (email/page/file text) is clearly delimited in prompts and never treated as instructions
 - [ ] `shop.product` reads like `http.fetch`, and its browser pages go only to allowed hosts
+- [ ] Google Calendar's refresh token is sealed like a credential (AAD: my user id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
+- [ ] `calendar.create`'s guests can't come from LLM output (they are recipient targets), and Google emails them only after Act
 - [ ] Browser pages that explore or act (agent, upload, submit, shop.product) go only to allowed sites, every redirect checked before it is followed
 - [ ] `http.fetch` reads only hosts on the pipeline's allowedDomains and connects only to public addresses (checked after DNS, on IP literals and every redirect; no cookies or credentials)
 - [ ] Telegram and webhook calls carry their own secret (bot header + my user id; per-pipeline HMAC or token); signatures checked by the worker; a webhook body is never a target

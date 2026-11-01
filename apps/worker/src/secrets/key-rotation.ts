@@ -10,8 +10,9 @@ export interface RotationResult {
 }
 
 /**
- * Moves every credential's data key to the current root key version (README §7). Values are never decrypted,
- * only their data keys are re-wrapped. Safe to re-run: each row is updated only if its version is still the old one.
+ * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens) to the current root key version
+ * (README §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
+ * only if its version is still the old one.
  */
 export class KeyRotation {
   private static readonly BATCH = 100;
@@ -49,6 +50,26 @@ export class KeyRotation {
         else skipped++;
       }
       lastId = batch[batch.length - 1]?.credentialId;
+    }
+
+    // Webhook secrets (AAD webhookId) and Google refresh tokens (AAD userId): a few rows each.
+    for (const row of await this.prisma.webhook.findMany({ where: { keyVersion: { not: toVersion } } })) {
+      fromVersions.add(row.keyVersion);
+      const { count } = await this.prisma.webhook.updateMany({
+        where: { webhookId: row.webhookId, keyVersion: row.keyVersion },
+        data: rewrap(this.keys, row.webhookId, row, toVersion),
+      });
+      if (count === 1) rewrapped++;
+      else skipped++;
+    }
+    for (const row of await this.prisma.googleConnection.findMany({ where: { keyVersion: { not: toVersion } } })) {
+      fromVersions.add(row.keyVersion);
+      const { count } = await this.prisma.googleConnection.updateMany({
+        where: { userId: row.userId, keyVersion: row.keyVersion },
+        data: rewrap(this.keys, row.userId, row, toVersion),
+      });
+      if (count === 1) rewrapped++;
+      else skipped++;
     }
 
     return { rewrapped, skipped, fromVersions: [...fromVersions].sort((a, b) => a - b), toVersion };

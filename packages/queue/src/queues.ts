@@ -23,6 +23,8 @@ export const QUEUES = {
   events: "pipeline-events",
   /** A webhook call the api accepted: the worker checks its signature and starts the pipeline (M12-T2). */
   webhooks: "webhooks",
+  /** A flow.later start whose time has come (M14-T3); the ScheduledStart row decides whether it still runs. */
+  later: "later",
 } as const;
 
 export interface RunJob {
@@ -79,6 +81,10 @@ export interface WebhookJob {
   receivedAt: string;
 }
 
+export interface LaterJob {
+  scheduledStartId: string;
+}
+
 const RUN_QUEUE: Omit<PgBoss.Queue, "name"> = {
   // Duplicate jobs for one run are harmless: the runner claims a run before advancing it.
   retryLimit: 3,
@@ -102,4 +108,6 @@ export const QUEUE_DEFINITIONS: PgBoss.Queue[] = [
   { name: QUEUES.maintenance, policy: "stately", retryLimit: 2, retryDelay: 600 },
   { name: QUEUES.events, policy: "standard", retryLimit: 3, retryDelay: 30 },
   { name: QUEUES.webhooks, policy: "standard", retryLimit: 3, retryDelay: 30 },
+  // Waits up to flow.later's longest delay (a year) before it may run.
+  { name: QUEUES.later, policy: "standard", retryLimit: 3, retryDelay: 60, retentionSeconds: 400 * 24 * 60 * 60 },
 ];

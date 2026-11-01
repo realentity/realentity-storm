@@ -133,6 +133,8 @@ model User {
   dataRecords   DataRecord[]
   dataPoints    DataPoint[]
   httpCaches    HttpCache[]
+  google        GoogleConnection?
+  scheduled     ScheduledStart[]
 
   @@map("Users")
 }
@@ -194,6 +196,7 @@ model Pipeline {
   mailCursors  MailCursor[]
   suggestions  PipelineSuggestion[]
   webhook      Webhook?
+  scheduled    ScheduledStart[]
 
   @@index([userId])
   @@map("Pipelines")
@@ -390,6 +393,8 @@ model Takeover {
   reason      String
   /// The page it stopped on.
   url         String?
+  /// What it waits for besides Continue (M14): "google", a Google reconnect, which continues it.
+  waitsFor    String?
   requestedAt DateTime       @default(now())
   resolvedAt  DateTime?
 
@@ -740,3 +745,64 @@ model HttpCache {
 }
 
 // #endregion
+
+enum GoogleConnectionStatus {
+  CONNECTED
+  NEEDS_RECONNECT
+}
+
+/// My Google account for the calendar steps (M14-T1): the refresh token sealed (AAD = userId), the state as last seen
+/// when the calendar was used (no background checks).
+model GoogleConnection {
+  userId       String                 @id @db.Uuid
+  user         User                   @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  email        String
+  scopes       String[]
+  status       GoogleConnectionStatus @default(CONNECTED)
+  ciphertext   Bytes
+  iv           Bytes
+  authTag      Bytes
+  wrappedDek   Bytes
+  keyVersion   Int                    @default(1)
+  lastWorkedAt DateTime?
+  brokenAt     DateTime?
+  brokenReason String?
+  dateCreated  DateTime               @default(now())
+  dateUpdated  DateTime               @updatedAt
+
+  @@map("GoogleConnections")
+}
+
+enum ScheduledStartStatus {
+  PENDING
+  STARTED
+  CANCELLED
+  SKIPPED
+}
+
+/// A pipeline to start later with data (flow.later, M14-T3): one start, unless cancelled by its key (flow.cancel) or
+/// by an event matching `cancelOn` first.
+model ScheduledStart {
+  scheduledStartId String               @id @default(uuid()) @db.Uuid
+  userId           String               @db.Uuid
+  user             User                 @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineId       String               @db.Uuid
+  pipeline         Pipeline             @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  /// Another flow.later with the same key replaces this one; flow.cancel cancels by it.
+  key              String?
+  data             Json
+  /// { event, match }: that event with these values cancels it.
+  cancelOn         Json?
+  fireAt           DateTime
+  status           ScheduledStartStatus @default(PENDING)
+  /// Why it was cancelled or skipped.
+  reason           String?
+  scheduledByRunId String?              @db.Uuid
+  runId            String?              @db.Uuid
+  dateCreated      DateTime             @default(now())
+  dateUpdated      DateTime             @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, key])
+  @@map("ScheduledStarts")
+}

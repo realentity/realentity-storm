@@ -1,17 +1,19 @@
 import { open, type KeyRing } from "@ai-me/crypto";
 import { type PrismaClient } from "@ai-me/db";
-import { type EventJob, type JobQueue, type WebhookJob } from "@ai-me/queue";
+import { type EventJob, type JobQueue, type LaterJob, type WebhookJob } from "@ai-me/queue";
 import { isEventTrigger, isWebhookTrigger, type CompiledDefinition, type EventTrigger } from "@ai-me/shared";
 import { Logger } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { type LaterStarts } from "./later";
 import { type PipelineRunner } from "./pipeline-runner";
 
 /** A run started by an event is one deeper than the run whose event it was; deeper than this, nothing starts. */
 export const MAX_CHAIN_DEPTH = 3;
 
 /**
- * Starts the pipelines triggered by what happens (M12-T1) and by webhook calls (M12-T2). Only enabled pipelines,
- * never with the kill switch on, never a pipeline on its own event, and chains stop at MAX_CHAIN_DEPTH.
+ * Starts the pipelines triggered by what happens (M12-T1), by webhook calls (M12-T2) and by flow.later (M14-T3).
+ * Only enabled pipelines, never with the kill switch on, never a pipeline on its own event, and chains stop at
+ * MAX_CHAIN_DEPTH. An event first cancels the flow.later starts it was to cancel.
  */
 export class Triggers {
   private readonly logger = new Logger(Triggers.name);
@@ -21,10 +23,13 @@ export class Triggers {
     private readonly runner: PipelineRunner,
     private readonly queue: JobQueue,
     private readonly keys: KeyRing,
+    private readonly later?: LaterStarts,
   ) {}
 
   /** The runs it started. */
   async fire(job: EventJob): Promise<string[]> {
+    const cancelled = (await this.later?.cancelByEvent(job)) ?? 0;
+    if (cancelled) this.logger.log(`${job.event} cancelled ${cancelled} flow.later start(s)`);
     const depth = job.source.depth + 1;
     if (depth > MAX_CHAIN_DEPTH) {
       this.logger.warn(`${job.event} from run ${job.source.runId ?? "?"} starts nothing: ${MAX_CHAIN_DEPTH} triggered runs in a chain already`);
@@ -77,6 +82,35 @@ export class Triggers {
     });
   }
 
+  /** A flow.later start whose time has come: its pipeline, once, if it is still enabled and the kill switch is off. */
+  async fireLater(job: LaterJob): Promise<string | null> {
+    if (!this.later) return null;
+    const row = await this.later.claim(job.scheduledStartId);
+    if (!row) return null;
+    const skip = async (reason: string) => {
+      await this.later!.finish(row.scheduledStartId, { skipped: reason });
+      this.logger.log(`flow.later start skipped: ${reason}`);
+      return null;
+    };
+    if (await this.paused(row.userId)) return skip("the kill switch was on");
+    const pipeline = await this.prisma.pipeline.findUnique({ where: { pipelineId: row.pipelineId } });
+    if (!pipeline?.enabled || !pipeline.currentVersionId) return skip(`"${pipeline?.name ?? "?"}" isn't enabled`);
+    const version = await this.prisma.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: pipeline.currentVersionId } });
+    const trigger = (version.definition as unknown as CompiledDefinition).trigger;
+    if (!isEventTrigger(trigger) || trigger.on !== "flow.later") return skip(`"${pipeline.name}" isn't triggered by flow.later any more`);
+    const scheduledBy = row.scheduledByRunId ? await this.prisma.run.findUnique({ where: { runId: row.scheduledByRunId } }) : null;
+    const depth = (scheduledBy?.chainDepth ?? 0) + 1;
+    if (depth > MAX_CHAIN_DEPTH) return skip(`${MAX_CHAIN_DEPTH} triggered runs in a chain already`);
+    const runId = await this.start(version.pipelineVersionId, {
+      trigger: "event",
+      triggerData: { data: row.data, key: row.key, scheduledAt: row.dateCreated.toISOString(), scheduledByRunId: row.scheduledByRunId },
+      chainDepth: depth,
+      ...(row.scheduledByRunId ? { triggeredByRunId: row.scheduledByRunId } : {}),
+    });
+    await this.later.finish(row.scheduledStartId, { runId });
+    return runId;
+  }
+
   private async start(versionId: string, options: Parameters<PipelineRunner["start"]>[1]): Promise<string> {
     const runId = await this.runner.start(versionId, options);
     await this.queue.enqueueRun(await this.prisma.run.findUniqueOrThrow({ where: { runId } }));
@@ -116,6 +150,9 @@ function matches(trigger: EventTrigger, job: EventJob): boolean {
       return !trigger.site || data.site === trigger.site;
     case "email.classified":
       return !trigger.label || trigger.label.includes(data.label as string);
+    case "flow.later":
+      // Started by its own scheduled start (fireLater), never by an event.
+      return false;
   }
 }
 

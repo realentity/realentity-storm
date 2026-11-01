@@ -159,6 +159,32 @@ export class SummarizeStep extends LlmStep {
   }
 }
 
+/**
+ * llm.extract (M14-T2): named fields out of content (an interview invite's time, company, link). Every field is
+ * answered, "" when the content doesn't say; dates and times as ISO 8601 with the offset the content implies.
+ */
+export class ExtractStep extends LlmStep {
+  readonly type = "llm.extract";
+
+  async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
+    const { content, fields, instruction, timeZone } = input as { content: unknown; fields: Record<string, string>; instruction?: string; timeZone: string };
+    const names = Object.keys(fields);
+    const system =
+      "You read named fields out of content for me. Answer every field: the value as the content gives it, short, or " +
+      'an empty string when the content doesn\'t say (never guess). Dates and times as ISO 8601 with the offset, e.g. ' +
+      "2026-11-12T10:00:00+02:00: the zone the content names, else the given time zone; a relative date (\"next " +
+      `Tuesday") from the content's own date, else from now. ${DATA_ONLY}`;
+    const now = new Date().toISOString();
+    const prompt =
+      `<task>Fields:\n${names.map((name) => `- ${name}: ${fields[name]}`).join("\n")}\nTime zone: ${timeZone}. Now: ${now}.` +
+      `${instruction ? `\n${instruction}` : ""}</task>\n<content>\n${asText(content)}\n</content>`;
+    const answer = await this.call(context, system, prompt, z.object({ values: z.array(z.object({ name: z.string(), value: z.string() })) }));
+    const values = Object.fromEntries(names.map((name) => [name, answer.values.find((v) => v.name === name)?.value.trim() ?? ""]));
+    const missing = names.filter((name) => values[name] === "");
+    return { values, missing, found: missing.length === 0 };
+  }
+}
+
 /** My active rules, after the step's own: they shape style, never the step's safety rules. */
 export function withRules(system: string, rules: string[]): string {
   if (rules.length === 0) return system;

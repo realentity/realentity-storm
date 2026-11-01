@@ -453,6 +453,7 @@ describe("runs, proposals and controls", () => {
         "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "default" },
         "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+        "llm.extract": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         reflection: { model: "claude-opus-5-5", effort: "high", source: "default" },
         builder: { model: "claude-opus-5-5", effort: "high", source: "default" },
         "browser.teach": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },

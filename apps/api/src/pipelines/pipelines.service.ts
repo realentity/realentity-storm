@@ -5,6 +5,7 @@ import {
   type CompiledDefinition,
   type CompiledPolicy,
   type CompilePipelineResponse,
+  type CompileIssue,
   type CompileResult,
   type DryRunPipelineResponse,
   type PipelineDetailView,
@@ -43,6 +44,7 @@ export class PipelinesService {
   /** Compiles without saving, for the review screen; with a pipeline, also the diff against its current version. */
   async compile(userId: string, source: string, pipelineId?: string): Promise<CompilePipelineResponse> {
     const result = this.compiler.compileText(source);
+    if (result.ok) result.warnings.push(...(await this.calendarWarnings(userId, result.definition)));
     if (!result.ok || !pipelineId) return { result };
     const current = await this.currentVersion(userId, pipelineId);
     if (!current) return { result };
@@ -215,7 +217,17 @@ export class PipelinesService {
     return result;
   }
 
-  private async currentVersion(userId: string, pipelineId: string): Promise<PipelineVersion | null> {
+  /** Calendar steps while Google Calendar isn't connected (M14-T1): said on the review screen, before a run waits for it. */
+  private async calendarWarnings(userId: string, definition: CompiledDefinition): Promise<CompileIssue[]> {
+    const index = definition.steps.findIndex((step) => step.type.startsWith("calendar."));
+    if (index < 0) return [];
+    const google = await this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { status: true } });
+    if (google?.status === "CONNECTED") return [];
+    const state = google ? "needs reconnecting" : "isn't connected";
+    return [{ path: `steps[${index}]`, message: `Google Calendar ${state}: connect it in Settings, or the run waits for it there` }];
+  }
+
+    private async currentVersion(userId: string, pipelineId: string): Promise<PipelineVersion | null> {
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId }, select: { currentVersionId: true } });
     if (!pipeline?.currentVersionId) return null;
     return this.prisma.client.pipelineVersion.findUnique({ where: { pipelineVersionId: pipeline.currentVersionId } });

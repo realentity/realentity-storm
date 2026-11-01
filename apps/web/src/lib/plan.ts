@@ -71,6 +71,8 @@ export function describeTrigger(trigger: Trigger): string {
       return `When a recipe${trigger.site ? ` of ${trigger.site}` : ""} breaks`;
     case "email.classified":
       return `When an email is labelled ${trigger.label?.join(" or ") ?? "(any label)"}`;
+    case "flow.later":
+      return "Started later by another pipeline (flow.later), with its data";
   }
 }
 

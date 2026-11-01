@@ -269,6 +269,9 @@ Pipeline definition (JSON; I see it as YAML):
 - http.fetch and shop.product read only hosts listed in policy.allowedDomains: add each site they read there.
 - A price watch of chosen products (a size, a color) is shop.product with products: [{ url, select }], then
   data.history keyed on id; a recipe (browser.extract) only for a whole search's results.
+- Calendar: llm.extract reads the time out of an email (start as ISO 8601), calendar.create proposes the event (a
+  side effect: I approve it). "Later" or "if no answer in N days" is flow.later into a pipeline with trigger
+  { "on": "flow.later" } (its data is {{trigger.data}}), cancelled by flow.cancel or cancelOn.
 - Side-effect steps (flagged below) always run behind a gate.act that shows me the exact payload; I press Act. The
   compiler inserts the gate itself: don't add gate.act unless I ask for a specific placement, and never try to remove
   or bypass a gate. gate.review lets me pick which items continue.

@@ -1,10 +1,13 @@
 import { type PrismaClient } from "@ai-me/db";
 import { type LlmChat, type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { type StepLearning } from "../learning/learning";
+import { type GoogleConnection } from "../google/google-connection";
 import { type MailConnector } from "../mail/mail-connector";
+import { type LaterStarts } from "../runner/later";
 import { type StepExecutor } from "../runner/step-executor";
 import { BrowserAgentStep, BrowserSubmitStep } from "./agent-steps";
 import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
+import { CalendarCreateStep, CalendarFindStep } from "./calendar-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
 import { DigestStep } from "./digest-step";
 import { BrowserDownloadStep, BrowserUploadStep, FileReadStep } from "./file-steps";
@@ -13,7 +16,8 @@ import { FillAndSubmitStep, MapFormStep, type FormDependencies } from "./form-st
 import { HistoryStep } from "./history-step";
 import { HttpFetchStep, type HttpFetchOptions } from "./http-steps";
 import { ProductStep } from "./product-step";
-import { ClassifyStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
+import { FlowCancelStep, FlowLaterStep } from "./flow-steps";
+import { ClassifyStep, ExtractStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
 import { BrowserExtractStep } from "./recipe-steps";
 import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
@@ -34,6 +38,12 @@ export interface CoreStepDependencies {
   chat?: LlmChat;
   /** DOWNLOAD_MAX_MB: browser.download keeps nothing larger. */
   downloadMaxMb?: number;
+  /** calendar.* (M14-T1); left out where there is no Google connection. */
+  google?: GoogleConnection;
+  /** APP_ORIGIN: the calendar's Reconnect button. */
+  appOrigin?: string;
+  /** flow.later and flow.cancel (M14-T3). */
+  later?: LaterStarts;
   /** http.fetch's and shop.product's address checks and DNS; tests reach their local server through them. */
   http?: HttpFetchOptions;
 }
@@ -52,6 +62,9 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new ScoreStep(deps.llm, deps.router, deps.learning),
     new GenerateStep(deps.llm, deps.router, deps.learning),
     new SummarizeStep(deps.llm, deps.router, deps.learning),
+    new ExtractStep(deps.llm, deps.router, deps.learning),
+    ...(deps.google ? [new CalendarFindStep({ google: deps.google, appOrigin: deps.appOrigin }), new CalendarCreateStep({ google: deps.google, appOrigin: deps.appOrigin })] : []),
+    ...(deps.later ? [new FlowLaterStep(deps.later), new FlowCancelStep(deps.later)] : []),
     telegram,
     new DigestStep(deps.prisma, telegram),
     ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router, learning: deps.learning }),

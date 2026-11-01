@@ -1,0 +1,53 @@
+# M14: every 15 minutes, new mail that invites me to an interview becomes a proposed event in my Google Calendar,
+# with the job and prep notes, and what else is on at that time. Each event waits for my Approve (the compiler adds
+# the gate): the proposal shows the exact title, time and notes. An event already there (the same title at the same
+# start) isn't created again. Needs the "mail" credential and Google Calendar connected (Settings).
+name: Interview invites
+description: Interview invitations by email become proposed calendar events with prep notes.
+trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "interview": someone invites me to an interview, a call or a meeting about a job or a project, at a time they
+        name (or confirm). "other": everything else, also asking me when I'm free without naming a time.
+      labels: [interview, other]
+      keep: [interview]
+  - id: invite
+    type: llm.extract
+    forEach: "{{triage.kept}}"
+    with:
+      content: "{{item}}"
+      fields:
+        start: when the interview starts, date and time
+        company: the company
+        role: the job or project
+        place: the address, or the video call link
+  - id: around
+    type: calendar.find
+    forEach: "{{triage.kept}}"
+    when: "{{invite.values.start}}"
+    with: { from: "{{invite.values.start}}", durationMinutes: 60 }
+  - id: notes
+    type: llm.generate
+    forEach: "{{triage.kept}}"
+    when: "{{invite.values.start}}"
+    with:
+      instruction: >-
+        Prep notes for this interview, for me: up to five short bullets (who invites me, the role, what to prepare,
+        what to ask), then one line naming any event in `clashes` (it overlaps), else nothing about it.
+      context: { email: "{{item}}", invite: "{{invite.values}}", clashes: "{{around.events}}" }
+  - id: event
+    type: calendar.create
+    forEach: "{{triage.kept}}"
+    when: "{{invite.values.start}}"
+    with:
+      title: "Interview: {{invite.values.company}} ({{invite.values.role}})"
+      start: "{{invite.values.start}}"
+      location: "{{invite.values.place}}"
+      description: "{{notes.text}}\n\nFrom {{item.from}}: {{item.subject}}"

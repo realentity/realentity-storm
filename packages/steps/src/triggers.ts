@@ -25,6 +25,13 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     fixProposed: z.boolean(),
   }),
   "email.classified": z.object({ label: z.string(), reason: z.string(), message: EmailMessageSchema }),
+  "flow.later": z.object({
+    /** What the flow.later step gave. Written by a pipeline (maybe from LLM text), so never a target. */
+    data: z.unknown(),
+    key: z.string().nullable(),
+    scheduledAt: z.string(),
+    scheduledByRunId: z.string().nullable(),
+  }),
 };
 
 export const WEBHOOK_DATA = z.object({
@@ -51,6 +58,7 @@ export function triggerTargetIssue(trigger: Trigger, source: string): string | n
   if (isEventTrigger(trigger)) {
     if (trigger.on === "email.classified" && source.startsWith("trigger.message.")) return null;
     if (trigger.on === "application.status" && source === "trigger.job.url") return null;
+    if (trigger.on === "flow.later") return `{{${source}}} can't be a target: a flow.later's data is written by a pipeline, maybe from LLM text`;
     return `{{${source}}} can't be a target: only an email's own addresses (email.classified) or a posting's URL (application.status) can`;
   }
   if (isWebhookTrigger(trigger)) return `{{${source}}} can't be a target: a webhook's body is written by whoever calls it`;

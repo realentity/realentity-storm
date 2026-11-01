@@ -124,6 +124,23 @@ const FilterCondition = z.object({
 });
 
 const Selector = z.string().min(1).max(500);
+/** A date and time: ISO 8601 with an offset (2026-11-12T10:00:00+02:00, …Z), or without one (read in `timeZone`). */
+const DateTimeText = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/, "an ISO 8601 date and time, e.g. 2026-11-12T10:00:00+02:00");
+const TimeZone = z
+  .string()
+  .default("Europe/Sofia")
+  .refine((zone) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: zone });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "an IANA time zone, e.g. Europe/Sofia")
+  .describe("for times without an offset");
 /** A product variant by its attributes (shop.product), e.g. { size: "M", color: "Black" }. */
 const Select = z.record(z.string().min(1).max(40), z.string().min(1).max(100));
 
@@ -400,6 +417,27 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({ summary: z.string() }),
   },
   {
+    type: "llm.extract",
+    description:
+      "Reads named fields out of `content` (an email, a page's text) with the LLM: `fields` maps each name to what it " +
+      "is. `values` has each as text (\"\" when the content doesn't say), `missing` the ones it doesn't, `found` is " +
+      "true when none is missing. Dates and times come as ISO 8601 with the offset the content implies (else " +
+      "`timeZone`'s), e.g. 2026-11-12T10:00:00+02:00.",
+    sideEffect: false,
+    llmOutput: true,
+    saasSafe: true,
+    input: z.object({
+      content: z.unknown(),
+      fields: z
+        .record(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/), z.string().min(1).max(300))
+        .refine((fields) => Object.keys(fields).length >= 1 && Object.keys(fields).length <= 20, "1 to 20 fields")
+        .describe('e.g. { start: "when the interview starts", company: "the company" }'),
+      instruction: z.string().max(2000).optional(),
+      timeZone: TimeZone,
+    }),
+    output: z.object({ values: z.record(z.string(), z.string()), missing: z.array(z.string()), found: z.boolean() }),
+  },
+  {
     type: "gate.review",
     description: "Pauses the run so I can pick which items proceed.",
     sideEffect: false,
@@ -497,6 +535,90 @@ export const CORE_STEPS: StepDefinition[] = [
       references: z.array(z.string()).max(100).optional(),
     }),
     output: z.object({ messageId: z.string(), accepted: z.array(z.string()) }),
+  },
+  {
+    type: "calendar.find",
+    description:
+      "My Google Calendar's events between `from` and `to` (default: the next 7 days), optionally only those matching " +
+      "`query` (title, description, location, guests): each with id, title, start, end, allDay, location, link, " +
+      "meetLink, attendees, organizer. `none` is true when there are none (for when: a step only if the time is free).",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      from: DateTimeText.optional().describe("default: now"),
+      to: DateTimeText.optional().describe("default: durationMinutes after from, else 7 days"),
+      durationMinutes: z.number().int().min(1).max(1440).optional().describe("the window from `from`, e.g. 60: what an event then would clash with"),
+      query: z.string().max(200).optional(),
+      timeZone: TimeZone,
+      maxResults: z.number().int().min(1).max(250).default(50),
+    }),
+    output: z.object({ events: Items, count: z.number().int(), none: z.boolean() }),
+  },
+  {
+    type: "calendar.create",
+    description:
+      "Creates an event in my Google Calendar: `title`, `start`, `end` or `durationMinutes`, `timeZone` (for a time " +
+      "without an offset), `description`, `location`, `meet` (a Google Meet link). With `attendees`, Google emails them " +
+      "an invitation from my account (sendInvites). An event with the same title at the same start already there is " +
+      "not created again (created: false, existing). Behind a gate like every side effect.",
+    sideEffect: true,
+    targets: { attendees: "recipient" },
+    saasSafe: true,
+    input: z.object({
+      title: z.string().trim().min(1).max(300),
+      start: DateTimeText,
+      end: DateTimeText.optional(),
+      durationMinutes: z.number().int().min(5).max(1440).default(60),
+      timeZone: TimeZone,
+      description: z.string().max(8000).optional(),
+      location: z.string().max(500).optional(),
+      attendees: z.array(z.email()).max(20).optional().describe("guests: each gets an invitation"),
+      meet: z.boolean().default(false),
+      sendInvites: z.boolean().default(true),
+    }),
+    output: z.object({
+      created: z.boolean(),
+      eventId: z.string(),
+      link: z.string(),
+      meetLink: z.string().nullable(),
+      invited: z.array(z.string()),
+    }),
+  },
+  {
+    type: "flow.later",
+    description:
+      "Starts another pipeline (by name; its trigger must be { on: flow.later }) `after` a while (30m, 36h, 7d) or " +
+      "`at` a time, with `data` as its {{trigger.data}}. Once, unless cancelled first: by flow.cancel with its `key`, " +
+      "or by an event matching `cancelOn` (e.g. { event: application.status, match: { applicationId: … } }). " +
+      "Another flow.later with the same key replaces it. A dry run schedules nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      pipeline: z.string().trim().min(1).max(100),
+      after: z
+        .string()
+        .regex(/^\d{1,4}[mhd]$/, "a number and m, h or d, e.g. 7d")
+        .optional(),
+      at: DateTimeText.optional(),
+      timeZone: TimeZone,
+      data: z.record(z.string(), z.unknown()).default({}),
+      key: z.string().trim().min(1).max(300).optional(),
+      cancelOn: z
+        .object({
+          event: z.enum(["run.finished", "application.status", "recipe.broken", "email.classified"]),
+          match: z.record(z.string().min(1), z.string()).describe("dotted paths in the event's data and the values that cancel"),
+        })
+        .optional(),
+    }),
+    output: z.object({ scheduledStartId: z.string().nullable(), fireAt: z.string(), replaced: z.number().int() }),
+  },
+  {
+    type: "flow.cancel",
+    description: "Cancels the pipeline starts flow.later scheduled with `key` and that haven't started yet.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({ key: z.string().trim().min(1).max(300) }),
+    output: z.object({ cancelled: z.number().int() }),
   },
   {
     type: "browser.open",

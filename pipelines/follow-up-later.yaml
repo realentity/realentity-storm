@@ -1,0 +1,17 @@
+# M14: when an application is submitted, a reminder 7 days later (pipelines/follow-up.yaml), with a follow-up draft,
+# unless the application moves first (a reply, an interview, a rejection: any new status cancels it). Save
+# follow-up.yaml first: this one names it.
+name: Follow-up after applying
+description: Schedules a follow-up reminder 7 days after an application is submitted.
+trigger: { on: application.status, status: [SUBMITTED] }
+steps:
+  - id: later
+    type: flow.later
+    with:
+      pipeline: Follow-up reminder
+      after: 7d
+      key: "follow-up:{{trigger.applicationId}}"
+      data: { applicationId: "{{trigger.applicationId}}", job: "{{trigger.job}}" }
+      cancelOn:
+        event: application.status
+        match: { applicationId: "{{trigger.applicationId}}" }

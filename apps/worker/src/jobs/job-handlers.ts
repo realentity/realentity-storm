@@ -6,6 +6,7 @@ import {
   QUEUES,
   REFLECTION_SCHEDULE,
   type JobQueue,
+  type LaterJob,
   type LearningJob,
   type ReflectionJob,
   type ReflectionPollJob,
@@ -74,6 +75,7 @@ export class JobHandlers {
     if (triggers) {
       await boss.work<EventJob>(QUEUES.events, work, async ([job]) => job && triggers.fire(job.data));
       await boss.work<WebhookJob>(QUEUES.webhooks, work, async ([job]) => job && triggers.webhook(job.data));
+      await boss.work<LaterJob>(QUEUES.later, work, async ([job]) => job && triggers.fireLater(job.data));
     }
     if (this.retention) {
       await boss.work(QUEUES.maintenance, work, () => this.maintain());

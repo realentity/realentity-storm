@@ -1,0 +1,17 @@
+# M14: started by follow-up-later.yaml 7 days after I applied, if nothing moved since: a short follow-up I can send,
+# on Telegram. It sends nothing itself.
+name: Follow-up reminder
+description: No answer 7 days after applying; a follow-up draft to send.
+trigger: { on: flow.later }
+steps:
+  - id: draft
+    type: llm.generate
+    with:
+      instruction: >-
+        I applied for this job a week ago and heard nothing. Write a short, polite follow-up email I can send (3–4
+        sentences, no subject line): that I'm still interested, one line on why I fit, and asking about next steps.
+      context: "{{trigger.data.job}}"
+  - id: tell
+    type: notify.telegram
+    with:
+      text: "No answer yet from {{trigger.data.job.company}} ({{trigger.data.job.title}}), a week after applying. A follow-up to send:\n\n{{draft.text}}\n\n{{trigger.data.job.url}}"

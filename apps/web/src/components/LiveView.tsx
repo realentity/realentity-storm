@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import { errorMessage } from "../lib/api";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
+import { connectGoogle } from "../lib/google";
 import { useAction, useLoad } from "../lib/use-load";
 
 type Connection = "connecting" | "connected" | "disconnected" | "refused";
@@ -113,7 +114,18 @@ export function LiveView({ run }: { run: RunDetailView }) {
           )}
         </div>
       </div>
-      {takeover && (
+      {takeover?.waitsFor === "google" && takeover.status === "OPEN" && (
+        <div className="alert alert-warning m-3 mb-0 d-flex align-items-center gap-3 flex-wrap" data-testid="google-wait">
+          <div className="flex-fill">
+            <strong>It waits for Google Calendar:</strong> {takeover.reason}. Reconnect it, and the run goes on by itself. It gives up at{" "}
+            {formatDateTime(takeover.expiresAt)}.
+          </div>
+          <button type="button" className="btn btn-primary" disabled={action.busy} onClick={() => void action.run(() => connectGoogle(`/runs/${run.runId}`))}>
+            Reconnect Google Calendar
+          </button>
+        </div>
+      )}
+      {takeover && takeover.waitsFor !== "google" && (
         <div className="alert alert-warning m-3 mb-0" data-testid="takeover-banner">
           <strong>{takeover.status === "OPEN" ? `It needs me: ${takeover.reason}` : "I took over"}</strong>
           {takeover.url && <span className="text-secondary"> on {hostOf(takeover.url)}</span>}. Act in the browser below, then press

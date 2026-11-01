@@ -9,6 +9,7 @@ import {
   type CredentialView,
   type DocumentView,
   type DryRunPipelineResponse,
+  type GoogleStatusView,
   type ImportRecipeRequest,
   type JobFilter,
   type JobPostingView,
@@ -29,6 +30,7 @@ import {
   type RunFilter,
   type RuleView,
   type RunSummaryView,
+  type ScheduledStartView,
   type SessionView,
   type SettingsRequest,
   type SettingsView,
@@ -98,6 +100,15 @@ export const api = {
   killSwitch: {
     get: () => request<KillSwitchView>("GET", "/kill-switch"),
     set: (engaged: boolean) => request<KillSwitchView>("PUT", "/kill-switch", { engaged }),
+  },
+  google: {
+    status: () => request<GoogleStatusView>("GET", "/google"),
+    connect: (returnTo?: string) => request<{ url: string }>("POST", "/google/connect", returnTo ? { returnTo } : {}),
+    disconnect: () => request<void>("DELETE", "/google"),
+  },
+  scheduledStarts: {
+    list: (pipelineId?: string) => request<ScheduledStartView[]>("GET", `/scheduled-starts${pipelineId ? `?pipelineId=${pipelineId}` : ""}`),
+    cancel: (id: string) => request<void>("DELETE", `/scheduled-starts/${id}`),
   },
   settings: {
     get: () => request<SettingsView>("GET", "/settings"),

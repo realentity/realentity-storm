@@ -47,16 +47,25 @@ export class TakeoverDesk {
         if (url) await this.prisma.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { url } });
         await this.wait(scope, takeover);
       },
-      needMe: async (reason, url) => {
+      needMe: async (reason, url, options = {}) => {
         const takeover = await this.prisma.takeover.create({
-          data: { runId: scope.runId, stepKey: scope.stepKey, itemIndex: scope.itemIndex, status: "OPEN", reason, url: url ?? null },
+          data: {
+            runId: scope.runId,
+            stepKey: scope.stepKey,
+            itemIndex: scope.itemIndex,
+            status: "OPEN",
+            reason,
+            url: url ?? null,
+            waitsFor: options.waitsFor ?? null,
+          },
         });
         await this.emit(scope, "OPEN");
         const origin = this.options.appOrigin;
+        const button = options.button ?? (origin ? { text: "Open the live view", url: `${origin}/runs/${scope.runId}` } : null);
         await this.options
           .notify?.({
-            text: `AI ME needs you: ${reason} at ${scope.stepKey}${url ? ` (${hostOf(url)})` : ""}.`,
-            buttons: origin ? [[{ text: "Open the live view", url: `${origin}/runs/${scope.runId}` }]] : [],
+            text: `AI ME needs you: ${reason} at ${scope.stepKey}${url && !options.waitsFor ? ` (${hostOf(url)})` : ""}.`,
+            buttons: button ? [[button]] : [],
           })
           .catch(() => undefined);
         await this.wait(scope, takeover);

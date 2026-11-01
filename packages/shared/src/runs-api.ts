@@ -163,6 +163,8 @@ export interface TakeoverView {
   stepKey: string | null;
   itemIndex: number | null;
   url: string | null;
+  /** "google": it waits for Google Calendar to be reconnected, and continues once it is. */
+  waitsFor: string | null;
   requestedAt: string;
   /** When the run gives up waiting. */
   expiresAt: string;
@@ -215,6 +217,7 @@ export const LLM_TASKS = [
   "llm.score",
   "llm.generate",
   "llm.summarize",
+  "llm.extract",
   "reflection",
   "builder",
   "browser.teach",
@@ -272,6 +275,34 @@ export interface SettingsView {
   /** Facts for application forms (browser.mapForm). */
   profile: string;
   telegramApprovals: boolean;
+}
+
+/** Google Calendar (M14-T1): as last seen when the calendar was used; nothing checks it in the background. */
+export interface GoogleStatusView {
+  /** GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set. */
+  configured: boolean;
+  /** The sign-in return address to register on the Google client. */
+  redirectUri: string;
+  connected: boolean;
+  email: string | null;
+  status: "CONNECTED" | "NEEDS_RECONNECT" | null;
+  lastWorkedAt: string | null;
+  brokenAt: string | null;
+  brokenReason: string | null;
+}
+
+/** A pipeline to start later (flow.later, M14-T3). */
+export interface ScheduledStartView {
+  scheduledStartId: string;
+  pipelineId: string;
+  pipeline: string;
+  key: string | null;
+  fireAt: string;
+  status: "PENDING" | "STARTED" | "CANCELLED" | "SKIPPED";
+  reason: string | null;
+  data: unknown;
+  scheduledByRunId: string | null;
+  runId: string | null;
 }
 
 // #endregion

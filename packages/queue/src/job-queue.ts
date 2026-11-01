@@ -3,6 +3,7 @@ import {
   QUEUE_DEFINITIONS,
   QUEUES,
   type EventJob,
+  type LaterJob,
   type LearningJob,
   type ReflectionJob,
   type ReflectionPollJob,
@@ -75,6 +76,11 @@ export class JobQueue {
   /** A webhook call, for the worker to check and run (M12-T2). */
   async enqueueWebhook(call: WebhookJob): Promise<void> {
     await this.boss.send(QUEUES.webhooks, call);
+  }
+
+  /** A flow.later start, woken at its time (M14-T3). */
+  async enqueueLater(job: LaterJob, startAfter: Date): Promise<void> {
+    await this.boss.send(QUEUES.later, job, { startAfter });
   }
 
   async stop(): Promise<void> {

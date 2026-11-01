@@ -12,6 +12,8 @@ import { DocumentStore } from "../browser/document-store";
 import { SessionStore } from "../browser/session-store";
 import { PipelineRunner, type EventSink } from "../runner/pipeline-runner";
 import { TakeoverDesk } from "../runner/takeovers";
+import { LaterStarts } from "../runner/later";
+import { GoogleConnection } from "../google/google-connection";
 import { RunControls } from "../runner/run-controls";
 import { ExecutorRegistry, type StepExecutor } from "../runner/step-executor";
 import { ImapSmtpConnector } from "../mail/imap-smtp-connector";
@@ -107,8 +109,15 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       useFactory: (db: PrismaService, keys: KeyRing, vault: CredentialVault) => new SessionStore(db.client, keys, vault),
     },
     {
+      provide: GoogleConnection,
+      inject: [PrismaService, KeyRing, SERVER_ENV],
+      useFactory: (db: PrismaService, keys: KeyRing, env: ServerEnv) =>
+        new GoogleConnection(db.client, keys, { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }),
+    },
+    { provide: LaterStarts, inject: [PrismaService, JobQueue], useFactory: (db: PrismaService, queue: JobQueue) => new LaterStarts(db.client, queue) },
+    {
       provide: STEP_EXECUTORS,
-      inject: [PrismaService, SERVER_ENV, CredentialVault, ModelRouter, Learning, BrowserPool, SessionStore, ArtifactStore],
+      inject: [PrismaService, SERVER_ENV, CredentialVault, ModelRouter, Learning, BrowserPool, SessionStore, ArtifactStore, GoogleConnection, LaterStarts],
       useFactory: (
         db: PrismaService,
         env: ServerEnv,
@@ -118,8 +127,13 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         pool: BrowserPool,
         sessions: SessionStore,
         artifacts: ArtifactStore,
+        google: GoogleConnection,
+        later: LaterStarts,
       ): StepExecutor[] => {
         return coreSteps({
+          google,
+          later,
+          appOrigin: env.APP_ORIGIN,
           browser: {
             prisma: db.client,
             pool,
@@ -215,7 +229,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing],
+      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing, LaterStarts],
       useFactory: (
         db: PrismaService,
         runner: PipelineRunner,
@@ -226,6 +240,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         artifacts: ArtifactStore,
         env: ServerEnv,
         keys: KeyRing,
+        later: LaterStarts,
       ) =>
         new JobHandlers(
           db.client,
@@ -236,7 +251,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           takeovers,
           { artifacts, days: env.ARTIFACTS_RETENTION_DAYS },
           {
-            triggers: new Triggers(db.client, runner, queue, keys),
+            triggers: new Triggers(db.client, runner, queue, keys, later),
             notifier: new ProposalNotifier(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
           },
         ),

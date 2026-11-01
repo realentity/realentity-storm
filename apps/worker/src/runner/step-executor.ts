@@ -34,7 +34,15 @@ export interface Attention {
   /** At a safe point between actions: if I pressed Take over, waits until I continue. */
   checkpoint(url?: string): Promise<void>;
   /** The page needs me (CAPTCHA, 2FA, a page it doesn't recognize): waits until I continue. */
-  needMe(reason: string, url?: string): Promise<void>;
+  needMe(reason: string, url?: string, options?: NeedMeOptions): Promise<void>;
+}
+
+/** A wait for something other than a page (M14: a Google reconnect): what continues it, and the message's button. */
+export interface NeedMeOptions {
+  /** "google": signing in with Google again continues it (the api does that). */
+  waitsFor?: string;
+  /** Instead of "Open the live view". */
+  button?: { text: string; url: string };
 }
 
 /** The run is to stop (Abort in the live view, the kill switch): the runner aborts it instead of failing the step. */
@@ -43,7 +51,8 @@ export class RunStopped extends Error {}
 /** Outside a run with a live view (headless, tests): nobody can take over, so needing me fails the step. */
 export const NO_ATTENTION: Attention = {
   checkpoint: () => Promise.resolve(),
-  needMe: (reason) => Promise.reject(new Error(`${reason}: needs me, and this step has no live view (set headed: true to take over)`)),
+  needMe: (reason, _url, options) =>
+    Promise.reject(new Error(options?.waitsFor ? reason : `${reason}: needs me, and this step has no live view (set headed: true to take over)`)),
 };
 
 /**
