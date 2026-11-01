@@ -1,0 +1,43 @@
+# M13: once a day, the releases of what runs on the server, from their feeds (no browser, no recipe). Only releases not
+# seen before reach the LLM and me: data.save keeps what was read, and `when` skips the summary and the message on a
+# day with nothing new. The first run reports everything the feeds list at the moment, once.
+# Add or remove projects in `urls` (GitHub: https://github.com/<owner>/<repo>/releases.atom); a site other than
+# github.com needs its host in policy.allowedDomains too.
+name: Release watch
+description: New releases of the server's stack, summarized for upgrading; nothing on a quiet day.
+trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+policy:
+  allowedDomains: [github.com, www.postgresql.org]
+steps:
+  - id: feeds
+    type: http.fetch
+    with:
+      urls:
+        - https://github.com/nodejs/node/releases.atom
+        - https://github.com/prisma/prisma/releases.atom
+        - https://github.com/microsoft/playwright/releases.atom
+        - https://github.com/caddyserver/caddy/releases.atom
+        - https://github.com/pgvector/pgvector/releases.atom
+        - https://github.com/timgit/pg-boss/releases.atom
+        - https://github.com/n8n-io/n8n/releases.atom
+        - https://github.com/paperless-ngx/paperless-ngx/releases.atom
+        - https://github.com/usememos/memos/releases.atom
+        - https://github.com/tailscale/tailscale/releases.atom
+        - https://www.postgresql.org/news.rss
+      maxItems: 300
+  - id: seen
+    type: data.save
+    with: { items: "{{feeds.items}}", collection: releases, key: id, fields: [title] }
+  - id: summary
+    type: llm.summarize
+    when: "{{seen.added}}"
+    with:
+      content: "{{seen.added}}"
+      instruction: >-
+        One line per project and version (newest first): what matters when upgrading a self-hosted server, i.e.
+        security fixes, breaking changes, required migrations. Say "pre-release" for alphas, betas and RCs and keep
+        those to a few words. Skip PostgreSQL news that isn't a release.
+      maxWords: 300
+  - id: tell
+    type: notify.telegram
+    with: { text: "New releases on the server's stack:\n{{summary.summary}}" }

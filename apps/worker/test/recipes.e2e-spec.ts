@@ -195,7 +195,7 @@ steps:
     await saveRecipe(boardRecipe());
     const first = await run(DAILY);
     expect(first.status).toBe("DONE");
-    expect(await output(first.runId, "save")).toEqual({ saved: 12, created: 12, skipped: 0 });
+    expect(await output(first.runId, "save")).toMatchObject({ saved: 12, created: 12, skipped: 0, changed: [], removed: [] });
     const saved = await db.client.jobPosting.findMany({ orderBy: { title: "asc" } });
     expect(saved).toHaveLength(12);
     expect(saved[0]).toMatchObject({ source: "jobs.localhost/search", status: "NEW", company: expect.any(String) as unknown });
@@ -203,7 +203,7 @@ steps:
     const second = await run(DAILY);
     expect(second.status).toBe("DONE");
     expect(await output(second.runId, "fresh")).toEqual({ items: [], duplicates: 12 });
-    expect(await output(second.runId, "save")).toEqual({ saved: 0, created: 0, skipped: 0 });
+    expect(await output(second.runId, "save")).toEqual({ saved: 0, created: 0, skipped: 0, added: [], changed: [], removed: [] });
     expect(await db.client.jobPosting.count()).toBe(12);
   });
 
@@ -223,11 +223,11 @@ steps:
 `;
     const dry = await runner.start(await createVersion(db.client, userId, source("SHORTLISTED")), { trigger: "manual", dryRun: true });
     expect(await runner.advance(dry)).toBe("DONE");
-    expect(await output(dry, "save")).toEqual({ saved: 2, created: 1, skipped: 1 });
+    expect(await output(dry, "save")).toMatchObject({ saved: 2, created: 1, skipped: 1 });
     expect(await db.client.jobPosting.count()).toBe(1);
 
     const { runId } = await run(source("SHORTLISTED"));
-    expect(await output(runId, "save")).toEqual({ saved: 2, created: 1, skipped: 1 });
+    expect(await output(runId, "save")).toMatchObject({ saved: 2, created: 1, skipped: 1 });
     expect(await db.client.jobPosting.findFirstOrThrow({ where: { url } })).toMatchObject({ status: "APPLIED", score: 91, scoreReason: "Fits" });
     expect(await db.client.jobPosting.findFirstOrThrow({ where: { title: "Mid .NET Engineer 1" } })).toMatchObject({ status: "SHORTLISTED" });
 

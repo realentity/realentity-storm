@@ -127,7 +127,8 @@ The builder can only use these. Each step type is a TypeScript class in the work
 | Email | `email.fetch`, `email.classify`, `email.draftReply`, `email.send` | `send` |
 | Browser | `browser.open`, `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent`, `browser.submit` | `fillAndSubmit`, `upload`, `submit`* |
 | LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize` | no |
-| Data | `data.dedupe`, `data.filter`, `data.save`, `data.lookup` | no (internal DB only) |
+| Data | `data.dedupe`, `data.filter`, `data.save` (job postings, or a collection of mine with `added` / `changed` / `removed`), `data.history` (a number per key over time: previous, change, min, max, lowest), `data.lookup` | no (internal DB only) |
+| HTTP | `http.fetch`: GET without a browser; RSS/Atom feeds become items, JSON stays data, pages become text; only hosts on `policy.allowedDomains`, never private or tailnet addresses (also after DNS and redirects); an unchanged address (ETag / Last-Modified, 304) reuses what was read | no |
 | Files | `file.read` (a document's or a download's text: text files, PDFs, parsed in a child process); my documents (CV, cover letters) are uploaded on the Profile page, not generated or stored by a step | no |
 | Gates | `gate.review`, `gate.act`, `gate.takeover` | — |
 | Notify | `notify.digest`, `notify.telegram` | to me only |
@@ -135,6 +136,8 @@ The builder can only use these. Each step type is a TypeScript class in the work
 \* `browser.agent` sends nothing itself: what it would submit is the payload of `browser.submit`, behind a gate.
 
 New capabilities are added by writing a new step class, never by the LLM.
+
+**Conditions (`when`):** any step can carry `when: "{{step.field}}"`: it runs only when that value isn't empty (a non-empty list or text, true, a number other than 0); otherwise it is skipped, and so is every later step that uses its output. A watch tells me only about changes this way: `http.fetch` → `data.save` into a collection → `llm.summarize` with `when: "{{save.added}}"` → `notify.telegram` (see `pipelines/release-watch.yaml`, `pipelines/price-watch.yaml`).
 
 ### 2.4 Browser steps: recipes vs agent
 
@@ -706,6 +709,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Per-step-type rate limits; kill switch pauses everything and cancels queued side effects
 - [ ] Executed payload must match the hash of the approved payload
 - [ ] Untrusted content (email/page/file text) is clearly delimited in prompts and never treated as instructions
+- [ ] `http.fetch` reads only hosts on the pipeline's allowedDomains and connects only to public addresses (checked after DNS, on IP literals and every redirect; no cookies or credentials)
 - [ ] Telegram and webhook calls carry their own secret (bot header + my user id; per-pipeline HMAC or token); signatures checked by the worker; a webhook body is never a target
 - [ ] `browser.agent` limited by domain allowlist, action budget and fixed action set; it submits and uploads nothing
 - [ ] noVNC password-protected, view-only by default

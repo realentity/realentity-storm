@@ -52,7 +52,7 @@ export function diffDefinitions(before: CompiledDefinition, after: CompiledDefin
 
 function stepChanges(before: CompiledStep, after: CompiledStep): DefinitionChange[] {
   const changes: DefinitionChange[] = [];
-  for (const field of ["type", "forEach", "retries"] as const) {
+  for (const field of ["type", "forEach", "when", "retries"] as const) {
     if (!same(before[field], after[field]))
       changes.push({ kind: "step-changed", stepId: after.id, field, before: before[field], after: after[field] });
   }

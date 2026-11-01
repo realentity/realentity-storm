@@ -10,6 +10,8 @@ import { DigestStep } from "./digest-step";
 import { BrowserDownloadStep, BrowserUploadStep, FileReadStep } from "./file-steps";
 import { emailSteps } from "./email-steps";
 import { FillAndSubmitStep, MapFormStep, type FormDependencies } from "./form-steps";
+import { HistoryStep } from "./history-step";
+import { HttpFetchStep, type HttpFetchOptions } from "./http-steps";
 import { ClassifyStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
 import { BrowserExtractStep } from "./recipe-steps";
 import { RecipeFallback } from "./recipe-fallback";
@@ -31,6 +33,8 @@ export interface CoreStepDependencies {
   chat?: LlmChat;
   /** DOWNLOAD_MAX_MB: browser.download keeps nothing larger. */
   downloadMaxMb?: number;
+  /** http.fetch's address checks and DNS; tests reach their local server through them. */
+  http?: HttpFetchOptions;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
@@ -40,6 +44,8 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new DedupeStep(deps.prisma),
     new FilterStep(),
     new SaveStep(deps.prisma),
+    new HistoryStep(deps.prisma),
+    new HttpFetchStep(deps.prisma, deps.http),
     new ClassifyStep(deps.llm, deps.router, deps.learning),
     new ScoreStep(deps.llm, deps.router, deps.learning),
     new GenerateStep(deps.llm, deps.router, deps.learning),

@@ -23,6 +23,7 @@ export function definitionToSource(definition: CompiledDefinition): string {
       id: step.id,
       type: step.type,
       ...(step.forEach ? { forEach: step.forEach } : {}),
+      ...(step.when ? { when: step.when } : {}),
       ...(step.retries !== undefined ? { retries: step.retries } : {}),
       with: step.with,
     }));

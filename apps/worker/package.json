@@ -33,6 +33,7 @@
     "imapflow": "catalog:",
     "mailparser": "catalog:",
     "nodemailer": "catalog:",
+    "fast-xml-parser": "catalog:",
     "pdf-parse": "catalog:",
     "playwright": "catalog:",
     "reflect-metadata": "catalog:",

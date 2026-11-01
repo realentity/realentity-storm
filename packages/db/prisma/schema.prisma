@@ -130,6 +130,9 @@ model User {
   reflections   Reflection[]
   suggestions   PipelineSuggestion[]
   webhooks      Webhook[]
+  dataRecords   DataRecord[]
+  dataPoints    DataPoint[]
+  httpCaches    HttpCache[]
 
   @@map("Users")
 }
@@ -682,6 +685,58 @@ model ServiceHeartbeat {
   lastSeenAt DateTime
 
   @@map("ServiceHeartbeats")
+}
+
+// #endregion
+
+// #region Data (M13)
+
+/// An item data.save keeps in a collection of mine, by its key: what it looked like last, for added / changed /
+/// removed next time.
+model DataRecord {
+  dataRecordId String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  user         User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  collection   String
+  key          String
+  value        Json
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  /// Missing from a complete save; back when it appears again.
+  removedAt    DateTime?
+
+  @@unique([userId, collection, key])
+  @@map("DataRecords")
+}
+
+/// One value of data.history: a number per key over time (prices, counts).
+model DataPoint {
+  dataPointId String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  collection  String
+  key         String
+  value       Float
+  at          DateTime @default(now())
+
+  @@index([userId, collection, key, at])
+  @@map("DataPoints")
+}
+
+/// What http.fetch read last from an address, with its ETag / Last-Modified: a 304 reuses it.
+model HttpCache {
+  httpCacheId  String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  url          String
+  etag         String?
+  lastModified String?
+  contentType  String
+  body         Bytes
+  fetchedAt    DateTime @default(now())
+
+  @@unique([userId, url])
+  @@map("HttpCaches")
 }
 
 // #endregion

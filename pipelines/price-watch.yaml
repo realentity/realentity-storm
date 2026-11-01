@@ -1,0 +1,32 @@
+# M13: once a day, the prices of a shop's list (an 8 TB surveillance HDD search, say), remembered per product;
+# a message only when something got cheaper. Needs a recipe for the shop's list with the fields url, title and
+# price (Recipes page: teach it on the search results; the price may be text like "1 299,00 лв."): replace
+# shop.example/hdd with its name. Several shops: list their recipes in `recipes`.
+name: Price watch
+description: Products of a shop's list that got cheaper since yesterday, with old and new price.
+trigger: { schedule: "0 10 * * *", tz: Europe/Sofia }
+steps:
+  - id: list
+    type: browser.extract
+    with:
+      recipes: [shop.example/hdd]
+      maxItems: 100
+  - id: prices
+    type: data.history
+    with: { items: "{{list.items}}", collection: prices, key: url, value: price }
+  - id: cheaper
+    type: data.filter
+    with:
+      items: "{{prices.items}}"
+      where: [{ field: history.direction, op: eq, value: down }]
+  - id: lines
+    type: llm.generate
+    when: "{{cheaper.items}}"
+    with:
+      instruction: >-
+        One line per product: its title, the old price → the new price (history.previous → history.value), "lowest
+        so far" when history.lowest is true, then its url. No other text.
+      context: "{{cheaper.items}}"
+  - id: tell
+    type: notify.telegram
+    with: { text: "Cheaper today:\n{{lines.text}}" }

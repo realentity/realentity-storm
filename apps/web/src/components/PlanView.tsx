@@ -61,6 +61,7 @@ export function PlanView({ definition, policy, catalog }: PlanProps) {
                       {step.type.startsWith("gate.") && <span className="badge bg-yellow-lt">waits for me</span>}
                       {step.autoInserted && <span className="badge bg-azure-lt">added by the compiler</span>}
                       {step.forEach && <span className="badge bg-secondary-lt">for each {step.forEach}</span>}
+                      {step.when && <span className="badge bg-secondary-lt">only when {step.when} isn't empty</span>}
                     </div>
                   </td>
                   <td className="text-secondary">

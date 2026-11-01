@@ -10,7 +10,7 @@ import {
   type ProposalStatusName,
 } from "@ai-me/shared";
 import { type EventJob } from "@ai-me/queue";
-import { type StepCatalog, type StepDefinition } from "@ai-me/steps";
+import { referencesIn, type StepCatalog, type StepDefinition } from "@ai-me/steps";
 import { Logger } from "@nestjs/common";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
@@ -70,9 +70,19 @@ interface RunState {
   blocked: Map<string, Set<number>>;
   /** Non-forEach side-effect steps whose gate was rejected. */
   rejectedSingles: Set<string>;
+  /** Steps skipped by `when` (M13), or because they use one: later steps that use them are skipped too. */
+  skippedSteps: Set<string>;
 }
 
 const key = (stepKey: string, itemIndex: number | null): string => `${stepKey}#${itemIndex ?? ""}`;
+
+/** What `when` treats as nothing: no value, false, 0, empty text, an empty list or object. */
+function isEmpty(value: unknown): boolean {
+  if (value === undefined || value === null || value === false || value === 0 || value === "") return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value).length === 0;
+  return false;
+}
 
 /**
  * Interprets a PipelineVersion step by step (README §2.6). All progress is in Step rows, so a run resumes from the
@@ -262,6 +272,7 @@ export class PipelineRunner {
       rejected: new Map(),
       blocked: new Map(),
       rejectedSingles: new Set(),
+      skippedSteps: new Set(),
     };
   }
 
@@ -278,6 +289,13 @@ export class PipelineRunner {
           state.values.set(step, undefined);
           continue;
         }
+        const notNow = this.skipReason(state, step, undefined);
+        if (notNow) {
+          await this.skip(state, step, null, notNow);
+          state.values.set(step, undefined);
+          state.skippedSteps.add(step.id);
+          continue;
+        }
         const result = await this.runOne(state, step, definition, undefined);
         const interrupted = interruption(result, step);
         if (interrupted) return interrupted;
@@ -287,6 +305,13 @@ export class PipelineRunner {
       }
 
       const source = sourceOf(step.forEach);
+      const unused = this.usesSkipped(state, step);
+      if (unused) {
+        await this.skip(state, step, null, unused);
+        state.values.set(step, []);
+        state.skippedSteps.add(step.id);
+        continue;
+      }
       const items = state.values.lookup(source);
       if (!Array.isArray(items)) throw new Error(`forEach {{${source}}} of step ${step.id} is not a list`);
       const rejected = setOf(state.rejected, source);
@@ -298,6 +323,11 @@ export class PipelineRunner {
           continue;
         }
         if (blocked.has(index)) continue;
+        const notNow = this.skipReason(state, step, { source, index, item });
+        if (notNow) {
+          await this.skip(state, step, index, notNow);
+          continue;
+        }
         const result = await this.runOne(state, step, definition, { source, index, item });
         const interrupted = interruption(result, step);
         if (interrupted) return interrupted;
@@ -307,6 +337,21 @@ export class PipelineRunner {
       state.values.set(step, outputs);
     }
     return { status: [...state.blocked.values()].some((items) => items.size > 0) ? "WAITING_FOR_USER" : "DONE" };
+  }
+
+  /** Why a step (or one item of it) doesn't run now: it uses a skipped step, or its `when` is empty (M13). */
+  private skipReason(state: RunState, step: CompiledStep, scope: ItemScope | undefined): string | null {
+    const unused = this.usesSkipped(state, step);
+    if (unused) return unused;
+    if (!step.when) return null;
+    const path = sourceOf(step.when);
+    return isEmpty(state.values.lookup(path, scope)) ? `Skipped: {{${path}}} is empty` : null;
+  }
+
+  private usesSkipped(state: RunState, step: CompiledStep): string | null {
+    const roots = [step.with, step.forEach ?? "", step.when ?? ""].flatMap((value) => referencesIn(value)).map((path) => path.split(".")[0] ?? "");
+    const skipped = roots.find((root) => state.skippedSteps.has(root));
+    return skipped ? `Skipped: it uses ${skipped}, which was skipped` : null;
   }
 
   private async runOne(state: RunState, step: CompiledStep, definition: StepDefinition, scope: ItemScope | undefined): Promise<StepResult> {

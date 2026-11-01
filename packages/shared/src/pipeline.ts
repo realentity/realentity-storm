@@ -83,6 +83,11 @@ export const PipelineStepSchema = z
       .refine((id) => !(RESERVED_STEP_IDS as readonly string[]).includes(id), "is reserved"),
     type: z.string().regex(/^[a-z]+\.[a-zA-Z]+$/, "a step type from the catalog, e.g. llm.score"),
     forEach: z.string().regex(WHOLE_REFERENCE, 'a single reference to a list, e.g. "{{search.items}}"').optional(),
+    /**
+     * Runs the step only when this value isn't empty: a non-empty list or text, true, a number other than 0, an
+     * object (M13). Otherwise it is skipped, and so is every later step that uses its output.
+     */
+    when: z.string().regex(WHOLE_REFERENCE, 'a single reference, e.g. "{{save.added}}"').optional(),
     with: z.record(z.string(), z.unknown()).default({}),
     retries: z.number().int().min(0).max(5).optional(),
   })

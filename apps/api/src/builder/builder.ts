@@ -262,6 +262,10 @@ Pipeline definition (JSON; I see it as YAML):
 - References: "{{stepId.field}}" is an earlier step's output field ("{{fetch.messages}}"). A value that is exactly one
   reference passes the value itself (a list stays a list); inside text it is inserted as text.
 - forEach: "{{stepId.listField}}" runs the step once per item; "{{item}}" / "{{item.field}}" is the current item.
+- when: "{{stepId.field}}" runs the step only when that value isn't empty (a non-empty list or text, true, a non-zero
+  number); otherwise it is skipped, and so is every later step that uses its output. Use it so a watch tells me only
+  about changes: data.save into a collection, then a summary with when: "{{save.added}}".
+- http.fetch reads only hosts listed in policy.allowedDomains: add each site it reads there.
   Steps with the same forEach are aligned per item: in them, "{{draft.body}}" is the current item's value.
 - Side-effect steps (flagged below) always run behind a gate.act that shows me the exact payload; I press Act. The
   compiler inserts the gate itself: don't add gate.act unless I ask for a specific placement, and never try to remove

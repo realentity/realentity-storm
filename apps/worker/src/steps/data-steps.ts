@@ -1,4 +1,4 @@
-import { type JobPosting, type JobPostingStatus, type PrismaClient } from "@ai-me/db";
+import { type JobPosting, type JobPostingStatus, type Prisma, type PrismaClient } from "@ai-me/db";
 import { canonicalJson } from "@ai-me/shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 
@@ -48,10 +48,27 @@ export class DedupeStep implements StepExecutor {
 
 const STATUS_RANK: Record<JobPostingStatus, number> = { NEW: 0, SKIPPED: 1, SHORTLISTED: 1, APPLIED: 2 };
 
+interface SaveInput {
+  items: Item[];
+  status: "NEW" | "SKIPPED" | "SHORTLISTED";
+  collection?: string;
+  key?: string;
+  fields?: string[];
+  complete: boolean;
+}
+
+interface Change {
+  key: string;
+  item: Item;
+  before: Item;
+  after: Item;
+}
+
 /**
  * data.save into JobPosting (the Jobs page): one posting per URL. Saving one again refreshes what it says and when
  * it was last seen; the status moves forward only (a posting I applied to stays applied, NEW never undoes a
- * decision). A dry run saves nothing and says what it would have.
+ * decision). With `collection` (M13), into a list of mine by `key`, saying what was added, what changed and, for a
+ * complete list, what was removed since the last save. A dry run saves nothing and says what it would have.
  */
 export class SaveStep implements StepExecutor {
   readonly type = "data.save";
@@ -59,7 +76,9 @@ export class SaveStep implements StepExecutor {
   constructor(private readonly prisma: PrismaClient) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { items, status } = input as { items: Item[]; status: "NEW" | "SKIPPED" | "SHORTLISTED" };
+    const save = input as unknown as SaveInput;
+    if (save.collection) return this.intoCollection(save, save.collection, context);
+    const { items, status } = save;
     const postings = items.map(posting).filter((p) => p !== null);
     const existing = new Map(
       (
@@ -69,7 +88,8 @@ export class SaveStep implements StepExecutor {
         })
       ).map((p) => [p.url, p]),
     );
-    const created = postings.filter((p) => !existing.has(p.url)).length;
+    const createdUrls = new Set(postings.filter((p) => !existing.has(p.url)).map((p) => p.url));
+    const created = createdUrls.size;
     if (!context.dryRun) {
       const now = new Date();
       for (const p of postings) {
@@ -86,8 +106,71 @@ export class SaveStep implements StepExecutor {
         });
       }
     }
-    return { saved: postings.length, created, skipped: items.length - postings.length };
+    const added = items.filter((item) => {
+      const p = posting(item);
+      return p !== null && createdUrls.has(p.url);
+    });
+    return { saved: postings.length, created, skipped: items.length - postings.length, added, changed: [], removed: [] };
   }
+
+  private async intoCollection({ items, key, fields, complete }: SaveInput, collection: string, context: StepContext): Promise<unknown> {
+    if (!key) throw new Error("data.save into a collection needs `key`: the field that identifies an item");
+    // One item per key; a key that repeats keeps its last item.
+    const keyed = new Map<string, Item>();
+    for (const item of items) {
+      const k = keyOf(item, key);
+      if (k) keyed.set(k, item);
+    }
+    const userId = context.userId;
+    const saved = await this.prisma.dataRecord.findMany({
+      where: complete ? { userId, collection } : { userId, collection, key: { in: [...keyed.keys()] } },
+    });
+    const before = new Map(saved.map((r) => [r.key, r]));
+
+    const added: Item[] = [];
+    const changed: Change[] = [];
+    for (const [k, item] of keyed) {
+      const old = before.get(k);
+      if (!old || old.removedAt) {
+        added.push(item);
+        continue;
+      }
+      const previous = old.value as Item;
+      const compared = fields ?? [...new Set([...Object.keys(previous), ...Object.keys(item)])];
+      const differs = compared.filter((f) => canonicalJson(valueAt(previous, f) ?? null) !== canonicalJson(valueAt(item, f) ?? null));
+      if (differs.length > 0) {
+        changed.push({
+          key: k,
+          item,
+          before: Object.fromEntries(differs.map((f) => [f, valueAt(previous, f) ?? null])),
+          after: Object.fromEntries(differs.map((f) => [f, valueAt(item, f) ?? null])),
+        });
+      }
+    }
+    const gone = complete ? saved.filter((r) => !r.removedAt && !keyed.has(r.key)) : [];
+
+    if (!context.dryRun) {
+      const now = new Date();
+      await this.prisma.$transaction([
+        ...[...keyed].map(([k, item]) =>
+          this.prisma.dataRecord.upsert({
+            where: { userId_collection_key: { userId, collection, key: k } },
+            create: { userId, collection, key: k, value: item as Prisma.InputJsonValue, firstSeenAt: now, lastSeenAt: now },
+            update: { value: item as Prisma.InputJsonValue, lastSeenAt: now, removedAt: null },
+          }),
+        ),
+        this.prisma.dataRecord.updateMany({ where: { dataRecordId: { in: gone.map((r) => r.dataRecordId) } }, data: { removedAt: now } }),
+      ]);
+    }
+    return { saved: keyed.size, created: added.length, skipped: items.length - keyed.size, added, changed, removed: gone.map((r) => r.value as Item) };
+  }
+}
+
+/** An item's key as text (a string or a number); null without one. */
+function keyOf(item: Item, path: string): string | null {
+  const value = valueAt(item, path);
+  const text = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+  return text || null;
 }
 
 type Posting = Pick<JobPosting, "url" | "title" | "source"> &

@@ -31,6 +31,11 @@ export interface StepDefinition {
    * {{thisStep.<field>}}, its approved value becomes a few-shot example for this step type.
    */
   learns?: string;
+  /**
+   * Input fields that are addresses the step reads from (http.fetch, M13): a literal one must be on the pipeline's
+   * `policy.allowedDomains`, and at run time every one is checked against it.
+   */
+  reads?: string[];
   input: z.ZodObject;
   output: z.ZodObject;
 }
@@ -114,6 +119,9 @@ const Selector = z.string().min(1).max(500);
 
 /** Where data.save and data.dedupe keep and look up items. */
 export const SAVED_LISTS = ["JobPosting"] as const;
+
+/** A collection of my own for data.save and data.history (M13). */
+export const COLLECTION = /^[a-z][a-z0-9._-]{0,63}$/;
 
 /** A stored document (Documents page), e.g. "cv-main". */
 export const DOCUMENT_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -209,17 +217,86 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.save",
     description:
-      "Saves items as job postings (by `url`; title, company, location, description, score, scoreReason, source), " +
-      "for the Jobs page and later deduplication. A posting saved again keeps its first-seen date; `status` only moves " +
-      "forward (NEW → SKIPPED or SHORTLISTED; APPLIED stays).",
+      "Saves items and says what changed since the last save. Default: as job postings (by `url`; title, company, " +
+      "location, description, score, scoreReason, source) for the Jobs page and deduplication; a posting saved again " +
+      "keeps its first-seen date and `status` only moves forward (NEW → SKIPPED or SHORTLISTED; APPLIED stays). With " +
+      "`collection`: into that named list, one item per `key`; `changed` compares `fields` (default every field); " +
+      "`complete: true` means the items are the whole list, so missing ones are `removed`.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
       items: Items,
       into: z.enum(SAVED_LISTS).default("JobPosting"),
       status: z.enum(["NEW", "SKIPPED", "SHORTLISTED"]).default("NEW"),
+      collection: z.string().regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. releases").optional().describe("a list of my own instead of JobPosting"),
+      key: z.string().min(1).optional().describe("the field that identifies an item in the collection, e.g. url or id"),
+      fields: z.array(z.string().min(1)).min(1).optional().describe("the fields whose change counts (default: all)"),
+      complete: z.boolean().default(false).describe("the items are the whole list: saved ones missing from it are removed"),
     }),
-    output: z.object({ saved: z.number().int(), created: z.number().int(), skipped: z.number().int() }),
+    output: z.object({
+      saved: z.number().int(),
+      created: z.number().int(),
+      skipped: z.number().int(),
+      /** Not saved before. */
+      added: Items,
+      /** Saved before with other values in `fields`: the item, and those fields before and after. */
+      changed: z.array(
+        z.object({ key: z.string(), item: z.record(z.string(), z.unknown()), before: z.record(z.string(), z.unknown()), after: z.record(z.string(), z.unknown()) }),
+      ),
+      /** With `complete: true`, saved before and missing now (the last saved values). */
+      removed: Items,
+    }),
+  },
+  {
+    type: "data.history",
+    description:
+      "Keeps a number per item over time (a price, a count) in `collection` by `key`, and adds `history` to each item: " +
+      "previous, change, changePct, min, max, count, direction (new, up, down, same), lowest (the lowest so far). The " +
+      "value may be text such as \"1 299,00 лв.\". Filter on it with data.filter, e.g. history.change lt 0.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      items: Items,
+      collection: z.string().regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. prices"),
+      key: z.string().min(1),
+      value: z.string().min(1).describe("the field holding the number"),
+      keep: z.number().int().min(2).max(365).default(60).describe("values kept per key"),
+    }),
+    output: z.object({ items: Items, recorded: z.number().int(), unreadable: z.number().int() }),
+  },
+  {
+    type: "http.fetch",
+    description:
+      "Reads addresses without a browser (GET only, no cookies): RSS/Atom feeds become `items` (title, url, published, " +
+      "summary, id, source), JSON is `json` (a list, or the list at `itemsAt`, also becomes `items`), anything else " +
+      "`text`. Only hosts in policy.allowedDomains, never private or tailnet addresses. Unchanged since the last read " +
+      "(ETag / Last-Modified), it reuses what it read then.",
+    sideEffect: false,
+    saasSafe: true,
+    reads: ["url", "urls"],
+    input: z.object({
+      url: z.string().url().optional(),
+      urls: z.array(z.string().url()).min(1).max(25).optional(),
+      itemsAt: z.string().min(1).optional().describe("for JSON: the dotted path of the list to use as items, e.g. data.items"),
+      maxItems: z.number().int().min(1).max(500).default(100),
+      maxKb: z.number().int().min(1).max(5120).default(1024),
+      timeoutSeconds: z.number().int().min(2).max(60).default(20),
+    }),
+    output: z.object({
+      items: Items,
+      json: z.unknown(),
+      text: z.string(),
+      documents: z.array(
+        z.object({
+          url: z.string(),
+          status: z.number().int(),
+          notModified: z.boolean(),
+          contentType: z.string(),
+          title: z.string().nullable(),
+          truncated: z.boolean(),
+        }),
+      ),
+    }),
   },
   {
     type: "llm.classify",

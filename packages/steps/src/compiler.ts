@@ -11,6 +11,7 @@ import {
   type ProvenanceRule,
   type TargetKind,
   type Trigger,
+  hostMatches,
 } from "@ai-me/shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
@@ -95,6 +96,20 @@ export class PipelineCompiler {
         } else {
           scope.forEach = source;
           scope.itemType = resolved.type.kind === "array" ? resolved.type.element : UNKNOWN;
+        }
+      }
+
+      if (step.when) {
+        const resolved = this.resolve(referencePath(step.when), scope, known);
+        if (!resolved.ok) errors.push({ path: `${path}.when`, message: resolved.message });
+      }
+
+      for (const field of stepDefinition.reads ?? []) {
+        for (const [i, url] of literalUrls(step.with[field])) {
+          const host = /^https?:\/\/([^/{}?#:]+)/i.exec(url)?.[1]?.toLowerCase();
+          if (host && !definition.policy.allowedDomains.some((allowed) => hostMatches(host, [allowed]))) {
+            errors.push({ path: `${path}.with.${field}${i === null ? "" : `[${i}]`}`, message: `${host} isn't in policy.allowedDomains: add it there to read from it` });
+          }
         }
       }
 
@@ -289,6 +304,7 @@ export class PipelineCompiler {
           id,
           type: "gate.act",
           ...(step.forEach ? { forEach: step.forEach } : {}),
+          ...(step.when ? { when: step.when } : {}),
           with: { for: step.id },
           autoInserted: true,
         });
@@ -358,6 +374,12 @@ export function referencesIn(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(referencesIn);
   if (value && typeof value === "object") return Object.values(value).flatMap(referencesIn);
   return [];
+}
+
+/** The literal URLs of a field (text without references), with their index in a list. */
+function literalUrls(value: unknown): [number | null, string][] {
+  const values = Array.isArray(value) ? value.map((v, i): [number | null, unknown] => [i, v]) : [[null, value] as [number | null, unknown]];
+  return values.filter((entry): entry is [number | null, string] => typeof entry[1] === "string" && referencesIn(entry[1]).length === 0);
 }
 
 function referencePath(wholeReference: string): string {

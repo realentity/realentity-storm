@@ -528,4 +528,33 @@ steps:
       ]);
     });
   });
+
+  describe("inputs and conditions (M13)", () => {
+    const fetch = (url: unknown, allowed: string[] = ["github.com"]) =>
+      pipeline([{ id: "fetch", type: "http.fetch", with: { [Array.isArray(url) ? "urls" : "url"]: url } }], { policy: { allowedDomains: allowed } });
+
+    it("lets http.fetch read only literal hosts on policy.allowedDomains", () => {
+      ok(compiler.compile(fetch("https://github.com/nodejs/node/releases.atom")));
+      ok(compiler.compile(fetch(["https://github.com/a/b/releases.atom", "https://api.github.com/x"], ["github.com", "*.github.com"])));
+      expect(errorsOf(compiler.compile(fetch("https://www.postgresql.org/news.rss")))).toEqual([
+        "steps[0].with.url: www.postgresql.org isn't in policy.allowedDomains: add it there to read from it",
+      ]);
+      expect(errorsOf(compiler.compile(fetch(["https://github.com/a", "https://evil.test/b"])))).toEqual([
+        "steps[0].with.urls[1]: evil.test isn't in policy.allowedDomains: add it there to read from it",
+      ]);
+    });
+
+    it("checks when's reference, and gives an inserted gate the same when", () => {
+      const steps = [
+        { id: "search", type: "test.search", with: { query: "dotnet" } },
+        { id: "send", type: "test.send", when: "{{search.items}}", with: { to: "ana@acme.test", body: "{{search.total}} jobs" } },
+      ];
+      const compiled = ok(compiler.compile(pipeline(steps)));
+      expect(compiled.definition.steps.find((s) => s.id === "sendGate")).toMatchObject({ when: "{{search.items}}", autoInserted: true });
+      expect(errorsOf(compiler.compile(pipeline([{ ...steps[0], when: "{{nothing.items}}" }])))).toEqual([
+        'steps[0].when: {{nothing.items}} refers to "nothing", which is not an earlier step',
+      ]);
+      expect(errorsOf(compiler.compile(pipeline([{ ...steps[0], when: "search.items" }])))[0]).toMatch(/^steps\[0\]\.when: a single reference/);
+    });
+  });
 });
