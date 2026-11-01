@@ -132,6 +132,29 @@ describe("pipelines", () => {
     const runsOf = async (pipelineId: string) =>
       ((await agent.get(`/api/runs?pipelineId=${pipelineId}`).expect(200)).body as RunSummaryView[]).map((r) => [r.version, r.dryRun]);
 
+    it("a pipeline started by an event gets an example of the event in a dry run; a scheduled one gets none", async () => {
+      const source = `
+name: Follow-up after applying
+trigger: { on: application.status, status: [SUBMITTED] }
+steps:
+  - id: later
+    type: flow.later
+    with:
+      pipeline: Follow-up reminder
+      after: 7d
+      cancelOn: { event: application.status, match: { applicationId: "{{trigger.applicationId}}" } }
+`;
+      const { run } = await dryRun(source);
+      const detail = (await agent.get(`/api/runs/${run.runId}`).expect(200)).body as { triggerData: Record<string, unknown> };
+      expect(detail.triggerData).toMatchObject({
+        applicationId: "example-application",
+        status: "SUBMITTED",
+        job: { url: "https://jobs.example.com/example-role" },
+      });
+      const scheduled = await dryRun(V1);
+      expect(((await agent.get(`/api/runs/${scheduled.run.runId}`).expect(200)).body as { triggerData: unknown }).triggerData).toBeNull();
+    });
+
     it("a new pipeline: dry run its draft, save it as v1 (keeping the dry run), then enable it", async () => {
       const { pipeline, run } = await dryRun(V1);
       expect(pipeline).toMatchObject({ name: "Morning digest", currentVersion: null, hasDraft: true, current: null, versions: [] });

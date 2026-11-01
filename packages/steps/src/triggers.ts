@@ -64,3 +64,61 @@ export function triggerTargetIssue(trigger: Trigger, source: string): string | n
   if (isWebhookTrigger(trigger)) return `{{${source}}} can't be a target: a webhook's body is written by whoever calls it`;
   return `{{${source}}} is only available in a pipeline triggered by an event or a webhook`;
 }
+
+/**
+ * {{trigger}} for a dry run of a pipeline started by an event or a webhook: an example of what that event brings,
+ * shaped by the trigger's own filters (its first status, label, pipeline, site). Nothing in it is real: example.com
+ * addresses and "example" ids. Null for a pipeline without a trigger event (manual, schedule).
+ */
+export function exampleTriggerData(trigger: Trigger): Record<string, unknown> | null {
+  const now = new Date().toISOString();
+  if (isWebhookTrigger(trigger)) return { body: { example: true }, event: null, receivedAt: now };
+  if (!isEventTrigger(trigger)) return null;
+  switch (trigger.on) {
+    case "run.finished":
+      return {
+        runId: "00000000-0000-4000-8000-00000000e001",
+        pipeline: trigger.pipeline,
+        status: trigger.status?.[0] ?? "DONE",
+        summary: "An example run (dry run)",
+        outputs: {},
+      };
+    case "application.status":
+      return {
+        applicationId: "example-application",
+        status: trigger.status?.[0] ?? "SUBMITTED",
+        job: { title: "Example role", company: "Example Ltd", location: "Sofia", url: "https://jobs.example.com/example-role" },
+      };
+    case "recipe.broken":
+      return {
+        site: trigger.site ?? "example.com",
+        recipe: `${trigger.site ?? "example.com"}/search`,
+        version: 1,
+        reason: "An example: the list wasn't found (dry run)",
+        fixProposed: false,
+      };
+    case "email.classified":
+      return {
+        label: trigger.label?.[0] ?? "example",
+        reason: "An example email (dry run)",
+        message: {
+          uid: 1,
+          messageId: "<example@mail.example.com>",
+          threadId: "<example@mail.example.com>",
+          inReplyTo: null,
+          references: [],
+          from: "someone@example.com",
+          fromName: "Someone Example",
+          replyTo: "someone@example.com",
+          to: ["me@example.com"],
+          cc: [],
+          subject: "An example email",
+          date: now,
+          text: "This is an example email for a dry run. Nothing in it is real.",
+          attachments: [],
+        },
+      };
+    case "flow.later":
+      return { data: {}, key: null, scheduledAt: now, scheduledByRunId: null };
+  }
+}

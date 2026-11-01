@@ -58,6 +58,16 @@ export function RunPage() {
         </div>
       )}
       {r.resumeAt && <div className="alert alert-info">Held back by a rate limit; continues {formatDateTime(r.resumeAt)}.</div>}
+      {r.triggerData != null && (
+        <details className="card mb-3" data-testid="trigger-data">
+          <summary className="card-header cursor-pointer">
+            <h3 className="card-title">{r.dryRun ? "Started by an example event (dry run: nothing in it is real)" : "Started by"}</h3>
+          </summary>
+          <div className="card-body">
+            <Json value={r.triggerData} />
+          </div>
+        </details>
+      )}
       {["QUEUED", "RUNNING", "WAITING_FOR_USER"].includes(r.status) && r.steps.some((s) => s.type === "browser.teach") && (
         <div className="alert alert-info" data-testid="teach-guide">
           <strong>Teach mode.</strong> When the live browser below shows the site (it can take a few seconds): accept the cookie banner, search and

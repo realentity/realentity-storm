@@ -9,7 +9,7 @@ import {
   type StepUsageView,
   type TakeoverView,
 } from "@ai-me/shared";
-import { StepCatalog } from "@ai-me/steps";
+import { exampleTriggerData, StepCatalog } from "@ai-me/steps";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { ControlsService } from "../controls/controls.service";
@@ -54,6 +54,8 @@ export class RunsService {
         pipelineVersionId: version.pipelineVersionId,
         trigger: dryRun ? "dry-run" : trigger,
         dryRun,
+        // A pipeline started by an event or a webhook gets an example of one in a dry run, so {{trigger.*}} has values.
+        ...(dryRun && exampleTriggerData(definition.trigger) ? { triggerData: exampleTriggerData(definition.trigger) as Prisma.InputJsonValue } : {}),
         headed: this.catalog.needsHeaded(definition.steps),
         status: "QUEUED",
       },
@@ -107,6 +109,7 @@ export class RunsService {
       ...runSummary(run),
       costUsd: Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000,
       headed: run.headed,
+      triggerData: run.triggerData ?? null,
       takeover: takeover ? takeoverView(takeover, this.env.TAKEOVER_TIMEOUT_MINUTES) : null,
       artifacts: run.artifacts.map((a) => ({
         artifactId: a.artifactId,

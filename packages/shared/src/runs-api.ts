@@ -150,6 +150,8 @@ export interface RunDetailView extends RunSummaryView {
   /** The live browser waiting for me now, if it is. */
   takeover: TakeoverView | null;
   artifacts: ArtifactView[];
+  /** {{trigger}}: the event or webhook call that started it; in a dry run, an example of one. Null: none. */
+  triggerData: unknown;
 }
 
 export const TAKEOVER_STATUSES = ["OPEN", "TAKEN_OVER", "CONTINUED", "ABORTED", "EXPIRED"] as const;
