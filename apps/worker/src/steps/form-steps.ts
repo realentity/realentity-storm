@@ -339,7 +339,7 @@ const THANKS = /thank you|thanks for|successfully|has been sent|was received|hav
  * leaving the page (Contact Form 7 and other AJAX forms), a new thank-you message, or the filled fields cleared,
  * with no field marked invalid.
  */
-async function sent(page: Page, fields: FormField[], before: string): Promise<boolean> {
+export async function sent(page: Page, fields: FormField[], before: string): Promise<boolean> {
   const keys = fields.map((f) => f.key);
   const counts = await Promise.all(keys.map((key) => page.locator(key).count().catch(() => 0)));
   if (counts.every((count) => count === 0)) return true;
@@ -354,7 +354,7 @@ async function sent(page: Page, fields: FormField[], before: string): Promise<bo
 }
 
 /** An AJAX form answers a while after the click (the page was idle already, so no load state waits for it). */
-async function sentWithin(page: Page, fields: FormField[], before: string, timeout: number): Promise<boolean> {
+export async function sentWithin(page: Page, fields: FormField[], before: string, timeout: number): Promise<boolean> {
   const deadline = Date.now() + timeout;
   for (;;) {
     if (await sent(page, fields, before)) return true;
@@ -363,7 +363,7 @@ async function sentWithin(page: Page, fields: FormField[], before: string, timeo
   }
 }
 
-async function bodyText(page: Page): Promise<string> {
+export async function bodyText(page: Page): Promise<string> {
   return (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
 }
 
@@ -380,7 +380,7 @@ function cvFieldOf(fields: PageField[]): PageField | undefined {
 }
 
 /** M10-T5: the posting's Application, prepared (a submitted one stays submitted). */
-async function prepareApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
+export async function prepareApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
   if (!posting) return;
   const existing = await prisma.application.findUnique({ where: { jobPostingId: posting.jobPostingId } });
@@ -393,7 +393,7 @@ async function prepareApplication(prisma: PrismaClient, context: StepContext, ur
 }
 
 /** M10-T5: sent: the Application submitted, the posting applied. */
-async function submitApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
+export async function submitApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
   if (!posting) return;
   const now = new Date();
@@ -407,11 +407,11 @@ async function submitApplication(prisma: PrismaClient, context: StepContext, url
   ]);
 }
 
-function ownerOf(context: StepContext): ArtifactOwner {
+export function ownerOf(context: StepContext): ArtifactOwner {
   return { userId: context.userId, runId: context.runId, stepKey: context.stepKey, itemIndex: context.itemIndex };
 }
 
-async function unblock(page: Page, attention: Attention): Promise<void> {
+export async function unblock(page: Page, attention: Attention): Promise<void> {
   const reason = await blockingState(page);
   if (!reason) return;
   await attention.needMe(reason, page.url());
@@ -419,7 +419,7 @@ async function unblock(page: Page, attention: Attention): Promise<void> {
   if (await blockingState(page)) throw new Error("The page is still blocked after taking over");
 }
 
-async function settle(page: Page, timeout = 10_000): Promise<void> {
+export async function settle(page: Page, timeout = 10_000): Promise<void> {
   await page.waitForLoadState("domcontentloaded", { timeout }).catch(() => undefined);
   await page.waitForLoadState("networkidle", { timeout: Math.min(timeout, 3_000) }).catch(() => undefined);
 }

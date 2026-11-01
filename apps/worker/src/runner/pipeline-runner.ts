@@ -496,7 +496,8 @@ export class PipelineRunner {
     const running = await this.markRunning(state, step, row, scope, input);
     await this.setProposalStatus(state, proposal.proposalId, "EXECUTING");
     try {
-      const output = definition.output.parse(await this.executor(step).execute(input, this.context(state, running)));
+      const context = this.context(state, running, undefined, proposal.approvedNewTargets);
+      const output = definition.output.parse(await this.executor(step).execute(input, context));
       await this.finish(state, running, output);
       await this.setProposalStatus(state, proposal.proposalId, "DONE");
       return { kind: "done", output };
@@ -519,7 +520,12 @@ export class PipelineRunner {
     return executor;
   }
 
-  private context(state: RunState, row: Step, recordUsage: (usage: LlmUsage) => void = () => undefined): StepContext {
+  private context(
+    state: RunState,
+    row: Step,
+    recordUsage: (usage: LlmUsage) => void = () => undefined,
+    approvedDomains: readonly string[] = [],
+  ): StepContext {
     return {
       runId: state.runId,
       userId: state.userId,
@@ -529,6 +535,7 @@ export class PipelineRunner {
       itemIndex: row.itemIndex,
       dryRun: state.dryRun,
       recordUsage,
+      allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],
       attention: this.takeovers
         ? this.takeovers.for({
             runId: state.runId,

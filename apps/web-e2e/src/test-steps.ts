@@ -40,13 +40,18 @@ export const TEST_STEPS: StepDefinition[] = [
 
 /**
  * The worker side: implementations of TEST_STEPS (the shape of the worker's StepExecutor), and stand-ins for catalog
- * steps that would reach a real site: browser.fillAndSubmit answers with what it was asked to send.
+ * steps that would reach a real site: browser.fillAndSubmit and browser.submit answer with what they were asked to send.
  */
 export const TEST_EXECUTORS = [
   {
     type: "browser.fillAndSubmit",
     execute: (input: Record<string, unknown>) =>
       Promise.resolve({ submitted: true, url: String(input.url), confirmation: JSON.stringify({ fields: input.fields, files: input.files }) }),
+  },
+  {
+    type: "browser.submit",
+    execute: (input: Record<string, unknown>) =>
+      Promise.resolve({ submitted: true, url: String(input.url), confirmation: JSON.stringify({ actions: input.actions, files: input.files }) }),
   },
   {
     type: "test.search",

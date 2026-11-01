@@ -1,4 +1,4 @@
-import { ClaudeBatches, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmClient } from "@ai-me/llm";
+import { ClaudeBatches, ClaudeChat, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmChat, type LlmClient } from "@ai-me/llm";
 import { JobQueue, publishEvent } from "@ai-me/queue";
 import { KeyRing } from "@ai-me/crypto";
 import { sendTelegram, type ServerEnv } from "@ai-me/shared";
@@ -29,6 +29,10 @@ const EVENT_SINK = Symbol("EVENT_SINK");
 /** Without ANTHROPIC_API_KEY, LLM steps fail with a clear error instead of the worker refusing to start. */
 const NO_LLM: LlmClient = {
   structured: () => Promise.reject(new LlmError("ANTHROPIC_API_KEY is not set", emptyUsage())),
+};
+
+const NO_CHAT: LlmChat = {
+  send: () => Promise.reject(new Error("ANTHROPIC_API_KEY is not set")),
 };
 
 /** Recovers interrupted runs and syncs schedules before consuming jobs; stops the queue on shutdown. */
@@ -116,6 +120,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             notify: (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text),
           },
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
+          chat: env.ANTHROPIC_API_KEY ? ClaudeChat.fromApiKey(env.ANTHROPIC_API_KEY) : NO_CHAT,
+          downloadMaxMb: env.DOWNLOAD_MAX_MB,
           router,
           telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },
           mail: new ImapSmtpConnector(

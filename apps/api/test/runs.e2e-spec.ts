@@ -457,6 +457,8 @@ describe("runs, proposals and controls", () => {
         builder: { model: "claude-opus-5-5", effort: "high", source: "default" },
         "browser.teach": { model: "claude-opus-5-5", effort: "high", source: "default" },
         "browser.mapForm": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+        "browser.agent": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+        "browser.agent.escalation": { model: "claude-opus-5-5", effort: "high", source: "default" },
       });
 
       const chosen = (

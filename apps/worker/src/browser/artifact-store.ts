@@ -1,6 +1,6 @@
 import { type PrismaClient } from "@ai-me/db";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 export interface ArtifactOwner {
@@ -69,6 +69,16 @@ export class ArtifactStore {
       await prisma.artifact.deleteMany({ where: { artifactId: { in: batch.map((a) => a.artifactId) } } });
       pruned += batch.length;
     }
+  }
+
+  /** A download of mine (file.read): its row and content, only from inside ARTIFACTS_DIR. */
+  async readDownload(prisma: PrismaClient, userId: string, artifactId: string): Promise<{ name: string; mime: string; sha256: string; content: Buffer }> {
+    const artifact = await prisma.artifact.findFirst({ where: { artifactId, userId, kind: "download" } });
+    if (!artifact) throw new Error(`There is no download ${artifactId}`);
+    const path = resolve(this.root, artifact.path);
+    if (!path.startsWith(this.root)) throw new Error(`The download ${artifactId} is outside the artifacts folder`);
+    const content = await readFile(path);
+    return { name: artifact.path.split("/").pop() ?? artifactId, mime: artifact.mime ?? "application/octet-stream", sha256: artifact.sha256 ?? "", content };
   }
 
   /** Where a run's downloads wait for their checks; never served. */

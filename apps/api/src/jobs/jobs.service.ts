@@ -1,4 +1,4 @@
-import { type Application, type JobPosting, type Prisma, type SiteRecipe } from "@ai-me/db";
+import { Prisma, type Application, type JobPosting, type SiteRecipe } from "@ai-me/db";
 import {
   type ImportRecipeRequest,
   type JobFilter,
@@ -71,6 +71,7 @@ export class RecipesService {
       lastVerifiedAt: row.lastVerifiedAt?.toISOString() ?? null,
       brokenAt: row.brokenAt?.toISOString() ?? null,
       brokenReason: row.brokenReason,
+      proposedAt: row.proposedAt?.toISOString() ?? null,
       dateCreated: row.dateCreated.toISOString(),
     }));
   }
@@ -104,6 +105,38 @@ export class RecipesService {
       data: { userId, name, site: siteOf(name), version: (latest?.version ?? 0) + 1, steps: recipe.data },
     });
     return this.get(userId, name);
+  }
+
+  /**
+   * M11-T3: the fix the fallback proposed for the latest version, approved: checked like an import and saved as the
+   * next version (runs use it from now on); the proposal is cleared.
+   */
+  async approveFix(userId: string, name: string): Promise<RecipeDetailView> {
+    const latest = await this.latestWithFix(userId, name);
+    const recipe = RecipeSchema.safeParse(latest.proposed);
+    const problems = recipe.success ? recipeProblems(name, recipe.data) : recipe.error.issues.map((i) => `${i.path.join(".") || "recipe"}: ${i.message}`);
+    if (!recipe.success || problems.length > 0) throw new BadRequestException(`The proposed fix is not a valid recipe: ${problems.join("; ")}`);
+    await this.prisma.client.$transaction([
+      this.prisma.client.siteRecipe.create({
+        data: { userId, name, site: siteOf(name), version: latest.version + 1, steps: recipe.data, lastVerifiedAt: latest.proposedAt, taughtInRunId: latest.proposedInRunId },
+      }),
+      this.prisma.client.siteRecipe.update({ where: { siteRecipeId: latest.siteRecipeId }, data: { proposed: Prisma.DbNull, proposedAt: null, proposedInRunId: null } }),
+    ]);
+    return this.get(userId, name);
+  }
+
+  /** M11-T3: the proposed fix, discarded; the next breakage may propose another. */
+  async discardFix(userId: string, name: string): Promise<RecipeDetailView> {
+    const latest = await this.latestWithFix(userId, name);
+    await this.prisma.client.siteRecipe.update({ where: { siteRecipeId: latest.siteRecipeId }, data: { proposed: Prisma.DbNull, proposedAt: null, proposedInRunId: null } });
+    return this.get(userId, name);
+  }
+
+  private async latestWithFix(userId: string, name: string): Promise<SiteRecipe> {
+    const latest = await this.prisma.client.siteRecipe.findFirst({ where: { userId, name }, orderBy: { version: "desc" } });
+    if (!latest) throw new NotFoundException();
+    if (latest.proposed === null) throw new BadRequestException(`${name} v${latest.version} has no proposed fix`);
+    return latest;
   }
 
   /** Starts teach mode: the "Teach <name>" pipeline, created or given these inputs as its next version, then run. */
@@ -176,6 +209,9 @@ function versionView(row: SiteRecipe): RecipeVersionView {
     brokenAt: row.brokenAt?.toISOString() ?? null,
     brokenReason: row.brokenReason,
     taughtInRunId: row.taughtInRunId,
+    proposed: row.proposed,
+    proposedAt: row.proposedAt?.toISOString() ?? null,
+    proposedInRunId: row.proposedInRunId,
     dateCreated: row.dateCreated.toISOString(),
   };
 }

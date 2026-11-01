@@ -26,6 +26,9 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   builder: "builder",
   "browser.teach": "builder",
   "browser.mapForm": "writing",
+  "browser.agent": "writing",
+  // The agent's second try, when the first model keeps failing (README §5).
+  "browser.agent.escalation": "builder",
 };
 
 /** A per-user choice from Settings (ModelSetting), if any. */

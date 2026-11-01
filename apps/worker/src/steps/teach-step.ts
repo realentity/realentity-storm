@@ -5,7 +5,7 @@ import { z } from "zod";
 import { blockingState } from "../browser/blocking";
 import { PageSecrets } from "../browser/page-secrets";
 import { readItems, type Item } from "../browser/recipe-runner";
-import { RunStopped, type StepContext } from "../runner/step-executor";
+import { RunStopped, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type BrowserDependencies } from "./browser-steps";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
 
@@ -69,15 +69,16 @@ const SYSTEM =
  * fails goes back to the LLM. The items it reads are outlined on the page; my Continue saves the recipe as the next
  * version, Abort discards it. The page never leaves the site, and nothing is typed or submitted.
  */
-export class BrowserTeachStep extends LlmStep {
+export class BrowserTeachStep implements StepExecutor {
   readonly type = "browser.teach";
+  private readonly writer: RecipeWriter;
 
   constructor(
     private readonly deps: BrowserDependencies,
     llm: LlmClient,
     router: ModelRouter,
   ) {
-    super(llm, router);
+    this.writer = new RecipeWriter(llm, router);
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
@@ -97,8 +98,8 @@ export class BrowserTeachStep extends LlmStep {
       if (blocked) await context.attention.needMe(blocked, page.url());
       if (!onSite(page.url(), site)) throw new Error(`The page is now on ${new URL(page.url()).hostname}, not ${site}`);
 
-      const outline = secrets.mask(await page.evaluate<string>(`(${OUTLINE})(${MAX_OUTLINE})`));
-      const { recipe, items } = await this.propose(context, page, { name, params, fields, hint, outline });
+      const outline = secrets.mask(await pageOutline(page));
+      const { recipe, items } = await this.writer.write(context, page, { name, params, fields, hint, outline });
 
       await page.addStyleTag({ content: `${recipe.item} { outline: 3px solid #f59f00 !important; outline-offset: 2px !important; }` });
       const latest = await this.deps.prisma.siteRecipe.findFirst({ where: { userId: context.userId, name }, orderBy: { version: "desc" } });
@@ -121,9 +122,21 @@ export class BrowserTeachStep extends LlmStep {
       await lease.close();
     }
   }
+}
+
+/**
+ * Writes a recipe for the list on a page (the builder's model, task browser.teach): proposed from the page's outline,
+ * checked on the page, what failed sent back. Teach mode and browser.extract's fallback (M11-T3) use it.
+ */
+export class RecipeWriter extends LlmStep {
+  readonly type = "browser.teach";
+
+  execute(): Promise<unknown> {
+    return Promise.reject(new Error("RecipeWriter is not a step"));
+  }
 
   /** Asks for a recipe until one works on the page, with what failed each time. */
-  private async propose(
+  async write(
     context: StepContext,
     page: Page,
     task: { name: string; params: Record<string, string>; fields: string[]; hint?: string; outline: string },
@@ -145,6 +158,11 @@ export class BrowserTeachStep extends LlmStep {
     }
     throw new Error(`No working recipe after ${ATTEMPTS} attempts: ${problems.join("; ")}`);
   }
+}
+
+/** The page's outline, as the recipe writer reads it. */
+export function pageOutline(page: Page): Promise<string> {
+  return page.evaluate<string>(`(${OUTLINE})(${MAX_OUTLINE})`);
 }
 
 function toRecipe(proposal: Proposal): { success: true; data: Recipe } | { success: false; problems: string[] } {

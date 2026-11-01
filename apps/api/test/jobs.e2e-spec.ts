@@ -1,7 +1,8 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
 import { type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@ai-me/shared";
 import { TestEnvironment } from "@ai-me/testing";
 import type request from "supertest";
+import { parse as parseYaml } from "yaml";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const RECIPE = `
@@ -86,6 +87,28 @@ describe("jobs and recipes", () => {
     ]);
     expect(((await agent.get("/api/recipes/dev.bg/search").expect(200)).body as RecipeDetailView).versions).toHaveLength(2);
     await agent.get("/api/recipes/dev.bg/other").expect(404);
+  });
+
+  it("M11-T3: the agent's fix for a broken recipe is mine to approve (the next version) or discard", async () => {
+    await agent.post("/api/recipes").send({ name: "dev.bg/search", source: RECIPE }).expect(201);
+    await agent.post("/api/recipes/dev.bg/search/fix").expect(400);
+    const fixed = parseYaml(RECIPE.replace("{page}", "{page}&fixed=1")) as Prisma.InputJsonValue;
+    const propose = (version: number, proposed: Prisma.InputJsonValue) =>
+      db.client.siteRecipe.updateMany({ where: { version }, data: { brokenAt: new Date(), brokenReason: "matched nothing", proposed, proposedAt: new Date() } });
+
+    await propose(1, fixed);
+    expect(((await agent.get("/api/recipes").expect(200)).body as RecipeSummaryView[])[0].proposedAt).toEqual(expect.any(String));
+    const detail = (await agent.post("/api/recipes/dev.bg/search/fix").expect(200)).body as RecipeDetailView;
+    expect(detail.versions.map((v) => [v.version, v.proposed])).toEqual([
+      [2, null],
+      [1, null],
+    ]);
+    expect(detail.versions[0].recipe).toMatchObject(fixed as object);
+
+    // Discarded: no new version. A proposal that isn't a valid recipe is never saved.
+    await propose(2, { url: "https://evil.example/" });
+    await agent.post("/api/recipes/dev.bg/search/fix").expect(400);
+    expect(((await agent.delete("/api/recipes/dev.bg/search/fix").expect(200)).body as RecipeDetailView).versions.map((v) => v.proposed)).toEqual([null, null]);
   });
 
   it("M9-T2: teach mode is a headed run of the recipe's Teach pipeline, reused next time", async () => {

@@ -152,7 +152,37 @@ export const FormFileSchema = z.object({
 });
 export type FormFile = z.infer<typeof FormFileSchema>;
 
-/** The steps available so far: data, LLM, gates and notifications (M2), email (M4), browser (M8), recipes and jobs (M9). More browser and file steps join in M10–M11. */
+/** One of my stored documents, bound by content (file.read's output, browser.upload's file). */
+export const DocumentFileSchema = FormFileSchema.omit({ key: true });
+
+/**
+ * An element browser.agent acted on, as browser.submit finds it again: a CSS selector built from the page (its id,
+ * its name, or its position under the nearest id), checked against the role and name the agent saw.
+ */
+export const ElementTargetSchema = z.object({
+  css: z.string().min(1).max(500),
+  role: z.string().max(40),
+  name: z.string().max(300),
+});
+export type ElementTarget = z.infer<typeof ElementTargetSchema>;
+
+/** One action of browser.agent's fixed set (README §2.4), as browser.submit repeats it. Attach uses an approved file only. */
+export const AgentActionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("navigate"), url: z.url({ protocol: /^https?$/ }) }),
+  z.object({ kind: z.literal("click"), target: ElementTargetSchema }),
+  z.object({
+    kind: z.literal("type"),
+    target: ElementTargetSchema,
+    value: z.string().max(10_000),
+    source: z.enum(["profile", "written", "none"]).default("none"),
+  }),
+  z.object({ kind: z.literal("select"), target: ElementTargetSchema, value: z.string().max(300) }),
+  z.object({ kind: z.literal("check"), target: ElementTargetSchema, value: z.boolean() }),
+  z.object({ kind: z.literal("attach"), target: ElementTargetSchema, document: DocumentName }),
+]);
+export type AgentAction = z.infer<typeof AgentActionSchema>;
+
+/** The steps available so far: data, LLM, gates and notifications (M2), email (M4), browser (M8), recipes and jobs (M9), forms (M10), the agent (M11). */
 export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.dedupe",
@@ -387,7 +417,8 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Reads a list (e.g. job postings) from a site with saved recipes (Recipes page), headless and without an LLM: " +
       "every page up to the recipe's limit, each item's fields plus `source` (the recipe). A list param runs one " +
-      "search per value. Read-only. Fails clearly, and marks the recipe broken, when the page no longer matches it.",
+      "search per value. Read-only. Fails clearly, and marks the recipe broken, when the page no longer matches it; " +
+      "with `fallback`, browser.agent finds the list instead and a fixed recipe is proposed for me to approve, read with now.",
     sideEffect: false,
     saasSafe: false,
     input: z.object({
@@ -397,6 +428,7 @@ export const CORE_STEPS: StepDefinition[] = [
         .default({})
         .describe("the recipes' params; a list: one search per value"),
       maxItems: z.number().int().min(1).max(500).default(200),
+      fallback: z.boolean().default(false).describe("a broken recipe: the agent finds the list and proposes a fix (LLM cost)"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({ items: Items, pages: z.number().int() }),
@@ -469,6 +501,124 @@ export const CORE_STEPS: StepDefinition[] = [
       url: z.url({ protocol: /^https?$/ }),
       fields: z.array(FormFieldSchema),
       files: z.array(FormFileSchema).default([]),
+      stopBeforeSubmit: z.boolean().default(false).describe("fill, then I submit in the live view"),
+      job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({
+      submitted: z.boolean().describe("the form was sent (by the step, or by me when stopBeforeSubmit)"),
+      url: z.string(),
+      confirmation: z.string().describe("the page's text after sending"),
+    }),
+  },
+  {
+    type: "browser.download",
+    description:
+      "Downloads a file: the address itself, or what clicking `click` on that page downloads. It lands in quarantine " +
+      "and is kept only when its size and its content (not its name) are an allowed type: PDF, images, Office " +
+      "documents, text. Read-only.",
+    sideEffect: false,
+    headed: "input",
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      click: Selector.optional().describe("the link or button that starts the download; default: the address is the file"),
+      headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({ artifactId: z.string(), filename: z.string(), mime: z.string(), size: z.number().int(), sha256: z.string() }),
+  },
+  {
+    type: "browser.upload",
+    description:
+      "Puts one of my stored documents (`file`, from file.read) into the file field `field` on `url`, and presses " +
+      "`submit` if given, in the live browser. Choosing a file uploads it on many sites: always behind a gate.",
+    sideEffect: true,
+    targets: { url: "domain" },
+    headed: true,
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      field: Selector.describe("the file input"),
+      file: DocumentFileSchema.describe("a stored document, bound by content: file.read's output"),
+      submit: Selector.optional().describe("a button to press once the file is chosen"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({ uploaded: z.boolean(), url: z.string(), confirmation: z.string() }),
+  },
+  {
+    type: "file.read",
+    description:
+      "Reads the text of one of my stored documents (`document`, e.g. cv-main) or of a file browser.download " +
+      "kept (`artifact`): text files as they are, PDFs' text. Its output also binds a document by content for " +
+      "browser.upload.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      document: DocumentName.optional(),
+      artifact: z.uuid().optional().describe("a download's artifactId"),
+      maxChars: z.number().int().min(100).max(100_000).default(20_000),
+    }),
+    output: z.object({
+      filename: z.string(),
+      mime: z.string(),
+      sha256: z.string(),
+      text: z.string(),
+      truncated: z.boolean(),
+      document: z.string().nullable(),
+      documentId: z.string().nullable(),
+      artifactId: z.string().nullable(),
+    }),
+  },
+  {
+    type: "browser.agent",
+    description:
+      "An LLM works the page towards `goal` (find the apply button and fill the form, read something) on a site " +
+      "without a recipe, from the page's accessibility outline: navigate, click, type, select, tick, attach one of " +
+      "`documents`, read. Only on the start address's site and the pipeline's allowed domains, at most `maxActions` " +
+      "actions. It sends nothing: no submit button is pressed, nothing typed leaves the page, no file is picked. " +
+      "Its recorded actions and final button are the payload of browser.submit, which I see at the gate.",
+    sideEffect: false,
+    llmOutput: true,
+    pageFields: ["url"],
+    headed: "input",
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      goal: z.string().min(1).max(2000).describe("what to do, e.g. find the application form and fill it from my profile"),
+      headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
+      documents: z.array(DocumentName).max(5).default([]).describe('stored documents it may attach, e.g. ["cv-main"]'),
+      message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer)"),
+      job: z.record(z.string(), z.unknown()).optional().describe("the posting (title, company, url), for the answers and Applications"),
+      maxActions: z.number().int().min(1).max(50).default(25),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({
+      url: z.string().describe("the start address, as given"),
+      outcome: z.enum(["ready", "done"]).describe("ready: a form filled and its final button found; done: nothing to send"),
+      answer: z.string().describe("what it found or did"),
+      actions: z.array(AgentActionSchema),
+      files: z.array(FormFileSchema),
+      submit: ElementTargetSchema.nullable().describe("the final button (ready)"),
+      pageUrl: z.string().describe("where it ended"),
+      notes: z.string(),
+    }),
+  },
+  {
+    type: "browser.submit",
+    description:
+      "Repeats an approved browser.agent run exactly, without an LLM, in the live browser, and presses its final " +
+      "button. An element that is no longer there, or a page off the allowed sites, pauses the run for me with " +
+      "nothing sent. With stopBeforeSubmit I press the final button myself.",
+    sideEffect: true,
+    targets: { url: "domain" },
+    headed: true,
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      actions: z.array(AgentActionSchema).max(100),
+      files: z.array(FormFileSchema).default([]),
+      submit: ElementTargetSchema,
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then I submit in the live view"),
       job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),

@@ -3,6 +3,7 @@ import { IconAlertTriangle, IconBolt, IconPencil, IconX } from "@tabler/icons-re
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { AgentProposal } from "../components/AgentProposal";
 import { FormProposal } from "../components/FormProposal";
 import { ErrorAlert, Json, Loading, Modal, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
@@ -46,7 +47,7 @@ export function ProposalPage() {
       />
       <div className="row g-3">
         <div className="col-lg-8">
-          {p.kind === "act" && p.stepType === "browser.fillAndSubmit" ? (
+          {p.kind === "act" && (p.stepType === "browser.fillAndSubmit" || p.stepType === "browser.submit") ? (
             <FormPanel key={`${p.proposalId}:${p.status}`} proposal={p} pending={pending} onDecided={proposal.reload} />
           ) : p.kind === "act" ? (
             <ActPanel key={`${p.proposalId}:${p.status}`} proposal={p} pending={pending} onDecided={proposal.reload} />
@@ -284,7 +285,11 @@ function FormPanel({ proposal, pending, onDecided }: { proposal: ProposalView; p
   const [rejecting, setRejecting] = useState(false);
   return (
     <>
-      <FormProposal proposal={proposal} pending={pending} onDecided={onDecided} onReject={() => setRejecting(true)} />
+      {proposal.stepType === "browser.submit" ? (
+        <AgentProposal proposal={proposal} pending={pending} onDecided={onDecided} onReject={() => setRejecting(true)} />
+      ) : (
+        <FormProposal proposal={proposal} pending={pending} onDecided={onDecided} onReject={() => setRejecting(true)} />
+      )}
       {rejecting && <RejectModal proposal={proposal} onClose={() => setRejecting(false)} onDecided={onDecided} />}
     </>
   );

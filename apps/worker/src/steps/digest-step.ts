@@ -117,12 +117,14 @@ export class DigestStep implements StepExecutor {
   private async brokenRecipes(userId: string): Promise<string[]> {
     const rows = await this.prisma.siteRecipe.findMany({
       where: { userId },
-      select: { name: true, version: true, brokenAt: true },
+      select: { name: true, version: true, brokenAt: true, proposedAt: true },
       orderBy: { version: "desc" },
     });
     const latest = new Map<string, (typeof rows)[number]>();
     for (const row of rows) if (!latest.has(row.name)) latest.set(row.name, row);
-    return [...latest.values()].filter((row) => row.brokenAt).map((row) => `${row.name} v${row.version}`);
+    return [...latest.values()]
+      .filter((row) => row.brokenAt)
+      .map((row) => `${row.name} v${row.version}${row.proposedAt ? " (a fix waits for you)" : ""}`);
   }
 }
 

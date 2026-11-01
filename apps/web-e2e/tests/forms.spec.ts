@@ -76,3 +76,66 @@ test("an application form at its gate: I edit a field, attach my cover letter, a
   expect(input.fields.find((f) => f.key === "#phone")?.value).toBe("+359 88 765 4321");
   expect(input.files.map((f) => f.document).sort()).toEqual(["cv-main", "letter-acme"]);
 });
+
+// M11-T2: what browser.agent did, at browser.submit's gate: every action in order, typed values editable
+test("the agent's actions at the gate: I edit a typed value, and Act repeats exactly that", async ({ page }) => {
+  await page.goto("/profile");
+  await page.getByLabel("Document name").fill("cv-agent");
+  await page.getByLabel("File").setInputFiles(pdf("Ana Petrova CV agent"));
+  await page.getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByTestId("documents")).toContainText("Ana Petrova CV agent.pdf");
+  const documents = (await (await page.request.get("/api/documents")).json()) as { documentId: string; name: string; sha256: string }[];
+  const cv = documents.find((d) => d.name === "cv-agent")!;
+
+  // A payload as browser.agent would make it (the agent itself is covered in the worker's tests).
+  const target = (css: string, role: string, name: string) => ({ css, role, name });
+  const name = unique("Agent e2e");
+  const pipeline = await createPipeline(
+    page,
+    JSON.stringify({
+      name,
+      policy: { allowedDomains: ["careers.example.org"] },
+      steps: [
+        {
+          id: "send",
+          type: "browser.submit",
+          with: {
+            url: "https://careers.example.org/jobs/3",
+            actions: [
+              { kind: "click", target: target("#open", "button", "Apply for this role") },
+              { kind: "type", target: target("#fullName", "textbox", "Full name"), value: "Ana Petrova", source: "profile" },
+              { kind: "click", target: target("#city", "combobox", "Where are you based?") },
+              { kind: "click", target: target("#cities > li:nth-of-type(1)", "option", "Sofia") },
+              { kind: "attach", target: target("#cvFile", "file", "Upload CV"), document: "cv-agent" },
+              { kind: "check", target: target('input[name="consent"]', "checkbox", "I agree"), value: true },
+            ],
+            files: [{ key: "#cvFile", document: "cv-agent", documentId: cv.documentId, sha256: cv.sha256, filename: "Ana Petrova CV agent.pdf" }],
+            submit: target("#send", "button", "Submit application"),
+          },
+        },
+      ],
+    }),
+  );
+  const run = await startRun(page, pipeline.pipelineId);
+
+  await page.goto("/inbox");
+  await page.getByRole("link", { name: new RegExp(`${name} · send`) }).click();
+  const gate = page.getByTestId("agent-proposal");
+  await expect(gate.getByTestId("agent-action-0")).toContainText("Click button Apply for this role");
+  await expect(gate.getByTestId("agent-action-3")).toContainText("Click option Sofia");
+  await expect(gate.getByTestId("agent-action-4")).toContainText("Attach Ana Petrova CV agent.pdf to Upload CV");
+  await expect(gate).toContainText("Then press Submit application");
+  await expect(gate.getByTestId("agent-action-1")).toContainText("from my profile");
+
+  await gate.getByLabel("Type into Full name").fill("Ana P. Petrova");
+  await gate.getByRole("button", { name: "Act with edits" }).click();
+  await page.getByTestId("act-confirm").click();
+  await expect(page.getByTestId("decision")).toContainText("Approved with edits");
+
+  await expect
+    .poll(async () => ((await (await page.request.get(`/api/runs/${run.runId}`)).json()) as RunDetailView).status, { timeout: 15_000 })
+    .toBe("DONE");
+  const detail = (await (await page.request.get(`/api/runs/${run.runId}`)).json()) as RunDetailView;
+  const input = detail.steps.find((s) => s.stepKey === "send")!.input as { actions: { kind: string; value?: unknown }[] };
+  expect(input.actions.find((a) => a.kind === "type")?.value).toBe("Ana P. Petrova");
+});

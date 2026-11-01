@@ -3,8 +3,9 @@ import { recipeProblems, RecipeSchema, siteOf, type Recipe } from "@ai-me/steps"
 import { type Page } from "playwright";
 import { type ArtifactOwner } from "../browser/artifact-store";
 import { readList, RecipeBroken, type Item } from "../browser/recipe-runner";
-import { NO_ATTENTION, type StepContext, type StepExecutor } from "../runner/step-executor";
+import { NO_ATTENTION, RunStopped, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type BrowserDependencies } from "./browser-steps";
+import { type RecipeFallback } from "./recipe-fallback";
 
 /** One search per combination of list params, at most this many per step. */
 const MAX_SEARCHES = 10;
@@ -13,6 +14,7 @@ interface ExtractInput {
   recipes: string[];
   params: Record<string, string | string[]>;
   maxItems: number;
+  fallback: boolean;
   timeoutSeconds: number;
 }
 
@@ -48,63 +50,97 @@ export class BrowserExtractStep implements StepExecutor {
   constructor(
     private readonly deps: BrowserDependencies,
     private readonly delay?: (ms: number) => Promise<void>,
+    /** M11-T3: the agent and the recipe writer, for `fallback: true`; without them a broken recipe just fails. */
+    private readonly fallback?: RecipeFallback,
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { recipes, params, maxItems, timeoutSeconds } = input as unknown as ExtractInput;
+    const { recipes, params, maxItems, fallback, timeoutSeconds } = input as unknown as ExtractInput;
     const combinations = searches(params);
+    const timeout = timeoutSeconds * 1000;
     const items: Item[] = [];
     const keys = new Set<string>();
     let pages = 0;
+
+    /** Every search with one recipe, into `items`; a page that no longer matches throws RecipeBroken. */
+    const readAll = async (page: Page, name: string, recipe: Recipe) => {
+      for (const values of combinations) {
+        const result = await readList(page, name, recipe, { values, maxItems: maxItems - items.length, timeout, attention: NO_ATTENTION, delay: this.delay });
+        pages += result.pages;
+        for (const item of result.items) {
+          const key = `${name} ${item[recipe.key]}`;
+          if (keys.has(key)) continue;
+          keys.add(key);
+          items.push({ ...item, source: name });
+        }
+        if (items.length >= maxItems) break;
+      }
+    };
 
     for (const name of recipes) {
       const { row, recipe } = await latestRecipe(this.deps.prisma, context.userId, name);
       const storageState = await this.deps.sessions.load(context.userId, siteOf(name));
       const lease = await this.deps.pool.lease(false, { storageState, acceptDownloads: false });
+      let broken: string | null = null;
       try {
         const page = await lease.context.newPage();
-        page.setDefaultTimeout(timeoutSeconds * 1000);
+        page.setDefaultTimeout(timeout);
         try {
-          for (const values of combinations) {
-            const result = await readList(page, name, recipe, {
-              values,
-              maxItems: maxItems - items.length,
-              timeout: timeoutSeconds * 1000,
-              attention: NO_ATTENTION,
-              delay: this.delay,
-            });
-            pages += result.pages;
-            for (const item of result.items) {
-              const key = `${name} ${item[recipe.key]}`;
-              if (keys.has(key)) continue;
-              keys.add(key);
-              items.push({ ...item, source: name });
-            }
-            if (items.length >= maxItems) break;
-          }
+          await readAll(page, name, recipe);
         } catch (error) {
           if (!(error instanceof RecipeBroken)) throw error;
           await this.screenshot(page, context).catch(() => undefined);
-          await this.markBroken(row, error.message);
-          throw new Error(`Recipe ${name} v${row.version} no longer matches the page: ${error.message}`);
+          broken = error.message;
         }
       } finally {
         await lease.close();
       }
-      await this.deps.prisma.siteRecipe.update({
-        where: { siteRecipeId: row.siteRecipeId },
-        data: { lastVerifiedAt: new Date(), brokenAt: null, brokenReason: null },
-      });
+
+      if (broken === null) {
+        await this.deps.prisma.siteRecipe.update({
+          where: { siteRecipeId: row.siteRecipeId },
+          data: { lastVerifiedAt: new Date(), brokenAt: null, brokenReason: null },
+        });
+      } else {
+        const failed = `Recipe ${name} v${row.version} no longer matches the page: ${broken}`;
+        if (!fallback || !this.fallback) {
+          await this.markBroken(row, broken, false);
+          throw new Error(failed);
+        }
+        let fixed: Recipe;
+        try {
+          fixed = await this.fallback.fix(context, row, recipe, combinations[0] ?? {}, timeout);
+        } catch (error) {
+          if (error instanceof RunStopped) throw error;
+          await this.markBroken(row, broken, false);
+          throw new Error(`${failed}. The fallback found no fix: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        await this.markBroken(row, broken, true);
+        const again = await this.deps.pool.lease(false, { storageState, acceptDownloads: false });
+        try {
+          const page = await again.context.newPage();
+          page.setDefaultTimeout(timeout);
+          await readAll(page, name, fixed);
+        } catch (error) {
+          if (!(error instanceof RecipeBroken)) throw error;
+          throw new Error(`${failed}. The proposed fix didn't read every search either: ${error.message}`);
+        } finally {
+          await again.close();
+        }
+      }
       if (items.length >= maxItems) break;
     }
     return { items, pages };
   }
 
-  private async markBroken(row: SiteRecipe, reason: string): Promise<void> {
+  private async markBroken(row: SiteRecipe, reason: string, fixProposed: boolean): Promise<void> {
     await this.deps.prisma.siteRecipe.update({ where: { siteRecipeId: row.siteRecipeId }, data: { brokenAt: new Date(), brokenReason: reason } });
     // Once per breakage: the next failures of the same version say nothing new.
     if (!row.brokenAt) {
-      await this.deps.notify?.(`AI ME: recipe ${row.name} v${row.version} is broken: ${reason}. Teach it again on the Recipes page.`).catch(() => undefined);
+      const next = fixProposed
+        ? "The agent found a fix: approve it on the Recipes page (runs read with it until then)."
+        : "Teach it again on the Recipes page.";
+      await this.deps.notify?.(`AI ME: recipe ${row.name} v${row.version} is broken: ${reason}. ${next}`).catch(() => undefined);
     }
   }
 

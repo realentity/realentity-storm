@@ -129,6 +129,9 @@ export const api = {
     get: (name: string) => request<RecipeDetailView>("GET", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}`),
     import: (body: ImportRecipeRequest) => request<RecipeDetailView>("POST", "/recipes", body),
     teach: (body: TeachRecipeRequest) => request<TeachStartedView>("POST", "/recipes/teach", body),
+    /** M11-T3: the agent's fix for the broken latest version, approved (the next version) or discarded. */
+    approveFix: (name: string) => request<RecipeDetailView>("POST", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/fix`),
+    discardFix: (name: string) => request<RecipeDetailView>("DELETE", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/fix`),
   },
   builder: {
     /** Without a pipeline: chats about new pipelines, not saved yet. */

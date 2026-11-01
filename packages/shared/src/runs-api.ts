@@ -219,6 +219,8 @@ export const LLM_TASKS = [
   "builder",
   "browser.teach",
   "browser.mapForm",
+  "browser.agent",
+  "browser.agent.escalation",
 ] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 

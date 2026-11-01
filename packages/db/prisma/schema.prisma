@@ -278,21 +278,26 @@ model BuilderMessage {
 }
 
 model SiteRecipe {
-  siteRecipeId   String    @id @default(uuid()) @db.Uuid
-  userId         String    @db.Uuid
-  user           User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  site           String // host, e.g. "jobs.bg"
-  name           String // e.g. "jobs.bg/search"
-  version        Int
-  steps          Json // the recipe (@ai-me/steps RecipeSchema): selectors, fields, paging
+  siteRecipeId    String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  user            User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  site            String // host, e.g. "jobs.bg"
+  name            String // e.g. "jobs.bg/search"
+  version         Int
+  steps           Json // the recipe (@ai-me/steps RecipeSchema): selectors, fields, paging
   // Last run that read items with it (browser.extract or teach mode).
-  lastVerifiedAt DateTime?
+  lastVerifiedAt  DateTime?
   // The page stopped matching it; cleared when it works again or a new version is saved.
-  brokenAt       DateTime?
-  brokenReason   String?
+  brokenAt        DateTime?
+  brokenReason    String?
   // The teach-mode run that made it; null: imported.
-  taughtInRunId  String?   @db.Uuid
-  dateCreated    DateTime  @default(now())
+  taughtInRunId   String?   @db.Uuid
+  // A fix browser.extract's fallback found when this version broke (M11-T3), waiting for me: approved, it is saved
+  // as the next version; until then runs read with it only when this one still fails.
+  proposed        Json?
+  proposedAt      DateTime?
+  proposedInRunId String?   @db.Uuid
+  dateCreated     DateTime  @default(now())
 
   @@unique([userId, name, version])
   @@map("SiteRecipes")

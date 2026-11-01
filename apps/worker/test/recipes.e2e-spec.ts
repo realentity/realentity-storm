@@ -17,8 +17,11 @@ import { TakeoverDesk } from "../src/runner/takeovers";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { DedupeStep, SaveStep } from "../src/steps/data-steps";
 import { BrowserExtractStep } from "../src/steps/recipe-steps";
-import { BrowserTeachStep } from "../src/steps/teach-step";
+import { BrowserAgentStep } from "../src/steps/agent-steps";
+import { RecipeFallback } from "../src/steps/recipe-fallback";
+import { BrowserTeachStep, RecipeWriter } from "../src/steps/teach-step";
 import { JOBS, startFixtureSites, type FixtureSites } from "./support/fixture-sites";
+import { click, ScriptedChat } from "./support/scripted-chat";
 import { createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
@@ -46,6 +49,8 @@ describe("recipes and job postings", () => {
   let llm: ScriptedLlm;
   let runner: PipelineRunner;
   const notified: string[] = [];
+  /** The agent of the fallback (M11-T3). */
+  const chat = new ScriptedChat();
 
   /** The job board as recipe "jobs.localhost/search" (the port is the fixture server's). */
   const boardRecipe = (next: Recipe["next"] = { kind: "link", selector: "a.next" }): Recipe => ({
@@ -85,9 +90,12 @@ describe("recipes and job postings", () => {
       },
     };
     llm = new ScriptedLlm([]);
-    const teach = new BrowserTeachStep(deps, { structured: (request) => llm.structured(request) }, new ModelRouter(() => Promise.resolve(null)));
+    const router = new ModelRouter(() => Promise.resolve(null));
+    const scripted: LlmClient = { structured: (request) => llm.structured(request) };
+    const teach = new BrowserTeachStep(deps, scripted, router);
+    const fallback = new RecipeFallback(deps, new BrowserAgentStep({ ...deps, chat, router }), new RecipeWriter(scripted, router));
     const executors = new ExecutorRegistry([
-      new BrowserExtractStep(deps, () => Promise.resolve()),
+      new BrowserExtractStep(deps, () => Promise.resolve(), fallback),
       new DedupeStep(db.client),
       new SaveStep(db.client),
       teach,
@@ -247,6 +255,49 @@ steps:
     sites.reset(); // the site is back (or a new version taught): it works and is no longer marked broken
     expect((await run(SEARCH())).status).toBe("DONE");
     expect((await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } })).brokenAt).toBeNull();
+  });
+
+  it("M11-I1: with fallback, the agent finds the moved list, a fix checked on the page is proposed, and the run reads with it", async () => {
+    const recipe = await saveRecipe(boardRecipe());
+    sites.redesignJobs();
+    chat.play([click("link", /Browse jobs/), () => ({ name: "finish", input: { outcome: "done", answer: "The list shows" } })]);
+    const fix = {
+      url: sites.url("jobs", "/jobs?q={query}"),
+      params: [{ name: "query", description: "what to search" }],
+      item: "li.posting-card",
+      fields: [
+        { name: "url", selector: "h3 a", attr: "href", required: true },
+        { name: "title", selector: "h3 a", required: true },
+      ],
+      key: "url",
+      next: { kind: "link", selector: "a.next" },
+      notes: "The list moved to /jobs",
+    };
+    llm = new ScriptedLlm([fix]);
+    const source = SEARCH("net", 5).replace("      timeoutSeconds:", "      fallback: true\n      timeoutSeconds:");
+    const { runId, status } = await run(source);
+    expect(status).toBe("DONE");
+
+    // Every posting, read with the fix across its pages.
+    const { items } = await output(runId, "search");
+    expect((items as { url: string }[]).map((i) => i.url)).toEqual(JOBS.map((job) => sites.url("jobs", `/jobs/${job.id}`)));
+    // The agent brought the page to the list, on the board only; the writer saw the old version.
+    expect(chat.results()[0]).toContain(`<page url="${sites.url("jobs", "/jobs?q=net")}"`);
+    expect(llm.prompts[0]).toContain("Version 1 no longer matches the page");
+    expect(sites.hits.every((hit) => hit.startsWith("jobs.localhost "))).toBe(true);
+
+    // A proposal on the broken version, not a version: runs keep v1 until I approve it.
+    const row = await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } });
+    expect(row).toMatchObject({ brokenAt: expect.any(Date) as unknown, proposedInRunId: runId, proposed: expect.objectContaining({ item: "li.posting-card" }) as unknown });
+    expect(await db.client.siteRecipe.count()).toBe(1);
+    expect(notified).toEqual([expect.stringContaining("The agent found a fix: approve it on the Recipes page") as unknown]);
+
+    // The next run reads with the waiting fix: no agent, no LLM.
+    chat.play([]);
+    llm = new ScriptedLlm([]);
+    expect((await run(source)).status).toBe("DONE");
+    expect(chat.requests).toHaveLength(0);
+    expect(notified).toHaveLength(1);
   });
 
   it("a recipe that would leave its site, or no recipe at all, fails before opening anything", async () => {

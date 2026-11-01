@@ -390,6 +390,22 @@ limits:
     expect(errorsOf(compiler.compile(pipeline(steps("{{map.notes}}")))).join("\n")).toMatch(/domain can't come from LLM output/);
   });
 
+  // M11-T2, M11-S3 (compile time): browser.agent sends nothing itself; browser.submit always gets its gate
+  it("puts a gate between browser.agent and browser.submit; the target is the agent's start address, never its text", () => {
+    const steps = (url: string) => [
+      { id: "agent", type: "browser.agent", with: { url: "https://careers.example.org/jobs/3", goal: "Apply", documents: ["cv-main"] } },
+      {
+        id: "send",
+        type: "browser.submit",
+        with: { url, actions: "{{agent.actions}}", files: "{{agent.files}}", submit: "{{agent.submit}}" },
+      },
+    ];
+    const result = ok(compiler.compile(pipeline(steps("{{agent.url}}"))));
+    expect(ids(result.definition)).toEqual(["agent", "sendGate", "send"]);
+    expect(result.policy.provenance).toEqual([{ stepId: "send", field: "url", kind: "domain", source: "agent.url" }]);
+    expect(errorsOf(compiler.compile(pipeline(steps("{{agent.pageUrl}}")))).join("\n")).toMatch(/domain can't come from LLM output/);
+  });
+
   // M4-T4, M4-S2 (compile time)
   describe("email", () => {
     const REPLIES = (to: string) => `

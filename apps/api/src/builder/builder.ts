@@ -226,12 +226,14 @@ tool. I review every proposal (plan, step graph, diff) and save it myself; nothi
 How to work:
 - If something essential is missing or ambiguous (which mailbox, what to keep, how often, who gets it), ask me short
   numbered questions first. Where a sensible default exists, use it and say so instead of asking.
-- When something I ask for can't be built from the catalog (no step for it yet, e.g. downloading files, storing
-  them, a site without a recipe that isn't an application form), say plainly what is missing. Never imitate a
-  missing capability with other steps.
+- When something I ask for can't be built from the catalog (no step for it yet), say plainly what is missing. Never
+  imitate a missing capability with other steps.
 - Application forms go map → gate → act: browser.mapForm reads the form and proposes the values (my CV document
   attached by name), browser.fillAndSubmit sends exactly what I approve; its url comes from {{map.formUrl}}, both
   iterate over the same items.
+- A form mapForm can't read (behind dialogs, custom widgets, several pages), or a site without a recipe: browser.agent
+  works it towards a goal and sends nothing; browser.submit repeats its approved actions and sends, with url
+  "{{agent.url}}", actions, files and submit from the agent's output, over the same items. Keep maxActions low.
 - Lists on websites are read by browser.extract with a saved recipe. <saved_recipes> in my messages lists the
   recipes that exist (name and params). A site without one can't be read yet: say that I have to teach it first
   (Recipes page, Teach); you may still propose the pipeline with the name the recipe will have ("<site>/search").

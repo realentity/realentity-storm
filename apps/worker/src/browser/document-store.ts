@@ -22,6 +22,13 @@ export class DocumentStore {
     return { key, document: name, documentId: document.documentId, sha256: document.sha256, filename: document.filename };
   }
 
+  /** The current document with this name and its content (file.read), checked against its SHA-256. */
+  async read(prisma: PrismaClient, userId: string, name: string): Promise<{ file: FormFile; mimeType: string; buffer: Buffer }> {
+    const file = await this.attach(prisma, userId, name, "-");
+    const { mimeType, buffer } = await this.approvedFile(prisma, userId, file);
+    return { file, mimeType, buffer };
+  }
+
   /** The approved file, checked (the same document, the same content), as the form gets it: under its own name. */
   async approvedFile(prisma: PrismaClient, userId: string, file: FormFile): Promise<{ name: string; mimeType: string; buffer: Buffer }> {
     const document = await prisma.document.findFirst({ where: { documentId: file.documentId, userId } });

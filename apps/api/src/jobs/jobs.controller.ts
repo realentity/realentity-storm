@@ -12,7 +12,7 @@ import {
   type TeachStartedView,
   type UpdateJobRequest,
 } from "@ai-me/shared";
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { JobsService, RecipesService } from "./jobs.service";
@@ -48,6 +48,18 @@ export class JobsController {
   @Get("recipes/:site/:what")
   recipe(@CurrentUser() user: AuthenticatedUser, @Param("site") site: string, @Param("what") what: string): Promise<RecipeDetailView> {
     return this.recipes.get(user.userId, `${site}/${what}`);
+  }
+
+  /** M11-T3: the agent's fix for the broken latest version becomes the next version. */
+  @Post("recipes/:site/:what/fix")
+  @HttpCode(200)
+  approveFix(@CurrentUser() user: AuthenticatedUser, @Param("site") site: string, @Param("what") what: string): Promise<RecipeDetailView> {
+    return this.recipes.approveFix(user.userId, `${site}/${what}`);
+  }
+
+  @Delete("recipes/:site/:what/fix")
+  discardFix(@CurrentUser() user: AuthenticatedUser, @Param("site") site: string, @Param("what") what: string): Promise<RecipeDetailView> {
+    return this.recipes.discardFix(user.userId, `${site}/${what}`);
   }
 
   @Post("recipes")

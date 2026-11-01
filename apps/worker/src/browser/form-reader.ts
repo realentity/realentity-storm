@@ -87,9 +87,9 @@ const READ_FORM = `() => {
 }`;
 
 /** "104-43=", "What is 3 + 4?", a CAPTCHA: a check that I'm a person, which only I answer. */
-const HUMAN_CHECK = /^\s*(what is\s+|колко (е|прави)\s+)?\d+\s*[-+*x×]\s*\d+\s*=?\s*\??\s*$|captcha|are you (a )?human|not a robot|не съм робот/i;
+export const HUMAN_CHECK = /^\s*(what is\s+|колко (е|прави)\s+)?\d+\s*[-+*x×]\s*\d+\s*=?\s*\??\s*$|captcha|are you (a )?human|not a robot|не съм робот/i;
 /** A trap for bots ("Please leave this field empty"): never filled, so never shown. */
-const HONEYPOT = /leave (this field )?(blank|empty)|do not fill|don't fill|оставете (това поле )?празно/i;
+export const HONEYPOT = /leave (this field )?(blank|empty)|do not fill|don't fill|оставете (това поле )?празно/i;
 
 export async function readForm(page: Page): Promise<PageForm> {
   const form = await page.evaluate<PageForm>(`(${READ_FORM})()`);

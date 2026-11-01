@@ -76,6 +76,8 @@ export interface RecipeSummaryView {
   lastVerifiedAt: string | null;
   brokenAt: string | null;
   brokenReason: string | null;
+  /** M11-T3: the agent found a fix for the broken version, waiting for me on the Recipes page. */
+  proposedAt: string | null;
   dateCreated: string;
 }
 
@@ -88,6 +90,10 @@ export interface RecipeVersionView {
   brokenReason: string | null;
   /** The teach-mode run that made it; null: imported. */
   taughtInRunId: string | null;
+  /** M11-T3: a fix browser.extract's fallback found when this version broke (a recipe, like `recipe`), or null. */
+  proposed: unknown;
+  proposedAt: string | null;
+  proposedInRunId: string | null;
   dateCreated: string;
 }
 

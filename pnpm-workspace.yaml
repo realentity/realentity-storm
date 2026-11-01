@@ -70,6 +70,9 @@ catalog:
   nodemailer: ^10.3.0
   mailparser: ^3.14.0
 
+  # files: text of downloaded PDFs (file.read); ships CommonJS and its own types
+  pdf-parse: ^2.4.5
+
   # llm
   "@anthropic-ai/sdk": ^1.3.0
 

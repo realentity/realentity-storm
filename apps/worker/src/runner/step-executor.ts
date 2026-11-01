@@ -13,6 +13,11 @@ export interface StepContext {
   recordUsage(usage: LlmUsage): void;
   /** Headed steps: pausing for me in the live view (README §6). */
   attention: Attention;
+  /**
+   * The pipeline's allowed domains (its policy), and on a side-effect step the new ones I approved at its gate:
+   * where browser.agent and browser.submit may go besides their start address's site.
+   */
+  allowedDomains?: readonly string[];
 }
 
 /**

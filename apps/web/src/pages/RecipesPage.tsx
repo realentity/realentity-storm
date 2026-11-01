@@ -65,6 +65,11 @@ export function RecipesPage() {
                     <td>v{recipe.version}</td>
                     <td>
                       <Health recipe={recipe} />
+                      {recipe.proposedAt && (
+                        <div className="small">
+                          <Link to={`/recipes/${recipe.name}`}>A fix is proposed: check it</Link>
+                        </div>
+                      )}
                     </td>
                     <td className="text-end">
                       <button type="button" className="btn btn-sm" onClick={() => setTeaching({ name: recipe.name })}>
@@ -114,11 +119,44 @@ export function RecipePage() {
   const { site = "", what = "" } = useParams();
   const name = `${site}/${what}`;
   const recipe = useLoad(() => api.recipes.get(name), [name], (signal) => signal.type === "run");
+  const action = useAction();
+  const latest = recipe.data?.versions[0];
+  const decide = async (approve: boolean) => {
+    const saved = await action.run(() => (approve ? api.recipes.approveFix(name) : api.recipes.discardFix(name)));
+    if (!saved) return;
+    toast.success(approve ? `Saved as v${saved.versions[0].version}` : "Fix discarded");
+    recipe.reload();
+  };
   return (
     <>
       <PageHeader title={<code>{name}</code>} pretitle={<Link to="/recipes">Recipes</Link>} />
-      <ErrorAlert error={recipe.error} />
+      <ErrorAlert error={recipe.error ?? action.error} />
       {!recipe.data && recipe.loading && <Loading />}
+      {latest?.proposed != null && (
+        <div className="card mb-3 border-warning" data-testid="proposed-fix">
+          <div className="card-header">
+            <h3 className="card-title">A fix for v{latest.version}, proposed by the agent</h3>
+            <div className="card-actions small text-secondary">
+              {latest.proposedInRunId && <Link to={`/runs/${latest.proposedInRunId}`}>found</Link>} {latest.proposedAt && formatDateTime(latest.proposedAt)}
+            </div>
+          </div>
+          <div className="card-body">
+            <p className="text-secondary">
+              v{latest.version} stopped matching the page; this recipe read it again and runs read with it until you decide. Approved, it is saved
+              as v{latest.version + 1}.
+            </p>
+            <Json value={latest.proposed} />
+          </div>
+          <div className="card-footer d-flex gap-2 justify-content-end">
+            <button type="button" className="btn btn-outline-danger" disabled={action.busy} onClick={() => void decide(false)}>
+              Discard
+            </button>
+            <button type="button" className="btn btn-primary" disabled={action.busy} onClick={() => void decide(true)} data-testid="approve-fix">
+              Save as v{latest.version + 1}
+            </button>
+          </div>
+        </div>
+      )}
       {recipe.data?.versions.map((version, index) => (
         <div className="card mb-3" key={version.version}>
           <div className="card-header">
