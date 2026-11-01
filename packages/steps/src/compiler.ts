@@ -304,7 +304,8 @@ function addTarget(
     if (source.startsWith("cred:")) return "a credential can't be a target";
     // Targets come from data (a fetched email, a job posting), never from text an LLM wrote (README §1.4).
     const root = stepOf(source.split(".")[0] ?? "");
-    if (root?.llmOutput) return `a ${kind} can't come from LLM output ({{${source}}} is written by ${root.type})`;
+    const fromPage = root?.pageFields?.includes(source.split(".")[1] ?? "") && source.split(".").length === 2;
+    if (root?.llmOutput && !fromPage) return `a ${kind} can't come from LLM output ({{${source}}} is written by ${root.type})`;
     const rule: ProvenanceRule = { stepId, field, kind, source };
     policy.provenance.push(rule);
     return null;

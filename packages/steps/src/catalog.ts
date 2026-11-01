@@ -24,6 +24,8 @@ export interface StepDefinition {
   headed?: boolean | "input";
   /** Its output may contain text an LLM wrote: a side-effect target can never come from it (README §2.2). */
   llmOutput?: boolean;
+  /** Output fields of an llmOutput step that come from the page, not the LLM (a form's address): they may be targets. */
+  pageFields?: string[];
   /**
    * The output field that is my text once I approve it (README §8): when a side-effect payload field is exactly
    * {{thisStep.<field>}}, its approved value becomes a few-shot example for this step type.
@@ -112,6 +114,43 @@ const Selector = z.string().min(1).max(500);
 
 /** Where data.save and data.dedupe keep and look up items. */
 export const SAVED_LISTS = ["JobPosting"] as const;
+
+/** A stored document (Documents page), e.g. "cv-main". */
+export const DOCUMENT_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const DocumentName = z.string().regex(DOCUMENT_NAME, 'a document name, e.g. "cv-main"');
+
+export const FORM_FIELD_TYPES = ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "file"] as const;
+
+/** One field of an external form, as browser.mapForm read it, with the value to type (README §2.2, map → gate → act). */
+export const FormFieldSchema = z.object({
+  /** How the field is found on the page (a CSS selector browser.mapForm built from its id or name). */
+  key: z.string().min(1).max(500),
+  label: z.string().max(300),
+  type: z.enum(FORM_FIELD_TYPES),
+  required: z.boolean(),
+  /** select and radio: the choices. */
+  options: z.array(z.string().max(300)).max(200).optional(),
+  /** What to type or pick; a checkbox: true or false; null: left as it is. File fields get files, not values. */
+  value: z.union([z.string().max(10_000), z.boolean()]).nullable(),
+  /** Where the value came from: my profile, written for this job, or nothing. */
+  source: z.enum(["profile", "written", "none"]).default("none"),
+  /**
+   * A question that checks I'm a person ("104-43="): never answered by the step; I answer it in the live view before
+   * the form goes (it may change on every load).
+   */
+  human: z.boolean().optional(),
+});
+export type FormField = z.infer<typeof FormFieldSchema>;
+
+/** A stored document attached to a file field: bound by content, so a document replaced after approval doesn't go. */
+export const FormFileSchema = z.object({
+  key: z.string().min(1).max(500),
+  document: DocumentName,
+  documentId: z.uuid(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  filename: z.string().min(1).max(200),
+});
+export type FormFile = z.infer<typeof FormFileSchema>;
 
 /** The steps available so far: data, LLM, gates and notifications (M2), email (M4), browser (M8), recipes and jobs (M9). More browser and file steps join in M10–M11. */
 export const CORE_STEPS: StepDefinition[] = [
@@ -387,6 +426,58 @@ export const CORE_STEPS: StepDefinition[] = [
       hint: z.string().max(1000).optional().describe("what to read or avoid, for the LLM"),
     }),
     output: z.object({ recipe: z.string(), version: z.number().int().nullable(), url: z.string(), items: Items }),
+  },
+  {
+    type: "browser.mapForm",
+    description:
+      "Opens an application form (following the page's Apply button when the form isn't there) and reads every field, " +
+      "typing and attaching nothing. Proposes each value from my profile (Settings) and writes free-text answers " +
+      "following `message`; attaches the stored document `cv` to the CV field. Its output is the payload for " +
+      "browser.fillAndSubmit, which I see and edit at the gate.",
+    sideEffect: false,
+    llmOutput: true,
+    pageFields: ["formUrl"],
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
+      cv: DocumentName.optional().describe('the stored document for the CV / résumé field, e.g. "cv-main"'),
+      message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer)"),
+      job: z.record(z.string(), z.unknown()).optional().describe("the posting (title, company, url), for the answers and Applications"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({
+      formUrl: z.string().describe("the address of the form, as the page has it"),
+      fields: z.array(FormFieldSchema),
+      files: z.array(FormFileSchema),
+      submit: z.string().describe("the label of the form's final button"),
+      notes: z.string().describe("fields left empty and why"),
+    }),
+  },
+  {
+    type: "browser.fillAndSubmit",
+    description:
+      "Fills an application form with exactly the approved fields and files and submits it, in the live browser. " +
+      "Before typing it reads the form again: a field that changed, a new required field or another address pauses " +
+      "the run for me, and nothing is submitted. With stopBeforeSubmit it fills everything and I press the final " +
+      "button myself.",
+    sideEffect: true,
+    targets: { url: "domain" },
+    headed: true,
+    saasSafe: false,
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      fields: z.array(FormFieldSchema),
+      files: z.array(FormFileSchema).default([]),
+      stopBeforeSubmit: z.boolean().default(false).describe("fill, then I submit in the live view"),
+      job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({
+      submitted: z.boolean().describe("the form was sent (by the step, or by me when stopBeforeSubmit)"),
+      url: z.string(),
+      confirmation: z.string().describe("the page's text after sending"),
+    }),
   },
 ];
 

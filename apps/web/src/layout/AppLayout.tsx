@@ -2,6 +2,7 @@ import {
   IconBriefcase,
   IconBulb,
   IconHistory,
+  IconId,
   IconInbox,
   IconKey,
   IconListSearch,
@@ -25,6 +26,7 @@ const NAVIGATION = [
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/rules", label: "Rules", icon: IconBulb },
   { to: "/recipes", label: "Recipes", icon: IconListSearch },
+  { to: "/profile", label: "Profile", icon: IconId },
   { to: "/credentials", label: "Credentials", icon: IconKey },
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];

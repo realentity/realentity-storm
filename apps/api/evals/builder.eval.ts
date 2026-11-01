@@ -12,7 +12,8 @@ import { Builder, type TurnResult } from "../src/builder/builder";
  * The builder (its prompt, tools and model) recreates the hand-written pipelines from a plain description of what
  * they do, and the result must be equivalent: same trigger, steps, fan-out, gates, recipient provenance and limits.
  * Also: an edit in a pipeline's chat changes only what I asked (M7-T3), and a request the catalog can't serve yet is
- * answered with what is missing instead of a pipeline (M7-T2). M9-V3: the dev.bg job pipeline, from its description.
+ * answered with what is missing instead of a pipeline (M7-T2). M9-V3: the dev.bg job pipeline (applications included
+ * since M10), from its description.
  * Writes evals/results/<date>-builder.json.
  */
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
@@ -52,9 +53,9 @@ const CASES: Case[] = [
     description: "Check every 30 minutes instead.",
   },
   {
-    name: "missing capability: applying to jobs (M7-T2)",
+    name: "missing capability: downloading files (M7-T2)",
     expected: null,
-    description: "Every weekday at 8, apply to the 3 best .NET jobs on dev.bg with my CV and a short cover letter.",
+    description: "Every Friday, download this week's invoices from my accounting portal and email them to my accountant.",
   },
   {
     name: "daily .NET jobs (M9-V3)",
@@ -65,7 +66,10 @@ const CASES: Case[] = [
       "Label each as posted by a recruitment agency or by the employer itself, and save the agency ones as skipped. " +
       "Score the others against my profile: senior or lead .NET (C#) backend, ASP.NET Core, Azure, SQL, Sofia hybrid " +
       "or fully remote; no junior, front-end, QA, support or other stacks. Save every scored job, let me pick from the " +
-      "best 10, and save the ones I pick as shortlisted.",
+      "best 10, and save the ones I pick as shortlisted. For each one I pick, read its application form and fill it from " +
+      "my profile with my CV (the document cv-main) attached and a short message to the employer in the posting's " +
+      "language (why the role fits me, from my profile only, 2-3 sentences); I approve the form, and the browser fills " +
+      "it but leaves the final button to me. At most 5 applications a day, and only dev.bg itself is allowed without asking.",
   },
 ];
 
@@ -120,7 +124,7 @@ async function main(): Promise<void> {
       }
     } else {
       if (proposed) problems.push(`proposed a pipeline: ${proposed.steps.map((s) => s.type).join(", ")}`);
-      if (!/apply|application|submit|form|upload|CV/i.test(turns.map((t) => t.text).join(" "))) problems.push("didn't say what is missing");
+      if (!/download|file|attach|invoice/i.test(turns.map((t) => t.text).join(" "))) problems.push("didn't say what is missing");
     }
 
     const pass = problems.length === 0;

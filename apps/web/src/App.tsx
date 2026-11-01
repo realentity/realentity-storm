@@ -12,6 +12,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { PipelineEditorPage } from "./pages/PipelineEditorPage";
 import { PipelinePage } from "./pages/PipelinePage";
 import { PipelinesPage } from "./pages/PipelinesPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { ProposalPage } from "./pages/ProposalPage";
 import { RecipePage, RecipesPage } from "./pages/RecipesPage";
 import { RunPage } from "./pages/RunPage";
@@ -48,6 +49,7 @@ export function App() {
             <Route path="rules" element={<RulesPage />} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:site/:what" element={<RecipePage />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="credentials" element={<CredentialsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route

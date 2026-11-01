@@ -1,6 +1,7 @@
 import { JOB_STATUSES, type JobFilter, type JobPostingView, type JobStatusName } from "@ai-me/shared";
 import { IconExternalLink } from "@tabler/icons-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { Empty, ErrorAlert, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
@@ -113,6 +114,11 @@ export function JobsPage() {
                     <td className="small text-secondary text-nowrap">{formatDateTime(job.firstSeenAt)}</td>
                     <td className="text-nowrap">
                       <StatusBadge status={job.status} />
+                      {job.application && (
+                        <Link to={job.application.runId ? `/runs/${job.application.runId}` : "#"} className="ms-2 small" data-testid="application">
+                          {job.application.status === "SUBMITTED" ? `applied ${formatDateTime(job.application.submittedAt)}` : job.application.status.toLowerCase()}
+                        </Link>
+                      )}
                       <select
                         className="form-select form-select-sm d-inline-block w-auto ms-2"
                         aria-label={`Status of ${job.title}`}

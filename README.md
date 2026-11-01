@@ -78,17 +78,14 @@ steps:
   - id: shortlist
     type: gate.review               # I pick which jobs proceed
     with: { items: "{{score.top}}", mode: select }
-  - id: prepare
-    type: llm.generate
-    forEach: "{{shortlist.selected}}"
-    with: { produce: [cv, coverLetter], baseCv: "cv-main" }
   - id: map
     type: browser.mapForm           # read-only: reads the form, types nothing, attaches nothing
     forEach: "{{shortlist.selected}}"
     with:
-      url: "{{item.applyUrl}}"
-      fields: auto                  # agent maps form fields → values
-      files: ["{{prepare.cv}}", "{{prepare.coverLetter}}"]
+      url: "{{item.url}}"           # the posting: its form, or the one behind its Apply button
+      cv: cv-main                   # my stored CV (Profile page), for the CV field
+      job: "{{item}}"
+      message: "Why this role fits me, from my profile only, 2-3 sentences."
   - id: approve
     type: gate.act                  # every field value, every file, target URL; I press Act
     forEach: "{{shortlist.selected}}"
@@ -96,7 +93,11 @@ steps:
   - id: apply
     type: browser.fillAndSubmit     # headed, watchable; executes exactly the approved payload
     forEach: "{{shortlist.selected}}"
-    with: { url: "{{item.applyUrl}}", payload: "{{map.payload}}", stopBeforeSubmit: false }
+    with:
+      url: "{{map.formUrl}}"
+      fields: "{{map.fields}}"
+      files: "{{map.files}}"
+      stopBeforeSubmit: false
 limits:
   browser.fillAndSubmit: 10/day
 ```
@@ -127,7 +128,7 @@ The builder can only use these. Each step type is a TypeScript class in the work
 | Browser | `browser.open`, `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent` | `fillAndSubmit`, `upload`, `agent`* |
 | LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize` | no |
 | Data | `data.dedupe`, `data.filter`, `data.save`, `data.lookup` | no (internal DB only) |
-| Files | `file.read`, `file.generate` (CV/PDF), `file.store` | no |
+| Files | `file.read`, `file.store`; my documents (CV, cover letters) are uploaded on the Profile page, not generated | no |
 | Gates | `gate.review`, `gate.act`, `gate.takeover` | — |
 | Notify | `notify.digest`, `notify.telegram` | to me only |
 
@@ -143,6 +144,8 @@ New capabilities are added by writing a new step class, never by the LLM.
 A list recipe ([packages/steps/src/recipe.ts](packages/steps/src/recipe.ts)) is data, not code: the list's address with `{param}` placeholders, a selector per item, a selector (and attribute) per field, the field that identifies an item, an optional "no results" selector, and paging by next link or by page number. It never opens a page off its own site (the host in its name, `dev.bg/search`), reads at most 20 pages, and waits at least half a second between them (1.5 s by default). Example: [recipes/dev.bg-search.yaml](recipes/dev.bg-search.yaml). `browser.extract` uses the latest version; when the page stops matching (nothing matches the item selector, or no item has the required fields), the step fails saying what didn't match, the recipe is marked broken on the Recipes page and in the digest, and I get one Telegram message.
 
 **Teach mode** (Recipes page → **Teach**): a run of a "Teach <recipe>" pipeline whose `browser.teach` step opens the site in the live browser. I bring it to the list (search, filters, cookie banner) and press Continue. The LLM (the builder's model) gets the page's outline (tags, classes, links, short texts; long runs of similar elements shortened, no scripts) and proposes a recipe; it is checked on the page: the address rebuilt from the params must be the page's, the items must have the fields, the next page (opened in another tab) must show other items. What fails goes back to the LLM, up to three times. The items it reads are outlined on the page; Continue saves the recipe as the next version, Abort discards it. Recipes can also be imported as YAML. Later (M11), when a recipe breaks, a run falls back to `browser.agent` (with a gate) and proposes a recipe update.
+
+**Application forms** (M10, map → gate → act): `browser.mapForm` opens the posting (following its Apply button when the form isn't on the page) and reads every field, wizard steps included, typing and attaching nothing. Each value comes from my profile (Profile page: plain text, my facts) or, for a free-text question, is written for this job from my profile and the posting only; a question my profile doesn't answer stays empty. My CV (a stored document, `cv: cv-main`) goes to the CV field, bound by id and SHA-256. A question that checks I'm a person ("104-43=") is never sent to the LLM or answered by the step, and a honeypot ("leave this field empty") is never shown or filled. At the gate the form shows field by field: I edit values and attach other documents (a cover letter, say; AI ME only attaches them). `browser.fillAndSubmit` then opens the form in the live browser and reads it again: a field gone, a new required field, a choice no longer offered or another site pauses the run with nothing sent. It fills exactly what I approved, step by step through a wizard, waits for me to answer a person check, and sends; with `stopBeforeSubmit` I press the final button myself. A send counts when the form is gone, or (forms sent without leaving the page) a thank-you appears or the form is cleared. The posting's `Application` goes from prepared to submitted, and the posting to applied.
 
 ### 2.5 Editing via chat
 
@@ -403,7 +406,7 @@ The schema is [packages/db/prisma/schema.prisma](packages/db/prisma/schema.prism
 | Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Takeover` (the live browser waiting for me), `Artifact` (screenshots, traces, downloads) |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
 | Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
-| Jobs | `JobPosting`, `Application` |
+| Jobs | `JobPosting`, `Application`, `Document` (my CV and cover letters, under `DOCUMENTS_DIR`; replaced by name, old files kept for approved payloads) |
 
 ---
 
@@ -610,6 +613,8 @@ APP_TOTP_SECRET=
 SESSION_TTL_HOURS=168
 
 # Browser / live view (the worker image sets DISPLAY=:99 and ARTIFACTS_DIR=/data/artifacts)
+# My documents (CV, cover letters) that application forms attach: the api writes, the worker only reads
+DOCUMENTS_DIR=data/documents
 # x11vnc's passwords: full control, and view-only (input ignored); VNC uses the first 8 characters. Empty: no live view
 VNC_PASSWORD=
 VNC_VIEW_PASSWORD=

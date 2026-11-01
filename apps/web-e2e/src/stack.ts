@@ -4,8 +4,9 @@ import { DatabasePreparer, TestEnvironment, TestInfrastructure } from "@ai-me/te
 import { type INestApplication, type INestApplicationContext, type Type } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { argon2id, hash } from "argon2";
-import { writeFile, mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { authenticator } from "otplib";
 import { TEST_BUILDER_LLM } from "./test-builder";
 import { TEST_EXECUTORS, TEST_STEPS } from "./test-steps";
@@ -42,6 +43,8 @@ export async function startStack(): Promise<Stack> {
     TestEnvironment.apply(databaseUrl);
     process.env.API_HOST = "127.0.0.1";
     process.env.API_PORT = String(API_PORT);
+    // Uploads (Profile → Documents) go to a folder of this run's own.
+    process.env.DOCUMENTS_DIR = await mkdtemp(join(tmpdir(), "aime-e2e-documents-"));
     process.env.APP_ADMIN_PASSWORD_HASH = await hash(PASSWORD, { type: argon2id });
     process.env.APP_TOTP_SECRET = authenticator.generateSecret();
     process.env[STACK_ENV.totpSecret] = process.env.APP_TOTP_SECRET;
@@ -70,7 +73,13 @@ export async function startStack(): Promise<Stack> {
       .overrideProvider(StepCatalog)
       .useValue(catalog)
       .overrideProvider(ExecutorRegistry)
-      .useFactory({ inject: [STEP_EXECUTORS], factory: (core: unknown[]) => new ExecutorRegistry([...core, ...TEST_EXECUTORS]) })
+      .useFactory({
+        inject: [STEP_EXECUTORS],
+        factory: (core: { type: string }[]) => {
+          const standIns = new Set(TEST_EXECUTORS.map((e) => e.type));
+          return new ExecutorRegistry([...core.filter((e) => !standIns.has(e.type)), ...TEST_EXECUTORS]);
+        },
+      })
       .compile();
     await worker.init();
 

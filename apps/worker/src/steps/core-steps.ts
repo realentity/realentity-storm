@@ -7,6 +7,7 @@ import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
 import { DigestStep } from "./digest-step";
 import { emailSteps } from "./email-steps";
+import { FillAndSubmitStep, MapFormStep, type FormDependencies } from "./form-steps";
 import { ClassifyStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
 import { BrowserExtractStep } from "./recipe-steps";
 import { BrowserTeachStep } from "./teach-step";
@@ -21,8 +22,8 @@ export interface CoreStepDependencies {
   prisma: PrismaClient;
   /** Active rules and few-shot examples (README §8); none in tests unless given. */
   learning?: StepLearning;
-  /** Browser steps (README §6); left out where no browser is needed. */
-  browser?: BrowserDependencies;
+  /** Browser steps (README §6); left out where no browser is needed. Forms also need my documents. */
+  browser?: BrowserDependencies | FormDependencies;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
@@ -41,6 +42,9 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router, learning: deps.learning }),
     ...(deps.browser
       ? [new BrowserOpenStep(deps.browser), new BrowserExtractStep(deps.browser), new BrowserTeachStep(deps.browser, deps.llm, deps.router)]
+      : []),
+    ...(deps.browser && "documents" in deps.browser
+      ? [new MapFormStep(deps.browser, deps.llm, deps.router, deps.learning), new FillAndSubmitStep(deps.browser)]
       : []),
   ];
 }

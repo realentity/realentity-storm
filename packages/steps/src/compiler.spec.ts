@@ -378,6 +378,18 @@ limits:
     });
   });
 
+  // M10: the form's address is the page's, not the LLM's: it may be fillAndSubmit's target; LLM-written fields may not
+  it("takes a form's address from browser.mapForm as a target, never its LLM-written text", () => {
+    const steps = (url: string) => [
+      { id: "map", type: "browser.mapForm", with: { url: "https://ats.example.org/jobs/7", cv: "cv-main" } },
+      { id: "apply", type: "browser.fillAndSubmit", with: { url, fields: "{{map.fields}}", files: "{{map.files}}" } },
+    ];
+    const result = ok(compiler.compile(pipeline(steps("{{map.formUrl}}"))));
+    expect(ids(result.definition)).toEqual(["map", "applyGate", "apply"]);
+    expect(result.policy.provenance).toEqual([{ stepId: "apply", field: "url", kind: "domain", source: "map.formUrl" }]);
+    expect(errorsOf(compiler.compile(pipeline(steps("{{map.notes}}")))).join("\n")).toMatch(/domain can't come from LLM output/);
+  });
+
   // M4-T4, M4-S2 (compile time)
   describe("email", () => {
     const REPLIES = (to: string) => `

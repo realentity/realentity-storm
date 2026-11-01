@@ -8,6 +8,7 @@ import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 import { ArtifactStore } from "../browser/artifact-store";
 import { BrowserPool } from "../browser/browser-pool";
+import { DocumentStore } from "../browser/document-store";
 import { SessionStore } from "../browser/session-store";
 import { PipelineRunner, type EventSink } from "../runner/pipeline-runner";
 import { TakeoverDesk } from "../runner/takeovers";
@@ -111,6 +112,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             sessions,
             vault,
             artifacts,
+            documents: new DocumentStore(env.DOCUMENTS_DIR),
             notify: (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text),
           },
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,

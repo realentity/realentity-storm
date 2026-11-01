@@ -7,6 +7,7 @@ import {
   type CreateCredentialRequest,
   type CreateRuleRequest,
   type CredentialView,
+  type DocumentView,
   type DryRunPipelineResponse,
   type ImportRecipeRequest,
   type JobFilter,
@@ -110,6 +111,17 @@ export const api = {
   jobs: {
     list: (filter: Partial<JobFilter> = {}) => request<JobPostingView[]>("GET", `/jobs${query(filter)}`),
     setStatus: (jobPostingId: string, status: JobStatusName) => request<JobPostingView>("PATCH", `/jobs/${jobPostingId}`, { status }),
+  },
+  documents: {
+    list: () => request<DocumentView[]>("GET", "/documents"),
+    upload: (name: string, file: File) => {
+      const body = new FormData();
+      body.append("name", name);
+      body.append("file", file);
+      return request<DocumentView>("POST", "/documents", body);
+    },
+    remove: (name: string) => request<void>("DELETE", `/documents/${encodeURIComponent(name)}`),
+    fileUrl: (documentId: string) => `/api/documents/${documentId}/file`,
   },
   recipes: {
     list: () => request<RecipeSummaryView[]>("GET", "/recipes"),

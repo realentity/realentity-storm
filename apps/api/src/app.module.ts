@@ -6,6 +6,7 @@ import { BuilderModule } from "./builder/builder.module";
 import { serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { ControlsModule } from "./controls/controls.module";
 import { CredentialsModule } from "./credentials/credentials.module";
+import { DocumentsModule } from "./documents/documents.module";
 import { EventsModule } from "./events/events.module";
 import { PrismaService } from "./database/prisma.service";
 import { HealthController } from "./health/health.controller";
@@ -43,6 +44,7 @@ export class CoreModule {}
     BuilderModule,
     LiveModule,
     JobsModule,
+    DocumentsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }, WorkerWatchdog],

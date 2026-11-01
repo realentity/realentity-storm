@@ -36,11 +36,14 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: "3000"
       ARTIFACTS_DIR: /data/artifacts
+      DOCUMENTS_DIR: /data/documents
     depends_on:
       migrate: { condition: service_completed_successfully }
     volumes:
       # Screenshots, traces and downloads the worker stored: the api only reads them, to serve them to me.
       - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts:ro
+      # My documents (CV, cover letters): uploaded through the api, read by the worker to attach as approved.
+      - ${AIME_DOCUMENTS:-../data/documents}:/data/documents
     healthcheck:
       test:
         ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
@@ -61,9 +64,12 @@ services:
       NODE_ENV: production
       TZ: Europe/Sofia
       ARTIFACTS_DIR: /data/artifacts
+      DOCUMENTS_DIR: /data/documents
     volumes:
       # Files the pipelines produce (screenshots, traces, downloads); in the app folder, so in the nightly config backup.
       - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts
+      # My documents: only read here (the api writes them); attached to forms only as approved, checked by SHA-256.
+      - ${AIME_DOCUMENTS:-../data/documents}:/data/documents:ro
     # The browser stack (README §6): Chromium needs a large /dev/shm; tini reaps Chromium's and Xvfb's processes.
     # Port 6080 (websockify, the live view) is reachable only on the compose network, through Caddy's /vnc.
     shm_size: 1gb

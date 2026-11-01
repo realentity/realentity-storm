@@ -107,6 +107,7 @@ export class ControlsService {
       rateLimits: (settings?.rateLimits as Record<string, string> | null) ?? {},
       monthlyBudgetUsd: own ?? fromEnv,
       budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
+      profile: settings?.profile ?? "",
     };
   }
 
@@ -121,6 +122,7 @@ export class ControlsService {
     const data = {
       ...(body.rateLimits !== undefined ? { rateLimits: body.rateLimits } : {}),
       ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
+      ...(body.profile !== undefined ? { profile: body.profile.trim() || null } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([

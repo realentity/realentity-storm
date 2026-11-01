@@ -49,6 +49,8 @@ export interface ProposalView {
   kind: "act" | "review";
   /** The step to act (act) or the review step (review). */
   stepKey: string;
+  /** That step's type (e.g. "browser.fillAndSubmit"): the inbox shows forms field by field. */
+  stepType: string | null;
   itemIndex: number | null;
   status: ProposalStatusName;
   target: string;
@@ -216,6 +218,7 @@ export const LLM_TASKS = [
   "reflection",
   "builder",
   "browser.teach",
+  "browser.mapForm",
 ] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
@@ -242,6 +245,8 @@ export const SettingsSchema = z
     rateLimits: z.record(z.string(), z.string().regex(LIMIT, '"N/day" or "N/hour"')).optional(),
     /** null: back to LLM_MONTHLY_BUDGET_USD. */
     monthlyBudgetUsd: z.number().positive().max(100_000).nullable().optional(),
+    /** Facts for application forms (browser.mapForm); "" clears it. */
+    profile: z.string().max(10_000).optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -259,6 +264,8 @@ export interface SettingsView {
   /** The budget in effect: the setting, else LLM_MONTHLY_BUDGET_USD, else none. */
   monthlyBudgetUsd: number | null;
   budgetSource: "settings" | "env" | null;
+  /** Facts for application forms (browser.mapForm). */
+  profile: string;
 }
 
 // #endregion

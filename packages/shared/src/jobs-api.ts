@@ -32,6 +32,36 @@ export interface JobPostingView {
   status: JobStatusName;
   firstSeenAt: string;
   lastSeenAt: string;
+  /** Prepared by browser.mapForm, submitted by browser.fillAndSubmit (M10-T5). */
+  application: ApplicationView | null;
+}
+
+export const APPLICATION_STATUSES = ["PREPARED", "SUBMITTED", "RESPONDED", "REJECTED", "INTERVIEW"] as const;
+export type ApplicationStatusName = (typeof APPLICATION_STATUSES)[number];
+
+export interface ApplicationView {
+  applicationId: string;
+  status: ApplicationStatusName;
+  submittedAt: string | null;
+  /** The run that prepared or submitted it. */
+  runId: string | null;
+}
+
+// #endregion
+
+// #region Documents
+
+/** A document name: lowercase letters, digits, ".", "_" and "-", e.g. "cv-main". */
+export const DOCUMENT_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+export interface DocumentView {
+  documentId: string;
+  name: string;
+  filename: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  dateCreated: string;
 }
 
 // #endregion

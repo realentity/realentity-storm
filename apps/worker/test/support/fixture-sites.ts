@@ -19,6 +19,8 @@ export interface FixtureSites {
   solveCaptcha(): void;
   /** jobs.localhost redesigned: its cards get other classes, so a recipe taught before no longer matches. */
   redesignJobs(): void;
+  /** ats.localhost's form asks for one more required field (a salary expectation) from now on. */
+  addRequiredField(): void;
   /** Back to a fresh state between tests: no posts or hits, the CAPTCHA unsolved, the job board as first built. */
   reset(): void;
   stop(): Promise<void>;
@@ -62,6 +64,8 @@ const loginForm = (action: string, error = "") =>
  *   shows a CAPTCHA until solveCaptcha(), without reloading; /slow never shows #ready; /files/* downloads.
  * - sso.localhost: the identity provider's sign-in.
  * - app.localhost.evil.localhost: a look-alike sign-in page (phishing).
+ * - ats.localhost: an applicant tracking system: /jobs/7 links to the wizard form /apply/7; /jobs/8 has its form on the
+ *   page, like dev.bg; /quick-apply uploads a file as soon as it is picked; addRequiredField() changes the form.
  * - jobs.localhost: a job board, /search?q=net in three pages (JOBS), an ad between the cards; redesignJobs() changes
  *   its markup.
  */
@@ -71,6 +75,84 @@ export async function startFixtureSites(): Promise<FixtureSites> {
   const sessions = new Set<string>();
   let solved = false;
   let redesigned = false;
+  let extraField = false;
+  let quiz = 0;
+
+  /**
+   * ats.localhost/jobs/8, like dev.bg's postings (Contact Form 7): the form on the posting page, a person check that
+   * changes on every load, a honeypot, a consent box with its text beside it, sent by fetch; on success the form is
+   * cleared and a thank-you shown, on the same page.
+   */
+  const inlineForm = () => {
+    quiz++;
+    const [a, b] = [100 + quiz, 40 + quiz];
+    return page(
+      "Senior .NET Developer at Acme",
+      `<h1>Senior .NET Developer</h1><p>Acme · Sofia</p>
+       <form class="wpcf7-form" action="/apply/8" method="post" enctype="multipart/form-data" novalidate>
+         <p><input name="your-name" placeholder="Име и Фамилия*" aria-required="true" required></p>
+         <p><input name="your-email" type="email" placeholder="Email*" aria-required="true" required></p>
+         <p><textarea name="your-message" placeholder="Започни да пишеш тук..."></textarea></p>
+         <p><input id="files-8" name="files" type="file" required></p>
+         <p><label>${a}-${b}=<input name="short-question" required></label></p>
+         <p><label>Please leave this field empty.<input id="trap" name="trap"></label></p>
+         <span class="wpcf7-list-item"><input type="checkbox" name="privacy[]" value="1"><span>Съгласен съм с политиката за поверителност</span></span>
+         <button type="submit">Кандидатствай</button>
+         <div class="wpcf7-response-output"></div>
+       </form>
+       <script>
+         const form = document.querySelector("form");
+         form.addEventListener("submit", async (event) => {
+           event.preventDefault();
+           await fetch(form.action, { method: "POST", body: new FormData(form) });
+           form.reset();
+           form.querySelector(".wpcf7-response-output").textContent = "Thank you for your message. It has been sent.";
+         });
+       </script>`,
+    );
+  };
+
+  /**
+   * ats.localhost/apply/7: a wizard in one form (three fieldsets shown in turn by Next), files on the second step,
+   * a select, a free-text answer and a required consent on the third; posts multipart to /apply/7.
+   */
+  const applyForm = () =>
+    page(
+      "Apply: Senior .NET Developer",
+      `<h1>Apply: Senior .NET Developer at Acme</h1>
+       <form method="post" action="/apply/7" enctype="multipart/form-data">
+         <fieldset data-step="1"><legend>You</legend>
+           <label for="name">Full name</label><input id="name" name="name" required>
+           <label for="email">Email</label><input id="email" name="email" type="email" required>
+           <label for="phone">Phone</label><input id="phone" name="phone" type="tel">
+           <button type="button" class="next">Next</button>
+         </fieldset>
+         <fieldset data-step="2" hidden><legend>Documents</legend>
+           <label for="cv">CV / Résumé</label><input id="cv" name="cv" type="file" required>
+           <label for="letter">Cover letter</label><input id="letter" name="letter" type="file">
+           <button type="button" class="next">Next</button>
+         </fieldset>
+         <fieldset data-step="3" hidden><legend>Questions</legend>
+           <label for="notice">Notice period</label>
+           <select id="notice" name="notice" required><option value="">Choose</option><option>Immediately</option><option>1 month</option><option>3 months</option></select>
+           <label for="message">Why Acme?</label><textarea id="message" name="message"></textarea>
+           ${extraField ? '<label for="salary">Salary expectation</label><input id="salary" name="salary" required>' : ""}
+           <label><input type="checkbox" name="consent" required> I agree to Acme processing my data for this application</label>
+           <label><input type="checkbox" name="newsletter"> Send me Acme's newsletter</label>
+           <button type="submit">Send application</button>
+         </fieldset>
+       </form>
+       <script>
+         for (const button of document.querySelectorAll("button.next")) {
+           button.addEventListener("click", () => {
+             const step = button.closest("fieldset");
+             for (const field of step.querySelectorAll("[required]")) if (!field.checkValidity()) return field.reportValidity();
+             step.hidden = true;
+             step.nextElementSibling.hidden = false;
+           });
+         }
+       </script>`,
+    );
 
   /** jobs.localhost/search?q=…&page=N: a filter form, an ad between the cards, a pager with page numbers and Next. */
   const jobBoard = (url: URL): string => {
@@ -134,6 +216,32 @@ export async function startFixtureSites(): Promise<FixtureSites> {
       return html(200, loginForm(`/authorize?return=${encodeURIComponent(back)}`, "Wrong email or password"));
     }
     if (host === "app.localhost.evil.localhost") return html(200, loginForm("/login"));
+    if (host === "ats.localhost") {
+      if (url.pathname === "/jobs/7")
+        return html(200, page("Senior .NET Developer", `<h1>Senior .NET Developer</h1><p>Acme · Sofia</p><a class="apply" href="/apply/7">Apply now</a>`));
+      if (url.pathname === "/apply/7" && req.method === "GET") return html(200, applyForm());
+      if (url.pathname === "/jobs/8") return html(200, inlineForm());
+      if (url.pathname === "/apply/8") {
+        res.writeHead(200, { "content-type": "application/json" }).end('{"status":"mail_sent"}');
+        return;
+      }
+      if (url.pathname === "/apply/7") return html(200, page("Thanks", "<h1>Thank you!</h1><p>Your application was received.</p>"));
+      // M10-S1: a form that uploads the file the moment it is picked.
+      if (url.pathname === "/quick-apply")
+        return html(
+          200,
+          page(
+            "Quick apply",
+            `<form action="/quick-apply" method="post"><label for="qname">Name</label><input id="qname" name="name" required>
+             <label for="resume">Résumé</label><input id="resume" name="resume" type="file">
+             <button type="submit">Apply</button></form>
+             <script>document.getElementById("resume").addEventListener("change", (e) => {
+               const data = new FormData(); data.append("file", e.target.files[0]); fetch("/uploads", { method: "POST", body: data });
+             });</script>`,
+          ),
+        );
+      return html(404, page("Not found", "No such page"));
+    }
     if (host === "jobs.localhost") {
       if (url.pathname === "/search") return html(200, jobBoard(url));
       const job = JOBS.find((j) => url.pathname === `/jobs/${j.id}`);
@@ -213,11 +321,14 @@ export async function startFixtureSites(): Promise<FixtureSites> {
     sessions,
     solveCaptcha: () => (solved = true),
     redesignJobs: () => (redesigned = true),
+    addRequiredField: () => (extraField = true),
     reset: () => {
       posts.length = 0;
       hits.length = 0;
       solved = false;
       redesigned = false;
+      extraField = false;
+      quiz = 0;
     },
     stop: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };

@@ -1,4 +1,4 @@
-import { type JobPosting, type Prisma, type SiteRecipe } from "@ai-me/db";
+import { type Application, type JobPosting, type Prisma, type SiteRecipe } from "@ai-me/db";
 import {
   type ImportRecipeRequest,
   type JobFilter,
@@ -35,6 +35,7 @@ export class JobsService {
       where,
       orderBy: [{ score: { sort: "desc", nulls: "last" } }, { firstSeenAt: "desc" }],
       take: filter.limit,
+      include: { applications: true },
     });
     return postings.map(jobView);
   }
@@ -42,7 +43,7 @@ export class JobsService {
   async update(userId: string, jobPostingId: string, body: UpdateJobRequest): Promise<JobPostingView> {
     const updated = await this.prisma.client.jobPosting.updateMany({ where: { jobPostingId, userId }, data: { status: body.status } });
     if (updated.count === 0) throw new NotFoundException();
-    return jobView(await this.prisma.client.jobPosting.findUniqueOrThrow({ where: { jobPostingId } }));
+    return jobView(await this.prisma.client.jobPosting.findUniqueOrThrow({ where: { jobPostingId }, include: { applications: true } }));
   }
 }
 
@@ -142,7 +143,8 @@ function checkedName(name: string): string {
   return name;
 }
 
-function jobView(posting: JobPosting): JobPostingView {
+function jobView(posting: JobPosting & { applications: Application[] }): JobPostingView {
+  const application = posting.applications[0];
   return {
     jobPostingId: posting.jobPostingId,
     url: posting.url,
@@ -155,6 +157,14 @@ function jobView(posting: JobPosting): JobPostingView {
     status: posting.status,
     firstSeenAt: posting.firstSeenAt.toISOString(),
     lastSeenAt: posting.lastSeenAt.toISOString(),
+    application: application
+      ? {
+          applicationId: application.applicationId,
+          status: application.status,
+          submittedAt: application.submittedAt?.toISOString() ?? null,
+          runId: application.runId,
+        }
+      : null,
   };
 }
 

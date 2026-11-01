@@ -25,14 +25,15 @@ export function onUnauthorized(listener: Listener): () => void {
 
 /**
  * Same-origin JSON requests with the session cookie. The api is at /api on the same host (Vite proxies it in
- * development, Caddy in production), so there is no token in JavaScript.
+ * development, Caddy in production), so there is no token in JavaScript. A FormData body goes as multipart (uploads).
  */
 export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const multipart = body instanceof FormData;
   const response = await fetch(`/api${path}`, {
     method,
     credentials: "same-origin",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined || multipart ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
   });
   if (response.status === 204) return undefined as T;
   const data: unknown = await response.json().catch(() => null);

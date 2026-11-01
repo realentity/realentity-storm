@@ -20,6 +20,7 @@ export function proposalView(p: ProposalWithContext): ProposalView {
     pipelineName: p.run.pipelineVersion.pipeline.name,
     kind: p.step.type === "gate.review" ? "review" : "act",
     stepKey: p.stepKey,
+    stepType: (p.run.pipelineVersion.definition as { steps?: { id: string; type: string }[] }).steps?.find((s) => s.id === p.stepKey)?.type ?? null,
     itemIndex: p.itemIndex,
     status: p.status,
     target: p.target,

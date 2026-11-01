@@ -125,6 +125,7 @@ model User {
   artifacts     Artifact[]
   jobPostings   JobPosting[]
   applications  Application[]
+  documents     Document[]
   mailCursors   MailCursor[]
   reflections   Reflection[]
   suggestions   PipelineSuggestion[]
@@ -159,6 +160,8 @@ model UserSetting {
   rateLimits       Json      @default("{}")
   /// Overrides LLM_MONTHLY_BUDGET_USD.
   monthlyBudgetUsd Decimal?  @db.Decimal(10, 2)
+  /// Facts about me for application forms (name, contacts, location, work permit, notice period...), as I write them.
+  profile          String?
   dateUpdated      DateTime  @updatedAt
 
   @@map("UserSettings")
@@ -593,13 +596,37 @@ model Application {
   proposalId    String?           @db.Uuid
   status        ApplicationStatus @default(PREPARED)
   cvArtifactId  String?           @db.Uuid
+  /// The run that prepared or submitted it.
+  runId         String?           @db.Uuid
   submittedAt   DateTime?
   notes         String?
   dateCreated   DateTime          @default(now())
   dateUpdated   DateTime          @updatedAt
 
+  @@unique([jobPostingId])
   @@index([userId])
   @@map("Applications")
+}
+
+/// A file of mine that application forms may attach (my CV, a cover letter), under DOCUMENTS_DIR. Uploading one
+/// with the same name replaces it: the old row keeps its file (an approved payload names it by id and SHA-256) and
+/// gets replacedAt.
+model Document {
+  documentId  String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name        String // e.g. "cv-main"
+  filename    String // as uploaded, made safe
+  mime        String
+  size        Int
+  sha256      String    @db.VarChar(64)
+  /// Relative to DOCUMENTS_DIR.
+  path        String
+  replacedAt  DateTime?
+  dateCreated DateTime  @default(now())
+
+  @@index([userId, name])
+  @@map("Documents")
 }
 
 // #endregion

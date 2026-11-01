@@ -25,6 +25,7 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   reflection: "reflection",
   builder: "builder",
   "browser.teach": "builder",
+  "browser.mapForm": "writing",
 };
 
 /** A per-user choice from Settings (ModelSetting), if any. */

@@ -57,6 +57,8 @@ export const ServerEnvSchema = z
      * the api serves them to me.
      */
     ARTIFACTS_DIR: z.string().min(1).default("data/artifacts"),
+    /** My documents (CV, cover letters) that forms may attach: the api writes them, the worker only reads. */
+    DOCUMENTS_DIR: z.string().min(1).default("data/documents"),
     /** Live view: x11vnc's passwords, full control and view-only (VNC uses the first 8 characters). Unset: no live view. */
     VNC_PASSWORD: optional(z.string().min(8)),
     VNC_VIEW_PASSWORD: optional(z.string().min(8)),
