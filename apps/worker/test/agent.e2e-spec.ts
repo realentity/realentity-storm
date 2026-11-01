@@ -225,12 +225,13 @@ steps:
     expect(await db.client.jobPosting.findFirstOrThrow()).toMatchObject({ status: "APPLIED" });
   });
 
-  it("M11-S1: navigation outside the allowed sites is blocked: typed, clicked, or a redirect by the page", async () => {
+  it("M11-S1: navigation outside the allowed sites is blocked: typed, clicked, or a redirect by the page or its server", async () => {
     chat.play([
       () => ({ name: "navigate", input: { url: sites.url("evil", "/collect") } }),
       click("link", /Partner site/),
       () => ({ name: "read", input: {} }),
       click("link", /See our team/),
+      () => ({ name: "navigate", input: { url: sites.url("careers", "/old-team") } }),
       () => ({ name: "finish", input: { outcome: "done", answer: "Nothing to do" } }),
     ]);
     const { runId, status } = await run(AGENT_ONLY());
@@ -239,6 +240,7 @@ steps:
     expect(results[0]).toMatch(/^evil\.localhost is not one of the allowed sites/);
     expect(results[1]).toMatch(/^That link goes to evil\.localhost, not an allowed site/);
     expect(results[3]).toMatch(/blocked: evil\.localhost is not one of the allowed sites/);
+    expect(results[4]).toMatch(/blocked: careers\.localhost redirected to evil\.localhost, which is not one of the allowed sites/);
     expect(evil()).toEqual([]);
     expect((await agentStep(runId)).output).toMatchObject({ outcome: "done", actions: [] });
   });

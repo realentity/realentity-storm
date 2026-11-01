@@ -710,7 +710,8 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Per-step-type rate limits; kill switch pauses everything and cancels queued side effects
 - [ ] Executed payload must match the hash of the approved payload
 - [ ] Untrusted content (email/page/file text) is clearly delimited in prompts and never treated as instructions
-- [ ] `shop.product` reads like `http.fetch`, and its browser pages go only to allowed hosts, every redirect checked before it is followed
+- [ ] `shop.product` reads like `http.fetch`, and its browser pages go only to allowed hosts
+- [ ] Browser pages that explore or act (agent, upload, submit, shop.product) go only to allowed sites, every redirect checked before it is followed
 - [ ] `http.fetch` reads only hosts on the pipeline's allowedDomains and connects only to public addresses (checked after DNS, on IP literals and every redirect; no cookies or credentials)
 - [ ] Telegram and webhook calls carry their own secret (bot header + my user id; per-pipeline HMAC or token); signatures checked by the worker; a webhook body is never a target
 - [ ] `browser.agent` limited by domain allowlist, action budget and fixed action set; it submits and uploads nothing

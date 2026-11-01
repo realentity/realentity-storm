@@ -318,11 +318,15 @@ export async function markAttached(page: Page, fileCss: string, document: string
  * What a browser.agent page may send and where it may go (README §2.4, M11-S1/S3). Exploring, the page goes only to
  * allowed sites, posts no form, and no request carries a value the agent typed (in the address or the body, plain or
  * encoded): what it types is for the gate, and only browser.submit sends it. WebSockets are closed. Acting
- * (browser.submit), only the allowed sites hold: the approved values are meant to go.
+ * (browser.submit), only the allowed sites hold: the approved values are meant to go. A redirect isn't routed again,
+ * so a page's request is sent from here without following redirects, and where one leads is checked before the
+ * browser goes on.
  */
 export class SendGuard {
   private readonly typed = new Set<string>();
   private events: string[] = [];
+  /** The first site a page was kept from (shop.product's error names it). */
+  refusedHost: string | null = null;
 
   constructor(
     private readonly allowed: (host: string) => boolean,
@@ -355,7 +359,9 @@ export class SendGuard {
     const url = request.url();
     const host = hostOf(url);
     const navigation = request.isNavigationRequest();
-    if (navigation && mainFrame(request) && host && !this.allowed(host)) {
+    const page = navigation && mainFrame(request);
+    if (page && host && !this.allowed(host)) {
+      this.refusedHost ??= host;
       this.events.push(`blocked: ${host} is not one of the allowed sites`);
       return route.abort("blockedbyclient");
     }
@@ -372,7 +378,20 @@ export class SendGuard {
         }
       }
     }
-    return route.continue().catch(() => undefined);
+    if (!page) return route.continue().catch(() => undefined);
+    const response = await route.fetch({ maxRedirects: 0 }).catch(() => null);
+    if (!response) return route.abort("failed").catch(() => undefined);
+    const location = response.headers().location;
+    if (location && response.status() >= 300 && response.status() < 400) {
+      const next = new URL(location, url).href;
+      const nextHost = hostOf(next);
+      if (!nextHost || !this.allowed(nextHost)) {
+        this.refusedHost ??= nextHost || next;
+        this.events.push(`blocked: ${host} redirected to ${nextHost || next}, which is not one of the allowed sites`);
+        return route.abort("blockedbyclient").catch(() => undefined);
+      }
+    }
+    return route.fulfill({ response }).catch(() => undefined);
   }
 }
 

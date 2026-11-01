@@ -1,8 +1,7 @@
 import { type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { hostMatches } from "@ai-me/shared";
 import { z } from "zod";
-import { type BrowserContext } from "playwright";
-import { hostOf } from "../browser/agent-page";
+import { SendGuard } from "../browser/agent-page";
 import { blockingState } from "../browser/blocking";
 import { type BrowserPool } from "../browser/browser-pool";
 import { type StepContext } from "../runner/step-executor";
@@ -142,12 +141,13 @@ export class ProductStep extends LlmStep {
     await this.http.assertPublic(url, allowed);
     const lease = await this.pool!.lease(false, { acceptDownloads: false });
     try {
-      const refused = await onlyAllowed(lease.context, allowed);
+      const guard = new SendGuard((host) => hostMatches(host, allowed), "explore");
+      await guard.install(lease.context);
       const page = await lease.context.newPage();
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.timeout }).catch((error: unknown) => {
-        throw refused.host ? new FetchRefused(`Refused: ${refused.host} isn't in the pipeline's allowedDomains`) : error;
+        throw guard.refusedHost ? new FetchRefused(`Refused: ${guard.refusedHost} isn't in the pipeline's allowedDomains`) : error;
       });
-      if (refused.host) throw new FetchRefused(`Refused: ${refused.host} isn't in the pipeline's allowedDomains`);
+      if (guard.refusedHost) throw new FetchRefused(`Refused: ${guard.refusedHost} isn't in the pipeline's allowedDomains`);
       await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
       const blocked = await blockingState(page);
       if (blocked) return unread(url, select, `${why}; in the browser, the site shows a check: ${blocked}`);
@@ -181,32 +181,6 @@ export class ProductStep extends LlmStep {
       note: answer.note,
     };
   }
-}
-
-/**
- * The browser's pages go only to allowed hosts, by GET. A redirect isn't routed again, so each page's request is sent
- * from here without following redirects, and where it leads is checked before the browser goes on.
- */
-async function onlyAllowed(context: BrowserContext, allowed: readonly string[]): Promise<{ host: string | null }> {
-  const refused: { host: string | null } = { host: null };
-  await context.route("**/*", async (route, request) => {
-    if (!request.isNavigationRequest()) return route.continue().catch(() => undefined);
-    const host = hostOf(request.url());
-    if (!hostMatches(host, allowed) || request.method() !== "GET") {
-      refused.host ??= host;
-      return route.abort("blockedbyclient").catch(() => undefined);
-    }
-    const response = await route.fetch({ maxRedirects: 0 }).catch(() => null);
-    if (!response) return route.abort("failed").catch(() => undefined);
-    const location = response.headers().location;
-    const next = location && response.status() >= 300 && response.status() < 400 ? hostOf(new URL(location, request.url()).href) : null;
-    if (next !== null && !hostMatches(next, allowed)) {
-      refused.host ??= next;
-      return route.abort("blockedbyclient").catch(() => undefined);
-    }
-    return route.fulfill({ response }).catch(() => undefined);
-  });
-  return refused;
 }
 
 const HEADERS = { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8", "accept-encoding": "gzip, deflate, br" };

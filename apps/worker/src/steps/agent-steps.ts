@@ -397,6 +397,9 @@ export class BrowserAgentStep implements StepExecutor {
       }
     } catch (error) {
       if (error instanceof RunStopped) throw error;
+      // A page the guard stopped (a redirect elsewhere) fails with a bare net error: say why instead.
+      const blocked = work.guard.drain();
+      if (blocked.length) return fail(blocked.join("; "));
       return fail((error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 300));
     }
   }
