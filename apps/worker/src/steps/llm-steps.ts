@@ -32,20 +32,24 @@ export abstract class LlmStep implements StepExecutor {
 
   abstract execute(input: Record<string, unknown>, context: StepContext): Promise<unknown>;
 
-  /** `cacheSystem`: the system prompt repeats across this step's calls (chunks, forEach items), so it is cached. */
+  /**
+   * `cacheSystem`: the system prompt repeats across this step's calls (chunks, forEach items), so it is cached.
+   * `cachedPrompt`: a long start of the prompt that repeats too (a page asked about again), cached and before `prompt`.
+   */
   protected async call<S extends z.ZodObject>(
     context: StepContext,
     system: string,
     prompt: string,
     schema: S,
     cacheSystem = false,
+    cachedPrompt?: string,
   ): Promise<z.infer<S>> {
     const [choice, rules] = await Promise.all([
       this.router.choose(context.userId, this.type),
       this.learning.rules(context.userId, this.type, context.pipelineId),
     ]);
     try {
-      const result = await this.llm.structured({ choice, system: withRules(system, rules), prompt, schema, cacheSystem });
+      const result = await this.llm.structured({ choice, system: withRules(system, rules), prompt, schema, cacheSystem, cachedPrompt });
       context.recordUsage(result.usage);
       return result.output;
     } catch (error) {

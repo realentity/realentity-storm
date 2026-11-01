@@ -105,10 +105,10 @@ export class PipelineCompiler {
       }
 
       for (const field of stepDefinition.reads ?? []) {
-        for (const [i, url] of literalUrls(step.with[field])) {
+        for (const [at, url] of literalUrls(step.with[field])) {
           const host = /^https?:\/\/([^/{}?#:]+)/i.exec(url)?.[1]?.toLowerCase();
           if (host && !definition.policy.allowedDomains.some((allowed) => hostMatches(host, [allowed]))) {
-            errors.push({ path: `${path}.with.${field}${i === null ? "" : `[${i}]`}`, message: `${host} isn't in policy.allowedDomains: add it there to read from it` });
+            errors.push({ path: `${path}.with.${field}${at}`, message: `${host} isn't in policy.allowedDomains: add it there to read from it` });
           }
         }
       }
@@ -377,9 +377,12 @@ export function referencesIn(value: unknown): string[] {
 }
 
 /** The literal URLs of a field (text without references), with their index in a list. */
-function literalUrls(value: unknown): [number | null, string][] {
-  const values = Array.isArray(value) ? value.map((v, i): [number | null, unknown] => [i, v]) : [[null, value] as [number | null, unknown]];
-  return values.filter((entry): entry is [number | null, string] => typeof entry[1] === "string" && referencesIn(entry[1]).length === 0);
+/** The literal addresses in a reads field, with where each is: a string, a list of them, or a list of { url } (shop.product). */
+function literalUrls(value: unknown): [string, string][] {
+  const values = Array.isArray(value) ? value.map((v, i): [string, unknown] => [`[${i}]`, v]) : [["", value] as [string, unknown]];
+  return values
+    .map(([at, v]): [string, unknown] => (typeof v === "object" && v !== null && "url" in v ? [`${at}.url`, v.url] : [at, v]))
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && referencesIn(entry[1]).length === 0);
 }
 
 function referencePath(wholeReference: string): string {

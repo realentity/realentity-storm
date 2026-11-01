@@ -52,6 +52,13 @@ export function RunPage() {
         <div className={`alert ${r.status === "ABORTED" || r.status === "FAILED" ? "alert-warning" : "alert-info"}`}>{r.summary}</div>
       )}
       {r.resumeAt && <div className="alert alert-info">Held back by a rate limit; continues {formatDateTime(r.resumeAt)}.</div>}
+      {["QUEUED", "RUNNING", "WAITING_FOR_USER"].includes(r.status) && r.steps.some((s) => s.type === "browser.teach") && (
+        <div className="alert alert-info" data-testid="teach-guide">
+          <strong>Teach mode.</strong> When the live browser below shows the site (it can take a few seconds): accept the cookie banner, search and
+          filter until the page shows the list, then press <strong>Continue</strong>. The LLM then writes the recipe and checks it on the page; the
+          items it reads are outlined. Press <strong>Continue</strong> again to save the recipe, or <strong>Abort</strong> if the outline is wrong.
+        </div>
+      )}
       <LiveView run={r} />
       {r.proposals.length > 0 && <Proposals run={r} />}
       <Timeline steps={r.steps} />

@@ -116,6 +116,8 @@ const FilterCondition = z.object({
 });
 
 const Selector = z.string().min(1).max(500);
+/** A product variant by its attributes (shop.product), e.g. { size: "M", color: "Black" }. */
+const Select = z.record(z.string().min(1).max(40), z.string().min(1).max(100));
 
 /** Where data.save and data.dedupe keep and look up items. */
 export const SAVED_LISTS = ["JobPosting"] as const;
@@ -297,6 +299,33 @@ export const CORE_STEPS: StepDefinition[] = [
         }),
       ),
     }),
+  },
+  {
+    type: "shop.product",
+    description:
+      "The price of a product, or of one variant (select: { size: M, color: Black }), from its page: one item per " +
+      "product (id, url, title, brand, price as a number, currency, availability, inStock, variant, problem). Reads the " +
+      "page's schema.org data or price meta tags without a browser; a page without them, or one that refuses, opens in " +
+      "the headless browser, and with no data there either the cheap model reads the price from its text. `id` is the " +
+      "product and the variant asked for: the key for data.history. Only hosts in policy.allowedDomains.",
+    sideEffect: false,
+    saasSafe: true,
+    reads: ["url", "urls", "products"],
+    input: z.object({
+      url: z.string().url().optional(),
+      urls: z.array(z.string().url()).min(1).max(25).optional(),
+      products: z
+        .array(z.object({ url: z.string().url(), select: Select.optional() }))
+        .min(1)
+        .max(25)
+        .optional()
+        .describe("products with their own variant each"),
+      select: Select.optional().describe("the variant, for url / urls: attribute: value, e.g. { size: M, color: Black }"),
+      browser: z.enum(["fallback", "always", "never"]).default("fallback"),
+      llm: z.boolean().default(true).describe("no product data even in the browser: the cheap model reads the page's text"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({ items: Items, problems: z.array(z.string()) }),
   },
   {
     type: "llm.classify",

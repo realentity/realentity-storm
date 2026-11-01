@@ -218,6 +218,7 @@ export const LLM_TASKS = [
   "reflection",
   "builder",
   "browser.teach",
+  "shop.product",
   "browser.mapForm",
   "browser.agent",
   "browser.agent.escalation",

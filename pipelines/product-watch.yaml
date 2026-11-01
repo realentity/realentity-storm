@@ -1,0 +1,41 @@
+# Product watch: once a day, the price of products you chose (in your size and color), from their own pages;
+# a message only when one got cheaper. No recipe: shop.product reads the page's product data (schema.org), which
+# most shops publish. A page without it opens in the headless browser, and as a last resort the cheap model reads the
+# price from its text (about $0.001 a page). Add each shop's host to allowedDomains. `select` takes the page's own
+# names for sizes and colors; a size that isn't offered is reported with what is (the second message).
+name: Product watch
+description: My products, in my size and color, that got cheaper since yesterday.
+trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+policy:
+  allowedDomains: [www.bergfreunde.eu]
+steps:
+  - id: products
+    type: shop.product
+    with:
+      products:
+        - url: https://www.bergfreunde.eu/fjaellraeven-skogsoe-padded-jacket-casual-jacket/
+          select: { size: M, color: Black }
+  - id: prices
+    type: data.history
+    with: { items: "{{products.items}}", collection: product-prices, key: id, value: price }
+  - id: cheaper
+    type: data.filter
+    with:
+      items: "{{prices.items}}"
+      where: [{ field: history.direction, op: eq, value: down }]
+  - id: lines
+    type: llm.generate
+    when: "{{cheaper.items}}"
+    with:
+      instruction: >-
+        One line per product: its title and variant (size, color), the old price → the new price with the currency
+        (history.previous → history.value), "lowest so far" when history.lowest is true, "sold out" when inStock is
+        false, then its url. No other text.
+      context: "{{cheaper.items}}"
+  - id: tell
+    type: notify.telegram
+    with: { text: "Cheaper today:\n{{lines.text}}" }
+  - id: trouble
+    type: notify.telegram
+    when: "{{products.problems}}"
+    with: { text: "Product watch can't read: {{products.problems}}" }

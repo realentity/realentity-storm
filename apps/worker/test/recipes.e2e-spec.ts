@@ -30,9 +30,12 @@ jest.setTimeout(60_000);
 /** Answers the teach step with the proposals given, in order; records the prompts. */
 class ScriptedLlm implements LlmClient {
   prompts: string[] = [];
+  /** Each call's cached start of the prompt (the page, in teach mode). */
+  cached: (string | undefined)[] = [];
   constructor(private readonly answers: unknown[]) {}
   structured<S extends z.ZodObject>(request: StructuredRequest<S>) {
-    this.prompts.push(request.prompt);
+    this.prompts.push(`${request.cachedPrompt ?? ""}${request.prompt}`);
+    this.cached.push(request.cachedPrompt);
     const answer = this.answers.shift();
     if (!answer) return Promise.reject(new Error("no more answers"));
     return Promise.resolve({ output: request.schema.parse(answer), usage: { ...emptyUsage(), calls: 1, costUsd: 0.02 } });
@@ -357,7 +360,10 @@ steps:
       expect(llm.prompts).toHaveLength(2);
       expect(llm.prompts[0]).toContain('<article.job data-id="100">');
       expect(llm.prompts[0]).toContain('<a.job-title href="/jobs/100"> Senior .NET Developer');
-      expect(llm.prompts[1]).toMatch(/<problems>[\s\S]*item ".card" matched 0 elements/);
+      expect(llm.prompts[1]).toMatch(/<problems>[\s\S]*item ".card" matches nothing on this page/);
+      // The page is the cached start of both asks: the retry pays a tenth for it.
+      expect(llm.cached[0]).toContain('<article.job data-id="100">');
+      expect(llm.cached[1]).toBe(llm.cached[0]);
 
       const saved = await db.client.siteRecipe.findFirstOrThrow({ where: { version: 2 } });
       expect(saved).toMatchObject({ name: "jobs.localhost/search", site: "jobs.localhost", taughtInRunId: runId });
@@ -367,6 +373,17 @@ steps:
       // The taught recipe reads the whole list.
       const { runId: searchRun } = await run(SEARCH());
       expect(((await output(searchRun, "search")).items as unknown[]).length).toBe(12);
+    });
+
+    it("a fix that fails the same way ends it, without the third call", async () => {
+      llm = new ScriptedLlm([proposal(".card"), proposal(".card"), proposal("article.job")]);
+      const runId = await runner.start(await createVersion(db.client, userId, TEACH()), { trigger: "manual" });
+      const advancing = runner.advance(runId);
+      await continueTakeover(runId, /show the list/);
+      expect(await advancing).toBe("FAILED");
+      expect(llm.prompts).toHaveLength(2);
+      const step = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "teach" } });
+      expect(step.error).toMatch(/the fix failed the same way \(item "\.card" matches nothing on this page\)/);
     });
 
     it("Abort discards the recipe", async () => {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LLM_TASKS } from "./runs-api";
 
 /** Step types a rule can be for (README §8): the LLM steps. A rule without one applies to all of them. */
-export const RULE_STEP_TYPES = LLM_TASKS.filter((task) => task !== "reflection" && task !== "builder" && task !== "browser.teach");
+export const RULE_STEP_TYPES = LLM_TASKS.filter((task) => task !== "reflection" && task !== "builder" && task !== "browser.teach" && task !== "shop.product");
 export type RuleStepType = (typeof RULE_STEP_TYPES)[number];
 
 export const RULE_STATUSES = ["SUGGESTED", "ACTIVE", "DISABLED"] as const;

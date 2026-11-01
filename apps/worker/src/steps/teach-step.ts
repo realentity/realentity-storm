@@ -9,10 +9,8 @@ import { RunStopped, type StepContext, type StepExecutor } from "../runner/step-
 import { type BrowserDependencies } from "./browser-steps";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
 
-/** Proposals the LLM gets to fix before the step gives up. */
+/** Proposals the LLM gets to fix before the step gives up (sooner when a fix fails the same way). */
 const ATTEMPTS = 3;
-/** A list has at least this many items on its first page. */
-const MIN_ITEMS = 2;
 /** The page outline the LLM reads (characters). */
 const MAX_OUTLINE = 60_000;
 const SAMPLE = 10;
@@ -125,7 +123,7 @@ export class BrowserTeachStep implements StepExecutor {
 }
 
 /**
- * Writes a recipe for the list on a page (the builder's model, task browser.teach): proposed from the page's outline,
+ * Writes a recipe for the list on a page (task browser.teach, the writing model): proposed from the page's outline,
  * checked on the page, what failed sent back. Teach mode and browser.extract's fallback (M11-T3) use it.
  */
 export class RecipeWriter extends LlmStep {
@@ -135,7 +133,10 @@ export class RecipeWriter extends LlmStep {
     return Promise.reject(new Error("RecipeWriter is not a step"));
   }
 
-  /** Asks for a recipe until one works on the page, with what failed each time. */
+  /**
+   * Asks for a recipe until one works on the page, with what failed each time. The page is the cached start of every
+   * ask, so a retry pays for little more than the answer; a fix that fails the same way ends it.
+   */
   async write(
     context: StepContext,
     page: Page,
@@ -148,10 +149,12 @@ export class RecipeWriter extends LlmStep {
     let feedback = "";
     let problems: string[] = [];
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-      const proposal = await this.call(context, SYSTEM, `${ask}${feedback}`, ProposalSchema, true);
+      const proposal = await this.call(context, SYSTEM, feedback, ProposalSchema, true, ask);
       const recipe = toRecipe(proposal);
+      const previous = problems;
       problems = recipe.success ? await check(page, task.name, recipe.data, task.params) : recipe.problems;
       if (recipe.success && problems.length === 0) return { recipe: recipe.data, items: (await readItems(page, recipe.data)).items };
+      if (problems.join("; ") === previous.join("; ")) throw new Error(`No working recipe: the fix failed the same way (${problems.join("; ")})`);
       feedback =
         `\n<attempt n="${attempt}">\n${JSON.stringify(proposal)}\n</attempt>\n` +
         `<problems>\nChecked on the page, that recipe failed:\n${problems.map((p) => `- ${p}`).join("\n")}\nFix it.\n</problems>`;
@@ -198,7 +201,8 @@ async function check(page: Page, name: string, recipe: Recipe, params: Record<st
     problems.push(error instanceof Error ? error.message : String(error));
   }
   const { items, matched } = await readItems(page, recipe);
-  if (matched < MIN_ITEMS) problems.push(`item "${recipe.item}" matched ${matched} elements; the list has more`);
+  // One item is a list too (a search with one result): I check what is outlined before it is saved.
+  if (matched === 0) problems.push(`item "${recipe.item}" matches nothing on this page`);
   else if (items.length < matched * 0.8) {
     problems.push(`only ${items.length} of ${matched} items have every required field; mark optional ones not required`);
   }

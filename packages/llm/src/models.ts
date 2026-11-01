@@ -24,7 +24,10 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "email.draftReply": "writing",
   reflection: "reflection",
   builder: "builder",
-  "browser.teach": "builder",
+  // Selectors from a page outline: Sonnet does it at half Opus's price (M13 follow-up; Settings can choose Opus).
+  "browser.teach": "writing",
+  // A price from a page's text, only when the page has no product data (M13 follow-up).
+  "shop.product": "classify",
   "browser.mapForm": "writing",
   "browser.agent": "writing",
   // The agent's second try, when the first model keeps failing (README §5).

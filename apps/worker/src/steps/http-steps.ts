@@ -14,7 +14,7 @@ type Item = Record<string, unknown>;
 const MAX_REDIRECTS = 5;
 const MAX_TEXT = 50_000;
 const MAX_SUMMARY = 2_000;
-const USER_AGENT = "AI-ME/1.0 (personal automation; reads feeds and pages it was told to)";
+export const USER_AGENT = "AI-ME/1.0 (personal automation; reads feeds and pages it was told to)";
 
 /**
  * Where http.fetch never connects (M13-S1): this machine, private networks, Tailscale's 100.64.0.0/10 (the tailnet:
@@ -87,15 +87,13 @@ export class FetchRefused extends Error {}
  */
 export class HttpFetchStep implements StepExecutor {
   readonly type = "http.fetch";
-  private readonly blocked: BlockList;
-  private readonly resolve: NonNullable<HttpFetchOptions["resolve"]>;
+  private readonly http: PublicHttp;
 
   constructor(
     private readonly prisma: PrismaClient,
     options: HttpFetchOptions = {},
   ) {
-    this.blocked = options.blocked ?? privateAddresses();
-    this.resolve = options.resolve ?? ((host) => dnsLookup(host, { all: true, verbatim: true }));
+    this.http = new PublicHttp(options);
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
@@ -123,7 +121,7 @@ export class HttpFetchStep implements StepExecutor {
       ...(cached?.etag ? { "if-none-match": cached.etag } : {}),
       ...(cached?.lastModified ? { "if-modified-since": cached.lastModified } : {}),
     };
-    const response = await this.get(url, headers, allowed, options);
+    const response = await this.http.get(url, headers, allowed, options);
     let body = response.body;
     let contentType = response.contentType;
     const notModified = response.status === 304 && cached !== null;
@@ -138,14 +136,50 @@ export class HttpFetchStep implements StepExecutor {
     }
     return { url, status: response.status, notModified, contentType, truncated: response.truncated, ...parse(url, body, contentType, response.truncated, options.itemsAt) };
   }
+}
+
+export interface HttpResponse {
+  status: number;
+  /** Where the last redirect led. */
+  url: string;
+  contentType: string;
+  etag: string | null;
+  lastModified: string | null;
+  body: Buffer;
+  truncated: boolean;
+}
+
+/**
+ * GETs to public addresses only (http.fetch, shop.product): the host must be on the allowed list, its name is resolved
+ * here and the connection goes to the address checked (no second lookup to rebind); every redirect is checked again.
+ */
+export class PublicHttp {
+  private readonly blocked: BlockList;
+  private readonly resolve: NonNullable<HttpFetchOptions["resolve"]>;
+
+  constructor(options: HttpFetchOptions = {}) {
+    this.blocked = options.blocked ?? privateAddresses();
+    this.resolve = options.resolve ?? ((host) => dnsLookup(host, { all: true, verbatim: true }));
+  }
+
+  /** Refuses (FetchRefused) an address a GET here would refuse, without sending anything: for the browser's first page. */
+  async assertPublic(address: string, allowed: readonly string[]): Promise<void> {
+    const url = new URL(address);
+    this.check(url, allowed);
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    if (isIP(host)) return;
+    const addresses = await this.resolve(host);
+    const refused = addresses.find((a) => this.isBlocked(a.address));
+    if (addresses.length === 0 || refused) throw new FetchRefused(`Refused: ${host} resolves to a private or local address (${refused?.address ?? "none"})`);
+  }
 
   /** A GET, following redirects, each address checked; the body up to maxBytes (decompressed). */
-  private async get(
+  async get(
     start: string,
     headers: Record<string, string>,
     allowed: readonly string[],
     { maxBytes, timeout }: { maxBytes: number; timeout: number },
-  ): Promise<{ status: number; contentType: string; etag: string | null; lastModified: string | null; body: Buffer; truncated: boolean }> {
+  ): Promise<HttpResponse> {
     let url = new URL(start);
     for (let hop = 0; ; hop++) {
       this.check(url, allowed);
@@ -164,6 +198,7 @@ export class HttpFetchStep implements StepExecutor {
       };
       return {
         status: response.statusCode ?? 0,
+        url: url.href,
         contentType: (header("content-type") ?? "").split(";")[0].trim().toLowerCase(),
         etag: header("etag"),
         lastModified: header("last-modified"),
@@ -173,7 +208,7 @@ export class HttpFetchStep implements StepExecutor {
     }
   }
 
-  private check(url: URL, allowed: readonly string[]): void {
+  check(url: URL, allowed: readonly string[]): void {
     if (url.protocol !== "https:" && url.protocol !== "http:") throw new FetchRefused(`Refused: ${url.protocol} isn't http(s)`);
     const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
     if (!hostMatches(host, allowed)) throw new FetchRefused(`Refused: ${host} isn't in the pipeline's allowedDomains`);

@@ -544,6 +544,15 @@ steps:
       ]);
     });
 
+    it("checks shop.product's addresses inside products too", () => {
+      const product = (products: unknown[]) =>
+        pipeline([{ id: "product", type: "shop.product", with: { products } }], { policy: { allowedDomains: ["www.bergfreunde.eu"] } });
+      ok(compiler.compile(product([{ url: "https://www.bergfreunde.eu/jacket/", select: { size: "M", color: "Black" } }])));
+      expect(errorsOf(compiler.compile(product([{ url: "https://www.bergfreunde.eu/a/" }, { url: "https://shop.test/b" }])))).toEqual([
+        "steps[0].with.products[1].url: shop.test isn't in policy.allowedDomains: add it there to read from it",
+      ]);
+    });
+
     it("checks when's reference, and gives an inserted gate the same when", () => {
       const steps = [
         { id: "search", type: "test.search", with: { query: "dotnet" } },

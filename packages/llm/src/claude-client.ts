@@ -18,6 +18,11 @@ export interface StructuredRequest<S extends z.ZodObject> {
    * classification). Below the model's minimum prefix it simply isn't cached; a cache write costs 1.25× input.
    */
   cacheSystem?: boolean;
+  /**
+   * A long start of the prompt that repeats across calls (a page outline, asked again with what failed): cached with
+   * the system prompt, `prompt` follows it. Retries then pay a tenth for it.
+   */
+  cachedPrompt?: string;
 }
 
 export interface StructuredResult<T> {
@@ -135,7 +140,17 @@ function messageParams<S extends z.ZodObject>(request: StructuredRequest<S>) {
     system: request.cacheSystem
       ? [{ type: "text" as const, text: request.system, cache_control: { type: "ephemeral" as const } }]
       : request.system,
-    messages: [{ role: "user" as const, content: request.prompt }],
+    messages: [
+      {
+        role: "user" as const,
+        content: request.cachedPrompt
+          ? [
+              { type: "text" as const, text: request.cachedPrompt, cache_control: { type: "ephemeral" as const } },
+              ...(request.prompt ? [{ type: "text" as const, text: request.prompt }] : []),
+            ]
+          : request.prompt,
+      },
+    ],
     output_config: { effort, format: { type: "json_schema" as const, schema: betaZodOutputFormat(request.schema).schema } },
   };
 }
