@@ -222,6 +222,8 @@ export async function startFixtureSites(): Promise<FixtureSites> {
       if (url.pathname === "/apply/7" && req.method === "GET") return html(200, applyForm());
       if (url.pathname === "/jobs/8") return html(200, inlineForm());
       if (url.pathname === "/apply/8") {
+        // A real server takes a moment: the thank-you comes well after the click.
+        await new Promise((resolve) => setTimeout(resolve, 800));
         res.writeHead(200, { "content-type": "application/json" }).end('{"status":"mail_sent"}');
         return;
       }

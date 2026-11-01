@@ -2,6 +2,7 @@ import { type PrismaClient, type RunStatus } from "@ai-me/db";
 import { type CompiledDefinition } from "@ai-me/shared";
 import {
   isScheduled,
+  MAINTENANCE_SCHEDULE,
   QUEUES,
   REFLECTION_SCHEDULE,
   type JobQueue,
@@ -13,6 +14,7 @@ import {
   type TriggerJob,
 } from "@ai-me/queue";
 import { Logger } from "@nestjs/common";
+import { type ArtifactStore } from "../browser/artifact-store";
 import { type Learning } from "../learning/learning";
 import { type Reflector } from "../learning/reflection";
 import { type PipelineRunner } from "../runner/pipeline-runner";
@@ -40,6 +42,8 @@ export class JobHandlers {
     private readonly reflector?: Reflector,
     /** README §6: open takeovers lost their page in a restart. */
     private readonly takeovers?: TakeoverDesk,
+    /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
+    private readonly retention?: { artifacts: ArtifactStore; days: number },
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -60,6 +64,19 @@ export class JobHandlers {
       await boss.work<ReflectionPollJob>(QUEUES.reflectionPoll, work, async ([job]) => job && reflector.check(job.data.reflectionId));
       await boss.schedule(QUEUES.reflection, REFLECTION_SCHEDULE.cron, {}, { tz: REFLECTION_SCHEDULE.tz });
     }
+    if (this.retention) {
+      await boss.work(QUEUES.maintenance, work, () => this.maintain());
+      await boss.schedule(QUEUES.maintenance, MAINTENANCE_SCHEDULE.cron, {}, { tz: MAINTENANCE_SCHEDULE.tz });
+    }
+  }
+
+  /** Nightly: run files older than the retention go (the run and its steps stay). */
+  async maintain(now = new Date()): Promise<number> {
+    if (!this.retention || this.retention.days === 0) return 0;
+    const before = new Date(now.getTime() - this.retention.days * 86_400_000);
+    const pruned = await this.retention.artifacts.prune(this.prisma, before);
+    if (pruned > 0) this.logger.log(`Deleted ${pruned} run file(s) older than ${this.retention.days} days`);
+    return pruned;
   }
 
   /** Advances a run; one held back by a rate limit is sent again for when the limit allows. */

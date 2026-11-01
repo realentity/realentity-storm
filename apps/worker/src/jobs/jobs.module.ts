@@ -197,7 +197,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk],
+      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV],
       useFactory: (
         db: PrismaService,
         runner: PipelineRunner,
@@ -205,7 +205,9 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         learning: Learning,
         reflector: Reflector,
         takeovers: TakeoverDesk,
-      ) => new JobHandlers(db.client, runner, queue, learning, reflector, takeovers),
+        artifacts: ArtifactStore,
+        env: ServerEnv,
+      ) => new JobHandlers(db.client, runner, queue, learning, reflector, takeovers, { artifacts, days: env.ARTIFACTS_RETENTION_DAYS }),
     },
     JobsLifecycle,
   ],

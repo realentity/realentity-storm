@@ -16,6 +16,8 @@ export const QUEUES = {
   reflection: "reflection",
   /** Check a submitted reflection batch; saves its suggestions once it has ended. */
   reflectionPoll: "reflection-poll",
+  /** Nightly housekeeping: run files (screenshots, traces) past their retention. */
+  maintenance: "maintenance",
 } as const;
 
 export interface RunJob {
@@ -28,6 +30,9 @@ export interface TriggerJob {
 
 /** The nightly reflection: after the server's 02:30 backup, before the day's first runs. */
 export const REFLECTION_SCHEDULE = { cron: "30 3 * * *", tz: "Europe/Sofia" } as const;
+
+/** Nightly housekeeping, after the reflection. */
+export const MAINTENANCE_SCHEDULE = { cron: "15 4 * * *", tz: "Europe/Sofia" } as const;
 
 export interface LearningJob {
   proposalId: string;
@@ -62,4 +67,5 @@ export const QUEUE_DEFINITIONS: PgBoss.Queue[] = [
   // stately: one waiting and one active at a time (a second request while one waits is dropped).
   { name: QUEUES.reflection, policy: "stately", retryLimit: 2, retryDelay: 300 },
   { name: QUEUES.reflectionPoll, policy: "standard", retryLimit: 5, retryDelay: 120, retryBackoff: true },
+  { name: QUEUES.maintenance, policy: "stately", retryLimit: 2, retryDelay: 600 },
 ];

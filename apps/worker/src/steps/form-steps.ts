@@ -205,7 +205,7 @@ export class FillAndSubmitStep implements StepExecutor {
         }
         await submitButton(current, form.submit).click();
         await settle(current, timeout);
-        submitted = await sent(current, fields, before);
+        submitted = await sentWithin(current, fields, before, timeout);
         if (!submitted) {
           await attention.needMe("The site didn't take the form (see its messages); fix it and send it, or Abort", current.url());
           submitted = await sent(current, fields, before);
@@ -351,6 +351,16 @@ async function sent(page: Page, fields: FormField[], before: string): Promise<bo
   if (typed.length === 0) return false;
   const values = await Promise.all(typed.map((f) => page.locator(f.key).first().inputValue().catch(() => null)));
   return values.every((value) => value === "");
+}
+
+/** An AJAX form answers a while after the click (the page was idle already, so no load state waits for it). */
+async function sentWithin(page: Page, fields: FormField[], before: string, timeout: number): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (await sent(page, fields, before)) return true;
+    if (Date.now() > deadline) return false;
+    await page.waitForTimeout(250);
+  }
 }
 
 async function bodyText(page: Page): Promise<string> {

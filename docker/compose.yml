@@ -39,11 +39,20 @@ services:
       DOCUMENTS_DIR: /data/documents
     depends_on:
       migrate: { condition: service_completed_successfully }
+    # On the server's secondary disk (static files of apps, like Paperless and Memos). Long form on purpose: a missing disk
+    # stops the container instead of files landing on the main disk.
     volumes:
       # Screenshots, traces and downloads the worker stored: the api only reads them, to serve them to me.
-      - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts:ro
+      - type: bind
+        source: ${AIME_ARTIFACTS:-/data/ai-me/artifacts}
+        target: /data/artifacts
+        read_only: true
+        bind: { create_host_path: false }
       # My documents (CV, cover letters): uploaded through the api, read by the worker to attach as approved.
-      - ${AIME_DOCUMENTS:-../data/documents}:/data/documents
+      - type: bind
+        source: ${AIME_DOCUMENTS:-/data/ai-me/documents}
+        target: /data/documents
+        bind: { create_host_path: false }
     healthcheck:
       test:
         ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
@@ -66,10 +75,18 @@ services:
       ARTIFACTS_DIR: /data/artifacts
       DOCUMENTS_DIR: /data/documents
     volumes:
-      # Files the pipelines produce (screenshots, traces, downloads); in the app folder, so in the nightly config backup.
-      - ${AIME_ARTIFACTS:-../data/artifacts}:/data/artifacts
+      # Files the pipelines produce (screenshots, traces, downloads), deleted after ARTIFACTS_RETENTION_DAYS; working
+      # files, not backed up (the runs themselves are in the database).
+      - type: bind
+        source: ${AIME_ARTIFACTS:-/data/ai-me/artifacts}
+        target: /data/artifacts
+        bind: { create_host_path: false }
       # My documents: only read here (the api writes them); attached to forms only as approved, checked by SHA-256.
-      - ${AIME_DOCUMENTS:-../data/documents}:/data/documents:ro
+      - type: bind
+        source: ${AIME_DOCUMENTS:-/data/ai-me/documents}
+        target: /data/documents
+        read_only: true
+        bind: { create_host_path: false }
     # The browser stack (README §6): Chromium needs a large /dev/shm; tini reaps Chromium's and Xvfb's processes.
     # Port 6080 (websockify, the live view) is reachable only on the compose network, through Caddy's /vnc.
     shm_size: 1gb

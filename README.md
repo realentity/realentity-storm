@@ -615,6 +615,9 @@ SESSION_TTL_HOURS=168
 # Browser / live view (the worker image sets DISPLAY=:99 and ARTIFACTS_DIR=/data/artifacts)
 # My documents (CV, cover letters) that application forms attach: the api writes, the worker only reads
 DOCUMENTS_DIR=data/documents
+# Run files (screenshots, traces) older than this are deleted nightly; 0 keeps them. On the server both folders are on the
+# secondary disk (/data/ai-me, docker/compose.yml)
+ARTIFACTS_RETENTION_DAYS=90
 # x11vnc's passwords: full control, and view-only (input ignored); VNC uses the first 8 characters. Empty: no live view
 VNC_PASSWORD=
 VNC_VIEW_PASSWORD=

@@ -1,6 +1,6 @@
 import { type PrismaClient } from "@ai-me/db";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 export interface ArtifactOwner {
@@ -50,6 +50,25 @@ export class ArtifactStore {
       await rm(from, { force: true });
     });
     return this.record(prisma, owner, kind, relative, content, mime);
+  }
+
+  /**
+   * Deletes run files made before `before` (rows and files; a run's folder goes with its last file), in batches, and
+   * returns how many. A file already gone counts too: its row is what the run page lists.
+   */
+  async prune(prisma: PrismaClient, before: Date): Promise<number> {
+    let pruned = 0;
+    for (;;) {
+      const batch = await prisma.artifact.findMany({ where: { dateCreated: { lt: before } }, select: { artifactId: true, path: true }, take: 500 });
+      if (batch.length === 0) return pruned;
+      for (const artifact of batch) {
+        const path = resolve(this.root, artifact.path);
+        if (path.startsWith(this.root)) await rm(path, { force: true });
+        await rmdir(dirname(path)).catch(() => undefined);
+      }
+      await prisma.artifact.deleteMany({ where: { artifactId: { in: batch.map((a) => a.artifactId) } } });
+      pruned += batch.length;
+    }
   }
 
   /** Where a run's downloads wait for their checks; never served. */

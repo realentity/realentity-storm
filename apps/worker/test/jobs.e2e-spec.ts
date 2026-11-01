@@ -4,6 +4,11 @@ import { JobQueue, QUEUES } from "@ai-me/queue";
 import { PipelineCompiler } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
 import { z } from "zod";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ArtifactStore } from "../src/browser/artifact-store";
 import { JobHandlers } from "../src/jobs/job-handlers";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry } from "../src/runner/step-executor";
@@ -169,6 +174,35 @@ steps:
     expect((await jobsFor(runId)).map((j) => j.name)).toEqual([QUEUES.runsHeaded]);
     const headed = await queue.boss.getQueue(QUEUES.runsHeaded);
     expect(headed?.policy).toBe("singleton");
+  });
+
+  it("nightly maintenance deletes run files past their retention, and keeps the runs and newer files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "aime-retention-"));
+    try {
+      const runId = await runner.start(await version(DIGEST), { trigger: "manual" });
+      const file = async (name: string, daysOld: number) => {
+        await mkdir(join(dir, runId), { recursive: true });
+        await writeFile(join(dir, runId, name), "png");
+        const dateCreated = new Date(Date.now() - daysOld * 86_400_000);
+        return db.client.artifact.create({ data: { userId, runId, kind: "screenshot", path: `${runId}/${name}`, dateCreated } });
+      };
+      const old = await file("old.png", 91);
+      const recent = await file("recent.png", 10);
+      const retained = new JobHandlers(db.client, runner, queue, undefined, undefined, undefined, { artifacts: new ArtifactStore(dir), days: 90 });
+
+      expect(await retained.maintain()).toBe(1);
+      expect(await db.client.artifact.findUnique({ where: { artifactId: old.artifactId } })).toBeNull();
+      expect(existsSync(join(dir, runId, "old.png"))).toBe(false);
+      expect(await db.client.artifact.findUnique({ where: { artifactId: recent.artifactId } })).not.toBeNull();
+      expect(existsSync(join(dir, runId, "recent.png"))).toBe(true);
+      expect(await db.client.run.findUnique({ where: { runId } })).not.toBeNull();
+
+      // 0 keeps everything.
+      const forever = new JobHandlers(db.client, runner, queue, undefined, undefined, undefined, { artifacts: new ArtifactStore(dir), days: 0 });
+      expect(await forever.maintain(new Date(Date.now() + 1000 * 86_400_000))).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   describe("schedules", () => {

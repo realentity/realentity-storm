@@ -18,5 +18,16 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # No secondary disk on a workstation: the repository's data/ folder (create data/artifacts and data/documents first).
+  api:
+    volumes:
+      - ../data/artifacts:/data/artifacts:ro
+      - ../data/documents:/data/documents
+
+  worker:
+    volumes:
+      - ../data/artifacts:/data/artifacts
+      - ../data/documents:/data/documents:ro
+
 volumes:
   pgdata: {}
