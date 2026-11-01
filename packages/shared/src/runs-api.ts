@@ -249,6 +249,8 @@ export const SettingsSchema = z
     monthlyBudgetUsd: z.number().positive().max(100_000).nullable().optional(),
     /** Facts for application forms (browser.mapForm); "" clears it. */
     profile: z.string().max(10_000).optional(),
+    /** Approve and Reject on the AI ME bot's messages (M12-T4). */
+    telegramApprovals: z.boolean().optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -268,6 +270,7 @@ export interface SettingsView {
   budgetSource: "settings" | "env" | null;
   /** Facts for application forms (browser.mapForm). */
   profile: string;
+  telegramApprovals: boolean;
 }
 
 // #endregion

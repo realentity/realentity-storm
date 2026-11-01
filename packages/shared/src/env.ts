@@ -69,9 +69,19 @@ export const ServerEnvSchema = z
     /** Downloads larger than this are rejected in quarantine. */
     DOWNLOAD_MAX_MB: z.coerce.number().int().min(1).max(500).default(25),
 
-    /** notify.telegram: messages go to this chat only. */
+    /**
+     * The AI ME bot (M12): its messages go to this chat only, my private chat with it, whose id is my Telegram user
+     * id; commands and buttons are taken only from it.
+     */
     TELEGRAM_BOT_TOKEN: optional(z.string().regex(/^\d+:[\w-]{30,}$/, "a bot token from @BotFather (123456:ABC...)")),
     TELEGRAM_CHAT_ID: optional(z.string().regex(/^-?\d+$/, "a numeric chat id")),
+    /**
+     * The secret Telegram sends with every update (setWebhook secret_token), also checked by hooks-gateway on the
+     * VPS. Unset: /hooks/telegram answers nothing.
+     */
+    TELEGRAM_WEBHOOK_SECRET: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
+    /** The public address of the webhooks, e.g. https://hooks.example.com/aime; shown on the pipeline page. */
+    HOOKS_PUBLIC_URL: optional(z.url({ protocol: /^https$/ }).transform((url) => url.replace(/\/+$/, ""))),
 
     /**
      * Mail (email.* steps): IMAP and SMTP with an app password. The address and the app password are a credential

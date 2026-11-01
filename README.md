@@ -180,6 +180,30 @@ The worker interprets a `PipelineVersion` step by step:
 - **Budget:** when this month's LLM cost (`Step.llmUsage`) reaches the budget (Settings, else `LLM_MONTHLY_BUDGET_USD`), runs of non-essential pipelines stop before their next LLM step. Pipelines marked essential keep running.
 - **Queue:** pg-boss in PostgreSQL. `runs` advances runs in parallel; `runs-headed` is a singleton queue, so one headed run at a time across all workers; `pipeline-trigger` fires cron schedules in the pipeline's time zone (keyed by pipeline); the worker reconciles schedules with the enabled pipelines at startup and whenever the api asks. A decision queues its run again. The runner claims a run before advancing it, so a duplicate or retried job is harmless.
 
+### 2.7 Triggers, webhooks and the AI ME bot
+
+Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M12):
+
+| Trigger | Starts when | `{{trigger.*}}` |
+| --- | --- | --- |
+| `{ on: run.finished, pipeline: Jobs, status: [DONE] }` | a run of that pipeline (by name) finishes; `status` defaults to `[DONE]`, `FAILED` allowed | `runId`, `pipeline`, `status`, `summary`, `outputs` (each step's output by id) |
+| `{ on: application.status, status: [INTERVIEW] }` | an application is prepared, submitted, … (any status when left out) | `applicationId`, `status`, `job` (title, company, location, url) |
+| `{ on: recipe.broken, site: dev.bg }` | a recipe stops matching its page (once per breakage) | `site`, `recipe`, `version`, `reason`, `fixProposed` |
+| `{ on: email.classified, label: [recruiter] }` | an `email.classify` step gives an email one of these labels (one run per email) | `label`, `reason`, `message` (the email) |
+| `{ webhook: hmac-sha256 }` or `{ webhook: token }` | a call to the pipeline's webhook address | `body` (JSON, or the text), `event` (`X-GitHub-Event`), `receivedAt` |
+
+- **Only enabled pipelines** start on a trigger, never with the kill switch on, never on their own event, and a chain of triggered runs stops at depth 3. Dry runs trigger nothing.
+- `{{trigger.*}}` is type-checked by the compiler against the event, and available only in a pipeline with that trigger. As a side effect's **target**, only an email's own addresses (`trigger.message.*`) or a posting's URL (`trigger.job.url`) may be used: a webhook body is written by whoever calls it, and a finished run's outputs may be LLM text.
+- **Webhooks:** the pipeline page creates the address (`https://hooks.example.com/aime/<id>`, 32 random bytes) and a secret, shown once and rotatable. `hmac-sha256` checks a GitHub-style `X-Hub-Signature-256` over the body as sent; `token` an `Authorization: Bearer` header. The api checks the address, the size (64 KB) and a token (against its SHA-256) and queues the call; the **worker** checks a signature, since only the worker decrypts (§7). The body is data, like an email's text.
+
+**The AI ME bot** (its own Telegram bot, not n8n's):
+
+- **Tells me** what a run waits for: each new proposal with **Approve / Reject / Open** (one message for a gate with more than 5), "needs you" with **Open the live view**, a broken recipe with **Open the recipe**. When I decide anywhere, the message says so and loses its buttons.
+- **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens AI ME. **Settings → Approve on Telegram** turns the buttons off.
+- **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`. Only from my private chat (`TELEGRAM_CHAT_ID` is my user id); commands older than 5 minutes are dropped.
+
+**How it reaches AI ME,** which stays off the Internet: Telegram and webhook callers → Cloudflare (`hooks.example.com`) → the VPS's Traefik → **hooks-gateway** (checks the bot's secret path and header and my user id, or the webhook path's shape and size) → Tailscale → server `:8101`, a second Caddy site that serves only `POST /hooks/*` → the api's `/api/hooks/*`. The api checks Telegram's secret header and my user id again. The VPS can reach nothing else of AI ME.
+
 ---
 
 ## 3. Proposal lifecycle (gates)
@@ -513,7 +537,7 @@ Monorepo setup: **pnpm** workspaces with a version **catalog** in `pnpm-workspac
 - **Run page**: live view, step timeline (per `forEach` item), screenshots, payloads, results, LLM usage, trace download.
 - **History**: filter by pipeline, version, status, date, target.
 - **Daily digest** (email or Telegram): what ran, what's waiting for me, failures, suggested rules and pipeline changes.
-- **Notifications** when a run enters `WAITING_FOR_USER`.
+- **Notifications** when a run enters `WAITING_FOR_USER`: the AI ME bot, with Approve / Reject / Open on each proposal (§2.7).
 
 ---
 
@@ -631,9 +655,12 @@ TAKEOVER_TIMEOUT_MINUTES=30
 DOWNLOAD_MAX_MB=25
 # Headed runs are always one at a time (one display): the runs-headed queue is a pg-boss singleton queue
 
-# Notifications
+# The AI ME bot (§2.7): token, my Telegram user id, the secret Telegram sends with each update
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
+TELEGRAM_WEBHOOK_SECRET=
+# Public address of the webhooks (shown on the pipeline page)
+HOOKS_PUBLIC_URL=https://hooks.example.com/aime
 ```
 
 ---
@@ -665,7 +692,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 
 ## 16. Security checklist
 
-- [ ] No public ports, Tailscale only
+- [ ] No public ports, Tailscale only; the VPS's hooks-gateway reaches only the hooks-only site (`POST /hooks/*`)
 - [ ] Single-user auth with TOTP on the web UI
 - [ ] `ENCRYPTION_KEY` only in `.env`, backed up separately from DB backups
 - [ ] Credentials: encrypted with AES-256-GCM envelope encryption, AAD = row ID, write-only via API
@@ -679,6 +706,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Per-step-type rate limits; kill switch pauses everything and cancels queued side effects
 - [ ] Executed payload must match the hash of the approved payload
 - [ ] Untrusted content (email/page/file text) is clearly delimited in prompts and never treated as instructions
+- [ ] Telegram and webhook calls carry their own secret (bot header + my user id; per-pipeline HMAC or token); signatures checked by the worker; a webhook body is never a target
 - [ ] `browser.agent` limited by domain allowlist, action budget and fixed action set; it submits and uploads nothing
 - [ ] noVNC password-protected, view-only by default
 - [ ] Downloads go to a quarantine folder; type and size checked before processing

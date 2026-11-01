@@ -70,4 +70,26 @@ test.describe("pipelines", () => {
     await page.goto(`/history?pipelineId=${pipeline.pipelineId}&version=1`);
     await expect(page.getByTestId("runs").locator("tbody tr")).toHaveCount(1);
   });
+  // M12-E1
+  test("a webhook pipeline: create its address, see the secret once, rotate it", async ({ page }) => {
+    const name = unique("E1 hook");
+    const pipeline = await createPipeline(page, REPLIES(name, "{ webhook: hmac-sha256 }"));
+    await page.goto(`/pipelines/${pipeline.pipelineId}`);
+    await expect(page.getByText("On a webhook call (HMAC-SHA256 signature), while enabled.")).toBeVisible();
+
+    const card = page.getByTestId("webhook");
+    await expect(card).toContainText("No address yet");
+    await page.getByTestId("webhook-rotate").click();
+    await expect(page.getByTestId("webhook-address")).toContainText(/\/hooks\/[A-Za-z0-9_-]{43}$/);
+    const first = await page.getByTestId("webhook-secret").locator("code").innerText();
+    const address = await page.getByTestId("webhook-address").innerText();
+
+    await page.reload();
+    await expect(page.getByTestId("webhook-address")).toHaveText(address);
+    await expect(page.getByTestId("webhook-secret")).toHaveCount(0);
+
+    await page.getByTestId("webhook-rotate").click();
+    await expect(page.getByTestId("webhook-secret").locator("code")).not.toHaveText(first);
+    await expect(page.getByTestId("webhook-address")).toHaveText(address);
+  });
 });

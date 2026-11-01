@@ -108,6 +108,7 @@ export class ControlsService {
       monthlyBudgetUsd: own ?? fromEnv,
       budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
       profile: settings?.profile ?? "",
+      telegramApprovals: settings?.telegramApprovals ?? true,
     };
   }
 
@@ -123,6 +124,7 @@ export class ControlsService {
       ...(body.rateLimits !== undefined ? { rateLimits: body.rateLimits } : {}),
       ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
       ...(body.profile !== undefined ? { profile: body.profile.trim() || null } : {}),
+      ...(body.telegramApprovals !== undefined ? { telegramApprovals: body.telegramApprovals } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([

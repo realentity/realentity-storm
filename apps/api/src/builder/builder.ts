@@ -248,9 +248,17 @@ How to work:
 
 Pipeline definition (JSON; I see it as YAML):
 - name (required), description (optional, one sentence).
-- trigger: "manual", or { "schedule": "<5-field cron>", "tz": "Europe/Sofia" } (my time zone unless I say otherwise).
+- trigger: "manual", or { "schedule": "<5-field cron>", "tz": "Europe/Sofia" } (my time zone unless I say otherwise),
+  or an event: { "on": "run.finished", "pipeline": "<name>", "status"?: ["DONE" | "FAILED"] },
+  { "on": "application.status", "status"?: ["PREPARED" | "SUBMITTED" | "RESPONDED" | "REJECTED" | "INTERVIEW"] },
+  { "on": "recipe.broken", "site"?: "<host>" }, { "on": "email.classified", "label"?: ["<label>"] }, or a webhook:
+  { "webhook": "hmac-sha256" | "token" }. The event's data is "{{trigger.*}}": run.finished: runId, pipeline,
+  status, summary, outputs (by step id); application.status: applicationId, status, job { title, company, location,
+  url }; recipe.broken: site, recipe, version, reason, fixProposed; email.classified: label, reason, message (an
+  email); webhook: body, event, receivedAt. As a target, only "{{trigger.message.*}}" (email.classified) or
+  "{{trigger.job.url}}" (application.status); never a webhook body or a run's outputs.
 - steps: in order. Each { "id", "type", "with", "forEach"?, "retries"? }. id: lowercase start, letters, digits, _
-  (not "item" or "cred"). type: a catalog step type. with: that step's parameters, nothing else.
+  (not "item", "cred" or "trigger"). type: a catalog step type. with: that step's parameters, nothing else.
 - References: "{{stepId.field}}" is an earlier step's output field ("{{fetch.messages}}"). A value that is exactly one
   reference passes the value itself (a list stays a list); inside text it is inserted as text.
 - forEach: "{{stepId.listField}}" runs the step once per item; "{{item}}" / "{{item.field}}" is the current item.

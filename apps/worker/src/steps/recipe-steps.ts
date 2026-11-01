@@ -104,7 +104,7 @@ export class BrowserExtractStep implements StepExecutor {
       } else {
         const failed = `Recipe ${name} v${row.version} no longer matches the page: ${broken}`;
         if (!fallback || !this.fallback) {
-          await this.markBroken(row, broken, false);
+          await this.markBroken(context, row, broken, false);
           throw new Error(failed);
         }
         let fixed: Recipe;
@@ -112,10 +112,10 @@ export class BrowserExtractStep implements StepExecutor {
           fixed = await this.fallback.fix(context, row, recipe, combinations[0] ?? {}, timeout);
         } catch (error) {
           if (error instanceof RunStopped) throw error;
-          await this.markBroken(row, broken, false);
+          await this.markBroken(context, row, broken, false);
           throw new Error(`${failed}. The fallback found no fix: ${error instanceof Error ? error.message : String(error)}`);
         }
-        await this.markBroken(row, broken, true);
+        await this.markBroken(context, row, broken, true);
         const again = await this.deps.pool.lease(false, { storageState, acceptDownloads: false });
         try {
           const page = await again.context.newPage();
@@ -133,14 +133,21 @@ export class BrowserExtractStep implements StepExecutor {
     return { items, pages };
   }
 
-  private async markBroken(row: SiteRecipe, reason: string, fixProposed: boolean): Promise<void> {
+  private async markBroken(context: StepContext, row: SiteRecipe, reason: string, fixProposed: boolean): Promise<void> {
     await this.deps.prisma.siteRecipe.update({ where: { siteRecipeId: row.siteRecipeId }, data: { brokenAt: new Date(), brokenReason: reason } });
     // Once per breakage: the next failures of the same version say nothing new.
     if (!row.brokenAt) {
       const next = fixProposed
         ? "The agent found a fix: approve it on the Recipes page (runs read with it until then)."
         : "Teach it again on the Recipes page.";
-      await this.deps.notify?.(`AI ME: recipe ${row.name} v${row.version} is broken: ${reason}. ${next}`).catch(() => undefined);
+      const origin = this.deps.appOrigin;
+      await this.deps
+        .notify?.({
+          text: `AI ME: recipe ${row.name} v${row.version} is broken: ${reason}. ${next}`,
+          buttons: origin ? [[{ text: "Open the recipe", url: `${origin}/recipes/${row.name}` }]] : [],
+        })
+        .catch(() => undefined);
+      await context.emit?.("recipe.broken", { site: row.site, recipe: row.name, version: row.version, reason, fixProposed });
     }
   }
 

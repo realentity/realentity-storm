@@ -1,6 +1,7 @@
 # AI ME on the server (app 10; docs/deployment.md). Lives in /opt/ai-me (a clone of this repository); secrets in
 # /opt/ai-me/.env. The database is the server's native PostgreSQL (storm), which the server's nightly backup dumps.
-# Only the web container publishes a port, on 127.0.0.1:7100; `tailscale serve` publishes that as :8100 (tailnet only).
+# Only the web container publishes ports, on 127.0.0.1: 7100, which `tailscale serve` publishes as :8100 (tailnet only),
+# and 7101, the hooks-only site, as :8101 (for the VPS's hooks-gateway).
 name: ai-me
 
 x-node: &node
@@ -114,6 +115,8 @@ services:
     image: ai-me/web:local
     ports:
       - "127.0.0.1:${AIME_PORT:-7100}:8080" # app 10 (the server's port convention: 7NNE local, 8NNE tailnet)
+      # The hooks-only site (Caddyfile :8081): `tailscale serve --http=8101`, reachable by the VPS's hooks-gateway only.
+      - "127.0.0.1:${AIME_HOOKS_PORT:-7101}:8081"
     depends_on:
       api: { condition: service_healthy }
     restart: unless-stopped

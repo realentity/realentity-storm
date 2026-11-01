@@ -72,6 +72,11 @@ export class EmailClassifyStep extends LlmStep {
       (chunk) => this.call(context, system, chunk, schema, true),
       (index) => emailBlock(messages[index], TRIAGE_TEXT, index),
     );
+    // email.classified (M12-T1): one event per labelled email, for the pipelines that act on a label.
+    for (const r of results) {
+      const message = messages[r.index];
+      if (message) await context.emit?.("email.classified", { label: r.label, reason: r.reason, message });
+    }
     return {
       kept: results.filter((r) => keep.includes(r.label)).map((r) => messages[r.index]),
       dropped: results.filter((r) => !keep.includes(r.label)).map((r) => messages[r.index]),

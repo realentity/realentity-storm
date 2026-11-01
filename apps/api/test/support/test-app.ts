@@ -30,7 +30,13 @@ export interface TestApp {
  * for a scripted builder (null: as without ANTHROPIC_API_KEY).
  */
 export async function createTestApp(
-  options: { configured?: boolean; catalog?: StepCatalog; builderLlm?: LlmChat | null } = {},
+  options: {
+    configured?: boolean;
+    catalog?: StepCatalog;
+    builderLlm?: LlmChat | null;
+    /** Other providers replaced, e.g. TELEGRAM_FETCH. */
+    overrides?: { provide: unknown; useValue: unknown }[];
+  } = {},
 ): Promise<TestApp> {
   const totpSecret = authenticator.generateSecret();
   if (options.configured === false) {
@@ -45,8 +51,9 @@ export async function createTestApp(
   const builder = Test.createTestingModule({ imports: [AppModule] });
   if (options.catalog) builder.overrideProvider(StepCatalog).useValue(options.catalog);
   if (options.builderLlm !== undefined) builder.overrideProvider(BUILDER_LLM).useValue(options.builderLlm);
+  for (const { provide, useValue } of options.overrides ?? []) builder.overrideProvider(provide).useValue(useValue);
   const moduleRef = await builder.compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   configureApp(app);
   await app.init();
 

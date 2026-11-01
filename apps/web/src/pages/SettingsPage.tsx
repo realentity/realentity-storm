@@ -23,6 +23,7 @@ export function SettingsPage() {
         </div>
         <div className="col-lg-5 d-flex flex-column gap-3">
           <Budget settings={settings.data} onSaved={settings.reload} />
+          <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
           <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
         </div>
       </div>
@@ -39,6 +40,38 @@ function useSave(onSaved: () => void) {
     onSaved();
   };
   return { ...action, save };
+}
+
+/** M12-T4: Approve and Reject on the AI ME bot's messages. */
+function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  return (
+    <div className="card">
+      <div className="card-body">
+        <ErrorAlert error={action.error} />
+        <label className="form-check form-switch mb-0">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            checked={settings.telegramApprovals}
+            disabled={action.busy}
+            onChange={(e) =>
+              void action.save(
+                { telegramApprovals: e.target.checked },
+                e.target.checked ? "Approvals on Telegram are on" : "Approvals on Telegram are off",
+              )
+            }
+            data-testid="telegram-approvals"
+          />
+          <span className="form-check-label">Approve on Telegram</span>
+          <div className="small text-secondary">
+            The AI ME bot's messages get Approve and Reject when the whole payload fits in the message and nothing new is targeted.
+            Off: they only link here.
+          </div>
+        </label>
+      </div>
+    </div>
+  );
 }
 
 function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {

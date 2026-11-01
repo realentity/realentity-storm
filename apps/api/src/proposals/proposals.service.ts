@@ -14,7 +14,10 @@ import { z } from "zod";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
+import { TelegramNotices } from "../telegram/telegram-notices";
 import { PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./proposal-view";
+
+type Via = "the app" | "Telegram";
 
 const ReviewSelectionSchema = z.object({ items: z.array(z.unknown()) }).strict();
 
@@ -30,6 +33,7 @@ export class ProposalsService {
     private readonly controls: ControlsService,
     private readonly queue: JobQueue,
     private readonly events: EventsService,
+    private readonly telegram: TelegramNotices,
   ) {}
 
   async list(userId: string, status: ProposalStatusName): Promise<ProposalView[]> {
@@ -45,7 +49,8 @@ export class ProposalsService {
     return proposalView(await this.find(userId, proposalId));
   }
 
-  async approve(userId: string, proposalId: string, body: ApproveProposalRequest): Promise<ProposalView> {
+  /** `via`: where I decided, for the AI ME bot's message about it. */
+  async approve(userId: string, proposalId: string, body: ApproveProposalRequest, via: Via = "the app"): Promise<ProposalView> {
     await this.controls.assertNotPaused(userId);
     const proposal = await this.find(userId, proposalId);
     assertPending(proposal);
@@ -62,13 +67,15 @@ export class ProposalsService {
       },
       decision: { kind: edited ? "EDITED" : "APPROVED", diff: edited ? { changed: changedFields(original, final) } : undefined },
     });
+    await this.telegram.decided(proposalId, `✅ Approved${edited ? " with edits" : ""} in ${via}`);
     return this.get(userId, proposalId);
   }
 
-  async reject(userId: string, proposalId: string, reason: string | undefined): Promise<ProposalView> {
+  async reject(userId: string, proposalId: string, reason: string | undefined, via: Via = "the app"): Promise<ProposalView> {
     const proposal = await this.find(userId, proposalId);
     assertPending(proposal);
     await this.decide(proposal, { proposal: { status: "REJECTED" }, decision: { kind: "REJECTED", reason: reason ?? null } });
+    await this.telegram.decided(proposalId, `✖ Rejected in ${via}`);
     return this.get(userId, proposalId);
   }
 

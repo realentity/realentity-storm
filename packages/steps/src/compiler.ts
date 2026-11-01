@@ -10,10 +10,12 @@ import {
   type PipelineStep,
   type ProvenanceRule,
   type TargetKind,
+  type Trigger,
 } from "@ai-me/shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
 import { defaultCatalog, type StepCatalog, type StepDefinition } from "./catalog";
+import { triggerDataSchema, triggerTargetIssue } from "./triggers";
 import { describeSchema, formatType, isAssignable, isOptional, navigate, UNKNOWN, type TypeInfo } from "./type-info";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,6 +32,8 @@ interface Scope {
   path: string;
   forEach?: string;
   itemType?: TypeInfo;
+  /** The pipeline's trigger: {{trigger.*}} has its event's data. */
+  trigger: Trigger;
 }
 
 type Resolution = { ok: true; type: TypeInfo; credential?: boolean } | { ok: false; message: string };
@@ -80,7 +84,7 @@ export class PipelineCompiler {
         return;
       }
 
-      const scope: Scope = { step, definition: stepDefinition, path };
+      const scope: Scope = { step, definition: stepDefinition, path, trigger: definition.trigger };
       if (step.forEach) {
         const source = referencePath(step.forEach);
         const resolved = this.resolve(source, { ...scope }, known);
@@ -193,6 +197,13 @@ export class PipelineCompiler {
     const [root, ...rest] = path.split(".");
     if (!root || rest.some((segment) => segment.length === 0)) return { ok: false, message: `{{${path}}} is not a valid reference` };
 
+    if (root === "trigger") {
+      const data = triggerDataSchema(scope.trigger);
+      if (!data) return { ok: false, message: `{{${path}}} is only available in a pipeline triggered by an event or a webhook` };
+      const result = navigate(describeSchema(data), rest);
+      return result.ok ? result : { ok: false, message: `{{${path}}}: ${result.message.replace("the output", "the trigger")}` };
+    }
+
     if (root === "item") {
       if (!scope.itemType) return { ok: false, message: `{{${path}}} is only available in a step with forEach` };
       const result = navigate(scope.itemType, rest);
@@ -221,7 +232,7 @@ export class PipelineCompiler {
       const values = Array.isArray(value) ? (value as unknown[]) : [value];
       for (const [i, entry] of values.entries()) {
         const path = `${scope.path}.with.${field}${Array.isArray(value) ? `[${i}]` : ""}`;
-        const issue = addTarget(entry, kind, scope.step.id, field, policy, (root) => known.get(root)?.definition);
+        const issue = addTarget(entry, kind, scope.step.id, field, policy, (root) => known.get(root)?.definition, scope.trigger);
         if (issue) errors.push({ path, message: issue });
       }
     }
@@ -296,12 +307,19 @@ function addTarget(
   field: string,
   policy: CompiledPolicy,
   stepOf: (stepId: string) => StepDefinition | undefined,
+  trigger: Trigger,
 ): string | null {
   if (typeof value !== "string") return `a ${kind} target must be text or a single reference`;
   const whole = WHOLE_REFERENCE.exec(value);
   if (whole?.[1]) {
     const source = whole[1].trim();
     if (source.startsWith("cred:")) return "a credential can't be a target";
+    if (source === "trigger" || source.startsWith("trigger.")) {
+      const issue = triggerTargetIssue(trigger, source);
+      if (issue) return issue;
+      policy.provenance.push({ stepId, field, kind, source });
+      return null;
+    }
     // Targets come from data (a fetched email, a job posting), never from text an LLM wrote (README §1.4).
     const root = stepOf(source.split(".")[0] ?? "");
     const fromPage = root?.pageFields?.includes(source.split(".")[1] ?? "") && source.split(".").length === 2;

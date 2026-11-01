@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@ai-me/db";
+import { type JobPosting, type PrismaClient } from "@ai-me/db";
 import { type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { type FormField, type FormFile } from "@ai-me/steps";
 import { type Locator, type Page } from "playwright";
@@ -385,11 +385,12 @@ export async function prepareApplication(prisma: PrismaClient, context: StepCont
   if (!posting) return;
   const existing = await prisma.application.findUnique({ where: { jobPostingId: posting.jobPostingId } });
   if (existing && existing.status !== "PREPARED") return;
-  await prisma.application.upsert({
+  const application = await prisma.application.upsert({
     where: { jobPostingId: posting.jobPostingId },
     create: { userId: context.userId, jobPostingId: posting.jobPostingId, status: "PREPARED", runId: context.runId },
     update: { runId: context.runId },
   });
+  if (!existing) await emitApplication(context, application.applicationId, "PREPARED", posting);
 }
 
 /** M10-T5: sent: the Application submitted, the posting applied. */
@@ -397,7 +398,7 @@ export async function submitApplication(prisma: PrismaClient, context: StepConte
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
   if (!posting) return;
   const now = new Date();
-  await prisma.$transaction([
+  const [application] = await prisma.$transaction([
     prisma.application.upsert({
       where: { jobPostingId: posting.jobPostingId },
       create: { userId: context.userId, jobPostingId: posting.jobPostingId, status: "SUBMITTED", submittedAt: now, runId: context.runId },
@@ -405,6 +406,16 @@ export async function submitApplication(prisma: PrismaClient, context: StepConte
     }),
     prisma.jobPosting.update({ where: { jobPostingId: posting.jobPostingId }, data: { status: "APPLIED" } }),
   ]);
+  await emitApplication(context, application.applicationId, "SUBMITTED", posting);
+}
+
+/** application.status (M12-T1), with the posting. */
+async function emitApplication(context: StepContext, applicationId: string, status: string, posting: JobPosting): Promise<void> {
+  await context.emit?.("application.status", {
+    applicationId,
+    status,
+    job: { title: posting.title, company: posting.company, location: posting.location, url: posting.url },
+  });
 }
 
 export function ownerOf(context: StepContext): ArtifactOwner {

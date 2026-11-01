@@ -11,3 +11,4 @@ export * from "./pipeline-api";
 export * from "./pipeline-source";
 export * from "./runs-api";
 export * from "./telegram";
+export * from "./telegram-proposals";

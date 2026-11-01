@@ -129,6 +129,7 @@ model User {
   mailCursors   MailCursor[]
   reflections   Reflection[]
   suggestions   PipelineSuggestion[]
+  webhooks      Webhook[]
 
   @@map("Users")
 }
@@ -151,18 +152,20 @@ model UserSession {
 
 /// Run-time controls (README §2.2, §2.6, §5). One row per user, created on first change.
 model UserSetting {
-  userId           String    @id @db.Uuid
-  user             User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  userId            String    @id @db.Uuid
+  user              User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
   /// Kill switch: no run starts or continues, no side effect executes.
-  paused           Boolean   @default(false)
-  pausedAt         DateTime?
+  paused            Boolean   @default(false)
+  pausedAt          DateTime?
   /// Step type → "N/day" | "N/hour": caps across all pipelines (a pipeline's own `limits` count only its runs).
-  rateLimits       Json      @default("{}")
+  rateLimits        Json      @default("{}")
   /// Overrides LLM_MONTHLY_BUDGET_USD.
-  monthlyBudgetUsd Decimal?  @db.Decimal(10, 2)
+  monthlyBudgetUsd  Decimal?  @db.Decimal(10, 2)
   /// Facts about me for application forms (name, contacts, location, work permit, notice period...), as I write them.
-  profile          String?
-  dateUpdated      DateTime  @updatedAt
+  profile           String?
+  /// Approve and Reject on the AI ME bot's messages (M12-T4); off: they only link to the inbox.
+  telegramApprovals Boolean   @default(true)
+  dateUpdated       DateTime  @updatedAt
 
   @@map("UserSettings")
 }
@@ -187,9 +190,33 @@ model Pipeline {
   builderChats BuilderChat[]
   mailCursors  MailCursor[]
   suggestions  PipelineSuggestion[]
+  webhook      Webhook?
 
   @@index([userId])
   @@map("Pipelines")
+}
+
+/// A pipeline's address on the Internet (M12-T2): POST /hooks/<webhookId> through hooks.example.com. The secret is
+/// shown once: kept sealed (AAD = webhookId) for the worker to check an hmac-sha256 signature, and as its SHA-256
+/// for the api to check a bearer token without decrypting anything.
+model Webhook {
+  /// 32 random bytes, base64url: the unguessable part of the address.
+  webhookId    String    @id
+  userId       String    @db.Uuid
+  user         User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineId   String    @unique @db.Uuid
+  pipeline     Pipeline  @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  secretHash   String    @db.VarChar(64)
+  ciphertext   Bytes
+  iv           Bytes
+  authTag      Bytes
+  wrappedDek   Bytes
+  keyVersion   Int       @default(1)
+  lastCalledAt DateTime?
+  dateCreated  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("Webhooks")
 }
 
 /// Where a pipeline's email.fetch stopped in a mailbox: messages with a higher UID are new. A new UIDVALIDITY (the
@@ -313,7 +340,13 @@ model Run {
   user              User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
   pipelineVersionId String          @db.Uuid
   pipelineVersion   PipelineVersion @relation(fields: [pipelineVersionId], references: [pipelineVersionId])
-  trigger           String // schedule, manual, event, dry-run
+  trigger           String // schedule, manual, event, webhook, telegram, dry-run
+  /// {{trigger.*}}: the event's data or the webhook call (M12).
+  triggerData       Json?
+  /// How deep in a chain of runs started by events: 0 unless an event started it (chains stop at 3).
+  chainDepth        Int             @default(0)
+  /// The run whose event started this one.
+  triggeredByRunId  String?         @db.Uuid
   dryRun            Boolean         @default(false)
   status            RunStatus       @default(QUEUED)
   headed            Boolean         @default(false)
@@ -404,6 +437,9 @@ model Proposal {
   reasoning          String? // short LLM explanation shown in the UI
   dateCreated        DateTime       @default(now())
   expiresAt          DateTime?
+  /// The AI ME bot told me about it (M12-T4), in this message (edited once it's decided).
+  notifiedAt         DateTime?
+  telegramMessageId  Int?
 
   decision Decision?
 

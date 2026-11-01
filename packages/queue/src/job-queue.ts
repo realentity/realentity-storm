@@ -1,5 +1,14 @@
 import PgBoss from "pg-boss";
-import { QUEUE_DEFINITIONS, QUEUES, type LearningJob, type ReflectionJob, type ReflectionPollJob, type RunJob } from "./queues";
+import {
+  QUEUE_DEFINITIONS,
+  QUEUES,
+  type EventJob,
+  type LearningJob,
+  type ReflectionJob,
+  type ReflectionPollJob,
+  type RunJob,
+  type WebhookJob,
+} from "./queues";
 
 export interface JobQueueOptions {
   connectionString: string;
@@ -56,6 +65,16 @@ export class JobQueue {
   async pollReflection(reflectionId: string, startAfter: Date): Promise<void> {
     const data: ReflectionPollJob = { reflectionId };
     await this.boss.send(QUEUES.reflectionPoll, data, { startAfter });
+  }
+
+  /** Something happened that may start pipelines (M12-T1). */
+  async enqueueEvent(event: EventJob): Promise<void> {
+    await this.boss.send(QUEUES.events, event);
+  }
+
+  /** A webhook call, for the worker to check and run (M12-T2). */
+  async enqueueWebhook(call: WebhookJob): Promise<void> {
+    await this.boss.send(QUEUES.webhooks, call);
   }
 
   async stop(): Promise<void> {

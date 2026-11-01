@@ -477,4 +477,55 @@ steps:
       );
     });
   });
+
+  describe("triggers (M12-T1/T2)", () => {
+    const after = { on: "run.finished", pipeline: "Jobs" };
+    const tell = (text: string) => [{ id: "n", type: "notify.telegram", with: { text } }];
+
+    it("accepts event and webhook triggers and rejects unknown events and filters", () => {
+      ok(compiler.compile(pipeline(tell("x"), { trigger: after })));
+      ok(compiler.compile(pipeline(tell("x"), { trigger: { on: "application.status", status: ["INTERVIEW"] } })));
+      ok(compiler.compile(pipeline(tell("x"), { trigger: { on: "email.classified", label: ["recruiter"] } })));
+      ok(compiler.compile(pipeline(tell("x"), { trigger: { on: "recipe.broken" } })));
+      ok(compiler.compile(pipeline(tell("x"), { trigger: { webhook: "hmac-sha256" } })));
+      for (const trigger of [{ on: "file.changed" }, { on: "application.status", status: ["HIRED"] }, { webhook: "basic" }]) {
+        expect(errorsOf(compiler.compile(pipeline(tell("x"), { trigger }))).join("\n")).toMatch(/trigger/);
+      }
+    });
+
+    it("type-checks {{trigger.*}} against the event's data, and refuses it without an event or webhook", () => {
+      ok(compiler.compile(pipeline(tell("{{trigger.pipeline}}: {{trigger.summary}}"), { trigger: after })));
+      ok(compiler.compile(pipeline(tell("{{trigger.body.ref}}"), { trigger: { webhook: "token" } })));
+      expect(errorsOf(compiler.compile(pipeline(tell("{{trigger.job.title}}"), { trigger: after })))).toEqual([
+        expect.stringMatching(/^steps\[0\]\.with\.text: \{\{trigger\.job\.title\}\}: .*"job"/),
+      ]);
+      expect(errorsOf(compiler.compile(pipeline(tell("{{trigger.summary}}"))))).toEqual([
+        "steps[0].with.text: {{trigger.summary}} is only available in a pipeline triggered by an event or a webhook",
+      ]);
+    });
+
+    it("lets an email's own address or a posting's URL be a target, never a webhook body or a run's outputs", () => {
+      const reply = ok(
+        compiler.compile(
+          pipeline([{ id: "send", type: "test.send", with: { to: "{{trigger.message.from}}", body: "Thanks" } }], {
+            trigger: { on: "email.classified", label: ["recruiter"] },
+          }),
+        ),
+      );
+      expect(reply.policy.provenance).toEqual([{ stepId: "send", field: "to", kind: "recipient", source: "trigger.message.from" }]);
+      ok(compiler.compile(pipeline([{ id: "apply", type: "test.submit", with: { url: "{{trigger.job.url}}" } }], { trigger: { on: "application.status" } })));
+      const fromBody = pipeline([{ id: "send", type: "test.send", with: { to: "{{trigger.body.email}}", body: "x" } }], { trigger: { webhook: "token" } });
+      expect(errorsOf(compiler.compile(fromBody))).toEqual([
+        "steps[0].with.to: {{trigger.body.email}} can't be a target: a webhook's body is written by whoever calls it",
+      ]);
+      const fromOutputs = pipeline([{ id: "send", type: "test.send", with: { to: "{{trigger.outputs.write}}", body: "x" } }], { trigger: after });
+      expect(errorsOf(compiler.compile(fromOutputs))).toEqual([expect.stringMatching(/can't be a target: only an email's own addresses/)]);
+    });
+
+    it("reserves the id trigger", () => {
+      expect(errorsOf(compiler.compile(pipeline([{ id: "trigger", type: "notify.telegram", with: { text: "x" } }])))).toEqual([
+        "steps[0].id: is reserved",
+      ]);
+    });
+  });
 });

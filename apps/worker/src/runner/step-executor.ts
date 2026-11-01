@@ -1,4 +1,5 @@
 import { type LlmUsage } from "@ai-me/llm";
+import { type TriggerEventName } from "@ai-me/shared";
 
 /** What a step implementation knows about where it runs. */
 export interface StepContext {
@@ -18,6 +19,11 @@ export interface StepContext {
    * where browser.agent and browser.submit may go besides their start address's site.
    */
   allowedDomains?: readonly string[];
+  /**
+   * Something happened that may start other pipelines (M12-T1): a recipe broke, an application moved, an email was
+   * labelled. Never throws; does nothing in a dry run.
+   */
+  emit?(event: TriggerEventName, data: Record<string, unknown>): Promise<void>;
 }
 
 /**

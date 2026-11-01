@@ -35,14 +35,14 @@ export class RunsService {
   ) {}
 
   /** A run of the pipeline's current version. A dry run proposes but never executes a side effect. */
-  async start(userId: string, pipelineId: string, dryRun: boolean): Promise<RunDetailView> {
+  async start(userId: string, pipelineId: string, dryRun: boolean, trigger: "manual" | "telegram" = "manual"): Promise<RunDetailView> {
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
     if (!pipeline?.currentVersionId) throw new NotFoundException();
-    return this.startVersion(userId, pipeline.currentVersionId, dryRun);
+    return this.startVersion(userId, pipeline.currentVersionId, dryRun, trigger);
   }
 
   /** A run of one version (the current one, or a draft's dry run). */
-  async startVersion(userId: string, pipelineVersionId: string, dryRun: boolean): Promise<RunDetailView> {
+  async startVersion(userId: string, pipelineVersionId: string, dryRun: boolean, trigger: "manual" | "telegram" = "manual"): Promise<RunDetailView> {
     await this.controls.assertNotPaused(userId);
     const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
     if (!version.savedAt && !dryRun) throw new ConflictException("A draft only gets dry runs; save it first");
@@ -52,7 +52,7 @@ export class RunsService {
       data: {
         userId,
         pipelineVersionId: version.pipelineVersionId,
-        trigger: dryRun ? "dry-run" : "manual",
+        trigger: dryRun ? "dry-run" : trigger,
         dryRun,
         headed: this.catalog.needsHeaded(definition.steps),
         status: "QUEUED",

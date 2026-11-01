@@ -18,6 +18,9 @@ export class ReferenceError extends Error {}
 export class RunValues {
   private readonly outputs = new Map<string, { forEach?: string; value: unknown }>();
 
+  /** `trigger`: {{trigger.*}}, the event or webhook call that started the run (M12); null for other runs. */
+  constructor(private readonly trigger: unknown = null) {}
+
   set(step: CompiledStep, value: unknown): void {
     this.outputs.set(step.id, { forEach: step.forEach ? sourceOf(step.forEach) : undefined, value });
   }
@@ -43,6 +46,7 @@ export class RunValues {
 
   lookup(path: string, scope?: ItemScope): unknown {
     const [root, ...rest] = path.split(".");
+    if (root === "trigger") return dig(this.trigger, rest, path);
     if (root === "item") {
       if (!scope) throw new ReferenceError(`{{${path}}} outside a forEach step`);
       return dig(scope.item, rest, path);

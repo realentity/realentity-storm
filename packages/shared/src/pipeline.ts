@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HOST_PATTERN } from "./credentials";
+import { APPLICATION_STATUSES } from "./jobs-api";
 
 /**
  * Pipeline definition (README §2.2): what a pipeline is authored as (YAML or JSON) before compilation.
@@ -7,9 +8,9 @@ import { HOST_PATTERN } from "./credentials";
  * step catalog, because they may contain {{references}} to earlier steps.
  */
 
-/** Step ids are used in references ({{search.items}}), so no dots; `item` and `cred` are reserved. */
+/** Step ids are used in references ({{search.items}}), so no dots; `item`, `cred` and `trigger` are reserved. */
 export const STEP_ID = /^[a-z][a-zA-Z0-9_]{0,39}$/;
-export const RESERVED_STEP_IDS = ["item", "cred"] as const;
+export const RESERVED_STEP_IDS = ["item", "cred", "trigger"] as const;
 
 /** A reference: {{step.field.sub}}, {{item.field}} (inside forEach) or {{cred:name}} (credential, resolved by the worker). */
 export const REFERENCE = /\{\{\s*([^{}]+?)\s*\}\}/g;
@@ -28,14 +29,51 @@ function isTimeZone(value: string): boolean {
   }
 }
 
-export const TriggerSchema = z.union([
-  z.literal("manual"),
-  z.object({
-    schedule: z.string().trim().regex(CRON, 'a five-field cron expression, e.g. "0 8 * * 1-5"'),
-    tz: z.string().default("Europe/Sofia").refine(isTimeZone, "an IANA time zone, e.g. Europe/Sofia"),
-  }),
+/** What happens in AI ME that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
+export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified"] as const;
+export type TriggerEventName = (typeof TRIGGER_EVENTS)[number];
+
+const list = <T extends z.ZodType>(schema: T) => z.array(schema).min(1).optional();
+
+export const EventTriggerSchema = z.discriminatedUnion("on", [
+  z
+    .object({
+      on: z.literal("run.finished"),
+      /** The pipeline whose runs start this one, by name. */
+      pipeline: z.string().trim().min(1).max(100),
+      /** Default: only runs that finished DONE. */
+      status: list(z.enum(["DONE", "FAILED"])),
+    })
+    .strict(),
+  z.object({ on: z.literal("application.status"), status: list(z.enum(APPLICATION_STATUSES)) }).strict(),
+  z.object({ on: z.literal("recipe.broken"), site: z.string().trim().toLowerCase().min(1).optional() }).strict(),
+  /** One event per email an email.classify step labelled; `label` filters them. */
+  z.object({ on: z.literal("email.classified"), label: list(z.string().min(1)) }).strict(),
 ]);
+export type EventTrigger = z.infer<typeof EventTriggerSchema>;
+
+/**
+ * A call from the Internet (M12-T2): `hmac-sha256` checks a GitHub-style X-Hub-Signature-256 over the body,
+ * `token` an Authorization: Bearer header. The body is {{trigger.body}}.
+ */
+export const WebhookTriggerSchema = z.object({ webhook: z.enum(["hmac-sha256", "token"]) }).strict();
+export type WebhookTrigger = z.infer<typeof WebhookTriggerSchema>;
+
+export const ScheduleTriggerSchema = z.object({
+  schedule: z.string().trim().regex(CRON, 'a five-field cron expression, e.g. "0 8 * * 1-5"'),
+  tz: z.string().default("Europe/Sofia").refine(isTimeZone, "an IANA time zone, e.g. Europe/Sofia"),
+});
+
+export const TriggerSchema = z.union([z.literal("manual"), ScheduleTriggerSchema, EventTriggerSchema, WebhookTriggerSchema]);
 export type Trigger = z.infer<typeof TriggerSchema>;
+
+export function isEventTrigger(trigger: Trigger): trigger is EventTrigger {
+  return typeof trigger === "object" && "on" in trigger;
+}
+
+export function isWebhookTrigger(trigger: Trigger): trigger is WebhookTrigger {
+  return typeof trigger === "object" && "webhook" in trigger;
+}
 
 export const PipelineStepSchema = z
   .object({

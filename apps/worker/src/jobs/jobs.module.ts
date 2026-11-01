@@ -1,7 +1,7 @@
 import { ClaudeBatches, ClaudeChat, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmChat, type LlmClient } from "@ai-me/llm";
 import { JobQueue, publishEvent } from "@ai-me/queue";
 import { KeyRing } from "@ai-me/crypto";
-import { sendTelegram, type ServerEnv } from "@ai-me/shared";
+import { sendTelegramMessage, type ServerEnv, type TelegramMessage } from "@ai-me/shared";
 import { defaultCatalog, StepCatalog } from "@ai-me/steps";
 import { Injectable, Logger, Module, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
@@ -20,7 +20,17 @@ import { Reflector } from "../learning/reflection";
 import { CredentialVault } from "../secrets/credential-vault";
 import { SecretsModule } from "../secrets/secrets.module";
 import { coreSteps } from "../steps/core-steps";
+import { Triggers } from "../runner/triggers";
 import { JobHandlers } from "./job-handlers";
+import { ProposalNotifier } from "./proposal-notifier";
+
+/** A message to me on the AI ME bot: text, or text with buttons. */
+function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promise<void> {
+  const config = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
+  return async (message) => {
+    await sendTelegramMessage(config, typeof message === "string" ? { text: message } : message);
+  };
+}
 
 /** The implementations of the catalog's steps (the browser tests add test steps through ExecutorRegistry). */
 export const STEP_EXECUTORS = Symbol("STEP_EXECUTORS");
@@ -117,7 +127,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             vault,
             artifacts,
             documents: new DocumentStore(env.DOCUMENTS_DIR),
-            notify: (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text),
+            notify: notifier(env),
+            appOrigin: env.APP_ORIGIN,
           },
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
           chat: env.ANTHROPIC_API_KEY ? ClaudeChat.fromApiKey(env.ANTHROPIC_API_KEY) : NO_CHAT,
@@ -164,12 +175,12 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         new TakeoverDesk(db.client, events, {
           timeoutMs: env.TAKEOVER_TIMEOUT_MINUTES * 60_000,
           appOrigin: env.APP_ORIGIN,
-          notify: (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text),
+          notify: notifier(env),
         }),
     },
     {
       provide: PipelineRunner,
-      inject: [PrismaService, StepCatalog, ExecutorRegistry, RunControls, EVENT_SINK, TakeoverDesk],
+      inject: [PrismaService, StepCatalog, ExecutorRegistry, RunControls, EVENT_SINK, TakeoverDesk, JobQueue],
       useFactory: (
         db: PrismaService,
         catalog: StepCatalog,
@@ -177,7 +188,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         controls: RunControls,
         events: EventSink,
         takeovers: TakeoverDesk,
-      ) => new PipelineRunner(db.client, catalog, executors, controls, events, takeovers),
+        queue: JobQueue,
+      ) => new PipelineRunner(db.client, catalog, executors, controls, events, takeovers, (event) => queue.enqueueEvent(event)),
     },
     {
       provide: Reflector,
@@ -203,7 +215,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV],
+      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing],
       useFactory: (
         db: PrismaService,
         runner: PipelineRunner,
@@ -213,7 +225,21 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         takeovers: TakeoverDesk,
         artifacts: ArtifactStore,
         env: ServerEnv,
-      ) => new JobHandlers(db.client, runner, queue, learning, reflector, takeovers, { artifacts, days: env.ARTIFACTS_RETENTION_DAYS }),
+        keys: KeyRing,
+      ) =>
+        new JobHandlers(
+          db.client,
+          runner,
+          queue,
+          learning,
+          reflector,
+          takeovers,
+          { artifacts, days: env.ARTIFACTS_RETENTION_DAYS },
+          {
+            triggers: new Triggers(db.client, runner, queue, keys),
+            notifier: new ProposalNotifier(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
+          },
+        ),
     },
     JobsLifecycle,
   ],

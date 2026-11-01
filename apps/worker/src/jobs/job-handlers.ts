@@ -10,8 +10,10 @@ import {
   type ReflectionJob,
   type ReflectionPollJob,
   type RunJob,
+  type EventJob,
   type ScheduleTrigger,
   type TriggerJob,
+  type WebhookJob,
 } from "@ai-me/queue";
 import { Logger } from "@nestjs/common";
 import { type ArtifactStore } from "../browser/artifact-store";
@@ -19,6 +21,8 @@ import { type Learning } from "../learning/learning";
 import { type Reflector } from "../learning/reflection";
 import { type PipelineRunner } from "../runner/pipeline-runner";
 import { type TakeoverDesk } from "../runner/takeovers";
+import { type Triggers } from "../runner/triggers";
+import { type ProposalNotifier } from "./proposal-notifier";
 
 export interface ConsumeOptions {
   /** Headless runs advanced at once by this process. Headed runs are always one at a time. */
@@ -44,6 +48,8 @@ export class JobHandlers {
     private readonly takeovers?: TakeoverDesk,
     /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
     private readonly retention?: { artifacts: ArtifactStore; days: number },
+    /** M12: event and webhook triggers; proposals told on the AI ME bot. */
+    private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier } = {},
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -64,6 +70,11 @@ export class JobHandlers {
       await boss.work<ReflectionPollJob>(QUEUES.reflectionPoll, work, async ([job]) => job && reflector.check(job.data.reflectionId));
       await boss.schedule(QUEUES.reflection, REFLECTION_SCHEDULE.cron, {}, { tz: REFLECTION_SCHEDULE.tz });
     }
+    const { triggers } = this.more;
+    if (triggers) {
+      await boss.work<EventJob>(QUEUES.events, work, async ([job]) => job && triggers.fire(job.data));
+      await boss.work<WebhookJob>(QUEUES.webhooks, work, async ([job]) => job && triggers.webhook(job.data));
+    }
     if (this.retention) {
       await boss.work(QUEUES.maintenance, work, () => this.maintain());
       await boss.schedule(QUEUES.maintenance, MAINTENANCE_SCHEDULE.cron, {}, { tz: MAINTENANCE_SCHEDULE.tz });
@@ -79,13 +90,17 @@ export class JobHandlers {
     return pruned;
   }
 
-  /** Advances a run; one held back by a rate limit is sent again for when the limit allows. */
+  /**
+   * Advances a run; one held back by a rate limit is sent again for when the limit allows; one waiting for me says
+   * so on the AI ME bot.
+   */
   async advance(runId: string): Promise<RunStatus> {
     const status = await this.runner.advance(runId);
     if (status === "QUEUED") {
       const run = await this.prisma.run.findUniqueOrThrow({ where: { runId } });
       if (run.resumeAt) await this.queue.enqueueRun(run, run.resumeAt);
     }
+    if (status === "WAITING_FOR_USER") await this.more.notifier?.waiting(runId);
     return status;
   }
 

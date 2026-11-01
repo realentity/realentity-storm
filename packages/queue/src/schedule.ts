@@ -1,10 +1,10 @@
 import { type Trigger } from "@ai-me/shared";
 import { CronExpressionParser } from "cron-parser";
 
-export type ScheduleTrigger = Exclude<Trigger, "manual">;
+export type ScheduleTrigger = Extract<Trigger, { schedule: string }>;
 
 export function isScheduled(trigger: Trigger): trigger is ScheduleTrigger {
-  return trigger !== "manual";
+  return typeof trigger === "object" && "schedule" in trigger;
 }
 
 /**

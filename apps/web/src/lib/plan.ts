@@ -60,7 +60,18 @@ export function stepGraph(definition: CompiledDefinition): StepGraph {
 
 export function describeTrigger(trigger: Trigger): string {
   if (trigger === "manual") return "Manual: runs when I start it";
-  return `On schedule ${trigger.schedule} (${trigger.tz})`;
+  if ("schedule" in trigger) return `On schedule ${trigger.schedule} (${trigger.tz})`;
+  if ("webhook" in trigger) return `On a webhook call (${trigger.webhook === "token" ? "bearer token" : "HMAC-SHA256 signature"})`;
+  switch (trigger.on) {
+    case "run.finished":
+      return `When "${trigger.pipeline}" finishes ${(trigger.status ?? ["DONE"]).join(" or ")}`;
+    case "application.status":
+      return `When an application becomes ${trigger.status?.join(" or ") ?? "anything new"}`;
+    case "recipe.broken":
+      return `When a recipe${trigger.site ? ` of ${trigger.site}` : ""} breaks`;
+    case "email.classified":
+      return `When an email is labelled ${trigger.label?.join(" or ") ?? "(any label)"}`;
+  }
 }
 
 /** What the review screen says about what a pipeline may do (README §2.2 "Policy"). */

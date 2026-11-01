@@ -24,7 +24,11 @@ describe("auth", () => {
   // M3-E7: every route but health and login needs a session. The routes come from the running app, so a new
   // route is covered without being listed here (the WebSocket is covered in events.e2e-spec).
   it("rejects every other route without a session", async () => {
-    const PUBLIC = ["GET /api/health", "POST /api/auth/login"];
+    // The hooks (M12) take no session: each call carries its own secret, and without it they answer 404.
+    const HOOKS = ["POST /api/hooks/telegram", "POST /api/hooks/:webhookId"];
+    const PUBLIC = ["GET /api/health", "POST /api/auth/login", ...HOOKS];
+    await http().post("/api/hooks/telegram").send({}).expect(404);
+    await http().post(`/api/hooks/${"A".repeat(43)}`).send({}).expect(404);
     const routes = registeredRoutes(api);
     expect(routes).toEqual(
       expect.arrayContaining([...PUBLIC, "GET /api/runs", "POST /api/proposals/:proposalId/approve", "PUT /api/kill-switch"]),

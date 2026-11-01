@@ -1,3 +1,4 @@
+import { type TriggerEventName } from "@ai-me/shared";
 import type PgBoss from "pg-boss";
 
 /** Queue names. The api sends to them; the worker consumes them. */
@@ -18,6 +19,10 @@ export const QUEUES = {
   reflectionPoll: "reflection-poll",
   /** Nightly housekeeping: run files (screenshots, traces) past their retention. */
   maintenance: "maintenance",
+  /** Something happened (a run finished, an application moved, …): start the pipelines triggered by it (M12-T1). */
+  events: "pipeline-events",
+  /** A webhook call the api accepted: the worker checks its signature and starts the pipeline (M12-T2). */
+  webhooks: "webhooks",
 } as const;
 
 export interface RunJob {
@@ -47,6 +52,33 @@ export interface ReflectionPollJob {
   reflectionId: string;
 }
 
+/** Where an event came from: a run of a pipeline (to stop loops), and how deep in a chain of triggered runs. */
+export interface EventSource {
+  runId?: string;
+  pipelineId?: string;
+  /** 0 for a run that wasn't triggered by an event; a run triggered by an event at depth n is at n + 1. */
+  depth: number;
+}
+
+export interface EventJob {
+  userId: string;
+  event: TriggerEventName;
+  /** {{trigger.*}} of the runs it starts. */
+  data: Record<string, unknown>;
+  source: EventSource;
+}
+
+export interface WebhookJob {
+  webhookId: string;
+  /** The body exactly as received, base64: the signature is over these bytes. */
+  body: string;
+  /** X-Hub-Signature-256, for an hmac-sha256 webhook (the api already checked a token one). */
+  signature: string | null;
+  /** X-GitHub-Event or X-Event: {{trigger.event}}. */
+  event: string | null;
+  receivedAt: string;
+}
+
 const RUN_QUEUE: Omit<PgBoss.Queue, "name"> = {
   // Duplicate jobs for one run are harmless: the runner claims a run before advancing it.
   retryLimit: 3,
@@ -68,4 +100,6 @@ export const QUEUE_DEFINITIONS: PgBoss.Queue[] = [
   { name: QUEUES.reflection, policy: "stately", retryLimit: 2, retryDelay: 300 },
   { name: QUEUES.reflectionPoll, policy: "standard", retryLimit: 5, retryDelay: 120, retryBackoff: true },
   { name: QUEUES.maintenance, policy: "stately", retryLimit: 2, retryDelay: 600 },
+  { name: QUEUES.events, policy: "standard", retryLimit: 3, retryDelay: 30 },
+  { name: QUEUES.webhooks, policy: "standard", retryLimit: 3, retryDelay: 30 },
 ];

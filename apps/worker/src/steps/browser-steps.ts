@@ -1,4 +1,5 @@
 import { type PrismaClient } from "@ai-me/db";
+import { type TelegramMessage } from "@ai-me/shared";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,7 +39,9 @@ export interface BrowserDependencies {
   vault: CredentialVault;
   artifacts: ArtifactStore;
   /** A Telegram message to me (a broken recipe). */
-  notify?: (text: string) => Promise<void>;
+  notify?(message: string | TelegramMessage): Promise<void>;
+  /** The address the browser uses (APP_ORIGIN), for the message's button. */
+  appOrigin?: string;
 }
 
 /**

@@ -60,7 +60,7 @@ export async function startStack(): Promise<Stack> {
       .overrideProvider(BUILDER_LLM)
       .useValue(TEST_BUILDER_LLM)
       .compile();
-    const api = apiModule.createNestApplication();
+    const api = apiModule.createNestApplication({ rawBody: true });
     configureApp(api);
     await api.listen(API_PORT, "127.0.0.1");
 

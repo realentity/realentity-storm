@@ -38,3 +38,27 @@
 		file_server
 	}
 }
+
+# The hooks-only site (M12-T5): what hooks-gateway on the VPS forwards over Tailscale (`tailscale serve --http=8101`
+# → 127.0.0.1:7101). Only POST /hooks/<…> reaches the api, as /api/hooks/<…>; anything else, the app included, is a
+# 404 here. Each call carries its own secret (the Telegram header, a webhook's signature or token).
+:8081 {
+	header -Server
+
+	request_body {
+		max_size 128KB
+	}
+
+	@hook {
+		method POST
+		path_regexp hook ^/hooks/([A-Za-z0-9_-]{1,64})$
+	}
+	handle @hook {
+		rewrite * /api/hooks/{re.hook.1}
+		reverse_proxy api:3000
+	}
+
+	handle {
+		respond 404
+	}
+}

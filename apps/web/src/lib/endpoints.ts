@@ -37,6 +37,7 @@ import {
   type TeachRecipeRequest,
   type TeachStartedView,
   type UpdatePipelineRequest,
+  type WebhookView,
   type UpdateRuleRequest,
 } from "@ai-me/shared";
 import { query, request } from "./api";
@@ -64,6 +65,9 @@ export const api = {
     discardDraft: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}/draft`),
     update: (pipelineId: string, body: UpdatePipelineRequest) => request<PipelineDetailView>("PATCH", `/pipelines/${pipelineId}`, body),
     run: (pipelineId: string, dryRun: boolean) => request<RunDetailView>("POST", `/pipelines/${pipelineId}/runs`, { dryRun }),
+    webhook: (pipelineId: string) => request<{ webhook: WebhookView | null }>("GET", `/pipelines/${pipelineId}/webhook`),
+    rotateWebhook: (pipelineId: string) => request<WebhookView>("PUT", `/pipelines/${pipelineId}/webhook`),
+    removeWebhook: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}/webhook`),
   },
   runs: {
     list: (filter: Partial<RunFilter> = {}) => request<RunSummaryView[]>("GET", `/runs${query(filter)}`),

@@ -65,6 +65,9 @@ describe("plan", () => {
   it("describes triggers and changes in words", () => {
     expect(describeTrigger("manual")).toBe("Manual: runs when I start it");
     expect(describeTrigger({ schedule: "0 8 * * 1-5", tz: "Europe/Sofia" })).toBe("On schedule 0 8 * * 1-5 (Europe/Sofia)");
+    expect(describeTrigger({ on: "run.finished", pipeline: "Jobs" })).toBe('When "Jobs" finishes DONE');
+    expect(describeTrigger({ on: "email.classified", label: ["recruiter"] })).toBe("When an email is labelled recruiter");
+    expect(describeTrigger({ webhook: "hmac-sha256" })).toBe("On a webhook call (HMAC-SHA256 signature)");
     expect(describeChange({ kind: "step-changed", stepId: "search", field: "with.query", before: "dotnet", after: "golang" })).toBe(
       'step search with.query: "dotnet" → "golang"',
     );

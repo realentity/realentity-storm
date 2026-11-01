@@ -10,6 +10,7 @@ import { DocumentsModule } from "./documents/documents.module";
 import { EventsModule } from "./events/events.module";
 import { PrismaService } from "./database/prisma.service";
 import { HealthController } from "./health/health.controller";
+import { HooksModule } from "./hooks/hooks.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { WorkerWatchdog } from "./health/worker-watchdog";
 import { LearningModule } from "./learning/learning.module";
@@ -45,6 +46,7 @@ export class CoreModule {}
     LiveModule,
     JobsModule,
     DocumentsModule,
+    HooksModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }, WorkerWatchdog],

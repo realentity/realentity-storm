@@ -6,11 +6,13 @@ import { toast } from "react-toastify";
 import { PipelineChat } from "../components/PipelineChat";
 import { PlanView, StepGraphView } from "../components/PlanView";
 import { RunsTable } from "../components/RunsTable";
+import { WebhookCard } from "../components/WebhookCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { errorMessage } from "../lib/api";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
+import { describeTrigger } from "../lib/plan";
 import { useAction, useLoad } from "../lib/use-load";
 
 /** A pipeline: its current version (plan, graph, policy), versions, recent runs; enable, run, edit. */
@@ -115,6 +117,9 @@ export function PipelinePage() {
         </div>
         <div className="col-lg-4 d-flex flex-column gap-3">
           <Switches pipeline={p} busy={action.busy} onChange={(body) => void update(body)} />
+          {p.current && typeof p.current.definition.trigger === "object" && "webhook" in p.current.definition.trigger && (
+            <WebhookCard pipelineId={pipelineId} auth={p.current.definition.trigger.webhook} />
+          )}
           <div className="card">
             <div className="card-header">
               <h3 className="card-title">Versions</h3>
@@ -166,9 +171,9 @@ function Switches({
           />
           <span className="form-check-label">Enabled</span>
           <div className="small text-secondary">
-            {pipeline.current?.definition.trigger === "manual"
+            {!pipeline.current || pipeline.current.definition.trigger === "manual"
               ? "Manual trigger: it runs only when I start it."
-              : "Runs on its schedule while enabled."}
+              : `${describeTrigger(pipeline.current.definition.trigger)}, while enabled.`}
           </div>
         </label>
         <label className="form-check form-switch mb-0">

@@ -14,7 +14,8 @@ import { SERVER_ENV } from "./config/server-env";
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: webhooks are signed over the bytes as sent (M12-T2).
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   // Behind Caddy on the server: trust the first proxy so request.ip is the client (throttling, session audit).
   app.set("trust proxy", 1);
   configureApp(app);

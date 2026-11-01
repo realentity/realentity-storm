@@ -2,6 +2,7 @@ import { KeyRing } from "@ai-me/crypto";
 import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
 import { TestEnvironment } from "@ai-me/testing";
+import { type TelegramMessage } from "@ai-me/shared";
 import { defaultCatalog, type Recipe } from "@ai-me/steps";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -84,8 +85,8 @@ describe("recipes and job postings", () => {
       sessions: new SessionStore(db.client, keys, vault),
       vault,
       artifacts: new ArtifactStore(artifactsDir),
-      notify: (text: string) => {
-        notified.push(text);
+      notify: (message: string | TelegramMessage) => {
+        notified.push(typeof message === "string" ? message : message.text);
         return Promise.resolve();
       },
     };

@@ -1,4 +1,5 @@
 import { type PrismaClient, type Takeover } from "@ai-me/db";
+import { type TelegramMessage } from "@ai-me/shared";
 import { type EventSink } from "./pipeline-runner";
 import { RunStopped, type Attention } from "./step-executor";
 
@@ -13,8 +14,8 @@ export interface TakeoverScope {
 export interface TakeoverOptions {
   timeoutMs: number;
   pollMs?: number;
-  /** "AI ME needs you" on Telegram, with a link to the run. */
-  notify?: (text: string) => Promise<void>;
+  /** "AI ME needs you" on Telegram, with a button to the run. */
+  notify?: (message: TelegramMessage) => Promise<void>;
   /** The address the browser uses (APP_ORIGIN), for the link. */
   appOrigin?: string;
 }
@@ -51,9 +52,12 @@ export class TakeoverDesk {
           data: { runId: scope.runId, stepKey: scope.stepKey, itemIndex: scope.itemIndex, status: "OPEN", reason, url: url ?? null },
         });
         await this.emit(scope, "OPEN");
-        const link = this.options.appOrigin ? `\n${this.options.appOrigin}/runs/${scope.runId}` : "";
+        const origin = this.options.appOrigin;
         await this.options
-          .notify?.(`AI ME needs you: ${reason} at ${scope.stepKey}${url ? ` (${hostOf(url)})` : ""}.${link}`)
+          .notify?.({
+            text: `AI ME needs you: ${reason} at ${scope.stepKey}${url ? ` (${hostOf(url)})` : ""}.`,
+            buttons: origin ? [[{ text: "Open the live view", url: `${origin}/runs/${scope.runId}` }]] : [],
+          })
           .catch(() => undefined);
         await this.wait(scope, takeover);
       },

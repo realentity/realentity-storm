@@ -91,3 +91,15 @@ export interface PipelineDetailView extends PipelineSummaryView {
   /** Saved versions, newest first. */
   versions: PipelineVersionSummaryView[];
 }
+
+/** A pipeline's webhook (M12-T2). The secret is in the answer to creating or rotating it, and never again. */
+export interface WebhookView {
+  /** Where the VPS forwards it on the server: POST /hooks/<webhookId>. */
+  path: string;
+  /** The address to give the caller (HOOKS_PUBLIC_URL + /<webhookId>); null when HOOKS_PUBLIC_URL isn't set. */
+  url: string | null;
+  lastCalledAt: string | null;
+  dateCreated: string;
+  /** Only right after it was created or rotated. */
+  secret?: string;
+}

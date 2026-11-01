@@ -9,7 +9,9 @@ import {
   type CompiledStep,
   type ProposalStatusName,
 } from "@ai-me/shared";
+import { type EventJob } from "@ai-me/queue";
 import { type StepCatalog, type StepDefinition } from "@ai-me/steps";
+import { Logger } from "@nestjs/common";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
 import { RunValues, sourceOf, type ItemScope } from "./run-values";
@@ -21,9 +23,17 @@ export type EventSink = (userId: string, event: AppEvent) => Promise<void>;
 
 const noEvents: EventSink = () => Promise.resolve();
 
+/** Where the runner sends what may start other pipelines (M12-T1): the events queue. */
+export type TriggerEvents = (event: EventJob) => Promise<void>;
+
 export interface StartOptions {
-  trigger: "schedule" | "manual" | "event" | "dry-run";
+  trigger: "schedule" | "manual" | "event" | "webhook" | "telegram" | "dry-run";
   dryRun?: boolean;
+  /** {{trigger.*}} (M12). */
+  triggerData?: Record<string, unknown>;
+  /** Started by an event of this run, at this depth of the chain. */
+  triggeredByRunId?: string;
+  chainDepth?: number;
 }
 
 type StepResult =
@@ -47,6 +57,7 @@ interface RunState {
   runId: string;
   userId: string;
   dryRun: boolean;
+  chainDepth: number;
   controlled: ControlledRun;
   definition: CompiledDefinition;
   policy: CompiledPolicy;
@@ -69,6 +80,8 @@ const key = (stepKey: string, itemIndex: number | null): string => `${stepKey}#$
  * Gates create proposals and pause the run; a side-effect step executes only the approved, hash-checked payload.
  */
 export class PipelineRunner {
+  private readonly logger = new Logger(PipelineRunner.name);
+
   constructor(
     private readonly prisma: PrismaClient,
     private readonly catalog: StepCatalog,
@@ -77,6 +90,8 @@ export class PipelineRunner {
     private readonly events: EventSink = noEvents,
     /** Headed steps pausing for me; without it, a step that needs me fails. */
     private readonly takeovers?: TakeoverDesk,
+    /** Events for event-triggered pipelines; without it, nothing triggers on what runs do. */
+    private readonly triggers?: TriggerEvents,
   ) {}
 
   async start(pipelineVersionId: string, options: StartOptions): Promise<string> {
@@ -88,6 +103,9 @@ export class PipelineRunner {
         pipelineVersionId,
         trigger: options.trigger,
         dryRun: options.dryRun ?? false,
+        ...(options.triggerData ? { triggerData: options.triggerData as Prisma.InputJsonValue } : {}),
+        chainDepth: options.chainDepth ?? 0,
+        triggeredByRunId: options.triggeredByRunId ?? null,
         headed: this.catalog.needsHeaded(definition.steps),
         status: "QUEUED",
       },
@@ -130,6 +148,7 @@ export class PipelineRunner {
       });
       if (outcome.status === "ABORTED") await this.expireOpenProposals(runId);
       await runEvent(outcome.status);
+      if (outcome.status === "DONE" || outcome.status === "FAILED") await this.finished(runId, outcome.status);
       // A decision made during this advance isn't in its state, and the job sent for it found the run claimed.
       // The status is saved first, so either that job claims the run now, or this check sees the decision.
       if (outcome.status !== "WAITING_FOR_USER" || !(await this.hasUnreadDecision(runId))) return outcome.status;
@@ -181,6 +200,28 @@ export class PipelineRunner {
     }
   }
 
+  /** run.finished (M12-T1): the run's step outputs for the pipelines triggered by it. Dry runs trigger nothing. */
+  private async finished(runId: string, status: "DONE" | "FAILED"): Promise<void> {
+    if (!this.triggers) return;
+    const run = await this.prisma.run.findUniqueOrThrow({
+      where: { runId },
+      include: { pipelineVersion: { include: { pipeline: true } }, steps: { orderBy: [{ itemIndex: "asc" }] } },
+    });
+    if (run.dryRun) return;
+    const outputs: Record<string, unknown> = {};
+    for (const step of run.steps) {
+      if (step.itemIndex === null) outputs[step.stepKey] = step.output ?? null;
+      else ((outputs[step.stepKey] ??= []) as unknown[])[step.itemIndex] = step.output ?? null;
+    }
+    const pipeline = run.pipelineVersion.pipeline;
+    await this.triggers({
+      userId: run.userId,
+      event: "run.finished",
+      data: { runId, pipeline: pipeline.name, status, summary: run.summary, outputs },
+      source: { runId, pipelineId: pipeline.pipelineId, depth: run.chainDepth },
+    }).catch((error: Error) => this.logger.warn(`run.finished of ${runId} not sent: ${error.message}`));
+  }
+
   private async hasUnreadDecision(runId: string): Promise<boolean> {
     const decided = await this.prisma.proposal.count({
       where: { runId, status: { in: ["APPROVED", "REJECTED"] }, step: { status: "WAITING" } },
@@ -206,6 +247,7 @@ export class PipelineRunner {
       runId,
       userId: run.userId,
       dryRun: run.dryRun,
+      chainDepth: run.chainDepth,
       controlled: {
         userId: run.userId,
         pipelineId: run.pipelineVersion.pipelineId,
@@ -216,7 +258,7 @@ export class PipelineRunner {
       policy: run.pipelineVersion.policy as unknown as CompiledPolicy,
       rows: new Map(run.steps.map((s) => [key(s.stepKey, s.itemIndex), s])),
       proposals: run.proposals,
-      values: new RunValues(),
+      values: new RunValues(run.triggerData),
       rejected: new Map(),
       blocked: new Map(),
       rejectedSingles: new Set(),
@@ -536,6 +578,7 @@ export class PipelineRunner {
       dryRun: state.dryRun,
       recordUsage,
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],
+      emit: (event, data) => this.emitEvent(state, event, data),
       attention: this.takeovers
         ? this.takeovers.for({
             runId: state.runId,
@@ -546,6 +589,14 @@ export class PipelineRunner {
           })
         : NO_ATTENTION,
     };
+  }
+
+  private async emitEvent(state: RunState, event: EventJob["event"], data: Record<string, unknown>): Promise<void> {
+    if (state.dryRun || !this.triggers) return;
+    const source = { runId: state.runId, pipelineId: state.controlled.pipelineId, depth: state.chainDepth };
+    await this.triggers({ userId: state.userId, event, data, source }).catch((error: Error) =>
+      this.logger.warn(`${event} from run ${state.runId} not sent: ${error.message}`),
+    );
   }
 
   private async markRunning(
