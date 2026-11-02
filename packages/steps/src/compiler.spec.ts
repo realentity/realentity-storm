@@ -567,6 +567,74 @@ steps:
     });
   });
 
+  // M29-U1
+  describe("data.map and data.alert", () => {
+    const steps = (expression: string, alert: object = { below: 10 }) =>
+      pipeline([
+        { id: "search", type: "test.search", with: { query: "x" } },
+        { id: "shape", type: "data.map", with: { from: "{{search.items}}", expression } },
+        { id: "cold", type: "data.alert", with: { items: "{{shape.items}}", key: "place", value: "min", ...alert } },
+      ]);
+
+    it("refuses an expression that isn't JSONata when the pipeline is saved, not on its first run", () => {
+      ok(compiler.compile(steps('{ "place": "Sofia", "min": $min(total) }')));
+      expect(errorsOf(compiler.compile(steps('{ "place": "Sofia", "min": $min(total) ')))).toEqual([
+        "steps[1].with.expression: a JSONata expression (see jsonata.org)",
+      ]);
+    });
+
+    it("takes {{ in an expression as a reference: an object inside an object needs a space", () => {
+      expect(errorsOf(compiler.compile(steps('$map(items, function($i) {{ "x": $i }})')))[0]).toMatch(/^steps\[1\]\.with\.expression: \{\{"x": \$i\}\} refers to/);
+    });
+
+    it("M29-T5: http.fetch takes {{cred:…}} in headers and query only; a header the connection sets is refused", () => {
+      const fetch = (extra: object, url = "https://api.example.com/v1/me") =>
+        pipeline([{ id: "me", type: "http.fetch", with: { url, ...extra } }], { policy: { allowedDomains: ["api.example.com"] } });
+      ok(compiler.compile(fetch({ headers: { Authorization: "Bearer {{cred:github}}" }, query: { appid: "{{cred:weather}}" } })));
+      expect(errorsOf(compiler.compile(fetch({}, "https://api.example.com/v1/me?key={{cred:github}}")))).toEqual([
+        "steps[0].with.url: http.fetch takes credentials ({{cred:…}}) only in headers and query",
+      ]);
+      expect(errorsOf(compiler.compile(fetch({ headers: { Host: "evil.test" } })))[0]).toMatch(/^steps\[0\]\.with\.headers: not host/);
+      expect(errorsOf(compiler.compile(fetch({ headers: { "Bad Header": "x" } })))[0]).toMatch(/^steps\[0\]\.with\.headers: header names are letters/);
+    });
+
+    it("M29-T6: http.request waits at an inserted gate; its literal host joins the allowed domains; keys only in headers and query", () => {
+      const request = (url: string, extra: object = {}) =>
+        pipeline([{ id: "issue", type: "http.request", with: { method: "POST", url, body: { title: "x" }, ...extra } }]);
+      const compiled = ok(compiler.compile(request("https://api.github.com/repos/me/app/issues", { headers: { Authorization: "Bearer {{cred:github}}" } })));
+      expect(ids(compiled.definition)).toEqual(["issueGate", "issue"]);
+      expect(compiled.policy.allowedDomains).toContain("api.github.com");
+      expect(errorsOf(compiler.compile(request("https://api.github.com/{{cred:github}}/issues")))).toContain(
+        "steps[0].with.url: http.request takes credentials ({{cred:…}}) only in headers and query",
+      );
+    });
+
+    it("M29-T8: a view's chart is a data.history collection of this pipeline", () => {
+      const source = (chart: string) =>
+        pipeline(
+          [
+            { id: "feeds", type: "http.fetch", with: { url: "https://github.com/acme/app/releases.atom" } },
+            { id: "seen", type: "data.save", with: { items: "{{feeds.items}}", collection: "releases", key: "id" } },
+            { id: "stars", type: "data.history", with: { items: "{{feeds.items}}", collection: "release-stars", key: "id", value: "title" } },
+          ],
+          { policy: { allowedDomains: ["github.com"] }, view: { menu: { label: "Releases" }, collection: "releases", columns: ["title"], chart: { history: chart } } },
+        );
+      expect(ok(compiler.compile(source("release-stars"))).definition.view?.chart).toEqual({ history: "release-stars", stepped: false });
+      expect(errorsOf(compiler.compile(source("releases")))).toEqual(['view.chart.history: no data.history step of this pipeline writes "releases"']);
+    });
+
+    it("takes either below or above, with clearAt on the normal side", () => {
+      const input = defaultCatalog().get("data.alert")!.input;
+      const base = { items: [], key: "place", value: "min" };
+      expect(input.safeParse({ ...base, below: 10, clearAt: 12 }).success).toBe(true);
+      expect(input.safeParse({ ...base, above: 3, clearAt: 1.5 }).success).toBe(true);
+      expect(input.safeParse(base).success).toBe(false);
+      expect(input.safeParse({ ...base, below: 10, above: 20 }).success).toBe(false);
+      expect(input.safeParse({ ...base, below: 10, clearAt: 8 }).success).toBe(false);
+      expect(input.safeParse({ ...base, above: 3, clearAt: 4 }).success).toBe(false);
+    });
+  });
+
   describe("views (M27)", () => {
     const steps = [
       { id: "feeds", type: "http.fetch", with: { url: "https://github.com/acme/app/releases.atom" } },

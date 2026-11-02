@@ -7,6 +7,7 @@ import { request as httpsRequest } from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { type CredentialVault } from "../secrets/credential-vault";
 import { valueAt } from "./data-steps";
 
 type Item = Record<string, unknown>;
@@ -58,6 +59,8 @@ export interface HttpFetchOptions {
 interface FetchInput {
   url?: string;
   urls?: string[];
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
   itemsAt?: string;
   maxItems: number;
   maxKb: number;
@@ -79,11 +82,17 @@ interface Document {
 /** Refused before anything was sent: the step fails with this, the reason in plain words. */
 export class FetchRefused extends Error {}
 
+const CREDENTIAL = /\{\{\s*cred:([a-z0-9._-]+)\s*\}\}/g;
+
 /**
  * http.fetch (README §2.3, M13-T1): GET without a browser, cookies or credentials. Only hosts on the pipeline's
  * allowedDomains, and only public addresses: the name is resolved here and the connection goes to the address checked
  * (no second lookup to rebind); every redirect is checked again. Feeds become items, JSON stays data, HTML becomes text.
  * With an ETag or Last-Modified from the last read, an unchanged address (304) gives what was read then.
+ *
+ * M29-T5: `headers` and `query` may hold {{cred:name}} (an API key). The vault opens it only for the address's host,
+ * and every redirect must stay on the credential's hosts; such a read is never cached, and the key is masked in what
+ * the server sends back and in errors. Outputs and errors name the address as written, without `query`.
  */
 export class HttpFetchStep implements StepExecutor {
   readonly type = "http.fetch";
@@ -92,17 +101,25 @@ export class HttpFetchStep implements StepExecutor {
   constructor(
     private readonly prisma: PrismaClient,
     options: HttpFetchOptions = {},
+    private readonly vault?: CredentialVault,
   ) {
     this.http = new PublicHttp(options);
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { url, urls, itemsAt, maxItems, maxKb, timeoutSeconds } = input as unknown as FetchInput;
+    const { url, urls, headers = {}, query = {}, itemsAt, maxItems, maxKb, timeoutSeconds } = input as unknown as FetchInput;
     if (!url === !urls) throw new Error("http.fetch reads `url` or `urls`: give one of them");
     const allowed = context.allowedDomains ?? [];
     const documents: Document[] = [];
     for (const address of urls ?? [url!]) {
-      documents.push(await this.read(address, context.userId, allowed, { itemsAt, maxBytes: maxKb * 1024, timeout: timeoutSeconds * 1000 }));
+      const keyed = await withCredentials(this.vault, this.type, address, headers, query, context.userId);
+      try {
+        documents.push(await this.read(address, keyed, context.userId, allowed, { itemsAt, maxBytes: maxKb * 1024, timeout: timeoutSeconds * 1000 }));
+      } catch (error) {
+        if (!keyed.secrets.length) throw error;
+        const masked = keyed.mask(error instanceof Error ? error.message : String(error));
+        throw error instanceof FetchRefused ? new FetchRefused(masked) : new Error(masked);
+      }
     }
     return {
       items: documents.flatMap((d) => d.items).slice(0, maxItems),
@@ -112,17 +129,26 @@ export class HttpFetchStep implements StepExecutor {
     };
   }
 
-  private async read(url: string, userId: string, allowed: readonly string[], options: { itemsAt?: string; maxBytes: number; timeout: number }): Promise<Document> {
-    const cached = await this.prisma.httpCache.findUnique({ where: { userId_url: { userId, url } } });
+  private async read(url: string, keyed: Keyed, userId: string, allowed: readonly string[], options: { itemsAt?: string; maxBytes: number; timeout: number }): Promise<Document> {
+    const keys = keyed.secrets.length > 0;
+    // A read with a key isn't cached: what it got belongs to that key.
+    const cached = keys ? null : await this.prisma.httpCache.findUnique({ where: { userId_url: { userId, url: keyed.target } } });
     const headers: Record<string, string> = {
       "user-agent": USER_AGENT,
       accept: "application/rss+xml, application/atom+xml, application/json, text/html;q=0.9, */*;q=0.8",
       "accept-encoding": "gzip, deflate, br",
       ...(cached?.etag ? { "if-none-match": cached.etag } : {}),
       ...(cached?.lastModified ? { "if-modified-since": cached.lastModified } : {}),
+      ...keyed.headers,
     };
-    const response = await this.http.get(url, headers, allowed, options);
-    let body = response.body;
+    // Every hop of a read with a key stays on the hosts each of its credentials allows.
+    const onHop = keys
+      ? async (hop: URL) => {
+          for (const name of keyed.names) await this.vault!.revealFor(userId, name, hop.hostname.toLowerCase());
+        }
+      : undefined;
+    const response = await this.http.get(keyed.target, headers, allowed, { ...options, onHop });
+    let body = keys ? Buffer.from(keyed.mask(response.body.toString("utf8"))) : response.body;
     let contentType = response.contentType;
     const notModified = response.status === 304 && cached !== null;
     if (notModified) {
@@ -130,11 +156,106 @@ export class HttpFetchStep implements StepExecutor {
       contentType = cached.contentType;
     } else if (response.status < 200 || response.status > 299) {
       throw new Error(`${url} answered ${response.status}`);
-    } else if (!response.truncated && (response.etag || response.lastModified)) {
+    } else if (!keys && !response.truncated && (response.etag || response.lastModified)) {
       const data = { etag: response.etag, lastModified: response.lastModified, contentType, body: new Uint8Array(body), fetchedAt: new Date() };
-      await this.prisma.httpCache.upsert({ where: { userId_url: { userId, url } }, create: { userId, url, ...data }, update: data });
+      await this.prisma.httpCache.upsert({ where: { userId_url: { userId, url: keyed.target } }, create: { userId, url: keyed.target, ...data }, update: data });
     }
     return { url, status: response.status, notModified, contentType, truncated: response.truncated, ...parse(url, body, contentType, response.truncated, options.itemsAt) };
+  }
+}
+
+/** A read's address with its `query`, and its headers with their credentials opened (M29-T5). */
+interface Keyed {
+  target: string;
+  headers: Record<string, string>;
+  /** The credentials used: each hop is checked against them. */
+  names: string[];
+  secrets: string[];
+  mask(text: string): string;
+}
+
+/** The address with `query`, and the headers, their {{cred:…}} opened by the vault for the address's host. */
+async function withCredentials(
+  vault: CredentialVault | undefined,
+  type: string,
+  address: string,
+  headers: Record<string, string>,
+  query: Record<string, string>,
+  userId: string,
+): Promise<Keyed> {
+  const host = new URL(address).hostname.toLowerCase();
+  const names = new Set<string>();
+  const secrets: string[] = [];
+  const open = async (text: string): Promise<string> => {
+    let out = text;
+    for (const [reference, name] of text.matchAll(CREDENTIAL)) {
+      if (!vault) throw new Error(`${type} can't use credentials here ("${name}")`);
+      const { secret } = await vault.revealFor(userId, name, host);
+      names.add(name);
+      secrets.push(secret);
+      out = out.replace(reference, secret);
+    }
+    return out;
+  };
+  const target = new URL(address);
+  for (const [name, value] of Object.entries(query)) target.searchParams.set(name, await open(value));
+  const opened: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) opened[name.toLowerCase()] = await open(value);
+  const mask = (text: string) => secrets.reduce((masked, secret) => masked.split(secret).join("•••"), text);
+  return { target: target.href, headers: opened, names: [...names], secrets, mask };
+}
+
+interface RequestInput {
+  method: "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  body?: unknown;
+  timeoutSeconds: number;
+}
+
+/**
+ * http.request (M29-T6): one POST, PUT, PATCH or DELETE to an API, after I approved its payload at the gate. Its host
+ * was checked by the policy (a domain target); here it must still be a public address, and a redirect isn't followed
+ * (a 3xx comes back as an answer that didn't succeed). A body is sent as JSON. Keys as in http.fetch: opened for the
+ * address's host, masked in the answer and in errors. An answer other than 2xx fails the step with its status.
+ */
+export class HttpRequestStep implements StepExecutor {
+  readonly type = "http.request";
+  private readonly http: PublicHttp;
+
+  constructor(options: HttpFetchOptions = {}, private readonly vault?: CredentialVault) {
+    this.http = new PublicHttp(options);
+  }
+
+  async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
+    const { method, url, headers = {}, query = {}, body, timeoutSeconds } = input as unknown as RequestInput;
+    const keyed = await withCredentials(this.vault, this.type, url, headers, query, context.userId);
+    const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const sent: Record<string, string> = {
+      "user-agent": USER_AGENT,
+      accept: "application/json, */*;q=0.8",
+      ...(data ? { "content-type": "application/json" } : {}),
+      ...keyed.headers,
+    };
+    let response: HttpResponse;
+    try {
+      response = await this.http.request(keyed.target, method, sent, data, context.allowedDomains ?? [], { maxBytes: 1024 * 1024, timeout: timeoutSeconds * 1000 });
+    } catch (error) {
+      const masked = keyed.mask(error instanceof Error ? error.message : String(error));
+      throw error instanceof FetchRefused ? new FetchRefused(masked) : new Error(masked);
+    }
+    const text = keyed.mask(response.body.toString("utf8"));
+    if (response.status < 200 || response.status > 299) throw new Error(`${method} ${url} answered ${response.status}${text ? `: ${text.slice(0, 300)}` : ""}`);
+    let json: unknown = null;
+    if (/json/.test(response.contentType) && text.trim()) {
+      try {
+        json = JSON.parse(text) as unknown;
+      } catch {
+        json = null;
+      }
+    }
+    return { status: response.status, json, text: text.slice(0, MAX_TEXT) };
   }
 }
 
@@ -178,11 +299,12 @@ export class PublicHttp {
     start: string,
     headers: Record<string, string>,
     allowed: readonly string[],
-    { maxBytes, timeout }: { maxBytes: number; timeout: number },
+    { maxBytes, timeout, onHop }: { maxBytes: number; timeout: number; onHop?: (url: URL) => Promise<void> },
   ): Promise<HttpResponse> {
     let url = new URL(start);
     for (let hop = 0; ; hop++) {
       this.check(url, allowed);
+      if (onHop) await onHop(url);
       const response = await this.send(url, headers, timeout);
       const location = response.headers.location;
       if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0) && location) {
@@ -191,21 +313,23 @@ export class PublicHttp {
         url = new URL(location, url);
         continue;
       }
-      const { body, truncated } = await readBody(response, maxBytes);
-      const header = (name: string) => {
-        const value = response.headers[name];
-        return typeof value === "string" ? value : null;
-      };
-      return {
-        status: response.statusCode ?? 0,
-        url: url.href,
-        contentType: (header("content-type") ?? "").split(";")[0].trim().toLowerCase(),
-        etag: header("etag"),
-        lastModified: header("last-modified"),
-        body,
-        truncated,
-      };
+      return answer(url, response, await readBody(response, maxBytes));
     }
+  }
+
+  /** One request with any method and a body, no redirect followed (http.request): a 3xx comes back as it is. */
+  async request(
+    address: string,
+    method: string,
+    headers: Record<string, string>,
+    body: Buffer | null,
+    allowed: readonly string[],
+    { maxBytes, timeout }: { maxBytes: number; timeout: number },
+  ): Promise<HttpResponse> {
+    const url = new URL(address);
+    this.check(url, allowed);
+    const response = await this.send(url, body ? { ...headers, "content-length": String(body.length) } : headers, timeout, method, body);
+    return answer(url, response, await readBody(response, maxBytes));
   }
 
   check(url: URL, allowed: readonly string[]): void {
@@ -221,7 +345,7 @@ export class PublicHttp {
     return this.blocked.check(address, family) || (mapped !== undefined && this.blocked.check(mapped, "ipv4"));
   }
 
-  private send(url: URL, headers: Record<string, string>, timeout: number): Promise<IncomingMessage> {
+  private send(url: URL, headers: Record<string, string>, timeout: number, method = "GET", body: Buffer | null = null): Promise<IncomingMessage> {
     // Resolved here and checked; the socket connects to the address checked (no lookup of its own).
     const lookup: LookupFunction = (hostname, options, callback) => {
       this.resolve(hostname).then(
@@ -239,12 +363,28 @@ export class PublicHttp {
     };
     const request = url.protocol === "https:" ? httpsRequest : httpRequest;
     return new Promise((resolve, reject) => {
-      const req = request(url, { method: "GET", headers, lookup, timeout, agent: false }, resolve);
+      const req = request(url, { method, headers, lookup, timeout, agent: false }, resolve);
       req.on("timeout", () => req.destroy(new Error(`${url.origin} didn't answer within ${timeout / 1000} s`)));
       req.on("error", (error) => reject(error instanceof FetchRefused ? error : new Error(`${url.origin}: ${error.message}`)));
-      req.end();
+      req.end(body ?? undefined);
     });
   }
+}
+
+function answer(url: URL, response: IncomingMessage, { body, truncated }: { body: Buffer; truncated: boolean }): HttpResponse {
+  const header = (name: string) => {
+    const value = response.headers[name];
+    return typeof value === "string" ? value : null;
+  };
+  return {
+    status: response.statusCode ?? 0,
+    url: url.href,
+    contentType: (header("content-type") ?? "").split(";")[0].trim().toLowerCase(),
+    etag: header("etag"),
+    lastModified: header("last-modified"),
+    body,
+    truncated,
+  };
 }
 
 async function readBody(response: IncomingMessage, maxBytes: number): Promise<{ body: Buffer; truncated: boolean }> {

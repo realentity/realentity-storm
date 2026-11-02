@@ -6,11 +6,29 @@ export const CredentialKind = {
   API_KEY: "API_KEY",
   OAUTH_TOKEN: "OAUTH_TOKEN",
   STORAGE_STATE: "STORAGE_STATE",
+  /** A PostgreSQL connection URL for db.query (M29-T7). */
+  DATABASE: "DATABASE",
 } as const;
 export type CredentialKind = (typeof CredentialKind)[keyof typeof CredentialKind];
 
 /** An exact host ("linkedin.com") or an explicit subdomain wildcard ("*.linkedin.com"). Lowercase, no scheme, port or path. */
 export const HOST_PATTERN = /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$|^localhost$/;
+
+/**
+ * A host a credential may go to: a name as above, or (M29-T7, a database on the server or the tailnet) an IPv4 address or a
+ * single name such as a Docker service ("postgres").
+ */
+export const CREDENTIAL_HOST = new RegExp(`${HOST_PATTERN.source}|^(\\d{1,3}\\.){3}\\d{1,3}$|^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`);
+
+/** The host of a PostgreSQL connection URL, lowercase; null when it isn't one. */
+export function databaseHost(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return ["postgres:", "postgresql:"].includes(parsed.protocol) && parsed.hostname ? parsed.hostname.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
 
 /** A credential name as referenced in pipelines: {{cred:<name>}}. */
 export const CREDENTIAL_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -20,17 +38,25 @@ export const MAX_SECRET_LENGTH = 1_000_000;
 
 const secret = z.string().min(1).max(MAX_SECRET_LENGTH);
 
-export const CreateCredentialSchema = z.object({
-  name: z.string().regex(CREDENTIAL_NAME, "lowercase letters, digits, '.', '_' or '-'"),
-  allowedHosts: z
-    .array(z.string().trim().toLowerCase().regex(HOST_PATTERN, "an exact host or *.host"))
-    .min(1)
-    .max(20)
-    .transform((hosts) => [...new Set(hosts)]),
-  username: z.string().max(320).optional(),
-  kind: z.enum(CredentialKind),
-  secret,
-});
+export const CreateCredentialSchema = z
+  .object({
+    name: z.string().regex(CREDENTIAL_NAME, "lowercase letters, digits, '.', '_' or '-'"),
+    allowedHosts: z
+      .array(z.string().trim().toLowerCase().regex(CREDENTIAL_HOST, "an exact host, *.host or an IP address"))
+      .min(1)
+      .max(20)
+      .transform((hosts) => [...new Set(hosts)]),
+    username: z.string().max(320).optional(),
+    kind: z.enum(CredentialKind),
+    secret,
+  })
+  .superRefine((credential, issues) => {
+    if (credential.kind !== CredentialKind.DATABASE) return;
+    // Never the value in the message: only what is wrong with it.
+    const host = databaseHost(credential.secret);
+    if (!host) issues.addIssue({ code: "custom", path: [], message: "the secret must be a connection URL: postgresql://user:password@host:5432/database" });
+    else if (!credential.allowedHosts.includes(host)) issues.addIssue({ code: "custom", path: ["allowedHosts"], message: `the database's host (${host}) must be one of them` });
+  });
 export type CreateCredentialRequest = z.infer<typeof CreateCredentialSchema>;
 
 export const ReplaceCredentialSecretSchema = z.object({ secret });

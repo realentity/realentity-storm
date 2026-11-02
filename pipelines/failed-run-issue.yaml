@@ -1,0 +1,20 @@
+# M29: when Release watch fails, a GitHub issue proposed in my repository, with what went wrong; created only when I
+# press Act at its gate. Another pipeline: its name in `pipeline`. Needs a credential named github (kind API key,
+# allowed host api.github.com; a fine-grained token with Issues: read and write on the repository) and the
+# repository in the url.
+name: Failed run issue
+description: A GitHub issue, after I approve it, when Release watch fails.
+trigger: { on: run.finished, pipeline: Release watch, status: [FAILED] }
+steps:
+  - id: issue
+    type: http.request
+    with:
+      method: POST
+      url: https://api.github.com/repos/me/infra/issues
+      headers:
+        Authorization: "Bearer {{cred:github}}"
+        Accept: application/vnd.github+json
+      body:
+        title: "AI ME: {{trigger.pipeline}} failed"
+        body: "{{trigger.summary}}\n\nRun {{trigger.runId}}"
+        labels: [ai-me]

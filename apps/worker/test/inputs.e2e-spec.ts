@@ -291,7 +291,7 @@ describe("M13: inputs without a browser and change detection", () => {
       ) as Promise<{ items: { history: Record<string, unknown> | null }[]; recorded: number; unreadable: number }>;
 
     it("keeps the series per key and reports the trend", async () => {
-      expect((await record("399,00 лв.")).items[0].history).toEqual({ value: 399, previous: null, change: null, changePct: null, min: 399, max: 399, count: 1, direction: "new", lowest: false });
+      expect((await record("399,00 лв.")).items[0].history).toEqual({ value: 399, previous: null, change: null, changePct: null, min: 399, max: 399, count: 1, direction: "new", lowest: false, usualChange: null, vsUsual: null });
       expect((await record("419,00 лв.")).items[0].history).toMatchObject({ previous: 399, change: 20, direction: "up", lowest: false, max: 419 });
       expect((await record("349,90 лв.")).items[0].history).toEqual({
         value: 349.9,
@@ -303,6 +303,8 @@ describe("M13: inputs without a browser and change detection", () => {
         count: 3,
         direction: "down",
         lowest: true,
+        usualChange: null,
+        vsUsual: null,
       });
       const unreadable = await record("out of stock");
       expect(unreadable).toMatchObject({ recorded: 0, unreadable: 1, items: [{ history: null }] });

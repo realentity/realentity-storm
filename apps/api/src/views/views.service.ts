@@ -1,11 +1,13 @@
 import { type DataRecord } from "@ai-me/db";
 import {
+  CHART_SERIES,
   fieldOf,
   isEventTrigger,
   isWebhookTrigger,
   type CompiledDefinition,
   type PipelineView,
   type RunDetailView,
+  type ViewChart,
   type ViewHeader,
   type ViewMenuItem,
   type ViewPageView,
@@ -69,7 +71,30 @@ export class ViewsService {
       (r) => inTab(r, query.tab, view) && (!q || JSON.stringify(r.value).toLowerCase().includes(q) || r.key.toLowerCase().includes(q)),
     );
     matching.sort((a, b) => compare(fieldOf(a, view.sort.by), fieldOf(b, view.sort.by), view.sort.desc));
-    return { ...header, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts };
+    const chart = view.chart ? await this.chart(userId, view.chart.history, view, rows) : null;
+    return { ...header, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, chart };
+  }
+
+  /**
+   * M29-T8: every key's values in a data.history collection (data.history keeps the last `keep` per key), drawn as the
+   * CHART_SERIES keys with the highest latest value; a key that is a row is named by the row's title.
+   */
+  private async chart(userId: string, collection: string, view: PipelineView, rows: ViewRow[]): Promise<ViewChart> {
+    const points = await this.prisma.client.dataPoint.findMany({
+      where: { userId, collection },
+      orderBy: { at: "asc" },
+      select: { key: true, at: true, value: true },
+    });
+    const byKey = new Map<string, { at: string; value: number }[]>();
+    for (const p of points) byKey.set(p.key, [...(byKey.get(p.key) ?? []), { at: p.at.toISOString(), value: p.value }]);
+    const titles = new Map(rows.map((r) => [r.key, fieldOf(r, view.title ?? view.columns[0].field)]));
+    const series = [...byKey]
+      .map(([key, values]) => {
+        const title = titles.get(key);
+        return { key, label: typeof title === "string" || typeof title === "number" ? String(title) : key, points: values };
+      })
+      .sort((a, b) => b.points.at(-1)!.value - a.points.at(-1)!.value);
+    return { series: series.slice(0, CHART_SERIES), more: Math.max(0, series.length - CHART_SERIES) };
   }
 
   async row(userId: string, pipelineId: string, key: string): Promise<ViewRowView> {

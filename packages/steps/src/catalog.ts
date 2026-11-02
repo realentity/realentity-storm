@@ -1,6 +1,17 @@
 import { type TargetKind } from "@ai-me/shared";
+import jsonata from "jsonata";
 import { z } from "zod";
 import { RecipeNameSchema } from "./recipe";
+
+/** data.map's expression parses (M29): a mistake shows when the pipeline is saved, not on its first run. */
+function isJsonata(expression: string): boolean {
+  try {
+    jsonata(expression);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * One step type in the catalog (README §2.3). The builder may only use catalog steps, and new capabilities are
@@ -13,8 +24,11 @@ export interface StepDefinition {
   sideEffect: boolean;
   /** Input fields that name an external target, checked by the policy layer (README §2.2). Side-effect steps only. */
   targets?: Record<string, TargetKind>;
-  /** May receive {{cred:name}} references (browser steps). Everything else, the LLM steps above all, may not. */
-  acceptsCredentials?: boolean;
+  /**
+   * May receive {{cred:name}} references (browser steps); a list: only in those input fields (http.fetch's headers and
+   * query, M29). Everything else, the LLM steps above all, may not.
+   */
+  acceptsCredentials?: boolean | readonly string[];
   /** Usable in the multi-user product: no stored site passwords, no restricted scopes (README §17). */
   saasSafe: boolean;
   /**
@@ -96,6 +110,20 @@ export class StepCatalog {
 }
 
 const Items = z.array(z.record(z.string(), z.unknown())).describe("list of objects");
+
+/** http.fetch's headers (M29-T5): a token, as HTTP allows; the ones the connection itself sets can't be given. */
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
+const FIXED_HEADERS = ["host", "connection", "content-length", "transfer-encoding", "cookie"];
+const HttpHeaders = z
+  .record(z.string(), z.string().max(8000))
+  .refine((headers) => Object.keys(headers).every((name) => HEADER_NAME.test(name)), "header names are letters, digits and -, e.g. Authorization")
+  .refine((headers) => Object.keys(headers).every((name) => !FIXED_HEADERS.includes(name.toLowerCase())), `not ${FIXED_HEADERS.join(", ")}`)
+  .optional()
+  .describe('request headers, e.g. Authorization: "Bearer {{cred:github}}"');
+const HttpQuery = z
+  .record(z.string().min(1).max(100), z.string().max(2000))
+  .optional()
+  .describe('added to the address\'s query, e.g. appid: "{{cred:openweather}}"');
 
 /**
  * One fetched email (email.fetch). Text only: attachments are listed, never downloaded. `from` and `replyTo` are
@@ -288,8 +316,10 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "data.history",
     description:
       "Keeps a number per item over time (a price, a count) in `collection` by `key`, and adds `history` to each item: " +
-      "previous, change, changePct, min, max, count, direction (new, up, down, same), lowest (the lowest so far). The " +
-      "value may be text such as \"1 299,00 лв.\". Filter on it with data.filter, e.g. history.change lt 0.",
+      "previous, change, changePct, min, max, count, direction (new, up, down, same), lowest (the lowest so far), " +
+      "usualChange (the median change between the earlier values, once there are 3) and vsUsual (change ÷ usualChange: " +
+      "3 is three times the usual growth). The value may be text such as \"1 299,00 лв.\". Filter on it with " +
+      "data.filter, e.g. history.change lt 0, or tell once with data.alert, e.g. history.vsUsual above 3.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -302,18 +332,74 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({ items: Items, recorded: z.number().int(), unreadable: z.number().int() }),
   },
   {
+    type: "data.map",
+    description:
+      "Reshapes JSON (an API's answer, a step's items) into `items` with a JSONata expression. One item per hour from " +
+      "parallel arrays: `$map(hourly.time, function($t, $i) { { \"time\": $t, \"temp\": hourly.temperature_2m[$i] } })`; " +
+      "one summary item: `{ \"place\": \"Sofia\", \"min\": $min(hourly.temperature_2m) }`. A list of objects becomes the " +
+      "items, one object a single item, anything else { value }. Write `{ {` with a space: `{{` starts a reference. " +
+      "It reads only its input: no network, no code, stopped after a second.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      from: z.unknown().describe("the JSON to read, e.g. {{forecast.json}} or {{search.items}}"),
+      expression: z.string().min(1).max(4000).refine(isJsonata, "a JSONata expression (see jsonata.org)").describe("JSONata"),
+      maxItems: z.number().int().min(1).max(5000).default(500),
+    }),
+    output: z.object({ items: Items, value: z.unknown() }),
+  },
+  {
+    type: "data.alert",
+    description:
+      "Tells once when a number crosses a line, and once when it is back: each item's `value` against `below` or " +
+      "`above`, per `key`, remembered between runs. `crossed` has the items that went past the line in this run, " +
+      "`cleared` those back past `clearAt` (default: the line; set it a little further, e.g. below 10 and clearAt 12, " +
+      "so a value going back and forth isn't told every time). Each gets `alert` (value, line, since); `text` says " +
+      "both, a line each, for a message with `when`. A dry run remembers nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z
+      .object({
+        items: Items,
+        key: z.string().min(1).describe("the field naming what is measured, e.g. place or table"),
+        value: z.string().min(1).describe("the field holding the number, e.g. min or history.vsUsual"),
+        below: z.number().optional(),
+        above: z.number().optional(),
+        clearAt: z.number().optional().describe("back to normal past this (default: the line)"),
+        label: z.string().min(1).optional().describe("the field naming an item in `text` (default: key)"),
+      })
+      .refine((input) => (input.below === undefined) !== (input.above === undefined), "either below or above")
+      .refine(
+        ({ below, above, clearAt }) =>
+          clearAt === undefined || (below !== undefined ? clearAt >= below : above === undefined || clearAt <= above),
+        "clearAt is on the normal side of the line: at or over `below`, at or under `above`",
+      ),
+    output: z.object({
+      crossed: Items,
+      cleared: Items,
+      /** Past the line after this run, these included. */
+      active: z.number().int(),
+      text: z.string(),
+      unreadable: z.number().int(),
+    }),
+  },
+  {
     type: "http.fetch",
     description:
       "Reads addresses without a browser (GET only, no cookies): RSS/Atom feeds become `items` (title, url, published, " +
       "summary, id, source), JSON is `json` (a list, or the list at `itemsAt`, also becomes `items`), anything else " +
       "`text`. Only hosts in policy.allowedDomains, never private or tailnet addresses. Unchanged since the last read " +
-      "(ETag / Last-Modified), it reuses what it read then.",
+      "(ETag / Last-Modified), it reuses what it read then. An API key goes in `headers` or `query` as {{cred:name}} " +
+      "(a stored credential): it is sent only to the hosts the credential allows, also after a redirect.",
     sideEffect: false,
     saasSafe: true,
     reads: ["url", "urls"],
+    acceptsCredentials: ["headers", "query"],
     input: z.object({
       url: z.string().url().optional(),
       urls: z.array(z.string().url()).min(1).max(25).optional(),
+      headers: HttpHeaders,
+      query: HttpQuery,
       itemsAt: z.string().min(1).optional().describe("for JSON: the dotted path of the list to use as items, e.g. data.items"),
       maxItems: z.number().int().min(1).max(500).default(100),
       maxKb: z.number().int().min(1).max(5120).default(1024),
@@ -334,6 +420,49 @@ export const CORE_STEPS: StepDefinition[] = [
         }),
       ),
     }),
+  },
+  {
+    type: "http.request",
+    description:
+      "Changes something at an API: one POST, PUT, PATCH or DELETE, with `body` sent as JSON. A side effect: it waits " +
+      "at its gate, which shows the method, address, headers and body, until I press Act. The address's host is a " +
+      "target (policy.allowedDomains, or approved at the gate); never a private or tailnet address, and a redirect " +
+      "isn't followed. An API key goes in `headers` or `query` as {{cred:name}}, sent only to the hosts the credential " +
+      "allows. An answer other than 2xx fails the step. Output: status, json (when the answer is JSON), text.",
+    sideEffect: true,
+    targets: { url: "domain" },
+    acceptsCredentials: ["headers", "query"],
+    saasSafe: true,
+    input: z.object({
+      method: z.enum(["POST", "PUT", "PATCH", "DELETE"]),
+      url: z.url({ protocol: /^https?$/ }),
+      headers: HttpHeaders,
+      query: HttpQuery,
+      body: z.unknown().optional().describe("sent as JSON, e.g. { title: ..., labels: [ai-me] }"),
+      timeoutSeconds: z.number().int().min(2).max(60).default(20),
+    }),
+    output: z.object({ status: z.number().int(), json: z.unknown(), text: z.string() }),
+  },
+  {
+    type: "db.query",
+    description:
+      "Reads a PostgreSQL database: one SQL query, its rows as items (column names as fields; counts as numbers, dates " +
+      "as ISO text). `connection` is {{cred:name}}, a database credential: its connection URL, the server among its " +
+      "allowed hosts (the only way to reach a private or tailnet address). Read-only: the query runs as a subquery " +
+      "(SELECT, VALUES, WITH … SELECT), one statement, in a READ ONLY transaction rolled back afterwards, stopped after " +
+      "`timeoutSeconds`; at most `maxRows` rows (`truncated` says there were more). Values as $1, $2 from `params`, " +
+      "never pasted into the SQL. Use a database user that may only read.",
+    sideEffect: false,
+    saasSafe: false,
+    acceptsCredentials: ["connection"],
+    input: z.object({
+      connection: z.string().regex(/^\{\{\s*cred:[a-z0-9._-]+\s*\}\}$/, "a database credential, {{cred:name}}"),
+      sql: z.string().min(1).max(20_000).describe("one query that reads, e.g. SELECT relname AS table, n_live_tup AS rows FROM pg_stat_user_tables"),
+      params: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).max(50).default([]).describe("the values of $1, $2, …"),
+      maxRows: z.number().int().min(1).max(5000).default(500),
+      timeoutSeconds: z.number().int().min(1).max(60).default(10),
+    }),
+    output: z.object({ items: Items, rows: z.number().int(), truncated: z.boolean(), columns: z.array(z.string()) }),
   },
   {
     type: "shop.product",

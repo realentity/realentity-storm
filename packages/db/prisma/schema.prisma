@@ -82,6 +82,7 @@ enum CredentialKind {
   API_KEY
   OAUTH_TOKEN
   STORAGE_STATE
+  DATABASE
 }
 
 enum JobPostingStatus {
@@ -136,6 +137,7 @@ model User {
   dataRecords   DataRecord[]
   dataPoints    DataPoint[]
   httpCaches    HttpCache[]
+  alertStates   AlertState[]
   google        GoogleConnection?
   facts         Fact[]
   questions     Question[]
@@ -211,6 +213,7 @@ model Pipeline {
   suggestions  PipelineSuggestion[]
   webhook      Webhook?
   scheduled    ScheduledStart[]
+  alertStates  AlertState[]
 
   @@index([userId])
   @@map("Pipelines")
@@ -856,6 +859,24 @@ model DataPoint {
 
   @@index([userId, collection, key, at])
   @@map("DataPoints")
+}
+
+/// data.alert (M29): what is past its line now, per pipeline, step and key. The row goes when it is back.
+model AlertState {
+  alertStateId String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  pipelineId   String   @db.Uuid
+  pipeline     Pipeline @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  stepKey      String
+  key          String
+  /// The value that crossed the line.
+  value        Float
+  since        DateTime @default(now())
+
+  @@unique([pipelineId, stepKey, key])
+  @@index([userId])
+  @@map("AlertStates")
 }
 
 /// What http.fetch read last from an address, with its ETag / Last-Modified: a 304 reuses it.

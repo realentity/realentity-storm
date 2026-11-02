@@ -31,7 +31,7 @@ export function describeStep(step: StepDefinition): string {
         .map(([field, kind]) => `${field} (${kind})`)
         .join(", ")}`,
     step.llmOutput && "output written by an LLM",
-    step.acceptsCredentials && "accepts {{cred:name}}",
+    step.acceptsCredentials && `accepts {{cred:name}}${Array.isArray(step.acceptsCredentials) ? ` in ${step.acceptsCredentials.join(", ")}` : ""}`,
     step.headed && "headed browser",
   ].filter(Boolean);
   return [

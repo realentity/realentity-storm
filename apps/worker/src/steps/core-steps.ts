@@ -5,17 +5,20 @@ import { type GoogleConnection } from "../google/google-connection";
 import { type MailConnector } from "../mail/mail-connector";
 import { type LaterStarts } from "../runner/later";
 import { type StepExecutor } from "../runner/step-executor";
+import { type CredentialVault } from "../secrets/credential-vault";
 import { BrowserAgentStep, BrowserSubmitStep } from "./agent-steps";
 import { ApplicationOutcomeStep } from "./application-steps";
 import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
 import { CalendarCreateStep, CalendarFindStep } from "./calendar-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
+import { DbQueryStep } from "./db-step";
 import { DigestStep } from "./digest-step";
 import { BrowserDownloadStep, BrowserUploadStep, FileReadStep } from "./file-steps";
 import { emailSteps } from "./email-steps";
 import { FillAndSubmitStep, MapFormStep, type FormDependencies } from "./form-steps";
 import { HistoryStep } from "./history-step";
-import { HttpFetchStep, type HttpFetchOptions } from "./http-steps";
+import { HttpFetchStep, HttpRequestStep, type HttpFetchOptions } from "./http-steps";
+import { AlertStep, MapStep } from "./map-alert-steps";
 import { PriceWatchStep } from "./price-steps";
 import { ProductStep } from "./product-step";
 import { FlowCancelStep, FlowLaterStep } from "./flow-steps";
@@ -48,6 +51,8 @@ export interface CoreStepDependencies {
   later?: LaterStarts;
   /** http.fetch's and shop.product's address checks and DNS; tests reach their local server through them. */
   http?: HttpFetchOptions;
+  /** http.fetch's and http.request's API keys, db.query's connections (M29); without it, steps using {{cred:…}} fail. */
+  vault?: CredentialVault;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
@@ -59,7 +64,11 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new FilterStep(),
     new SaveStep(deps.prisma),
     new HistoryStep(deps.prisma),
-    new HttpFetchStep(deps.prisma, deps.http),
+    new MapStep(),
+    new AlertStep(deps.prisma),
+    new HttpFetchStep(deps.prisma, deps.http, deps.vault),
+    new HttpRequestStep(deps.http, deps.vault),
+    new DbQueryStep(deps.vault),
     product,
     new PriceWatchStep(deps.prisma, product),
     new ClassifyStep(deps.llm, deps.router, deps.learning),

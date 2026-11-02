@@ -183,6 +183,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           ),
           prisma: db.client,
           learning,
+          vault,
         });
       },
     },

@@ -14,8 +14,9 @@ interface HistoryInput {
 
 /**
  * data.history (M13): a number per key over time, kept in `collection`. Each item gets `history`: the previous value,
- * the change, min and max so far, whether it is the lowest yet; an item whose value isn't a number gets null. One
- * value per key per run (the first item with that key); only the last `keep` stay. A dry run records nothing.
+ * the change, min and max so far, whether it is the lowest yet, the usual change and this one against it (M29);
+ * an item whose value isn't a number gets null. One value per key per run (the first item with that key); only the
+ * last `keep` stay. A dry run records nothing.
  */
 export class HistoryStep implements StepExecutor {
   readonly type = "data.history";
@@ -63,17 +64,32 @@ export class HistoryStep implements StepExecutor {
 function historyOf(before: number[], value: number) {
   const previous = before.at(-1) ?? null;
   const all = [...before, value];
+  const change = previous === null ? null : round(value - previous);
+  const usualChange = usualChangeOf(before);
   return {
     value,
     previous,
-    change: previous === null ? null : round(value - previous),
+    change,
     changePct: previous === null || previous === 0 ? null : round(((value - previous) / Math.abs(previous)) * 100),
     min: Math.min(...all),
     max: Math.max(...all),
     count: all.length,
     direction: previous === null ? "new" : value > previous ? "up" : value < previous ? "down" : "same",
     lowest: before.length > 0 && value < Math.min(...before),
+    usualChange,
+    vsUsual: change === null || !usualChange ? null : round(change / Math.abs(usualChange)),
   };
+}
+
+/** M29: the median change between consecutive earlier values, once there are 3 changes; null before. */
+function usualChangeOf(before: number[]): number | null {
+  const changes = before
+    .slice(1)
+    .map((v, i) => v - before[i])
+    .sort((a, b) => a - b);
+  if (changes.length < 3) return null;
+  const middle = Math.floor(changes.length / 2);
+  return round(changes.length % 2 ? changes[middle] : (changes[middle - 1] + changes[middle]) / 2);
 }
 
 const round = (n: number): number => Math.round(n * 100) / 100;

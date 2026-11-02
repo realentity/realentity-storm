@@ -1,0 +1,961 @@
+# Capabilities: what AI ME can do, and every step type
+
+AI ME runs **pipelines**: short lists of steps, written in YAML (by hand, or by the pipeline builder from a chat
+message), that read things, think about them with the LLM, and act only after you approve. A pipeline can do only what
+its steps can do, and it can use only steps from the **step catalog** below. The LLM never invents new capabilities;
+a new capability is a new step written in code ([packages/steps/src/catalog.ts](../packages/steps/src/catalog.ts)
+is the source of truth, the implementations are in [apps/worker/src/steps/](../apps/worker/src/steps/)).
+
+Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document explains the building blocks.
+
+---
+
+## 1. At a glance
+
+| Area | What it can do | Steps |
+| --- | --- | --- |
+| Lists of data | Deduplicate, filter, save and compare with last time, track a number over time, reshape an API's JSON, tell once when a number crosses a line | `data.dedupe`, `data.filter`, `data.save`, `data.history`, `data.map`, `data.alert` |
+| Databases | Read your own PostgreSQL database with one query, read-only | `db.query` |
+| The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
+| LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
+| Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
+| Job hunting | Track what employers answered to my applications | `application.outcome` |
+| Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
+| Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
+| Browser | Open pages (with sign-in), read lists with recipes, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
+| Documents | Read a stored document or a downloaded file | `file.read` |
+| Me in the loop | Pick items from a list, approve an action | `gate.review`, `gate.act` |
+| Telling me | A Telegram message, a digest | `notify.telegram`, `notify.digest` |
+| Timing | Start another pipeline later, cancel it | `flow.later`, `flow.cancel` |
+
+---
+
+## 2. How a pipeline is written
+
+```yaml
+name: Release watch                      # unique, used by /run, flow.later and run.finished
+description: New releases, summarized.   # optional
+trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }   # see §3; default: manual
+policy:
+  allowedDomains: [github.com]           # hosts the pipeline may read from or act on
+  allowedRecipients: []                  # extra email addresses it may send to
+limits:
+  email.send: 10/day                     # at most N runs of a step type per hour or day
+steps:
+  - id: feeds                            # letters, digits, _; used in references
+    type: http.fetch                     # a step type from the catalog
+    with: { url: https://github.com/nodejs/node/releases.atom }
+  - id: tell
+    type: notify.telegram
+    when: "{{feeds.items}}"              # skip the step when the value is empty
+    with: { text: "{{feeds.items}}" }
+view: ...                                # optional: a page in the menu for a saved collection (§2.4)
+```
+
+### 2.1 References
+
+A step's inputs can use the outputs of earlier steps:
+
+| Reference | Meaning |
+| --- | --- |
+| `{{search.items}}` | The `items` output of the step with id `search` |
+| `{{invite.values.start}}` | A nested field |
+| `{{item}}`, `{{item.url}}` | The current item, inside a step with `forEach` |
+| `{{trigger.message.from}}` | Data from the event or webhook that started the run (§3) |
+| `{{cred:jobs-bg}}` | A stored credential (only in `browser.open`'s `login`) |
+
+A value that is **exactly** one reference passes the value as it is (a list stays a list). A reference inside text
+(`"Hello {{item.fromName}}"`) is turned into text. The compiler checks every reference and its type before the
+pipeline can be saved.
+
+### 2.2 `forEach`, `when`, `retries`
+
+- **`forEach: "{{triage.kept}}"`** runs the step once per item. Several steps that loop over the same list stay
+  aligned: inside the loop, `{{draft.body}}` is the draft for *this* item.
+- **`when: "{{save.added}}"`** runs the step only when the value is not empty (a non-empty list or text, `true`, a
+  number other than 0, an object). A skipped step also skips the later steps that use its output. Inside `forEach`,
+  `when` is checked per item.
+- **`retries: 2`** retries a failed step up to 5 times. Side-effect steps are never retried.
+
+### 2.3 Safety rules the compiler enforces
+
+- **Every side effect waits for you.** `email.send`, `calendar.create`, `browser.fillAndSubmit`, `browser.upload` and
+  `browser.submit` always get a `gate.act` before them. If you don't write one, the compiler inserts it. The run pauses
+  and shows the exact payload (recipient, subject, body, form fields). Nothing goes out until you press **Act**, in the
+  app or on Telegram.
+- **Targets never come from LLM text.** The recipient of an email, the guests of an event and the address of a form
+  must come from real data: the sender of a fetched email, a posting's own URL, a literal in the pipeline, or
+  `policy`. `to: "{{draft.body}}"` is rejected.
+- **Domains are allowlisted.** `http.fetch`, `shop.product` and the browser steps only go to hosts the pipeline names
+  in `policy.allowedDomains` (or a host literally written in the step). Private and tailnet addresses are never read.
+- **Credentials only go to the browser.** `{{cred:…}}` is accepted only by `browser.open`'s `login`, and only on the
+  hosts the credential allows. LLM steps never see one.
+- **Budget.** Steps that call the LLM stop once the monthly LLM budget is spent, unless the pipeline is marked
+  *essential*.
+- **One headed browser.** Runs that use the watchable (headed) browser run one at a time.
+- **Dry run.** Every pipeline can be dry-run first: it reads for real, but sends, saves and schedules nothing.
+
+### 2.4 A page for the pipeline (`view`)
+
+A pipeline that saves a collection (`data.save` with `collection:`) can show it as a page in the menu, with columns,
+marks (e.g. *Done*, which hides a row) and buttons that start a pipeline for a row:
+
+```yaml
+view:
+  menu: { label: Releases, icon: package }
+  collection: releases
+  columns: [title, { field: published, as: date }, { field: source, label: Feed, as: link }]
+  link: url
+  sort: -published
+  marks: [{ id: upgraded, label: Upgraded, hides: true }]
+  actions:
+    - { label: Check now, run: self }
+    - { label: Upgrade notes, run: Release notes, row: true, confirm: "Send this release's notes to Telegram?" }
+```
+
+With a `data.history` step, `chart` draws its values above the list, a line per key (the five with the highest latest
+value; every key's own page charts it too). `stepped: true` for prices, which hold until the next reading:
+
+```yaml
+view:
+  menu: { label: Tables, icon: chart }
+  collection: tables                     # the latest count per table (data.save)
+  columns: [name, { field: rows, as: number }]
+  sort: -rows
+  detail: { history: table-rows }        # a table's own page: its chart
+  chart: { history: table-rows, label: Rows }
+```
+
+---
+
+## 3. Triggers: what starts a pipeline
+
+| Trigger | Starts when | `{{trigger.*}}` holds |
+| --- | --- | --- |
+| `manual` (default) | You press Run, or send `/run <name>` on Telegram | — |
+| `{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }` | A five-field cron time | — |
+| `{ on: run.finished, pipeline: Bills, status: [FAILED] }` | Another pipeline's run ends (default: only `DONE`) | `runId`, `pipeline`, `status`, `summary`, `outputs` |
+| `{ on: application.status, status: [SUBMITTED] }` | One of my applications changes status | `applicationId`, `status`, `job` (title, company, location, url) |
+| `{ on: recipe.broken, site: dev.bg }` | A browser recipe stops matching its site | `site`, `recipe`, `version`, `reason`, `fixProposed` |
+| `{ on: email.classified, label: [interview] }` | An `email.classify` step labels an email | `label`, `reason`, `message` (the email) |
+| `{ on: flow.later }` | Another pipeline's `flow.later` fires | `data`, `key`, `scheduledAt`, `scheduledByRunId` |
+| `{ on: view.action, collection: releases }` | A row's button on a pipeline's page | `collection`, `key`, `item` (the row), `action` |
+| `{ webhook: hmac-sha256 }` or `{ webhook: token }` | An HTTP call from the internet (GitHub-style signature, or a bearer token) | `body`, `event`, `receivedAt` |
+
+Only an email's own addresses (`email.classified`) and a posting's own URL (`application.status`) may be used as
+targets of a side effect. Webhook bodies, `flow.later` data and view rows are never trusted as targets.
+
+---
+
+## 4. The step catalog
+
+Each step lists what it does, its main inputs (defaults in brackets) and its outputs. Marks:
+
+- ⚡ **side effect**: sends or submits something outside AI ME; always behind a gate, never retried.
+- 🧠 **LLM**: costs LLM tokens; the monthly budget applies.
+- 🖥️ **browser**: needs the self-hosted browser; not available in the multi-user product.
+
+### 4.1 Data
+
+#### `data.dedupe`
+Removes items whose `key` repeats, keeping the first. With `against: JobPosting` it also drops jobs saved before, so
+each posting comes through once.
+- In: `from` (list), `key`, `against` (optional).
+- Out: `items`, `duplicates` (how many were removed).
+
+```yaml
+- id: fresh
+  type: data.dedupe
+  with: { from: "{{search.items}}", key: url, against: JobPosting }
+```
+
+#### `data.filter`
+Keeps the items that match **every** condition. Operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `in`.
+Fields can be dotted paths.
+- In: `items`, `where` (list of `{ field, op, value }`).
+- Out: `items`, `removed`.
+
+```yaml
+- id: good
+  type: data.filter
+  with:
+    items: "{{score.scored}}"
+    where:
+      - { field: score, op: gte, value: 70 }
+      - { field: location, op: contains, value: Sofia }
+```
+
+#### `data.save`
+Saves items and says what changed since the last save.
+- **Default (job postings)**: saves by `url` to the Jobs page, with a `status` (`NEW`, `SKIPPED`, `SHORTLISTED`).
+  A posting saved again keeps its first-seen date, and its status only moves forward.
+- **With `collection`**: a named list of your own, one item per `key`. `changed` compares `fields` (default: all).
+  `complete: true` means the items are the whole list, so saved items missing from it go to `removed`.
+- Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`.
+
+```yaml
+# Only new releases continue to the LLM and to me
+- id: seen
+  type: data.save
+  with: { items: "{{feeds.items}}", collection: releases, key: id, fields: [title] }
+- id: summary
+  type: llm.summarize
+  when: "{{seen.added}}"
+  with: { content: "{{seen.added}}" }
+```
+
+#### `data.history`
+Keeps a number per item over time (a price, a count) and adds a `history` object to each item: `previous`, `change`,
+`changePct`, `min`, `max`, `count`, `direction` (`new`, `up`, `down`, `same`), `lowest`, `usualChange` (the median
+change between the earlier values, once there are 3) and `vsUsual` (this change ÷ the usual one: `3` is three times
+the usual growth). The value can be text such as `"1 299,00 лв."`.
+- In: `items`, `collection`, `key`, `value` (the field with the number), `keep` [60].
+- Out: `items`, `recorded`, `unreadable`.
+
+```yaml
+- id: prices
+  type: data.history
+  with: { items: "{{list.items}}", collection: prices, key: url, value: price }
+- id: cheaper
+  type: data.filter
+  with: { items: "{{prices.items}}", where: [{ field: history.direction, op: eq, value: down }] }
+```
+
+#### `data.map`
+Reshapes JSON into `items` with a [JSONata](https://jsonata.org) expression: for an API whose answer isn't a list of
+objects. A list of objects becomes the items, one object a single item, anything else `{ value }`. It reads only its
+input (no network, no code) and is stopped after a second; a mistake in the expression shows when you save the
+pipeline.
+- In: `from` (the JSON, e.g. `{{forecast.json}}`), `expression`, `maxItems` [500].
+- Out: `items`, `value` (the expression's result as it is).
+- `{{` starts a reference, so write an object inside an object as `{ {` with a space.
+
+```yaml
+# Open-Meteo answers with parallel arrays: hourly.time[] and hourly.temperature_2m[]
+- id: hours                      # one item per hour
+  type: data.map
+  with:
+    from: "{{forecast.json}}"
+    expression: '$map(hourly.time, function($t, $i) { { "time": $t, "temp": hourly.temperature_2m[$i] } })'
+- id: next12h                    # or one item: the lowest of them
+  type: data.map
+  with: { from: "{{forecast.json}}", expression: '{ "place": "Sofia", "min": $min(hourly.temperature_2m) }' }
+```
+
+#### `data.alert`
+Tells once when a number crosses a line, and once when it is back. Each item's `value` is checked against `below` or
+`above`; what is past the line is remembered between runs (per pipeline, step and `key`), so an hourly check sends
+one message per cold spell, not one an hour. `clearAt` is where it counts as back (default: the line itself); set it
+a little further so a value going back and forth isn't told every time. A dry run remembers nothing.
+- In: `items`, `key` (what is measured, e.g. `place`), `value` (the field with the number, dotted paths work),
+  `below` or `above`, `clearAt`, `label` (the field naming an item in `text`; default: `key`).
+- Out: `crossed` (past the line in this run), `cleared` (back in this run), each with `alert` (`value`, `line`,
+  `since`); `active` (how many are past the line now); `text` (a line each, e.g. `Sofia: 9.4, below 10` or
+  `Sofia: back to 12.5`); `unreadable`.
+
+```yaml
+- id: cold
+  type: data.alert
+  with: { items: "{{next12h.items}}", key: place, value: min, below: 10, clearAt: 12 }
+- id: tell
+  type: notify.telegram
+  when: "{{cold.text}}"
+  with: { text: "{{cold.text}}" }
+
+# Faster than usual: data.history's vsUsual, told over 3 times the usual growth, back under 1.5
+- id: fast
+  type: data.alert
+  with: { items: "{{trend.items}}", key: table, value: history.vsUsual, above: 3, clearAt: 1.5 }
+```
+
+### 4.2 The web without a browser
+
+#### `http.fetch`
+Reads addresses with a plain GET (no cookies, no browser). RSS/Atom becomes `items` (title, url, published, summary,
+id, source). JSON is `json`; a list (or the list at `itemsAt`) also becomes `items`. Anything else is `text`. A page
+that hasn't changed since the last read (ETag / Last-Modified) is not downloaded again.
+- In: `url` or `urls` (up to 25), `headers`, `query`, `itemsAt`, `maxItems` [100], `maxKb` [1024],
+  `timeoutSeconds` [20].
+- Out: `items`, `json`, `text`, `documents` (status, title, … per address).
+- The host must be in `policy.allowedDomains`.
+- **API keys**: put `{{cred:name}}` in `headers` or `query` (never in the url). Add the key on the Credentials page as
+  kind *API key*, with the API's host as its allowed host. It is sent only there (a redirect to another host fails the
+  step), the read isn't cached, and if the API echoes the key back it shows as `•••`.
+
+```yaml
+policy: { allowedDomains: [api.example.com, api.github.com, api.openweathermap.org] }
+steps:
+  - id: tickets
+    type: http.fetch
+    with: { url: https://api.example.com/v1/tickets?state=open, itemsAt: data.items }
+
+  # With a key: a Bearer header, or a query parameter
+  - id: repos
+    type: http.fetch
+    with:
+      url: https://api.github.com/user/repos?sort=pushed
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+  - id: weather
+    type: http.fetch
+    with:
+      url: https://api.openweathermap.org/data/2.5/forecast?q=Sofia&units=metric
+      query: { appid: "{{cred:openweather}}" }
+      itemsAt: list
+```
+
+#### `http.request` ⚡
+Changes something at an API: one `POST`, `PUT`, `PATCH` or `DELETE`, with `body` sent as JSON. It waits at its gate,
+which shows the method, address, headers and body, until you press Act. The address's host must be allowed (a literal
+address joins the pipeline's allowed domains, or you approve a new one at the gate); never a private or tailnet
+address, and a redirect isn't followed. An API key goes in `headers` or `query` as `{{cred:name}}`, as in `http.fetch`.
+An answer other than 2xx fails the step with its status.
+- In: `method`, `url`, `headers`, `query`, `body`, `timeoutSeconds` [20].
+- Out: `status`, `json` (when the answer is JSON), `text`.
+
+```yaml
+# A GitHub issue when Release watch fails
+trigger: { on: run.finished, pipeline: Release watch, status: [FAILED] }
+steps:
+  - id: issue
+    type: http.request
+    with:
+      method: POST
+      url: https://api.github.com/repos/me/infra/issues
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      body: { title: "AI ME: {{trigger.pipeline}} failed", body: "{{trigger.summary}}", labels: [ai-me] }
+```
+
+#### `db.query`
+Reads a PostgreSQL database with one SQL query; the rows become `items` (column names as fields, counts as numbers,
+dates as ISO text). `connection` is a database credential: on the Credentials page, kind *database*, the secret a
+connection URL (`postgresql://reader:password@host:5432/app`) and its host as the allowed host (a name, a tailnet
+name, an IP address or a Docker service such as `postgres`). It is read-only whatever the user may do: the query runs
+as a subquery (so only `SELECT`, `VALUES` or `WITH … SELECT` fit), as one statement, in a read-only transaction that
+is rolled back, and is stopped after `timeoutSeconds`. Still, give it a database user that may only read.
+- In: `connection` (`{{cred:name}}`), `sql`, `params` (the values of `$1`, `$2`, …; never paste values into the SQL),
+  `maxRows` [500], `timeoutSeconds` [10].
+- Out: `items`, `rows`, `truncated` (there were more than `maxRows`), `columns`.
+
+```yaml
+# Row counts per table, kept as a trend and told when one grows faster than usual
+- id: counts
+  type: db.query
+  with:
+    connection: "{{cred:app-db}}"
+    sql: SELECT relname AS name, n_live_tup AS rows FROM pg_stat_user_tables
+- id: trend
+  type: data.history
+  with: { items: "{{counts.items}}", collection: table-rows, key: name, value: rows }
+
+# With a value: orders stuck for more than 30 minutes
+- id: stuck
+  type: db.query
+  with:
+    connection: "{{cred:app-db}}"
+    sql: SELECT id, placed_at FROM orders WHERE status = $1 AND placed_at < now() - interval '30 minutes'
+    params: [PENDING]
+```
+
+#### `shop.product` 🧠
+The price of a product, or of one variant (`select: { size: M, color: Black }`), read from its page. It uses the
+page's schema.org data or price meta tags; if there are none, it opens the page in the headless browser, and as a last
+resort the cheap model reads the price from the text.
+- In: `url`, `urls` or `products` (each with its own `select`), `browser` [`fallback`, or `always`/`never`], `llm` [true].
+- Out: `items` (id, url, title, brand, price, currency, availability, inStock, variant, problem), `problems`, `report`.
+- `id` identifies product + variant: use it as the `key` for `data.history`.
+
+```yaml
+policy: { allowedDomains: [www.bergfreunde.eu] }
+steps:
+  - id: products
+    type: shop.product
+    with:
+      products:
+        - url: https://www.bergfreunde.eu/fjaellraeven-skogsoe-padded-jacket-casual-jacket/
+          select: { size: M, color: Black }
+  - id: prices
+    type: data.history
+    with: { items: "{{products.items}}", collection: product-prices, key: id, value: price }
+```
+
+#### `price.watch` 🧠
+Checks the products on the **Prices page** (every shop of each), keeps each shop's price, and reports only news: a
+shop at or under your target price (once, when it crosses), the lowest in `lowestDays`, back in stock. `text` names the
+cheapest shop for each, and is empty when there is nothing new. The Prices page addresses need no `allowedDomains`.
+- In: `product` (only this one; default: all enabled), `lowestDays` [90].
+- Out: `products`, `news`, `text`, `problems`, `report`.
+
+```yaml
+- id: watch
+  type: price.watch
+  with: { lowestDays: 90 }
+- id: tell
+  type: notify.telegram
+  when: "{{watch.text}}"
+  with: { text: "{{watch.text}}" }
+```
+
+### 4.3 LLM
+
+The LLM's output is treated as untrusted text: it can be shown, sent as a body, or saved, but never used as an
+address, a recipient or a domain.
+
+#### `llm.classify` 🧠
+Labels each item following `instruction`. Items with a `keep` label go to `kept`, the rest to `dropped`.
+- In: `items`, `instruction`, `labels` [`keep`, `drop`], `keep` [`keep`].
+- Out: `kept`, `dropped`, `results` (index, label, reason).
+
+```yaml
+- id: agencies
+  type: llm.classify
+  with:
+    items: "{{fresh.items}}"
+    instruction: '"agency": a recruitment agency hiring for an unnamed client. "employer": the company hires for itself.'
+    labels: [employer, agency]
+    keep: [employer]
+```
+
+#### `llm.score` 🧠
+Scores each item 0–100 against `against` (a profile or criteria). `top` keeps the best N. With `outcomes: true`, the
+outcomes of my past applications (interviews, rejections, silence) calibrate the scores for job postings.
+- In: `items`, `against`, `instruction`, `top`, `outcomes` [false].
+- Out: `scored` (all, with `score` and `scoreReason`), `top`.
+
+```yaml
+- id: score
+  type: llm.score
+  with:
+    items: "{{agencies.kept}}"
+    against: Staff/Principal engineer or architect, TypeScript and Node.js, Sofia hybrid or remote.
+    top: 10
+    outcomes: true
+```
+
+#### `llm.generate` 🧠
+Writes text following `instruction`, using `context`. Text you approve at a gate becomes an example it learns from.
+- In: `instruction`, `context`, `format` [`text`, or `markdown`].
+- Out: `text`.
+
+```yaml
+- id: lines
+  type: llm.generate
+  when: "{{cheaper.items}}"
+  with:
+    instruction: "One line per product: title, old price → new price, then its url. No other text."
+    context: "{{cheaper.items}}"
+```
+
+#### `llm.summarize` 🧠
+Summarizes `content`.
+- In: `content`, `instruction`, `maxWords` [150].
+- Out: `summary`.
+
+```yaml
+- id: notes
+  type: llm.summarize
+  with:
+    content: "{{trigger.item}}"
+    instruction: Security fixes, breaking changes and required migrations, in that order.
+    maxWords: 200
+```
+
+#### `llm.extract` 🧠
+Reads named fields out of text (an email, a page). `fields` maps each name to what it is (1–20). Dates and times come
+as ISO 8601 with an offset.
+- In: `content`, `fields`, `instruction`, `timeZone` [Europe/Sofia].
+- Out: `values` (each as text, `""` when not found), `missing`, `found` (true when nothing is missing).
+
+```yaml
+- id: invite
+  type: llm.extract
+  forEach: "{{triage.kept}}"
+  with:
+    content: "{{item}}"
+    fields:
+      start: when the interview starts, date and time
+      company: the company
+      place: the address, or the video call link
+```
+
+### 4.4 Email
+
+Reading uses IMAP and sending uses SMTP, with the `mail` credential. Reading never marks or moves anything.
+
+#### `email.fetch`
+The emails that arrived since this pipeline's last run (the first run looks back `sinceDays`), oldest first, so each
+email is read once. Text only: attachments are listed, not downloaded.
+- In: `mailbox` [INBOX], `limit` [50], `sinceDays` [2].
+- Out: `messages` (uid, messageId, threadId, from, fromName, replyTo, to, cc, subject, date, text, attachments, …).
+
+```yaml
+- id: fetch
+  type: email.fetch
+  with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+```
+
+#### `email.classify` 🧠
+Like `llm.classify`, for emails. Each labelled email also emits an `email.classified` event, which can start other
+pipelines.
+- In: `messages`, `instruction`, `labels` [`reply`, `skip`], `keep` [`reply`].
+- Out: `kept`, `dropped`, `results`.
+
+```yaml
+- id: triage
+  type: email.classify
+  with:
+    messages: "{{fetch.messages}}"
+    instruction: '"reply": a recruiter or client writing to me personally. "skip": everything else.'
+```
+
+#### `email.draftReply` 🧠
+Drafts a reply in my voice, in the email's language, without inventing facts. It never decides the recipient. Edits
+you make at the gate teach it your style.
+- In: `message`, `instruction`, `context` (what it may draw on: availability, rates, links), `signature`.
+- Out: `subject`, `body`, `language`.
+
+#### `email.send` ⚡
+Sends an email from my mailbox. With `inReplyTo` and `references` it is a reply in the same thread. `to` must come
+from real data (e.g. `{{item.from}}`), a literal, or `policy.allowedRecipients`.
+- In: `to`, `subject`, `body`, `inReplyTo`, `references`.
+- Out: `messageId`, `accepted`.
+
+```yaml
+- id: draft
+  type: email.draftReply
+  forEach: "{{triage.kept}}"
+  with:
+    message: "{{item}}"
+    instruction: Reply briefly. If it could fit, ask for the rate and propose a short call; if not, decline politely.
+- id: send                      # a gate is inserted before it: I see and edit each reply, then press Act
+  type: email.send
+  forEach: "{{triage.kept}}"
+  with:
+    to: "{{item.from}}"
+    subject: "{{draft.subject}}"
+    body: "{{draft.body}}"
+    inReplyTo: "{{item.messageId}}"
+    references: "{{item.references}}"
+limits: { email.send: 20/day }
+```
+
+#### `email.awaiting`
+My sent emails that got no answer: threads whose last message is mine, older than `afterDays`, with nothing from the
+other side since. Each email is listed once; a thread comes back only when I write in it again.
+- In: `afterDays` [5], `lookbackDays` [30], `mailbox` [INBOX], `sentMailbox` (default: the server's Sent folder),
+  `maxFollowUps` [1], `limit` [5].
+- Out: `threads` (threadId, to, subject, sentAt, daysWaiting, followUps, message, references).
+
+#### `email.draftFollowUp` 🧠
+Drafts a short, polite follow-up to my own unanswered email, in its language, without new facts or pressure.
+- In: `message`, `instruction`, `daysWaiting`, `signature`.
+- Out: `subject`, `body`, `language`.
+
+```yaml
+- id: waiting
+  type: email.awaiting
+  with: { afterDays: 5 }
+- id: draft
+  type: email.draftFollowUp
+  forEach: "{{waiting.threads}}"
+  with: { message: "{{item.message}}", daysWaiting: "{{item.daysWaiting}}" }
+- id: send
+  type: email.send
+  forEach: "{{waiting.threads}}"
+  with:
+    to: "{{item.to}}"
+    subject: "{{draft.subject}}"
+    body: "{{draft.body}}"
+    inReplyTo: "{{item.message.messageId}}"
+    references: "{{item.references}}"
+```
+
+### 4.5 Job applications
+
+#### `application.outcome` 🧠
+Reads what an email says about one of my submitted applications, matches it to the application (by the sender's
+domain or the company's name, and the role) and moves it on: `RESPONDED`, `INTERVIEW` or `REJECTED`. Only forward.
+It emits `application.status`, which can cancel a scheduled follow-up. An automatic "we received it" isn't an answer.
+- In: `message`.
+- Out: `matched`, `applicationId`, `job`, `status`, `changed`, `reason`.
+
+```yaml
+- id: outcome
+  type: application.outcome
+  forEach: "{{triage.kept}}"
+  with: { message: "{{item}}" }
+- id: tell
+  type: notify.telegram
+  forEach: "{{triage.kept}}"
+  when: "{{outcome.changed}}"
+  with: { text: "{{outcome.job.company}}: {{outcome.status}}. {{outcome.reason}}" }
+```
+
+### 4.6 Bills
+
+#### `bill.read` 🧠
+Reads bills out of emails: the email text and its PDF attachments go to the LLM, which decides whether it's a bill and
+reads issuer, amount, currency, due date, period and reference. Emails that aren't bills are dropped. Nothing is paid.
+- In: `messages`, `mailbox` [INBOX].
+- Out: `bills`, `notBills`.
+
+#### `bill.save`
+Keeps bills on the **Bills page** (the same bill again updates its row) and returns what to do next: `remind` (new
+bills with a due date, each with `remindAt`, `remindDaysBefore` days before at 09:00) and `jumps` (new bills more than
+`jumpPercent` above the issuer's usual amount), with `jumpText` describing them.
+- In: `bills`, `remindDaysBefore` [3], `jumpPercent` [30].
+- Out: `added`, `updated`, `remind`, `jumps`, `jumpText`.
+
+```yaml
+- id: read
+  type: bill.read
+  when: "{{triage.kept}}"
+  with: { messages: "{{triage.kept}}" }
+- id: save
+  type: bill.save
+  with: { bills: "{{read.bills}}" }
+- id: remind
+  type: calendar.create
+  forEach: "{{save.remind}}"
+  with: { title: "{{item.title}}", start: "{{item.remindAt}}", durationMinutes: 15 }
+- id: jump
+  type: notify.telegram
+  when: "{{save.jumpText}}"
+  with: { text: "{{save.jumpText}}" }
+```
+
+### 4.7 Google Calendar
+
+Needs Google Calendar connected in Settings (see [google-calendar-setup.md](google-calendar-setup.md)).
+
+#### `calendar.find`
+My events between `from` and `to` (default: the next 7 days), optionally matching `query`. `durationMinutes` gives a
+window from `from`, to see what an event at that time would clash with.
+- In: `from`, `to`, `durationMinutes`, `query`, `timeZone`, `maxResults` [50].
+- Out: `events` (id, title, start, end, allDay, location, link, meetLink, attendees, organizer), `count`, `none`.
+
+#### `calendar.create` ⚡
+Creates an event. With `attendees`, Google emails them an invitation from my account. An event with the same title at
+the same start isn't created twice.
+- In: `title`, `start`, `end` or `durationMinutes` [60], `timeZone`, `description`, `location`, `attendees`, `meet`
+  [false], `sendInvites` [true].
+- Out: `created`, `eventId`, `link`, `meetLink`, `invited`.
+
+```yaml
+- id: around
+  type: calendar.find
+  forEach: "{{triage.kept}}"
+  when: "{{invite.values.start}}"
+  with: { from: "{{invite.values.start}}", durationMinutes: 60 }
+- id: event
+  type: calendar.create
+  forEach: "{{triage.kept}}"
+  when: "{{invite.values.start}}"
+  with:
+    title: "Interview: {{invite.values.company}}"
+    start: "{{invite.values.start}}"
+    location: "{{invite.values.place}}"
+    meet: true
+```
+
+### 4.8 Browser 🖥️
+
+The browser runs on the self-hosted server. With `headed: true` it's the watchable browser: you can see it in the
+run's **live view** and take over when it meets a CAPTCHA, a 2FA prompt or a page it doesn't recognize. Only one
+headed run happens at a time.
+
+#### `browser.open` 🖥️
+Opens a page and returns its text. It can sign in first with a stored credential, and stays signed in between runs.
+It submits nothing but the sign-in.
+- In: `url`, `headed` [false], `login` (`credential: "{{cred:name}}"`, optional `username`/`password`/`submit`
+  selectors), `waitFor` (a selector; if it doesn't appear, you take over), `timeoutSeconds` [30].
+- Out: `url`, `title`, `text`, `signedIn`.
+
+```yaml
+- id: account
+  type: browser.open
+  with:
+    url: https://www.jobs.bg/my/applications
+    headed: true
+    login: { credential: "{{cred:jobs-bg}}" }
+    waitFor: .applications-list
+- id: summary
+  type: llm.summarize
+  with: { content: "{{account.text}}", instruction: Which applications changed status? }
+```
+
+#### `browser.extract` 🖥️
+Reads a list (e.g. job postings) from a site with a saved **recipe** (Recipes page): headless, no LLM, every page up to
+the recipe's limit. A list value in `params` runs one search per value. When the site changes and the recipe no longer
+matches, the step fails clearly and marks the recipe broken (event `recipe.broken`). With `fallback: true`,
+`browser.agent` finds the list instead, a fixed recipe is proposed for you to approve, and the run continues with it.
+- In: `recipes` (1–5), `params`, `maxItems` [200], `fallback` [false], `timeoutSeconds` [30].
+- Out: `items` (the recipe's fields plus `source`), `pages`.
+
+```yaml
+- id: search
+  type: browser.extract
+  with:
+    recipes: [dev.bg/search]
+    params: { category: [javascript, python, back-end-development] }
+    maxItems: 500
+    fallback: true
+```
+
+A recipe ([recipes/dev.bg-search.yaml](../recipes/dev.bg-search.yaml)) names the list's address, its params, the item
+selector, each field's selector, the key, how to reach the next page, and a polite delay between pages.
+
+#### `browser.teach` 🖥️ 🧠
+Teach mode, used once per site: opens `url` in the live browser, you bring it to the list and press Continue, the LLM
+proposes a recipe, it's checked on the page (items outlined), and Continue saves it as the next version of `recipe`.
+- In: `recipe`, `url`, `params` (values in the address that become params), `fields` [url, title, company, location,
+  posted], `hint`.
+- Out: `recipe`, `version`, `url`, `items`.
+
+```yaml
+- id: teach
+  type: browser.teach
+  with:
+    recipe: shop.example/hdd
+    url: https://shop.example/hdd?capacity=8tb
+    fields: [url, title, price]
+    hint: The product cards, not the "recommended" strip.
+```
+
+#### `browser.mapForm` 🖥️ 🧠
+Opens an application form (following the page's Apply button if needed) and reads every field, typing nothing. It
+proposes each value from my profile (Settings), writes free-text answers following `message`, uses my stored facts and
+asks me what it can't answer, and attaches the stored document `cv` to the CV field. Its output is the payload of
+`browser.fillAndSubmit`, which I see and can edit at the gate.
+- In: `url`, `headed`, `cv`, `message`, `job`, `timeoutSeconds`.
+- Out: `formUrl`, `fields` (key, label, type, required, options, value, source), `files`, `submit`, `notes`.
+
+#### `browser.fillAndSubmit` ⚡ 🖥️
+Fills the form with exactly the approved fields and files, and submits it in the live browser. Before typing, it reads
+the form again: a changed field, a new required field or another address pauses the run, and nothing is sent. With
+`stopBeforeSubmit: true` it fills everything and you press the final button yourself. With `job`, that posting's
+application is marked submitted (event `application.status`).
+- In: `url`, `fields`, `files`, `stopBeforeSubmit` [false], `job`, `timeoutSeconds`.
+- Out: `submitted`, `url`, `confirmation`.
+
+```yaml
+- id: map
+  type: browser.mapForm
+  forEach: "{{shortlist.selected}}"
+  with:
+    url: "{{item.url}}"
+    cv: cv-main
+    job: "{{item}}"
+    message: Why this role fits me, from my profile only, 2-3 sentences.
+- id: apply
+  type: browser.fillAndSubmit
+  forEach: "{{shortlist.selected}}"
+  with:
+    url: "{{map.formUrl}}"
+    fields: "{{map.fields}}"
+    files: "{{map.files}}"
+    job: "{{item.url}}"
+    stopBeforeSubmit: true
+limits: { browser.fillAndSubmit: 5/day }
+```
+
+#### `browser.agent` 🖥️ 🧠
+For a site without a recipe: an LLM works the page towards `goal` (find the apply button and fill the form, read
+something), from the page's accessibility outline. It can navigate, click, type, select, tick, attach one of
+`documents` and read, at most `maxActions` times, only on the start site and the allowed domains. **It sends
+nothing**: no submit is pressed, no file is picked. Its recorded actions are the payload of `browser.submit`.
+- In: `url`, `goal`, `headed`, `documents`, `message`, `job`, `maxActions` [25], `timeoutSeconds`.
+- Out: `outcome` (`ready`: a form is filled and its final button found; `done`: nothing to send), `answer`,
+  `actions`, `files`, `submit`, `url`, `pageUrl`, `notes`.
+
+#### `browser.submit` ⚡ 🖥️
+Repeats an approved `browser.agent` run exactly, without the LLM, and presses its final button. An element that's
+gone, or a page off the allowed sites, pauses the run with nothing sent.
+- In: `url`, `actions`, `files`, `submit`, `stopBeforeSubmit` [false], `job`, `timeoutSeconds`.
+- Out: `submitted`, `url`, `confirmation`.
+
+```yaml
+- id: agent
+  type: browser.agent
+  with:
+    url: "{{trigger.job.url}}"
+    goal: Find the application form and fill it from my profile; attach my CV.
+    documents: [cv-main]
+    headed: true
+- id: send                    # gate inserted: I see every recorded action and the final button first
+  type: browser.submit
+  with:
+    url: "{{agent.url}}"
+    actions: "{{agent.actions}}"
+    files: "{{agent.files}}"
+    submit: "{{agent.submit}}"
+```
+
+#### `browser.download` 🖥️
+Downloads a file: the address itself, or what clicking `click` on that page downloads. It lands in quarantine and is
+kept only when its size and its real content type (not its name) are allowed: PDF, images, Office documents, text.
+- In: `url`, `click`, `headed`, `timeoutSeconds`.
+- Out: `artifactId`, `filename`, `mime`, `size`, `sha256`.
+
+#### `browser.upload` ⚡ 🖥️
+Puts one of my stored documents (from `file.read`) into a file field and presses `submit` if given. Many sites upload
+as soon as a file is chosen, so this is always behind a gate.
+- In: `url`, `field` (selector of the file input), `file`, `submit`, `timeoutSeconds`.
+- Out: `uploaded`, `url`, `confirmation`.
+
+### 4.9 Documents
+
+#### `file.read`
+Reads the text of a stored document (Documents page, e.g. `cv-main`) or of a file `browser.download` kept. Text files
+as they are, PDFs' text. Its output also binds the document by content, so `browser.upload` sends exactly the version
+you approved.
+- In: `document` or `artifact`, `maxChars` [20000].
+- Out: `filename`, `mime`, `sha256`, `text`, `truncated`, `document`, `documentId`, `artifactId`.
+
+```yaml
+# Download a statement, summarize it
+- id: statement
+  type: browser.download
+  with: { url: https://bank.example/statements, click: "a.latest-pdf", headed: true }
+- id: text
+  type: file.read
+  with: { artifact: "{{statement.artifactId}}" }
+- id: summary
+  type: llm.summarize
+  with: { content: "{{text.text}}", instruction: Totals by category, and anything unusual. }
+
+# Upload my CV to a site (gate inserted before upload)
+- id: cv
+  type: file.read
+  with: { document: cv-main }
+- id: upload
+  type: browser.upload
+  with: { url: https://ats.example.com/profile, field: "#resume", file: "{{cv}}" }
+```
+
+### 4.10 Me in the loop
+
+#### `gate.review`
+Pauses the run and shows a list; I pick which items go on.
+- In: `items`, `title`.
+- Out: `selected`.
+
+```yaml
+- id: shortlist
+  type: gate.review
+  with: { items: "{{score.top}}", title: "Today's best jobs" }
+```
+
+#### `gate.act`
+Shows the exact payload of the side-effect step named in `for`; that step runs only after I press **Act** (or Approve
+on Telegram). You rarely write it: the compiler inserts one before every side-effect step. Write it yourself only to
+place it differently; it must come before its step, after every step that step uses, and loop over the same items.
+- In: `for` (the step id).
+- Out: `approved`.
+
+```yaml
+- id: sendGate
+  type: gate.act
+  forEach: "{{triage.kept}}"
+  with: { for: send }
+- id: send
+  type: email.send
+  forEach: "{{triage.kept}}"
+  with: { to: "{{item.from}}", subject: "{{draft.subject}}", body: "{{draft.body}}" }
+```
+
+### 4.11 Telling me
+
+#### `notify.telegram`
+Sends me a Telegram message (only to me, never to anyone else). See [telegram.md](telegram.md).
+- In: `text` (up to 4000 characters).
+- Out: `sent`.
+
+#### `notify.digest`
+Sends me a Telegram digest of the last `hours`: what ran, what waits for me, what failed.
+- In: `hours` [24].
+- Out: `sent`, `text`.
+
+```yaml
+name: Daily digest
+trigger: { schedule: "0 19 * * *", tz: Europe/Sofia }
+steps:
+  - id: digest
+    type: notify.digest
+    with: { hours: 24 }
+```
+
+### 4.12 Timing
+
+#### `flow.later`
+Starts another pipeline (whose trigger is `{ on: flow.later }`) `after` a while (`30m`, `36h`, `7d`) or `at` a time,
+with `data` as its `{{trigger.data}}`. It fires once, unless cancelled first by `flow.cancel` with its `key`, or by an
+event matching `cancelOn`. Another `flow.later` with the same key replaces it.
+- In: `pipeline`, `after` or `at`, `timeZone`, `data`, `key`, `cancelOn` (`{ event, match }`).
+- Out: `scheduledStartId`, `fireAt`, `replaced`.
+
+#### `flow.cancel`
+Cancels the starts `flow.later` scheduled with `key` that haven't started yet.
+- In: `key`.
+- Out: `cancelled`.
+
+```yaml
+# 7 days after I apply, remind me, unless the employer answers first
+name: Follow-up after applying
+trigger: { on: application.status, status: [SUBMITTED] }
+steps:
+  - id: later
+    type: flow.later
+    with:
+      pipeline: Follow-up reminder
+      after: 7d
+      key: "follow-up:{{trigger.applicationId}}"
+      data: { job: "{{trigger.job}}" }
+      cancelOn:
+        event: application.status
+        match: { applicationId: "{{trigger.applicationId}}" }
+```
+
+```yaml
+# Cancel it by hand, e.g. when I withdraw
+- id: stop
+  type: flow.cancel
+  with: { key: "follow-up:{{trigger.applicationId}}" }
+```
+
+---
+
+## 5. Putting it together
+
+What the steps add up to, with the pipeline that does it:
+
+| Goal | Steps | Example |
+| --- | --- | --- |
+| Draft replies to recruiters and clients, send after I approve | `email.fetch` → `email.classify` → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
+| Find new jobs, score them, let me pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | [dev-bg-jobs.yaml](../pipelines/dev-bg-jobs.yaml) |
+| Track answers to my applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
+| Remind me to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
+| Nudge people who didn't answer my emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
+| Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
+| Keep my bills, remind me before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |
+| Tell me when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../pipelines/prices.yaml) |
+| Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../pipelines/price-watch.yaml), [product-watch.yaml](../pipelines/product-watch.yaml) |
+| New releases of my stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../pipelines/release-watch.yaml), [release-notes.yaml](../pipelines/release-notes.yaml) |
+| Email me when it will be colder than 10° in the next 12 hours, and when it's back | `http.fetch` → `data.map` → `data.alert` → `email.send` | [cold-weather.yaml](../pipelines/cold-weather.yaml) |
+| Open a GitHub issue when a pipeline fails, after I approve it | `http.request` on a `run.finished` trigger | [failed-run-issue.yaml](../pipelines/failed-run-issue.yaml) |
+| Tell me when a table grows much faster than usual | `db.query` → `data.history` → `data.alert` → `notify.telegram` | [table-growth.yaml](../pipelines/table-growth.yaml) |
+| An evening summary of everything | `notify.digest` | [daily-digest.yaml](../pipelines/daily-digest.yaml) |
+| Check the live browser handover | `browser.open` (headed) | [live-view-check.yaml](../pipelines/live-view-check.yaml) |
+
+### What it can't do
+
+- Anything that isn't a catalog step. The builder can only combine these steps; it can't write code. It reads any
+  API with `http.fetch` and changes things with `http.request` (with a key from a credential), always after you
+  approve.
+- Send, submit, upload or create events without your approval.
+- Message anyone on Telegram but you.
+- Read hosts that aren't allowed, or private network addresses.
+- Pay bills, move or delete emails, or mark them read.
+- Reach a server on your private network or tailnet (Home Assistant, a NAS) with `http.fetch` or `http.request`. A
+  database there is reachable with `db.query`, because its credential names the host.
+- Write to a database: `db.query` only reads.
+- Send an `http.request` without your approval, or follow its redirects.

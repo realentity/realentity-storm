@@ -173,10 +173,13 @@ export class PipelineCompiler {
         if (!resolved.ok) errors.push({ path: fieldPath, message: resolved.message });
         else if (resolved.credential) credentialUsed = true;
       }
-      if (credentialUsed && !scope.definition.acceptsCredentials) {
+      const accepts = scope.definition.acceptsCredentials;
+      if (credentialUsed && (!accepts || (Array.isArray(accepts) && !accepts.includes(key)))) {
         errors.push({
           path: fieldPath,
-          message: `${scope.step.type} can't receive credentials ({{cred:…}}); they never reach the LLM or notifications`,
+          message: Array.isArray(accepts)
+            ? `${scope.step.type} takes credentials ({{cred:…}}) only in ${accepts.join(" and ")}`
+            : `${scope.step.type} can't receive credentials ({{cred:…}}); they never reach the LLM or notifications`,
         });
       }
 
@@ -334,6 +337,9 @@ function checkView(definition: PipelineDefinition, errors: CompileIssue[]): void
   }
   if (view.detail.history && !written("data.history").has(view.detail.history)) {
     errors.push({ path: "view.detail.history", message: `no data.history step of this pipeline writes "${view.detail.history}"` });
+  }
+  if (view.chart && !written("data.history").has(view.chart.history)) {
+    errors.push({ path: "view.chart.history", message: `no data.history step of this pipeline writes "${view.chart.history}"` });
   }
   const marks = new Set<string>();
   view.marks.forEach((mark, i) => {

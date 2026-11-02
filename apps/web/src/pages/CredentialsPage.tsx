@@ -43,8 +43,8 @@ export function CredentialsPage() {
         }
       />
       <p className="text-secondary">
-        Stored encrypted. Pipelines refer to them as <code>{"{{cred:name}}"}</code>; only browser steps on the allowed hosts receive them,
-        and no value is ever shown here or sent to the LLM.
+        Stored encrypted. Pipelines refer to them as <code>{"{{cred:name}}"}</code>: a browser sign-in, or an API key in{" "}
+        <code>http.fetch</code>'s headers or query. Only the allowed hosts receive them, and no value is ever shown here or sent to the LLM.
       </p>
       <ErrorAlert error={credentials.error} />
       {!credentials.data && credentials.loading && <Loading />}
@@ -203,10 +203,14 @@ function AddCredential({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             className="form-control"
             value={hosts}
             onChange={(e) => setHosts(e.target.value)}
-            placeholder="linkedin.com, *.linkedin.com"
+            placeholder={kind === CredentialKind.DATABASE ? "postgres, storm.example.ts.net" : "linkedin.com, *.linkedin.com"}
             required
           />
-          <div className="form-hint">Exact hosts, or *.host for its subdomains. It is never sent anywhere else.</div>
+          <div className="form-hint">
+            {kind === CredentialKind.DATABASE
+              ? "The database server's host, as in the connection URL: a name, a tailnet name or an IP address. It connects nowhere else."
+              : "Exact hosts, or *.host for its subdomains. It is never sent anywhere else."}
+          </div>
         </div>
         <div className="mb-3">
           <label className="form-label" htmlFor="cred-username">
@@ -228,6 +232,12 @@ function AddCredential({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             required
             data-testid="credential-secret"
           />
+          {kind === CredentialKind.DATABASE && (
+            <div className="form-hint">
+              The connection URL, <code>postgresql://reader:password@host:5432/app</code>, for <code>db.query</code>. Use a database user that may
+              only read; AI ME reads in a read-only transaction either way.
+            </div>
+          )}
         </div>
         <div className="d-flex justify-content-end gap-2">
           <button type="button" className="btn" onClick={onClose}>

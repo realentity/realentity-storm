@@ -1,6 +1,6 @@
 import { type KeyRing, open } from "@ai-me/crypto";
 import { type PrismaClient } from "@ai-me/db";
-import { hostMatches } from "@ai-me/shared";
+import { databaseHost, hostMatches } from "@ai-me/shared";
 
 export class CredentialNotFoundError extends Error {
   constructor(name: string) {
@@ -36,6 +36,22 @@ export class CredentialVault {
     if (!hostMatches(host, row.allowedHosts)) throw new CredentialHostMismatchError(name, host);
 
     const secret = open(this.keys, row.credentialId, row);
+    await this.prisma.credential.update({ where: { credentialId: row.credentialId }, data: { lastUsedAt: new Date() } });
+    return { username: row.username, secret };
+  }
+
+  /**
+   * A DATABASE credential's connection URL (db.query, M29-T7): the host is inside the value, so it is checked once
+   * opened, against the credential's `allowedHosts`, before anything connects.
+   */
+  async revealConnection(userId: string, name: string): Promise<RevealedCredential> {
+    const row = await this.prisma.credential.findUnique({ where: { userId_name: { userId, name } } });
+    if (!row) throw new CredentialNotFoundError(name);
+    if (row.kind !== "DATABASE") throw new Error(`Credential "${name}" isn't a database connection (kind ${row.kind.toLowerCase().replace("_", " ")})`);
+    const secret = open(this.keys, row.credentialId, row);
+    const host = databaseHost(secret);
+    if (!host) throw new Error(`Credential "${name}" isn't a postgresql:// connection URL`);
+    if (!hostMatches(host, row.allowedHosts)) throw new CredentialHostMismatchError(name, host);
     await this.prisma.credential.update({ where: { credentialId: row.credentialId }, data: { lastUsedAt: new Date() } });
     return { username: row.username, secret };
   }

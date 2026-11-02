@@ -1,0 +1,36 @@
+# M29: every hour, the next 12 hours of Sofia's forecast from Open-Meteo (free, no key). An email once when it will
+# drop below 10°, and once more when it is back at 12° or over: data.alert remembers between runs, so a cold
+# evening is one email, not one an hour. Another place: its latitude and longitude in the url, and its name in
+# `place`. The email waits for my approval at its gate like every email AI ME sends; set `to` to my address.
+name: Cold weather
+description: An email when the next 12 hours in Sofia drop below 10°, and when they are back over 12°.
+trigger: { schedule: "0 * * * *", tz: Europe/Sofia }
+policy:
+  allowedDomains: [api.open-meteo.com]
+steps:
+  - id: forecast
+    type: http.fetch
+    with:
+      url: https://api.open-meteo.com/v1/forecast?latitude=42.6977&longitude=23.3219&hourly=temperature_2m&forecast_hours=12&timezone=Europe%2FSofia
+  - id: next12h
+    type: data.map
+    with:
+      from: "{{forecast.json}}"
+      # The lowest temperature of the 12 hours and its hour, as one item.
+      expression: |-
+        (
+          $t := hourly.temperature_2m;
+          $low := $min($t);
+          $at := $map($t, function($v, $i) { $v = $low ? $i })[0];
+          { "place": "Sofia", "min": $low, "at": $substringAfter(hourly.time[$at], "T") }
+        )
+  - id: cold
+    type: data.alert
+    with: { items: "{{next12h.items}}", key: place, value: min, below: 10, clearAt: 12 }
+  - id: tell
+    type: email.send
+    when: "{{cold.text}}"
+    with:
+      to: me@example.com
+      subject: "Weather: {{cold.text}}"
+      body: "{{cold.text}}\n\nThe lowest in the next 12 hours: {{next12h.value.min}}° at {{next12h.value.at}}."

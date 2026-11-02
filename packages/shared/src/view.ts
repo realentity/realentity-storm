@@ -119,9 +119,24 @@ export const PipelineViewSchema = z
       .default({}),
     marks: z.array(ViewMarkSchema).max(5).default([]),
     actions: z.array(ViewActionSchema).max(6).default([]),
+    /**
+     * M29-T8: a data.history collection of this pipeline drawn above the list, a line per key (the five with the highest
+     * latest value; a row's own page charts any key). `stepped` for prices, which hold until the next reading.
+     */
+    chart: z
+      .object({
+        history: z.string().regex(VIEW_COLLECTION),
+        label: z.string().trim().min(1).max(40).optional(),
+        stepped: z.boolean().default(false),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type PipelineView = z.output<typeof PipelineViewSchema>;
+
+/** At most this many lines on a page's chart (M29-T8): the categorical palette's slots, never a sixth colour. */
+export const CHART_SERIES = 5;
 
 // --- the api (M27) ---
 
@@ -194,6 +209,15 @@ export interface ViewPageView extends ViewHeader {
   total: number;
   /** Rows per tab, without the search. */
   counts: Record<string, number>;
+  /** The view's chart (M29-T8): a series per key, oldest first; null without `chart`. */
+  chart: ViewChart | null;
+}
+
+export interface ViewChart {
+  /** By latest value, highest first; at most CHART_SERIES. `label`: the row's title when the key is a row. */
+  series: { key: string; label: string; points: { at: string; value: number }[] }[];
+  /** Keys kept but not drawn. */
+  more: number;
 }
 
 export interface ViewRowView extends ViewHeader {

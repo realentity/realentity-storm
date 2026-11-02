@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@ai-me/shared": "workspace:*",
+    "jsonata": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },

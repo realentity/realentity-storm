@@ -2,6 +2,7 @@ import { type ViewPageView, type ViewTab } from "@ai-me/shared";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
+import { SeriesChart } from "../components/SeriesChart";
 import { RowLink, RowMarks, ViewActions, ViewValue } from "../components/ViewParts";
 import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
@@ -50,6 +51,22 @@ export function ViewPage() {
         }
         actions={<ViewActions pipelineId={pipelineId} view={view} />}
       />
+      {data.chart && view.chart && (
+        <div className="card mb-3" data-testid="view-chart">
+          <div className="card-header">
+            <h3 className="card-title">{view.chart.label ?? "Over time"}</h3>
+            {data.chart.more > 0 && <span className="card-subtitle ms-2">the top {data.chart.series.length}; {data.chart.more} more on their rows' pages</span>}
+          </div>
+          <div className="card-body">
+            <SeriesChart
+              series={data.chart.series.map((s) => ({ id: s.key, label: s.label, points: s.points }))}
+              stepped={view.chart.stepped}
+              label={`${view.chart.label ?? view.menu.label} over time`}
+              empty={`Nothing kept yet: ${data.pipelineName} adds a value per row each run.`}
+            />
+          </div>
+        </div>
+      )}
       <Tabs data={data} tab={tab} onChoose={choose} />
       <form
         className="row g-2 mb-3"

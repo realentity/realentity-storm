@@ -178,6 +178,34 @@ describe("views", () => {
     await agent.get(`/api/views/${pipelineId}/rows/nothing`).expect(404);
   });
 
+  it("M29-I8: a chart of every key above the list: the five highest by latest value, named by their row; none without `chart`", async () => {
+    const plain = await create(RELEASES);
+    expect(((await agent.get(`/api/views/${plain.pipelineId}`).expect(200)).body as ViewPageView).chart).toBeNull();
+    await db.client.pipeline.delete({ where: { pipelineId: plain.pipelineId } });
+
+    const { pipelineId } = await create(RELEASES.replace("  detail: { history: release-stars }", "  detail: { history: release-stars }\n  chart: { history: release-stars, label: Stars }"));
+    await release("r1", { title: "v1.0.0", stars: 5 });
+    const day = (n: number) => new Date(`2026-10-0${n}T09:00:00Z`);
+    await db.client.dataPoint.createMany({
+      data: [
+        { userId, collection: "release-stars", key: "r1", value: 3, at: day(1) },
+        { userId, collection: "release-stars", key: "r1", value: 50, at: day(2) },
+        ...[1, 2, 3, 4, 5, 6].map((n) => ({ userId, collection: "release-stars", key: `k${n}`, value: n, at: day(2) })),
+        { userId, collection: "other", key: "r1", value: 1000, at: day(2) },
+      ],
+    });
+    const page = (await agent.get(`/api/views/${pipelineId}`).expect(200)).body as ViewPageView;
+    expect(page.chart?.series.map((s) => [s.key, s.label, s.points.map((p) => p.value)])).toEqual([
+      ["r1", "v1.0.0", [3, 50]],
+      ["k6", "k6", [6]],
+      ["k5", "k5", [5]],
+      ["k4", "k4", [4]],
+      ["k3", "k3", [3]],
+    ]);
+    expect(page.chart?.more).toBe(2);
+    expect(page.chart?.series[0]?.points[0]).toEqual({ at: "2026-10-01T09:00:00.000Z", value: 3 });
+  });
+
   it("starts pipelines from its buttons: the page's as a manual run, a row's with the row", async () => {
     const { pipelineId } = await create(RELEASES);
     const notes = await create(NOTES);

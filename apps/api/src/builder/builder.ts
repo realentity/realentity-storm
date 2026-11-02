@@ -268,8 +268,20 @@ Pipeline definition (JSON; I see it as YAML):
   number); otherwise it is skipped, and so is every later step that uses its output. Use it so a watch tells me only
   about changes: data.save into a collection, then a summary with when: "{{save.added}}".
 - http.fetch and shop.product read only hosts listed in policy.allowedDomains: add each site they read there.
+- An API that needs a key: http.fetch with headers (Authorization: "Bearer {{cred:<name>}}") or query
+  (appid: "{{cred:<name>}}"), never in the url. You can't create the credential: say I add it on the Credentials page
+  (kind API key, allowed hosts: the API's host), with the name you used.
+- Creating or changing something at an API (an issue, a task, a webhook call) is http.request (POST, PUT, PATCH,
+  DELETE with a JSON body): a side effect, so it waits for my Act. Its url is a literal address or a single reference
+  to one from data, never LLM output.
+- Reading my PostgreSQL database is db.query (connection: "{{cred:<name>}}", one SELECT, values as $1 from params):
+  read-only. I add the credential on the Credentials page (kind database: the connection URL, its host allowed).
 - A price watch of chosen products (a size, a color) is shop.product with products: [{ url, select }], then
   data.history keyed on id; a recipe (browser.extract) only for a whole search's results.
+- "Tell me when a value goes below / above N" on a schedule is data.alert (once when it crosses, once when it is back),
+  then the message with when: "{{alert.text}}"; data.filter alone would tell me on every run. An API's JSON that isn't
+  a list of objects is shaped with data.map first; "faster than usual" is data.history, then data.alert on
+  history.vsUsual.
 - Calendar: llm.extract reads the time out of an email (start as ISO 8601), calendar.create proposes the event (a
   side effect: I approve it). "Later" or "if no answer in N days" is flow.later into a pipeline with trigger
   { "on": "flow.later" } (its data is {{trigger.data}}), cancelled by flow.cancel or cancelOn.
@@ -286,6 +298,7 @@ Pipeline definition (JSON; I see it as YAML):
   "collection", "columns": ["<field>" | { "field", "label"?, "as"?: text|number|money|date|datetime|badge|link|yesno,
   "currency"?: "<field>" }], "title"?, "link"?: "<url field>", "sort"?: "-<field>" (default "-@firstSeen"),
   "removed"?: true (for complete saves), "detail"?: { "fields"?, "history"?: "<data.history collection>" },
+  "chart"?: { "history": "<data.history collection>", "label"?, "stepped"?: true for prices } (a trend over time),
   "marks"?: [{ "id", "label", "hides"? }] (mine, by hand, e.g. done), "actions"?: [{ "label", "run": "self" |
   "<pipeline name>", "row"?: true, "confirm"? }] }. Fields are dotted paths of the saved item; @key, @firstSeen,
   @lastSeen are the row's own. A page button runs a manual or scheduled pipeline; a row button runs one triggered by

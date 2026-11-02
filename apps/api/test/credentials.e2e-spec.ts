@@ -78,6 +78,19 @@ describe("credentials", () => {
     expectNoSecret(response.body, secret);
   });
 
+  it("M29-T7: a database credential is a postgresql:// URL whose host is among its allowed hosts; never echoed", async () => {
+    const password = `pw-${randomUUID()}`;
+    const database = (secret: string, allowedHosts: string[]) => agent.post("/api/credentials").send({ name: `db-${randomUUID().slice(0, 8)}`, kind: "DATABASE", allowedHosts, secret });
+    await database(`postgresql://reader:${password}@postgres:5432/app`, ["postgres"]).expect(201);
+    await database(`postgres://reader:${password}@100.101.102.103/app`, ["100.101.102.103"]).expect(201);
+    const elsewhere = await database(`postgresql://reader:${password}@db.example.com/app`, ["postgres"]).expect(400);
+    expect(JSON.stringify(elsewhere.body)).toContain("the database's host (db.example.com) must be one of them");
+    expectNoSecret(elsewhere.body, password);
+    const notUrl = await database(`host=postgres password=${password}`, ["postgres"]).expect(400);
+    expect(JSON.stringify(notUrl.body)).toContain("a connection URL");
+    expectNoSecret(notUrl.body, password);
+  });
+
   it("does not touch another user's credentials", async () => {
     const other = await db.client.user.create({ data: { email: `other-${randomUUID()}@aime.test` } });
     const credentialId = randomUUID();
