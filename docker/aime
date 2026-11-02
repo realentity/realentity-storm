@@ -45,8 +45,11 @@ restore_test() {
   trap 'sudo -u postgres dropdb --if-exists aime_restore_test || true' EXIT
   sudo -u postgres createdb -O storm_user "$db"
   sql -d "$db" -c 'CREATE EXTENSION vector;' -c 'CREATE EXTENSION citext;'
-  if ! sudo -u postgres pg_restore -d "$db" --no-owner --no-comments --role=storm_user --exit-on-error "$dump"; then
-    problems+=("pg_restore failed")
+  # The dumps are root's (the nightly backup's): read here, given to pg_restore on stdin.
+  if ! sudo -u postgres pg_restore -d "$db" --no-owner --no-comments --role=storm_user --exit-on-error < "$dump"; then
+    tell "AI ME restore test FAILED: pg_restore failed for $(basename "$dump")"
+    echo "pg_restore failed for $dump" >&2
+    return 1
   fi
 
   local table restored live counts=()
@@ -60,9 +63,11 @@ restore_test() {
 
   local url credentials
   url="$(env_value DATABASE_URL | sed 's|/storm$|/'"$db"'|')"
-  if credentials="$(compose run --rm --no-deps -e DATABASE_URL="$url" worker node dist/tools/check-credentials.js 2>&1)"; then :; else
-    problems+=("credentials: ${credentials##*$'\n'}")
-  fi
+  local status=0
+  credentials="$(compose run --rm --no-deps -e DATABASE_URL="$url" worker node dist/tools/check-credentials.js 2>&1)" || status=$?
+  # Only the tool's own lines: compose adds "Container … Creating" and the like.
+  credentials="$(printf '%s\n' "$credentials" | grep -v '^ *Container ' || true)"
+  [ "$status" -eq 0 ] || problems+=("credentials: ${credentials##*$'\n'}")
 
   local summary
   summary="$(basename "$dump"), restored/live: ${counts[*]}. ${credentials%%$'\n'*}"
