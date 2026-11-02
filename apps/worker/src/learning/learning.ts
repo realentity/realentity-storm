@@ -5,6 +5,7 @@ import { type EmailMessage, type StepCatalog } from "@ai-me/steps";
 import { Logger } from "@nestjs/common";
 import { sourceOf } from "../runner/run-values";
 import { emailBlock } from "../steps/email-block";
+import { Facts } from "./facts";
 
 /** Few-shot examples per call: enough for tone and length, few enough to keep prompts small. */
 const EXAMPLES_PER_CALL = 3;
@@ -151,6 +152,8 @@ export class Learning implements StepLearning {
       include: { step: true, run: { include: { pipelineVersion: true } }, decision: true },
     });
     if (!proposal?.decision || proposal.decision.kind === "REJECTED" || proposal.run.dryRun) return 0;
+    // Form answers I filled in or changed become facts (M15-T1).
+    await new Facts(this.prisma).fromProposal(proposal);
 
     let added = 0;
     for (const learned of await learnedFields(this.prisma, this.catalog, proposal)) {

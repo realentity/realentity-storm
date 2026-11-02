@@ -2,6 +2,7 @@ import { type RunDetailView, type RunStepView } from "@ai-me/shared";
 import { Fragment, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { LiveView } from "../components/LiveView";
+import { QuestionCard } from "../components/QuestionCard";
 import { ErrorAlert, Json, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
@@ -75,6 +76,7 @@ export function RunPage() {
           items it reads are outlined. Press <strong>Continue</strong> again to save the recipe, or <strong>Abort</strong> if the outline is wrong.
         </div>
       )}
+      {r.question && <QuestionCard question={r.question} onAnswered={run.reload} />}
       <LiveView run={r} />
       {r.proposals.length > 0 && <Proposals run={r} />}
       <Timeline steps={r.steps} />

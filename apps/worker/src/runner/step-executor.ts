@@ -43,6 +43,8 @@ export interface NeedMeOptions {
   waitsFor?: string;
   /** Instead of "Open the live view". */
   button?: { text: string; url: string };
+  /** false: no "AI ME needs you" message (the step sends its own, e.g. a question to reply to). */
+  notify?: boolean;
 }
 
 /** The run is to stop (Abort in the live view, the kill switch): the runner aborts it instead of failing the step. */

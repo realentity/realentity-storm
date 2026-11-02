@@ -331,4 +331,68 @@ describe("M12: the AI ME bot and webhooks", () => {
       expect(Buffer.from(job.data.body as string, "base64").toString()).toBe(body);
     });
   });
+  // M15: facts on the Profile page; a run's question answered on its page or by a Telegram reply.
+  describe("M15: facts and questions", () => {
+    afterEach(async () => {
+      await db.client.fact.deleteMany();
+    });
+
+    /** A run waiting for my answer, as the worker's Asker leaves it: the question (asked on Telegram) and the wait. */
+    async function asked(options: string[] = [], telegramMessageId = 777) {
+      const pipeline = await createPipeline(REPLY);
+      const run = await db.client.run.create({
+        data: { userId, pipelineVersionId: pipeline.current!.pipelineVersionId, trigger: "manual", status: "WAITING_FOR_USER" },
+      });
+      const question = await db.client.question.create({
+        data: { userId, runId: run.runId, stepKey: "map", question: "Salary expectation", options, site: "ats.test", telegramMessageId },
+      });
+      const wait = await db.client.takeover.create({ data: { runId: run.runId, stepKey: "map", status: "OPEN", reason: "A question for you", waitsFor: "answer" } });
+      return { run, question, wait };
+    }
+    const reply = (text: string, to: number) => ({ ...message(text), message: { ...message(text).message, reply_to_message: { message_id: to } } });
+
+    it("a reply on Telegram answers the question: a fact, the run goes on, and the bot says so", async () => {
+      const { run, question, wait } = await asked();
+      await telegram(reply("4 000 EUR net", 777)).expect(200);
+
+      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({ status: "ANSWERED", answer: "4 000 EUR net" });
+      const fact = await db.client.fact.findFirstOrThrow({ where: { userId } });
+      expect(fact).toMatchObject({ question: "Salary expectation", answer: "4 000 EUR net", source: "ASKED", site: "ats.test", runId: run.runId });
+      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({ factId: fact.factId });
+      expect(await db.client.takeover.findUniqueOrThrow({ where: { takeoverId: wait.takeoverId } })).toMatchObject({ status: "CONTINUED" });
+      expect(sent().at(-1)?.body.text).toBe('Thanks: "Salary expectation" is 4 000 EUR net. Kept for the next forms; the run goes on.');
+
+      // Again: already answered, said so; a reply to another message is no answer (the help).
+      await telegram(reply("5 000", 777)).expect(200);
+      expect(sent().at(-1)?.body.text).toBe("Not taken: Already answered");
+      await telegram(reply("hello", 12345)).expect(200);
+      expect(sent().at(-1)?.body.text).toContain("/run <pipeline>");
+      // Only my chat answers.
+      const other = await asked([], 778);
+      await telegram({ ...reply("1 EUR", 778), message: { ...reply("1 EUR", 778).message, from: { id: 1 }, chat: { id: 1, type: "private" } } }).expect(200);
+      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: other.question.questionId } })).toMatchObject({ status: "OPEN" });
+    });
+
+    it("answered on the run page: shown there while open; a choice must be one of its options", async () => {
+      const { run, question } = await asked(["Immediately", "1 month", "3 months"]);
+      const detail = (await agent.get(`/api/runs/${run.runId}`).expect(200)).body as { question: { questionId: string; options: string[] } | null };
+      expect(detail.question).toMatchObject({ questionId: question.questionId, options: ["Immediately", "1 month", "3 months"] });
+
+      await agent.post(`/api/questions/${question.questionId}/answer`).send({ answer: "two weeks" }).expect(400);
+      const answered = await agent.post(`/api/questions/${question.questionId}/answer`).send({ answer: "1 MONTH" }).expect(200);
+      expect(answered.body).toMatchObject({ status: "ANSWERED", answer: "1 month" });
+      await agent.post(`/api/questions/${question.questionId}/answer`).send({ answer: "1 month" }).expect(409);
+      expect(((await agent.get(`/api/runs/${run.runId}`).expect(200)).body as { question: unknown }).question).toBeNull();
+    });
+
+    it("facts on the Profile page: added, edited, one per question, deleted", async () => {
+      const created = (await agent.post("/api/facts").send({ question: "Willing to relocate?", answer: "No" }).expect(201)).body as { factId: string };
+      await agent.post("/api/facts").send({ question: "willing to relocate", answer: "Yes" }).expect(409);
+      const edited = await agent.put(`/api/facts/${created.factId}`).send({ question: "Willing to relocate?", answer: "Within the EU" }).expect(200);
+      expect(edited.body).toMatchObject({ answer: "Within the EU", source: "ME" });
+      expect(((await agent.get("/api/facts").expect(200)).body as unknown[]).length).toBe(1);
+      await agent.delete(`/api/facts/${created.factId}`).expect(204);
+      expect((await agent.get("/api/facts").expect(200)).body).toEqual([]);
+    });
+  });
 });

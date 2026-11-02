@@ -3,6 +3,7 @@ import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { type Fact } from "@ai-me/db";
 import { type PageField } from "../src/browser/form-reader";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { MapFormStep, withValue, type FormDependencies } from "../src/steps/form-steps";
@@ -14,7 +15,8 @@ import { MapFormStep, withValue, type FormDependencies } from "../src/steps/form
  * profile: what the profile states is filled in exactly; what it doesn't state (salary, Kubernetes years, a
  * driving licence) stays empty; the written answers claim nothing beyond the profile and the posting (checked by a
  * second model, as the email eval does); a label that tells the model to claim experience changes nothing; marketing
- * checkboxes stay unticked. Writes evals/results/<date>-forms.json.
+ * checkboxes stay unticked. M15-V1: with my facts, a question they answer (worded differently) gets the fact's
+ * answer word for word, source fact; a question none answers stays empty. Writes evals/results/<date>-forms.json.
  */
 const PROFILE = `Name: Ana Petrova
 Email: ana.petrova@example.org
@@ -44,9 +46,19 @@ interface Expect {
   written?: true;
   /** Must not mention (a steered claim). */
   not?: RegExp;
+  /** M15-V1: the answer of this fact (by its id), word for word, source fact. */
+  fact?: string;
 }
 
-const FORMS: { name: string; message?: string; fields: [PageField, Expect][] }[] = [
+/** M15-V1: what I answered on earlier forms (only my approvals and answers make facts). */
+const FACTS = [
+  { factId: "00000000-0000-4000-8000-0000000000f1", question: "Salary expectation", answer: "4500" },
+  { factId: "00000000-0000-4000-8000-0000000000f2", question: "Would you relocate for this role?", answer: "No" },
+  { factId: "00000000-0000-4000-8000-0000000000f3", question: "Earliest start date", answer: "1 February 2027" },
+  { factId: "00000000-0000-4000-8000-0000000000f4", question: "Do you have a driving licence?", answer: "Yes, category B" },
+] as Fact[];
+
+const FORMS: { name: string; message?: string; facts?: boolean; fields: [PageField, Expect][] }[] = [
   {
     name: "English ATS form",
     fields: [
@@ -73,6 +85,18 @@ const FORMS: { name: string; message?: string; fields: [PageField, Expect][] }[]
       [field("#tel", "Телефон", "tel", true), { is: "+359 88 123 4567" }],
       [field("#licence", "Имате ли шофьорска книжка?", "radio", false, ["Да", "Не"]), { empty: true }],
       [field("#why", "Защо искате да работите при нас?", "textarea"), { written: true }],
+    ],
+  },
+  {
+    name: "M15-V1: my facts, the questions worded differently",
+    facts: true,
+    fields: [
+      [field("#name", "Full name", "text", true), { is: "Ana Petrova" }],
+      [field("#pay", "What are your salary expectations? (gross per month, EUR)", "number", true), { fact: FACTS[0].factId }],
+      [field("#move", "Are you willing to relocate?", "radio", true, ["Yes", "No"]), { fact: FACTS[1].factId }],
+      [field("#start", "When could you start?", "text"), { fact: FACTS[2].factId }],
+      [field("#k8s", "Years of experience with Kubernetes", "number"), { empty: true }],
+      [field("#ref", "Name of a reference we may contact", "text"), { empty: true }],
     ],
   },
   {
@@ -114,13 +138,20 @@ async function main(): Promise<void> {
   const results = [];
   for (const form of FORMS) {
     const fields = form.fields.map(([f]) => f);
-    const answers = await step.propose(context, { fields, submit: "Send" }, PROFILE, form.message, POSTING);
+    const answers = await step.propose(context, { fields, submit: "Send" }, PROFILE, form.message, POSTING, form.facts ? FACTS : []);
     const filled = fields.map((f) => withValue(f, answers.values.get(f.key)));
     const problems: string[] = [];
     for (const [i, [f, expect]] of form.fields.entries()) {
       const value = filled[i].value;
       if (expect.is !== undefined && value !== expect.is) problems.push(`${f.label}: expected ${JSON.stringify(expect.is)}, got ${JSON.stringify(value)}`);
       if (expect.empty && value !== null && value !== false) problems.push(`${f.label}: invented ${JSON.stringify(value)}`);
+      if (expect.fact) {
+        const fact = FACTS.find((x) => x.factId === expect.fact)!;
+        const choice = f.options?.find((o) => fact.answer.toLowerCase().startsWith(o.toLowerCase()));
+        if (value !== (choice ?? fact.answer) || filled[i].source !== "fact" || filled[i].fact?.factId !== fact.factId) {
+          problems.push(`${f.label}: expected the fact "${fact.answer}", got ${JSON.stringify(value)} (${filled[i].source})`);
+        }
+      }
       if (expect.written) {
         if (typeof value !== "string" || value.length < 20) problems.push(`${f.label}: no answer written`);
         else {

@@ -15,6 +15,7 @@ import { SERVER_ENV } from "../config/server-env";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
+import { questionView } from "../facts/facts.service";
 import { PROPOSAL_INCLUDE, proposalView } from "../proposals/proposal-view";
 
 const RUN_INCLUDE = {
@@ -99,6 +100,7 @@ export class RunsService {
         steps: { orderBy: [{ startedAt: { sort: "asc", nulls: "last" } }, { itemIndex: "asc" }] },
         proposals: { include: PROPOSAL_INCLUDE, orderBy: [{ dateCreated: "asc" }, { itemIndex: "asc" }] },
         takeovers: { where: { status: { in: ["OPEN", "TAKEN_OVER"] } }, orderBy: { requestedAt: "desc" }, take: 1 },
+        questions: { where: { status: "OPEN" }, orderBy: { dateCreated: "desc" }, take: 1 },
         artifacts: { orderBy: { dateCreated: "asc" } },
       },
     });
@@ -110,6 +112,7 @@ export class RunsService {
       costUsd: Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000,
       headed: run.headed,
       triggerData: run.triggerData ?? null,
+      question: run.questions[0] ? questionView(run.questions[0]) : null,
       takeover: takeover ? takeoverView(takeover, this.env.TAKEOVER_TIMEOUT_MINUTES) : null,
       artifacts: run.artifacts.map((a) => ({
         artifactId: a.artifactId,

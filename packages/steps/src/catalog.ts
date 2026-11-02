@@ -154,6 +154,9 @@ export const COLLECTION = /^[a-z][a-z0-9._-]{0,63}$/;
 export const DOCUMENT_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const DocumentName = z.string().regex(DOCUMENT_NAME, 'a document name, e.g. "cv-main"');
 
+/** Where a value typed into a form came from (M10, M15). */
+export const ANSWER_SOURCES = ["profile", "written", "fact", "asked", "none"] as const;
+
 export const FORM_FIELD_TYPES = ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "file"] as const;
 
 /** One field of an external form, as browser.mapForm read it, with the value to type (README §2.2, map → gate → act). */
@@ -167,8 +170,10 @@ export const FormFieldSchema = z.object({
   options: z.array(z.string().max(300)).max(200).optional(),
   /** What to type or pick; a checkbox: true or false; null: left as it is. File fields get files, not values. */
   value: z.union([z.string().max(10_000), z.boolean()]).nullable(),
-  /** Where the value came from: my profile, written for this job, or nothing. */
-  source: z.enum(["profile", "written", "none"]).default("none"),
+  /** Where the value came from: my profile, written for this job, one of my facts, my answer to a question, or nothing. */
+  source: z.enum(ANSWER_SOURCES).default("none"),
+  /** The fact it came from (source fact or asked, M15): the gate shows it. */
+  fact: z.object({ factId: z.uuid(), question: z.string().max(300) }).optional(),
   /**
    * A question that checks I'm a person ("104-43="): never answered by the step; I answer it in the live view before
    * the form goes (it may change on every load).
@@ -209,7 +214,7 @@ export const AgentActionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("type"),
     target: ElementTargetSchema,
     value: z.string().max(10_000),
-    source: z.enum(["profile", "written", "none"]).default("none"),
+    source: z.enum(ANSWER_SOURCES).default("none"),
   }),
   z.object({ kind: z.literal("select"), target: ElementTargetSchema, value: z.string().max(300) }),
   z.object({ kind: z.literal("check"), target: ElementTargetSchema, value: z.boolean() }),

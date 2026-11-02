@@ -134,6 +134,8 @@ model User {
   dataPoints    DataPoint[]
   httpCaches    HttpCache[]
   google        GoogleConnection?
+  facts         Fact[]
+  questions     Question[]
   scheduled     ScheduledStart[]
 
   @@map("Users")
@@ -366,6 +368,7 @@ model Run {
   proposals Proposal[]
   artifacts Artifact[]
   takeovers Takeover[]
+  questions Question[]
 
   @@index([userId, status])
   @@map("Runs")
@@ -805,4 +808,71 @@ model ScheduledStart {
   @@index([userId, status])
   @@index([userId, key])
   @@map("ScheduledStarts")
+}
+
+enum FactSource {
+  /// A form answer I approved at a gate: filled in or edited by me.
+  FORM
+  /// My answer to a question a run asked me.
+  ASKED
+  /// Written on the Profile page.
+  ME
+}
+
+/// Something about me only I can say (M15): a question as forms ask it and my answer. Only my approvals, my answers
+/// and the Profile page write facts; never a page or the LLM alone. Form steps use them before writing anything new.
+model Fact {
+  factId      String     @id @default(uuid()) @db.Uuid
+  userId      String     @db.Uuid
+  user        User       @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// The question as I last saw it, e.g. "Salary expectation".
+  question    String
+  /// The question normalized (lowercase, no punctuation): one fact per question.
+  key         String
+  answer      String
+  source      FactSource
+  /// The site whose form asked it, when it came from one.
+  site        String?
+  proposalId  String?    @db.Uuid
+  runId       String?    @db.Uuid
+  /// Times a form step proposed it, and the last one.
+  uses        Int        @default(0)
+  lastUsedAt  DateTime?
+  dateCreated DateTime   @default(now())
+  dateUpdated DateTime   @updatedAt
+
+  @@unique([userId, key])
+  @@map("Facts")
+}
+
+enum QuestionStatus {
+  OPEN
+  ANSWERED
+  EXPIRED
+}
+
+/// A question a run asked me (M15-T3), on Telegram (a reply answers it) and on the run page; the run waits for it.
+model Question {
+  questionId        String         @id @default(uuid()) @db.Uuid
+  userId            String         @db.Uuid
+  user              User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  runId             String         @db.Uuid
+  run               Run            @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  stepKey           String
+  itemIndex         Int?
+  question          String
+  /// A select's or radio's choices: the answer must be one of them.
+  options           String[]
+  site              String?
+  status            QuestionStatus @default(OPEN)
+  answer            String?
+  /// The Telegram message it was asked in: a reply to it is the answer.
+  telegramMessageId Int?
+  factId            String?        @db.Uuid
+  dateCreated       DateTime       @default(now())
+  answeredAt        DateTime?
+
+  @@index([userId, status])
+  @@index([telegramMessageId])
+  @@map("Questions")
 }

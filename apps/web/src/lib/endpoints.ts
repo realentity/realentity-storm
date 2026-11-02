@@ -9,6 +9,8 @@ import {
   type CredentialView,
   type DocumentView,
   type DryRunPipelineResponse,
+  type FactRequest,
+  type FactView,
   type GoogleStatusView,
   type ImportRecipeRequest,
   type JobFilter,
@@ -24,6 +26,7 @@ import {
   type PipelineVersionView,
   type ProposalStatusName,
   type ProposalView,
+  type QuestionView,
   type RecipeDetailView,
   type RecipeSummaryView,
   type RunDetailView,
@@ -100,6 +103,15 @@ export const api = {
   killSwitch: {
     get: () => request<KillSwitchView>("GET", "/kill-switch"),
     set: (engaged: boolean) => request<KillSwitchView>("PUT", "/kill-switch", { engaged }),
+  },
+  facts: {
+    list: () => request<FactView[]>("GET", "/facts"),
+    create: (body: FactRequest) => request<FactView>("POST", "/facts", body),
+    update: (factId: string, body: FactRequest) => request<FactView>("PUT", `/facts/${factId}`, body),
+    remove: (factId: string) => request<void>("DELETE", `/facts/${factId}`),
+  },
+  questions: {
+    answer: (questionId: string, answer: string) => request<QuestionView>("POST", `/questions/${questionId}/answer`, { answer }),
   },
   google: {
     status: () => request<GoogleStatusView>("GET", "/google"),

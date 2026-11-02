@@ -152,7 +152,48 @@ export interface RunDetailView extends RunSummaryView {
   artifacts: ArtifactView[];
   /** {{trigger}}: the event or webhook call that started it; in a dry run, an example of one. Null: none. */
   triggerData: unknown;
+  /** A question the run waits for me to answer (M15-T3). */
+  question: QuestionView | null;
 }
+
+export interface QuestionView {
+  questionId: string;
+  question: string;
+  /** Choices: the answer is one of them. */
+  options: string[];
+  site: string | null;
+  stepKey: string;
+  status: "OPEN" | "ANSWERED" | "EXPIRED";
+  answer: string | null;
+  dateCreated: string;
+}
+
+export const AnswerQuestionSchema = z.object({ answer: z.string().trim().min(1).max(2000) }).strict();
+export type AnswerQuestionRequest = z.infer<typeof AnswerQuestionSchema>;
+
+/** Something about me only I can say (M15): a form's question and my answer. */
+export interface FactView {
+  factId: string;
+  question: string;
+  answer: string;
+  source: "FORM" | "ASKED" | "ME";
+  site: string | null;
+  uses: number;
+  lastUsedAt: string | null;
+  dateCreated: string;
+  dateUpdated: string;
+}
+
+/** One fact per question: "Salary expectation *:" and "salary expectation" are the same question. */
+export function factKey(question: string): string {
+  return question
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+export const FactSchema = z.object({ question: z.string().trim().min(1).max(300), answer: z.string().trim().min(1).max(2000) }).strict();
+export type FactRequest = z.infer<typeof FactSchema>;
 
 export const TAKEOVER_STATUSES = ["OPEN", "TAKEN_OVER", "CONTINUED", "ABORTED", "EXPIRED"] as const;
 export type TakeoverStatusName = (typeof TAKEOVER_STATUSES)[number];

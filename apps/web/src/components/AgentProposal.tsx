@@ -15,7 +15,7 @@ interface Target {
 type Action =
   | { kind: "navigate"; url: string }
   | { kind: "click"; target: Target }
-  | { kind: "type"; target: Target; value: string; source?: "profile" | "written" | "none" }
+  | { kind: "type"; target: Target; value: string; source?: "profile" | "written" | "fact" | "asked" | "none" }
   | { kind: "select"; target: Target; value: string }
   | { kind: "check"; target: Target; value: boolean }
   | { kind: "attach"; target: Target; document: string };
@@ -34,7 +34,7 @@ interface AgentPayload {
   [other: string]: unknown;
 }
 
-const SOURCE: Record<string, string> = { profile: "from my profile", written: "written for this job", none: "" };
+const SOURCE: Record<string, string> = { profile: "from my profile", written: "written for this job", fact: "from my facts", asked: "my answer", none: "" };
 
 /**
  * What browser.agent did, at browser.submit's gate (M11-T2): every action in order, as the live browser repeats it,

@@ -13,6 +13,8 @@ import { SessionStore } from "../browser/session-store";
 import { PipelineRunner, type EventSink } from "../runner/pipeline-runner";
 import { TakeoverDesk } from "../runner/takeovers";
 import { LaterStarts } from "../runner/later";
+import { Asker } from "../learning/asker";
+import { Facts } from "../learning/facts";
 import { GoogleConnection } from "../google/google-connection";
 import { RunControls } from "../runner/run-controls";
 import { ExecutorRegistry, type StepExecutor } from "../runner/step-executor";
@@ -141,6 +143,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             vault,
             artifacts,
             documents: new DocumentStore(env.DOCUMENTS_DIR),
+            facts: new Facts(db.client),
+            asker: new Asker(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
             notify: notifier(env),
             appOrigin: env.APP_ORIGIN,
           },

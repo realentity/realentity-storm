@@ -1,3 +1,4 @@
+import { type Fact } from "@ai-me/db";
 import { hostMatches } from "@ai-me/shared";
 import { textOf, toolResult, toolUses, type ChatBlock, type ChatMessage, type ChatTool, type LlmChat, type ModelChoice, type ModelRouter, type ToolUse } from "@ai-me/llm";
 import { type AgentAction, type ElementTarget, type FormField, type FormFile } from "@ai-me/steps";
@@ -7,6 +8,7 @@ import { emptyRequired, findTarget, hostOf, locateRef, markAttached, outline, pe
 import { blockingState } from "../browser/blocking";
 import { NO_ATTENTION, RunStopped, type Attention, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type DocumentStore } from "../browser/document-store";
+import { type Facts } from "../learning/facts";
 import { type BrowserDependencies } from "./browser-steps";
 import { bodyText, ownerOf, prepareApplication, sent, sentWithin, settle, submitApplication, unblock, type FormDependencies } from "./form-steps";
 
@@ -22,6 +24,8 @@ export interface AgentDependencies extends BrowserDependencies {
   chat: LlmChat;
   router: ModelRouter;
   documents?: DocumentStore;
+  /** My facts (M15-T2): the agent fills from them too. */
+  facts?: Facts;
 }
 
 export interface AgentInput {
@@ -43,7 +47,8 @@ const SYSTEM =
   "- Never send anything. Don't click buttons marked \"submits the form\"; nothing you type leaves the page before I " +
   "approve it. When a form is filled and only its final button is left, call finish with outcome ready and that " +
   "button as submit: I check every value and the form is sent after that.\n" +
-  "- Fill fields from <profile> (my facts) exactly. Write free-text answers following <message>, from my profile and " +
+  "- Fill fields from <profile> and <facts> (my earlier answers to form questions: use one when a field asks the same " +
+  "thing, even worded differently, source fact) exactly. Write free-text answers following <message>, from my profile and " +
   "the posting only. Leave a field empty when neither says: never invent experience, numbers, dates, salary or " +
   "claims. Selects and radios: one of the given options. Tick consent to process my data for this application or " +
   "terms the form requires; never newsletters or marketing.\n" +
@@ -76,7 +81,9 @@ function toolsFor(documents: string[]): ChatTool[] {
       input: z.object({
         ref: Ref,
         text: z.string(),
-        source: z.enum(["profile", "written", "none"]).describe("profile: my facts; written: an answer you wrote for this job"),
+        source: z
+          .enum(["profile", "fact", "written", "none"])
+          .describe("profile: my profile; fact: one of <facts>; written: an answer you wrote for this job"),
       }),
     },
     { name: "select", description: "Picks an option of a select by its text.", input: z.object({ ref: Ref, option: z.string() }) },
@@ -192,7 +199,8 @@ export class BrowserAgentStep implements StepExecutor {
     const { context, input } = work;
     const tools = toolsFor(input.documents);
     const profile = (await this.deps.prisma.userSetting.findUnique({ where: { userId: context.userId } }))?.profile ?? "";
-    const intro = introOf(input, profile, work.hosts);
+    const facts = (await this.deps.facts?.list(context.userId)) ?? [];
+    const intro = introOf(input, profile, work.hosts, facts);
     let choice: ModelChoice = await this.deps.router.choose(context.userId, "browser.agent");
     let escalated = false;
     let lastPage = await pageBlock(work.page);
@@ -342,7 +350,7 @@ export class BrowserAgentStep implements StepExecutor {
           if (info.human) return fail(`"${info.name}" checks that I'm a person: only I answer it`);
           if (info.role !== "textbox" && info.role !== "searchbox" && info.role !== "combobox") return fail(`"${info.name}" is a ${info.role}, not a text field`);
           const value = stringOf(input.text);
-          const source = input.source === "profile" || input.source === "written" ? input.source : "none";
+          const source = input.source === "profile" || input.source === "fact" || input.source === "written" ? input.source : "none";
           work.guard.remember(value);
           await byRef(page, input.ref).fill(value, { timeout: work.timeout });
           // A draft that saves itself is blocked now, not during the next action.
@@ -591,10 +599,11 @@ export class BrowserSubmitStep implements StepExecutor {
 }
 
 /** The task as the agent first reads it; the same after an escalation. */
-function introOf(input: AgentInput, profile: string, hosts: string[]): string {
+function introOf(input: AgentInput, profile: string, hosts: string[], facts: Fact[] = []): string {
   return [
     `<task>${input.goal}</task>`,
     `<profile>\n${profile || "(empty: I haven't written my profile yet)"}\n</profile>`,
+    `<facts>\n${facts.map((f) => `${f.question}: ${f.answer}`).join("\n") || "(none yet)"}\n</facts>`,
     `<message>${input.message ?? "A short, plain message: why this role fits me, from my profile, 2-3 sentences."}</message>`,
     `<posting>\n${JSON.stringify(input.job ?? {})}\n</posting>`,
     `<documents>${input.documents.length ? input.documents.join(", ") : "(none: attach nothing)"}</documents>`,

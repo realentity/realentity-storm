@@ -15,6 +15,7 @@ import { z } from "zod";
 import { SERVER_ENV } from "../config/server-env";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
+import { FactsService } from "../facts/facts.service";
 import { ProposalsService } from "../proposals/proposals.service";
 import { RunsService } from "../runs/runs.service";
 import { forTelegram, TELEGRAM_PROPOSAL_INCLUDE, TelegramNotices } from "./telegram-notices";
@@ -27,7 +28,17 @@ const ONE_BY_ONE = 5;
 const Chat = z.object({ id: z.number(), type: z.string() });
 const UpdateSchema = z.object({
   update_id: z.number(),
-  message: z.object({ message_id: z.number(), from: z.object({ id: z.number() }).optional(), chat: Chat, date: z.number(), text: z.string().optional() }).optional(),
+  message: z
+    .object({
+      message_id: z.number(),
+      from: z.object({ id: z.number() }).optional(),
+      chat: Chat,
+      date: z.number(),
+      text: z.string().optional(),
+      /** A reply: to a question AI ME asked (M15-T3), it is the answer. */
+      reply_to_message: z.object({ message_id: z.number() }).optional(),
+    })
+    .optional(),
   callback_query: z
     .object({
       id: z.string(),
@@ -64,6 +75,7 @@ export class TelegramBot {
     private readonly runs: RunsService,
     private readonly controls: ControlsService,
     private readonly notices: TelegramNotices,
+    private readonly facts: FactsService,
   ) {
     this.ownerId = env.TELEGRAM_CHAT_ID ? Number(env.TELEGRAM_CHAT_ID) : null;
   }
@@ -87,6 +99,9 @@ export class TelegramBot {
 
   private async command(message: NonNullable<Update["message"]>, now: Date): Promise<void> {
     if (!this.mine(message.from, message.chat)) return;
+    if (message.reply_to_message && message.text && !message.text.startsWith("/")) {
+      if (await this.answer(message.reply_to_message.message_id, message.text)) return;
+    }
     if (now.getTime() / 1000 - message.date > MAX_COMMAND_AGE_SECONDS) return;
     const [word = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
     const command = word.toLowerCase().replace(/@\w+$/, "");
@@ -108,6 +123,20 @@ export class TelegramBot {
       default:
         return this.tell(HELP);
     }
+  }
+
+  /** A reply to a question's message: my answer (kept as a fact, the run goes on). False: it replies to something else. */
+  private async answer(messageId: number, text: string): Promise<boolean> {
+    const userId = await this.userId();
+    const question = await this.facts.questionForTelegram(userId, messageId);
+    if (!question) return false;
+    try {
+      const answered = await this.facts.answer(userId, question.questionId, text);
+      await this.tell(`Thanks: "${answered.question}" is ${answered.answer}. Kept for the next forms; the run goes on.`);
+    } catch (error) {
+      await this.tell(`Not taken: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return true;
   }
 
   private async run(userId: string, name: string): Promise<void> {

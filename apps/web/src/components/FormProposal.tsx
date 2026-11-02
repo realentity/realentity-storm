@@ -14,7 +14,9 @@ interface Field {
   required: boolean;
   options?: string[];
   value: string | boolean | null;
-  source?: "profile" | "written" | "none";
+  source?: "profile" | "written" | "fact" | "asked" | "none";
+  /** The fact it came from (M15). */
+  fact?: { factId: string; question: string };
 }
 interface AttachedFile {
   key: string;
@@ -31,7 +33,13 @@ interface FormPayload {
   [other: string]: unknown;
 }
 
-const SOURCE: Record<string, string> = { profile: "from my profile", written: "written for this job", none: "" };
+const SOURCE: Record<string, string> = {
+  profile: "from my profile",
+  written: "written for this job",
+  fact: "from my facts",
+  asked: "my answer when asked",
+  none: "",
+};
 
 /**
  * An application form at its gate (M10-T6): every field as it will be typed, the files that will be attached (my
@@ -86,7 +94,10 @@ export function FormProposal({ proposal, pending, onDecided, onReject }: { propo
             <div key={field.key} data-testid={`form-field-${field.label}`}>
               <label className="form-label d-flex justify-content-between gap-2" htmlFor={`form-${field.key}`}>
                 <span className={field.required ? "required" : ""}>{field.label || field.key}</span>
-                <span className="small text-secondary">{field.source ? SOURCE[field.source] : ""}</span>
+                <span className="small text-secondary" title={field.fact ? `Fact: ${field.fact.question}` : undefined}>
+                  {field.source ? SOURCE[field.source] : ""}
+                  {field.fact && field.fact.question !== field.label ? ` ("${field.fact.question}")` : ""}
+                </span>
               </label>
               {field.type === "file" ? (
                 <FileField

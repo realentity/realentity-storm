@@ -62,12 +62,13 @@ export class TakeoverDesk {
         await this.emit(scope, "OPEN");
         const origin = this.options.appOrigin;
         const button = options.button ?? (origin ? { text: "Open the live view", url: `${origin}/runs/${scope.runId}` } : null);
-        await this.options
-          .notify?.({
-            text: `AI ME needs you: ${reason} at ${scope.stepKey}${url && !options.waitsFor ? ` (${hostOf(url)})` : ""}.`,
-            buttons: button ? [[button]] : [],
-          })
-          .catch(() => undefined);
+        if (options.notify !== false)
+          await this.options
+            .notify?.({
+              text: `AI ME needs you: ${reason} at ${scope.stepKey}${url && !options.waitsFor ? ` (${hostOf(url)})` : ""}.`,
+              buttons: button ? [[button]] : [],
+            })
+            .catch(() => undefined);
         await this.wait(scope, takeover);
       },
     };

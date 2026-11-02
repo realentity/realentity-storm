@@ -2,14 +2,16 @@ import { DOCUMENT_NAME_PATTERN, type DocumentView } from "@ai-me/shared";
 import { IconDownload, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
+import { FactsCard } from "../components/FactsCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * What application forms are filled from (M10): my profile (browser.mapForm proposes every value from it, and
- * nothing it doesn't state) and my documents (a pipeline attaches my CV by name; at the gate I can attach others).
+ * What application forms are filled from (M10, M15): my profile (browser.mapForm proposes every value from it, and
+ * nothing it doesn't state), my facts (answers I gave or approved) and my documents (a pipeline attaches my CV by
+ * name; at the gate I can attach others).
  */
 export function ProfilePage() {
   return (
@@ -19,7 +21,8 @@ export function ProfilePage() {
         <div className="col-lg-6">
           <About />
         </div>
-        <div className="col-lg-6">
+        <div className="col-lg-6 d-flex flex-column gap-3">
+          <FactsCard />
           <Documents />
         </div>
       </div>

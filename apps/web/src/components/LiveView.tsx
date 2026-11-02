@@ -125,7 +125,7 @@ export function LiveView({ run }: { run: RunDetailView }) {
           </button>
         </div>
       )}
-      {takeover && takeover.waitsFor !== "google" && (
+      {takeover && takeover.waitsFor !== "google" && takeover.waitsFor !== "answer" && (
         <div className="alert alert-warning m-3 mb-0" data-testid="takeover-banner">
           <strong>{takeover.status === "OPEN" ? `It needs me: ${takeover.reason}` : "I took over"}</strong>
           {takeover.url && <span className="text-secondary"> on {hostOf(takeover.url)}</span>}. Act in the browser below, then press

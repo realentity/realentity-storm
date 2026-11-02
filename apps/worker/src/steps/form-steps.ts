@@ -1,4 +1,4 @@
-import { type JobPosting, type PrismaClient } from "@ai-me/db";
+import { type Fact, type JobPosting, type PrismaClient } from "@ai-me/db";
 import { type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { type FormField, type FormFile } from "@ai-me/steps";
 import { type Locator, type Page } from "playwright";
@@ -7,6 +7,8 @@ import { type ArtifactOwner } from "../browser/artifact-store";
 import { blockingState } from "../browser/blocking";
 import { type DocumentStore } from "../browser/document-store";
 import { findForm, NEXT, readForm, type PageField, type PageForm } from "../browser/form-reader";
+import { type Asker } from "../learning/asker";
+import { type Facts } from "../learning/facts";
 import { type StepLearning } from "../learning/learning";
 import { NO_ATTENTION, RunStopped, type Attention, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type BrowserDependencies } from "./browser-steps";
@@ -20,9 +22,13 @@ const MAX_CONFIRMATION = 2000;
 
 export interface FormDependencies extends BrowserDependencies {
   documents: DocumentStore;
+  /** My facts (M15): read before anything is written. */
+  facts?: Facts;
+  /** Asking me what neither my profile nor my facts answer (M15-T3). */
+  asker?: Asker;
 }
 
-export type Answer = { value: string | null; source: FormField["source"] };
+export type Answer = { value: string | null; source: FormField["source"]; fact?: FormField["fact"] };
 
 interface MapInput {
   url: string;
@@ -39,7 +45,8 @@ const AnswersSchema = z.object({
     z.object({
       key: z.string(),
       value: z.string().nullable().describe('the text to type or the option to pick; checkbox: "yes" or "no"; null: leave empty'),
-      source: z.enum(["profile", "written", "none"]),
+      source: z.enum(["profile", "fact", "written", "none"]),
+      factId: z.string().nullish().describe("source fact: the id of the fact used"),
     }),
   ),
   notes: z.string().describe("fields left empty and why, in a sentence or two"),
@@ -47,7 +54,9 @@ const AnswersSchema = z.object({
 
 const SYSTEM =
   "You fill in a job application form for me. For each field, give the value from <profile> (my facts: name, " +
-  "contacts, location, work permit, notice period, salary, links), source profile; or, for a free-text question " +
+  "contacts, location, work permit, notice period, salary, links), source profile; or, when a field asks what one of " +
+  "<facts> answers (my earlier answers: the same question, maybe worded differently), that answer exactly, source " +
+  "fact with its id (a choice field: the option that answer names); or, for a free-text question " +
   "(a message to the employer, why this role), write a short answer following <message> from my profile and the " +
   "posting only, source written; or null with source none when neither has it. Never invent a fact about me: no " +
   "experience, number, date, salary or claim my profile doesn't state; a question the profile doesn't answer stays " +
@@ -88,8 +97,11 @@ export class MapFormStep extends LlmStep {
       await attention.checkpoint(page.url());
 
       const profile = (await this.deps.prisma.userSetting.findUnique({ where: { userId: context.userId } }))?.profile ?? "";
-      const answers = await this.propose(context, form, profile, message, job);
+      const facts = (await this.deps.facts?.list(context.userId)) ?? [];
+      const answers = await this.propose(context, form, profile, message, job, facts);
       const fields: FormField[] = form.fields.map((field) => withValue(field, answers.values.get(field.key)));
+      const asked = await this.askMe(context, fields, new URL(page.url()).hostname);
+      await this.deps.facts?.used(fields.flatMap((f) => (f.source === "fact" && f.fact ? [f.fact.factId] : [])));
       const files: FormFile[] = [];
       const cvField = cvFieldOf(form.fields);
       if (cv && cvField) files.push(await this.deps.documents.attach(this.deps.prisma, context.userId, cv, cvField.key));
@@ -99,6 +111,7 @@ export class MapFormStep extends LlmStep {
         answers.notes,
         checks.length ? `A check that you're a person (${checks.join(", ")}): you answer it in the live view before it is sent.` : "",
         cv && !cvField ? "The form has no CV field." : "",
+        asked.length ? `Asked you: ${asked.join(", ")}.` : "",
         missing.length ? `Required and still empty: ${missing.join(", ")}.` : "",
       ]
         .filter(Boolean)
@@ -119,19 +132,47 @@ export class MapFormStep extends LlmStep {
     profile: string,
     message: string | undefined,
     job: Record<string, unknown> | undefined,
+    facts: Fact[] = [],
   ): Promise<{ values: Map<string, Answer>; notes: string }> {
     const fields = form.fields.filter((f) => f.type !== "file" && !f.human);
     const values = new Map<string, Answer>();
     if (fields.length === 0) return { values, notes: "" };
     const prompt = [
       `<profile>\n${profile || "(empty: I haven't written my profile yet)"}\n</profile>`,
+      `<facts>\n${facts.map((f) => JSON.stringify({ id: f.factId, question: f.question, answer: f.answer })).join("\n") || "(none yet)"}\n</facts>`,
       `<message>${message ?? "A short, plain message: why this role fits me, from my profile, 2-3 sentences."}</message>`,
       `<posting>\n${JSON.stringify(job ?? {})}\n</posting>`,
       `<form>\n${fields.map((f) => JSON.stringify({ key: f.key, label: f.label, type: f.type, required: f.required, options: f.options })).join("\n")}\n</form>`,
     ].join("\n");
     const answer = await this.call(context, SYSTEM, prompt, AnswersSchema, true);
-    for (const v of answer.values) if (fields.some((f) => f.key === v.key)) values.set(v.key, { value: v.value, source: v.source });
+    const byId = new Map(facts.map((f) => [f.factId, f]));
+    for (const v of answer.values) {
+      if (!fields.some((f) => f.key === v.key)) continue;
+      const fact = v.source === "fact" && v.factId ? byId.get(v.factId) : undefined;
+      // A fact it names must be one of mine, with my answer: else nothing (the field is asked or left empty).
+      if (v.source === "fact" && (!fact || !sameAnswer(v.value, fact.answer))) values.set(v.key, { value: null, source: "none" });
+      else values.set(v.key, { value: v.value, source: v.source, ...(fact ? { fact: { factId: fact.factId, question: fact.question } } : {}) });
+    }
     return { values, notes: answer.notes };
+  }
+
+  /**
+   * Required fields still empty (not files, checkboxes or person checks): asked one by one; an answer (an option of
+   * a choice field) fills the field. The labels of what was asked and answered.
+   */
+  private async askMe(context: StepContext, fields: FormField[], site: string): Promise<string[]> {
+    if (!this.deps.asker) return [];
+    const asked: string[] = [];
+    for (const field of fields) {
+      if (!field.required || field.human || field.type === "file" || field.type === "checkbox" || (field.value !== null && field.value !== "")) continue;
+      const reply = await this.deps.asker.ask(context, { question: field.label || field.key, options: field.options, site });
+      if (!reply) continue;
+      const value = field.options?.length ? field.options.find((o) => o.trim().toLowerCase() === reply.answer.trim().toLowerCase()) : reply.answer;
+      if (value === undefined) continue;
+      Object.assign(field, { value, source: "asked", ...(reply.factId ? { fact: { factId: reply.factId, question: field.label } } : {}) });
+      asked.push(field.label || field.key);
+    }
+    return asked;
   }
 
   private async screenshot(page: Page, context: StepContext): Promise<void> {
@@ -369,9 +410,18 @@ export async function bodyText(page: Page): Promise<string> {
 
 export function withValue(field: PageField, answer: Answer | undefined): FormField {
   if (field.type === "file" || field.human || !answer || answer.value === null || answer.value.trim() === "") return { ...field, value: null, source: "none" };
-  if (field.type === "checkbox") return { ...field, value: /^(yes|true|1)$/i.test(answer.value.trim()), source: answer.source };
+  const fact = answer.fact ? { fact: answer.fact } : {};
+  if (field.type === "checkbox") return { ...field, value: /^(yes|true|1)$/i.test(answer.value.trim()), source: answer.source, ...fact };
   if ((field.type === "select" || field.type === "radio") && !field.options?.includes(answer.value)) return { ...field, value: null, source: "none" };
-  return { ...field, value: answer.value, source: answer.source };
+  return { ...field, value: answer.value, source: answer.source, ...fact };
+}
+
+/** A fact's answer as the LLM gave it: the same text, or (a choice field) an option naming it. */
+function sameAnswer(value: string | null, answer: string): boolean {
+  if (value === null) return false;
+  const a = value.trim().toLowerCase();
+  const b = answer.trim().toLowerCase();
+  return a === b || a.includes(b) || b.includes(a);
 }
 
 function cvFieldOf(fields: PageField[]): PageField | undefined {
