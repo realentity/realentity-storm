@@ -1,0 +1,30 @@
+# M16: every 15 minutes, emails about my applications move them on (replied, interview, rejected): the Jobs page
+# and Insight count them, an interview or a rejection cancels the follow-up reminder (follow-up-later.yaml), and a
+# message tells me. Only forward: what I set by hand on the Jobs page stays unless an email moves it further.
+name: Application replies
+description: Replies about my applications update their status, and tell me.
+trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "application": an employer or a recruiter writes about a job I applied for: an answer, a question, an
+        interview, a rejection. "other": everything else, also job alerts, newsletters and an automatic "we received
+        your application".
+      labels: [application, other]
+      keep: [application]
+  - id: outcome
+    type: application.outcome
+    forEach: "{{triage.kept}}"
+    with: { message: "{{item}}" }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{triage.kept}}"
+    when: "{{outcome.changed}}"
+    with:
+      text: "{{outcome.job.company}} ({{outcome.job.title}}): {{outcome.status}}. {{outcome.reason}}\n{{outcome.job.url}}"

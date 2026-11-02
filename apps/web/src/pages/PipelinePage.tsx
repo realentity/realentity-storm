@@ -5,14 +5,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { PipelineChat } from "../components/PipelineChat";
 import { PlanView, StepGraphView } from "../components/PlanView";
+import { CostCard } from "../components/CostCard";
 import { RunsTable } from "../components/RunsTable";
 import { ScheduledStartsCard } from "../components/ScheduledStartsCard";
 import { WebhookCard } from "../components/WebhookCard";
-import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
+import { Empty, ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
 import { errorMessage } from "../lib/api";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
-import { formatDateTime } from "../lib/format";
+import { formatDateTime, formatUsd } from "../lib/format";
 import { describeTrigger } from "../lib/plan";
 import { useAction, useLoad } from "../lib/use-load";
 
@@ -33,6 +34,7 @@ export function PipelinePage() {
     [pipelineId, shownVersion],
   );
   const action = useAction();
+  const [confirming, setConfirming] = useState(false);
 
   if (!pipeline.data) return pipeline.error ? <ErrorAlert error={pipeline.error} /> : <Loading />;
   const p = pipeline.data;
@@ -117,7 +119,36 @@ export function PipelinePage() {
           </div>
         </div>
         <div className="col-lg-4 d-flex flex-column gap-3">
-          <Switches pipeline={p} busy={action.busy} onChange={(body) => void update(body)} />
+          <Switches pipeline={p} busy={action.busy} onChange={(body) => (body.enabled && p.cost.perMonthUsd !== null ? setConfirming(true) : void update(body))} />
+          {confirming && (
+            <Modal
+              title="Enable the schedule?"
+              onClose={() => setConfirming(false)}
+              footer={
+                <>
+                  <button type="button" className="btn" onClick={() => setConfirming(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    data-testid="confirm-enable"
+                    onClick={() => {
+                      setConfirming(false);
+                      void update({ enabled: true });
+                    }}
+                  >
+                    Enable
+                  </button>
+                </>
+              }
+            >
+              It runs {p.cost.runsPerMonth} times in the next 30 days. At {formatUsd(p.cost.perRunUsd ?? 0)} per run (its{" "}
+              {p.cost.runs - p.cost.dryRuns > 0 ? "runs" : "dry runs"} of the last {p.cost.days} days), that&apos;s about{" "}
+              <strong>{formatUsd(p.cost.perMonthUsd ?? 0)} a month</strong> in LLM calls.
+            </Modal>
+          )}
+          <CostCard cost={p.cost} />
           {p.current && typeof p.current.definition.trigger === "object" && "webhook" in p.current.definition.trigger && (
             <WebhookCard pipelineId={pipelineId} auth={p.current.definition.trigger.webhook} />
           )}

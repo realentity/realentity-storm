@@ -391,6 +391,10 @@ export const CORE_STEPS: StepDefinition[] = [
       against: z.string().min(1),
       instruction: z.string().optional(),
       top: z.number().int().min(1).max(100).optional(),
+      outcomes: z
+        .boolean()
+        .default(false)
+        .describe("job postings: my applications' outcomes (interviews, rejections, no answer) calibrate the scores"),
     }),
     output: z.object({ scored: Items, top: Items }),
   },
@@ -441,6 +445,26 @@ export const CORE_STEPS: StepDefinition[] = [
       timeZone: TimeZone,
     }),
     output: z.object({ values: z.record(z.string(), z.string()), missing: z.array(z.string()), found: z.boolean() }),
+  },
+  {
+    type: "application.outcome",
+    description:
+      "What an email says about one of my submitted applications: matched by the company and role (the sender's " +
+      "domain or the company's name first), and the application moved on: replied, interview, rejected (forward " +
+      "only; the date kept, the email noted; application.status emitted, which cancels a follow-up flow.later). " +
+      "matched false when it isn't about one (an automatic \"we received it\" isn't an answer). A dry run moves nothing.",
+    sideEffect: false,
+    llmOutput: true,
+    saasSafe: true,
+    input: z.object({ message: EmailMessageSchema }),
+    output: z.object({
+      matched: z.boolean(),
+      applicationId: z.string().nullable(),
+      job: z.object({ title: z.string(), company: z.string().nullable(), url: z.string() }).nullable(),
+      status: z.enum(["RESPONDED", "INTERVIEW", "REJECTED"]).nullable(),
+      changed: z.boolean().describe("the status moved (false: it was there already, or a dry run)"),
+      reason: z.string(),
+    }),
   },
   {
     type: "gate.review",

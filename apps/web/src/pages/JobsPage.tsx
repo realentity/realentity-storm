@@ -8,6 +8,10 @@ import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
+/** What came of an application, as I set it by hand (or an email did). */
+const OUTCOME = { SUBMITTED: "applied, no answer", RESPONDED: "replied", INTERVIEW: "interview", REJECTED: "rejected" } as const;
+type Outcome = keyof typeof OUTCOME;
+
 /**
  * The Jobs page (M9-T6): postings that pipelines saved (data.save), best score first, with the score's reason and
  * what I decided. Links open the posting on its site, in a new tab without a referrer.
@@ -17,6 +21,16 @@ export function JobsPage() {
   const jobs = useLoad(() => api.jobs.list(filter), [filter.status, filter.minScore, filter.q], (signal) => signal.type === "run");
   const [query, setQuery] = useState("");
   const update = useAction();
+
+  /** By hand (M16-T3): what came of an application; an email can do it too (application.outcome). */
+  const setOutcome = async (job: JobPostingView, status: Outcome) => {
+    if (!job.application) return;
+    const { applicationId } = job.application;
+    const done = await update.run(() => api.jobs.setOutcome(applicationId, { status }));
+    if (!done) return;
+    toast.info(`${job.title}: ${OUTCOME[status]}`);
+    jobs.reload();
+  };
 
   const setStatus = async (job: JobPostingView, status: JobStatusName) => {
     const done = await update.run(() => api.jobs.setStatus(job.jobPostingId, status));
@@ -115,9 +129,30 @@ export function JobsPage() {
                     <td className="text-nowrap">
                       <StatusBadge status={job.status} />
                       {job.application && (
-                        <Link to={job.application.runId ? `/runs/${job.application.runId}` : "#"} className="ms-2 small" data-testid="application">
-                          {job.application.status === "SUBMITTED" ? `applied ${formatDateTime(job.application.submittedAt)}` : job.application.status.toLowerCase()}
+                        <Link
+                          to={job.application.runId ? `/runs/${job.application.runId}` : "#"}
+                          className="ms-2 small"
+                          data-testid="application"
+                          title={job.application.notes ?? undefined}
+                        >
+                          {job.application.status === "SUBMITTED" ? `applied ${formatDateTime(job.application.submittedAt)}` : job.application.status === "PREPARED" ? "prepared" : OUTCOME[job.application.status]}
                         </Link>
+                      )}
+                      {job.application && job.application.status !== "PREPARED" && (
+                        <select
+                          className="form-select form-select-sm d-inline-block w-auto ms-2"
+                          aria-label={`Outcome of ${job.title}`}
+                          value={job.application.status}
+                          disabled={update.busy}
+                          onChange={(e) => void setOutcome(job, e.target.value as Outcome)}
+                          data-testid="outcome"
+                        >
+                          {(Object.keys(OUTCOME) as Outcome[]).map((status) => (
+                            <option key={status} value={status}>
+                              {OUTCOME[status]}
+                            </option>
+                          ))}
+                        </select>
                       )}
                       <select
                         className="form-select form-select-sm d-inline-block w-auto ms-2"

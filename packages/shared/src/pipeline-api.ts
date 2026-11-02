@@ -47,6 +47,21 @@ export interface DefinitionDiff {
   summary: string;
 }
 
+/** What a pipeline's LLM calls cost (M17-T3): its runs of the last `days`, and per month on its schedule. */
+export interface PipelineCostView {
+  days: number;
+  runs: number;
+  /** Of them, dry runs (they cost the same). */
+  dryRuns: number;
+  totalUsd: number;
+  /** The average of its real runs; of its dry runs when it has no real ones yet. Null: no runs. */
+  perRunUsd: number | null;
+  /** How often its schedule fires in 30 days; null when it isn't scheduled. */
+  runsPerMonth: number | null;
+  /** perRunUsd × runsPerMonth: what enabling the schedule costs a month, as far as the past runs tell. */
+  perMonthUsd: number | null;
+}
+
 export interface CompilePipelineResponse {
   result: CompileResult;
   diff?: DefinitionDiff;
@@ -90,6 +105,8 @@ export interface PipelineDetailView extends PipelineSummaryView {
   draft: PipelineVersionView | null;
   /** Saved versions, newest first. */
   versions: PipelineVersionSummaryView[];
+  /** Its LLM cost: the last 30 days, per run, per month on its schedule (M17-T3). */
+  cost: PipelineCostView;
 }
 
 /** A pipeline's webhook (M12-T2). The secret is in the answer to creating or rotating it, and never again. */

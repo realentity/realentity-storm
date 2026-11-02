@@ -651,6 +651,11 @@ model Application {
   /// The run that prepared or submitted it.
   runId         String?           @db.Uuid
   submittedAt   DateTime?
+  /// When the employer first answered, invited me to an interview, turned me down (M16): kept when the status moves
+  /// on, so an interview that ended in a rejection still counts as an interview.
+  respondedAt   DateTime?
+  interviewAt   DateTime?
+  rejectedAt    DateTime?
   notes         String?
   dateCreated   DateTime          @default(now())
   dateUpdated   DateTime          @updatedAt

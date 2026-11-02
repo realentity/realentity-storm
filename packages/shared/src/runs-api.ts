@@ -115,6 +115,14 @@ export interface RunSummaryView {
   finishedAt: string | null;
   /** Held back by a rate limit until then. */
   resumeAt: string | null;
+  /** LLM cost of the run so far (M17-T3). */
+  costUsd: number;
+}
+
+/** Whether a failed run can go on from its failed steps (M17-T1), and why not. */
+export interface RetryView {
+  possible: boolean;
+  reason: string | null;
 }
 
 export interface RunStepView {
@@ -154,6 +162,8 @@ export interface RunDetailView extends RunSummaryView {
   triggerData: unknown;
   /** A question the run waits for me to answer (M15-T3). */
   question: QuestionView | null;
+  /** A failed run: whether Retry can go on from the failed steps. Null for other runs. */
+  retry: RetryView | null;
 }
 
 export interface QuestionView {
@@ -261,6 +271,7 @@ export const LLM_TASKS = [
   "llm.generate",
   "llm.summarize",
   "llm.extract",
+  "application.outcome",
   "reflection",
   "builder",
   "browser.teach",

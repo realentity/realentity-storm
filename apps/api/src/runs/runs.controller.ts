@@ -32,6 +32,13 @@ export class RunsController {
     return this.runs.list(user.userId, filter);
   }
 
+  /** M17-T1: a failed run goes on from its failed steps (not a failed side effect). */
+  @Post("runs/:runId/retry")
+  @HttpCode(202)
+  retry(@CurrentUser() user: AuthenticatedUser, @Param("runId", ParseUUIDPipe) runId: string): Promise<RunDetailView> {
+    return this.runs.retry(user.userId, runId);
+  }
+
   @Get("runs/:runId")
   get(@CurrentUser() user: AuthenticatedUser, @Param("runId", ParseUUIDPipe) runId: string): Promise<RunDetailView> {
     return this.runs.get(user.userId, runId);

@@ -1,6 +1,6 @@
 import { type RunSummaryView } from "@ai-me/shared";
 import { Link } from "react-router-dom";
-import { formatDateTime, formatDuration } from "../lib/format";
+import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
 import { StatusBadge } from "./ui";
 
 export function RunsTable({ runs, showPipeline = true }: { runs: RunSummaryView[]; showPipeline?: boolean }) {
@@ -15,6 +15,7 @@ export function RunsTable({ runs, showPipeline = true }: { runs: RunSummaryView[
             <th>Trigger</th>
             <th>Status</th>
             <th>Summary</th>
+            <th className="text-end">Cost</th>
           </tr>
         </thead>
         <tbody>
@@ -36,6 +37,7 @@ export function RunsTable({ runs, showPipeline = true }: { runs: RunSummaryView[
               <td className="text-secondary text-truncate" style={{ maxWidth: 360 }}>
                 {run.summary ?? (run.resumeAt ? `continues ${formatDateTime(run.resumeAt)}` : "")}
               </td>
+              <td className="text-end text-secondary text-nowrap">{run.costUsd ? formatUsd(run.costUsd) : "—"}</td>
             </tr>
           ))}
         </tbody>

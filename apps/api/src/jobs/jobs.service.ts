@@ -1,3 +1,4 @@
+import { applicationView } from "./insight.service";
 import { Prisma, type Application, type JobPosting, type SiteRecipe } from "@ai-me/db";
 import {
   type ImportRecipeRequest,
@@ -190,14 +191,7 @@ function jobView(posting: JobPosting & { applications: Application[] }): JobPost
     status: posting.status,
     firstSeenAt: posting.firstSeenAt.toISOString(),
     lastSeenAt: posting.lastSeenAt.toISOString(),
-    application: application
-      ? {
-          applicationId: application.applicationId,
-          status: application.status,
-          submittedAt: application.submittedAt?.toISOString() ?? null,
-          runId: application.runId,
-        }
-      : null,
+    application: application ? applicationView(application) : null,
   };
 }
 

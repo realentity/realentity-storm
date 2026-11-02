@@ -7,6 +7,7 @@ import { BuilderPage } from "./pages/BuilderPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { InboxPage } from "./pages/InboxPage";
+import { InsightPage } from "./pages/InsightPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PipelineEditorPage } from "./pages/PipelineEditorPage";
@@ -45,6 +46,7 @@ export function App() {
             <Route path="pipelines/:pipelineId/edit" element={<PipelineEditorPage />} />
             <Route path="runs/:runId" element={<RunPage />} />
             <Route path="jobs" element={<JobsPage />} />
+            <Route path="insight" element={<InsightPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="rules" element={<RulesPage />} />
             <Route path="recipes" element={<RecipesPage />} />

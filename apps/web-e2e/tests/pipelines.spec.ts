@@ -29,9 +29,16 @@ test.describe("pipelines", () => {
     // The dry run previewed the draft that became v1, so it stays with v1.
     await expect(page.getByTestId("runs")).toContainText("dry-run");
 
-    // The switch shows the saved state: it turns on once the api has enabled the pipeline.
+    // M17-E1: what it cost: the dry run, and per month on its schedule (weekdays at 8).
+    await expect(page.getByTestId("pipeline-cost")).toContainText("Runs1 (1 dry)");
+    await expect(page.getByTestId("cost-per-month")).toContainText(/≈ \$0 \(2\d runs\)/);
+
+    // The switch shows the saved state: it turns on once the api has enabled the pipeline. A schedule asks first,
+    // with what it would cost a month.
     const enable = page.getByTestId("enable-pipeline");
     await enable.click();
+    await expect(page.getByText(/It runs 2\d times in the next 30 days/)).toBeVisible();
+    await page.getByTestId("confirm-enable").click();
     await expect(enable).toBeChecked();
     await page.reload();
     await expect(page.getByTestId("enable-pipeline")).toBeChecked();

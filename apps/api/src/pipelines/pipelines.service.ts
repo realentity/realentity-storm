@@ -1,3 +1,4 @@
+import { pipelineCost } from "../runs/run-costs";
 import { Prisma, type PipelineVersion } from "@ai-me/db";
 import { JobQueue } from "@ai-me/queue";
 import {
@@ -200,6 +201,7 @@ export class PipelinesService {
       current: current ? versionView(current) : null,
       draft: draft ? versionView(draft) : null,
       versions: pipeline.versions.filter((v) => v.savedAt).map(versionSummary),
+      cost: await pipelineCost(this.prisma, pipelineId, (current?.definition as CompiledDefinition | undefined) ?? null),
     };
   }
 

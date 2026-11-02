@@ -1,3 +1,4 @@
+import { type PrismaClient } from "@ai-me/db";
 import { LlmError, type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { z } from "zod";
 import { learningContext, NO_LEARNING, type ExampleText, type StepLearning } from "../learning/learning";
@@ -115,22 +116,70 @@ export class ClassifyStep extends LlmStep {
 export class ScoreStep extends LlmStep {
   readonly type = "llm.score";
 
+  constructor(
+    llm: LlmClient,
+    router: ModelRouter,
+    learning?: StepLearning,
+    /** For `outcomes` (M16-T2): my applications and what came of them. */
+    private readonly prisma?: PrismaClient,
+  ) {
+    super(llm, router, learning);
+  }
+
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { items, against, instruction, top } = input as { items: Item[]; against: string; instruction?: string; top?: number };
+    const { items, against, instruction, top, outcomes } = input as { items: Item[]; against: string; instruction?: string; top?: number; outcomes: boolean };
+    const learned = outcomes ? await this.outcomes(context.userId) : "";
     const schema = z.object({
       results: z.array(z.object({ index: z.number().int(), score: z.number().int().min(0).max(100), reason: z.string() })),
     });
     const system =
       "You score how well each item fits the criteria, from 0 (not at all) to 100 (perfect), with a one-sentence reason, " +
-      `using the item's index. Score each item on its own merits. ${DATA_ONLY}`;
+      "using the item's index. Score each item on its own merits. <outcomes>, when given, are postings I applied to and " +
+      "what came of them: let them calibrate you (an item like ones that led to interviews scores higher, like ones " +
+      `turned down or never answered lower), the criteria first. ${DATA_ONLY}`;
     const prompt = (chunk: string) =>
-      `<criteria>${against}</criteria>\n${instruction ? `<instruction>${instruction}</instruction>\n` : ""}${chunk}`;
+      `<criteria>${against}</criteria>\n${instruction ? `<instruction>${instruction}</instruction>\n` : ""}${learned}${chunk}`;
     const results = await this.perItem(items, (chunk) => this.call(context, system, prompt(chunk), schema));
     const scored = results.map((r) => ({ ...items[r.index], score: r.score, scoreReason: r.reason }));
     const best = [...scored].sort((a, b) => b.score - a.score);
     return { scored, top: top ? best.slice(0, top) : best };
   }
+
+  /**
+   * My recent applications with an outcome, as an <outcomes> block: an interview, a rejection, an answer, or none
+   * after NO_ANSWER_DAYS. Empty without any.
+   */
+  private async outcomes(userId: string): Promise<string> {
+    if (!this.prisma) return "";
+    const silentSince = new Date(Date.now() - NO_ANSWER_DAYS * 86_400_000);
+    const applications = await this.prisma.application.findMany({
+      where: {
+        userId,
+        OR: [{ status: { in: ["RESPONDED", "INTERVIEW", "REJECTED"] } }, { status: "SUBMITTED", submittedAt: { lt: silentSince } }],
+      },
+      include: { jobPosting: true },
+      orderBy: { dateUpdated: "desc" },
+      take: MAX_OUTCOMES,
+    });
+    if (applications.length === 0) return "";
+    const lines = applications.map((a) =>
+      JSON.stringify({
+        title: a.jobPosting.title,
+        company: a.jobPosting.company,
+        location: a.jobPosting.location,
+        scoredThen: a.jobPosting.score,
+        // An interview that ended in a rejection still got an interview.
+        outcome: a.interviewAt ? "interview" : a.rejectedAt ? "rejected" : a.respondedAt ? "answered" : `no answer in ${NO_ANSWER_DAYS} days`,
+      }),
+    );
+    return `<outcomes>\n${lines.join("\n")}\n</outcomes>\n`;
+  }
 }
+
+/** A submitted application this long without an answer counts as not answered. */
+const NO_ANSWER_DAYS = 21;
+/** Outcomes in the scoring prompt: recent ones, few enough to keep it small. */
+const MAX_OUTCOMES = 30;
 
 /** llm.generate: text following `instruction`, using `context`. */
 export class GenerateStep extends LlmStep {

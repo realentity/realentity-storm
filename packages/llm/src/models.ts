@@ -22,6 +22,8 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "llm.summarize": "writing",
   // A time and its zone out of an email: worth the writing model (M14-T2).
   "llm.extract": "writing",
+  // Which application an email is about, and whether it is an answer: a classification (M16-T3).
+  "application.outcome": "classify",
   "email.classify": "classify",
   "email.draftReply": "writing",
   reflection: "reflection",

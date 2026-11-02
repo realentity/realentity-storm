@@ -1,12 +1,14 @@
 import { type RunDetailView, type RunStepView } from "@ai-me/shared";
 import { Fragment, useMemo, useState } from "react";
+import { IconRefresh } from "@tabler/icons-react";
 import { Link, useParams } from "react-router-dom";
+import { toast } from "react-toastify";
 import { LiveView } from "../components/LiveView";
 import { QuestionCard } from "../components/QuestionCard";
 import { ErrorAlert, Json, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
-import { useLoad } from "../lib/use-load";
+import { useAction, useLoad } from "../lib/use-load";
 
 /**
  * A run (README §12): the step timeline, grouped per step and per forEach item, each with its input, output, error
@@ -59,6 +61,7 @@ export function RunPage() {
         </div>
       )}
       {r.resumeAt && <div className="alert alert-info">Held back by a rate limit; continues {formatDateTime(r.resumeAt)}.</div>}
+      {r.retry && <Retry runId={r.runId} retry={r.retry} onRetried={run.reload} />}
       {r.triggerData != null && (
         <details className="card mb-3" data-testid="trigger-data">
           <summary className="card-header cursor-pointer">
@@ -82,6 +85,36 @@ export function RunPage() {
       <Timeline steps={r.steps} />
       {r.artifacts.length > 0 && <Artifacts run={r} />}
     </>
+  );
+}
+
+/**
+ * M17-T1: a failed run goes on from its failed steps, the outputs before kept (nothing that ran is repeated); not
+ * after a side effect failed, which may have gone out.
+ */
+function Retry({ runId, retry, onRetried }: { runId: string; retry: NonNullable<RunDetailView["retry"]>; onRetried: () => void }) {
+  const action = useAction();
+  const go = async () => {
+    const done = await action.run(() => api.runs.retry(runId));
+    if (!done) return;
+    toast.info("Going on from the failed step");
+    onRetried();
+  };
+  return (
+    <div className="alert alert-secondary d-flex align-items-center gap-3 flex-wrap" data-testid="retry">
+      <div className="flex-fill">
+        {retry.possible
+          ? "Retry goes on from the failed step: the steps before keep their outputs (no LLM call is paid twice), nothing that ran is repeated."
+          : `No retry: ${retry.reason}.`}
+        <ErrorAlert error={action.error} title="Not retried" />
+      </div>
+      {retry.possible && (
+        <button type="button" className="btn btn-primary" disabled={action.busy} onClick={() => void go()}>
+          <IconRefresh size={18} className="me-1" />
+          Retry from the failed step
+        </button>
+      )}
+    </div>
   );
 }
 

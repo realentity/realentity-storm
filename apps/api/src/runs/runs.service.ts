@@ -3,6 +3,7 @@ import { JobQueue } from "@ai-me/queue";
 import {
   type CompiledDefinition,
   type RunDetailView,
+  type RetryView,
   type RunFilter,
   type RunSummaryView,
   type ServerEnv,
@@ -17,6 +18,7 @@ import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { questionView } from "../facts/facts.service";
 import { PROPOSAL_INCLUDE, proposalView } from "../proposals/proposal-view";
+import { runCosts } from "./run-costs";
 
 const RUN_INCLUDE = {
   pipelineVersion: { select: { pipelineId: true, version: true, pipeline: { select: { name: true } } } },
@@ -89,7 +91,42 @@ export class RunsService {
       orderBy: [{ startedAt: "desc" }, { runId: "desc" }],
       take: filter.limit,
     });
-    return runs.map(runSummary);
+    const costs = await runCosts(this.prisma, runs.map((r) => r.runId));
+    return runs.map((run) => runSummary(run, costs.get(run.runId) ?? 0));
+  }
+
+  /**
+   * M17-T1: a failed run goes on from its failed steps: they are cleared and the run queued again, the steps before
+   * keep their outputs (an LLM step isn't paid for twice), what already ran is never repeated. Not when a side effect
+   * failed: it may have gone out (an email, a form), so that is a new run, after I checked.
+   */
+  async retry(userId: string, runId: string): Promise<RunDetailView> {
+    await this.controls.assertNotPaused(userId);
+    const run = await this.prisma.client.run.findFirst({ where: { runId, userId }, include: { steps: true } });
+    if (!run) throw new NotFoundException();
+    const check = this.retryCheck(run.status, run.steps);
+    if (!check?.possible) throw new ConflictException(check?.reason ?? "Only a failed run can be retried");
+    await this.prisma.client.$transaction([
+      this.prisma.client.step.deleteMany({ where: { runId, status: "FAILED" } }),
+      this.prisma.client.run.update({ where: { runId }, data: { status: "QUEUED", finishedAt: null, summary: null, resumeAt: null } }),
+    ]);
+    const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: run.pipelineVersionId } });
+    await this.events.publish(userId, { type: "run", runId, pipelineId: version.pipelineId, status: "QUEUED" });
+    await this.queue.enqueueRun(run);
+    return this.get(userId, runId);
+  }
+
+  /** Null for a run that didn't fail. */
+  private retryCheck(status: string, steps: { status: string; type: string; stepKey: string }[]): RetryView | null {
+    if (status !== "FAILED") return null;
+    const failed = steps.filter((s) => s.status === "FAILED");
+    // A side effect failed, or left running: it may have gone out.
+    const sideEffect = steps.find((s) => (s.status === "FAILED" || s.status === "RUNNING") && this.catalog.get(s.type)?.sideEffect);
+    if (sideEffect) {
+      return { possible: false, reason: `${sideEffect.stepKey} (${sideEffect.type}) failed and may have gone out: check, then start a new run` };
+    }
+    if (failed.length === 0) return { possible: false, reason: "No failed step to go on from: start a new run" };
+    return { possible: true, reason: null };
   }
 
   async get(userId: string, runId: string): Promise<RunDetailView> {
@@ -107,9 +144,11 @@ export class RunsService {
     if (!run) throw new NotFoundException();
     const usage = run.steps.map((s) => stepUsage(s.llmUsage));
     const takeover = run.takeovers[0];
+    const costUsd = Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000;
     return {
-      ...runSummary(run),
-      costUsd: Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000,
+      ...runSummary(run, costUsd),
+      costUsd,
+      retry: this.retryCheck(run.status, run.steps),
       headed: run.headed,
       triggerData: run.triggerData ?? null,
       question: run.questions[0] ? questionView(run.questions[0]) : null,
@@ -173,8 +212,9 @@ function stepUsage(value: Prisma.JsonValue): StepUsageView | null {
   };
 }
 
-function runSummary(run: RunWithPipeline): RunSummaryView {
+function runSummary(run: RunWithPipeline, costUsd: number): RunSummaryView {
   return {
+    costUsd,
     runId: run.runId,
     pipelineId: run.pipelineVersion.pipelineId,
     pipelineName: run.pipelineVersion.pipeline.name,

@@ -1,5 +1,6 @@
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
-import { type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@ai-me/shared";
+import { QUEUES } from "@ai-me/queue";
+import { type ApplicationView, type InsightView, type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@ai-me/shared";
 import { TestEnvironment } from "@ai-me/testing";
 import type request from "supertest";
 import { parse as parseYaml } from "yaml";
@@ -130,5 +131,84 @@ describe("jobs and recipes", () => {
 
     await agent.post("/api/recipes/teach").send({ ...body, name: "not a name" }).expect(400);
     await agent.post("/api/recipes/teach").send({ ...body, url: "javascript:alert(1)" }).expect(400);
+  });
+  // M16-I1: the dashboard's counts against known postings and applications.
+  describe("M16: insight and outcomes", () => {
+    const DAY = 86_400_000;
+    /** A posting found `daysAgo`, scored, maybe applied to with outcome dates (days after applying). */
+    interface PostingOptions {
+      source?: string;
+      score?: number | null;
+      daysAgo?: number;
+      status?: "NEW" | "SHORTLISTED" | "SKIPPED" | "APPLIED";
+      applied?: { replied?: number; interview?: number; rejected?: number } | null;
+    }
+    async function posting(key: string, { source = "dev.bg/search", score = null, daysAgo = 5, status = "NEW", applied = null }: PostingOptions = {}) {
+      const found = new Date(Date.now() - daysAgo * DAY);
+      const job = await db.client.jobPosting.create({ data: { userId, source, url: `https://jobs.test/${key}`, title: key, company: key, score, status, firstSeenAt: found } });
+      if (!applied) return job;
+      const submittedAt = new Date(found.getTime() + DAY);
+      const at = (days?: number) => (days === undefined ? null : new Date(submittedAt.getTime() + days * DAY));
+      await db.client.application.create({
+        data: {
+          userId,
+          jobPostingId: job.jobPostingId,
+          status: applied.rejected !== undefined ? "REJECTED" : applied.interview !== undefined ? "INTERVIEW" : applied.replied !== undefined ? "RESPONDED" : "SUBMITTED",
+          submittedAt,
+          respondedAt: at(applied.replied),
+          interviewAt: at(applied.interview),
+          rejectedAt: at(applied.rejected),
+        },
+      });
+      return job;
+    }
+
+    it("counts found, applied, replied, interviews and rejections, by source and score band; older postings left out", async () => {
+      await posting("a", { score: 90, status: "APPLIED", applied: { interview: 4, rejected: 9 } });
+      await posting("b", { score: 85, status: "APPLIED", applied: { replied: 2 } });
+      await posting("c", { score: 70, status: "APPLIED", applied: {} });
+      await posting("d", { score: 65, status: "SHORTLISTED" });
+      await posting("e", { score: 30, status: "SKIPPED" });
+      await posting("f", { source: "jobs.bg/search", status: "APPLIED", applied: { rejected: 6 } });
+      await posting("old", { score: 95, daysAgo: 120, status: "APPLIED", applied: { interview: 1 } });
+
+      const view = (await agent.get("/api/insight?days=90").expect(200)).body as InsightView;
+      expect(view.totals).toEqual({ key: "all", found: 6, shortlisted: 5, applied: 4, replied: 3, interview: 1, rejected: 2, waiting: 1 });
+      expect(view.bySource).toEqual([
+        { key: "dev.bg/search", found: 5, shortlisted: 4, applied: 3, replied: 2, interview: 1, rejected: 1, waiting: 1 },
+        { key: "jobs.bg/search", found: 1, shortlisted: 1, applied: 1, replied: 1, interview: 0, rejected: 1, waiting: 0 },
+      ]);
+      expect(view.byScore.map((r) => [r.key, r.found, r.applied, r.replied, r.interview])).toEqual([
+        ["80–100", 2, 2, 2, 1],
+        ["60–79", 2, 1, 0, 0],
+        ["40–59", 0, 0, 0, 0],
+        ["0–39", 1, 0, 0, 0],
+        ["unscored", 1, 1, 1, 0],
+      ]);
+      // First answers 4, 2 and 6 days after applying.
+      expect(view.medianDaysToAnswer).toBe(4);
+      expect((await agent.get("/api/insight?days=365").expect(200)).body).toMatchObject({ totals: { found: 7, interview: 2 } });
+      await agent.get("/api/insight?days=1").expect(400);
+    });
+
+    it("an outcome by hand: the status, its date the first time, a note; the pipelines are told", async () => {
+      const job = await posting("acme", { status: "APPLIED", applied: {} });
+      const { applicationId } = await db.client.application.findFirstOrThrow({ where: { jobPostingId: job.jobPostingId } });
+      await db.client.$executeRaw`DELETE FROM pgboss.job WHERE name = ${QUEUES.events}`;
+
+      const interview = (await agent.patch(`/api/applications/${applicationId}`).send({ status: "INTERVIEW", note: "phone call" }).expect(200)).body as ApplicationView;
+      expect(interview).toMatchObject({ status: "INTERVIEW", interviewAt: expect.any(String) as unknown, rejectedAt: null });
+      expect(interview.notes).toMatch(/^\d{4}-\d\d-\d\d interview \(by hand\): phone call$/);
+      const events = await db.client.$queryRaw<{ data: Record<string, unknown> }[]>`SELECT data FROM pgboss.job WHERE name = ${QUEUES.events}`;
+      expect(events.map((e) => e.data)).toEqual([
+        expect.objectContaining({ event: "application.status", data: expect.objectContaining({ applicationId, status: "INTERVIEW" }) as unknown }),
+      ]);
+      // Undone by hand (a mistake): the interview's date stays, the Jobs page shows it.
+      const back = (await agent.patch(`/api/applications/${applicationId}`).send({ status: "SUBMITTED" }).expect(200)).body as ApplicationView;
+      expect(back).toMatchObject({ status: "SUBMITTED", interviewAt: interview.interviewAt });
+      const listed = (await agent.get("/api/jobs").expect(200)).body as JobPostingView[];
+      expect(listed[0].application).toMatchObject({ applicationId, status: "SUBMITTED", interviewAt: interview.interviewAt });
+      await agent.patch(`/api/applications/${applicationId}`).send({ status: "PREPARED" }).expect(400);
+    });
   });
 });

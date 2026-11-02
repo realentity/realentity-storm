@@ -454,6 +454,7 @@ describe("runs, proposals and controls", () => {
         "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
         "llm.extract": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
+        "application.outcome": { model: "claude-haiku-5-5", effort: "low", source: "default" },
         reflection: { model: "claude-opus-5-5", effort: "high", source: "default" },
         builder: { model: "claude-opus-5-5", effort: "high", source: "default" },
         "browser.teach": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
@@ -512,6 +513,79 @@ describe("runs, proposals and controls", () => {
         .put("/api/settings")
         .send({ rateLimits: { "test.send": "lots" } })
         .expect(400);
+    });
+  });
+  // M17: retrying a failed run (T1, S1) and what a pipeline costs (T3, E1's api part).
+  describe("M17: retry and cost", () => {
+    const usage = (costUsd: number) => ({ models: ["claude-sonnet-5-5"], calls: 1, inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd });
+
+    /** A finished run of the pipeline as the worker leaves it: these steps, with their status and LLM cost. */
+    async function finished(pipeline: PipelineDetailView, status: "DONE" | "FAILED", steps: [string, string, "DONE" | "FAILED" | "RUNNING", number][], dryRun = false) {
+      const run = await db.client.run.create({
+        data: { userId, pipelineVersionId: pipeline.current!.pipelineVersionId, trigger: dryRun ? "dry-run" : "manual", dryRun, status, finishedAt: new Date() },
+      });
+      for (const [stepKey, type, stepStatus, cost] of steps) {
+        await db.client.step.create({ data: { runId: run.runId, stepKey, type, status: stepStatus, startedAt: new Date(), llmUsage: cost ? usage(cost) : undefined, error: stepStatus === "FAILED" ? "boom" : null } });
+      }
+      return run.runId;
+    }
+
+    it("a failed run goes on from its failed step: the step cleared, the run queued; never after a failed side effect", async () => {
+      const pipeline = await createPipeline();
+      const runId = await finished(pipeline, "FAILED", [
+        ["search", "test.search", "DONE", 0.02],
+        ["shortlist", "gate.review", "FAILED", 0],
+      ]);
+      const before = (await agent.get(`/api/runs/${runId}`).expect(200)).body as RunDetailView;
+      expect(before).toMatchObject({ retry: { possible: true, reason: null }, costUsd: 0.02 });
+
+      const retried = (await agent.post(`/api/runs/${runId}/retry`).expect(202)).body as RunDetailView;
+      expect(retried).toMatchObject({ status: "QUEUED", finishedAt: null, retry: null });
+      expect(retried.steps.map((s) => [s.stepKey, s.status])).toEqual([["search", "DONE"]]);
+      expect((await queued()).map((j) => j.data)).toEqual([{ runId }]);
+      await agent.post(`/api/runs/${runId}/retry`).expect(409);
+
+      const sent = await finished(pipeline, "FAILED", [
+        ["search", "test.search", "DONE", 0],
+        ["reply", "test.send", "FAILED", 0],
+      ]);
+      const view = (await agent.get(`/api/runs/${sent}`).expect(200)).body as RunDetailView;
+      expect(view.retry).toEqual({ possible: false, reason: "reply (test.send) failed and may have gone out: check, then start a new run" });
+      const refused = await agent.post(`/api/runs/${sent}/retry`).expect(409);
+      expect((refused.body as { message: string }).message).toContain("may have gone out");
+      expect(await db.client.step.count({ where: { runId: sent } })).toBe(2);
+
+      const done = await finished(pipeline, "DONE", [["search", "test.search", "DONE", 0]]);
+      expect(((await agent.get(`/api/runs/${done}`).expect(200)).body as RunDetailView).retry).toBeNull();
+    });
+
+    it("cost: per run in the runs list; per pipeline the last 30 days, per run, and per month on its schedule", async () => {
+      const scheduled = await createPipeline(REPLY.replace("name: Replies", 'name: Daily\ntrigger: { schedule: "0 8 * * *", tz: Europe/Sofia }'));
+      const none = (await agent.get(`/api/pipelines/${scheduled.pipelineId}`).expect(200)).body as PipelineDetailView;
+      expect(none.cost).toEqual({ days: 30, runs: 0, dryRuns: 0, totalUsd: 0, perRunUsd: null, runsPerMonth: 30, perMonthUsd: null });
+
+      // Only a dry run so far: it stands in for a run.
+      await finished(scheduled, "DONE", [["search", "test.search", "DONE", 0.05]], true);
+      expect(((await agent.get(`/api/pipelines/${scheduled.pipelineId}`).expect(200)).body as PipelineDetailView).cost).toMatchObject({
+        runs: 1,
+        dryRuns: 1,
+        perRunUsd: 0.05,
+        perMonthUsd: 1.5,
+      });
+
+      const a = await finished(scheduled, "DONE", [["search", "test.search", "DONE", 0.01], ["reply", "test.send", "DONE", 0.02]]);
+      await finished(scheduled, "DONE", [["search", "test.search", "DONE", 0.01]]);
+      const old = await finished(scheduled, "DONE", [["search", "test.search", "DONE", 9]]);
+      await db.client.run.update({ where: { runId: old }, data: { startedAt: new Date(Date.now() - 40 * 86_400_000) } });
+
+      const cost = ((await agent.get(`/api/pipelines/${scheduled.pipelineId}`).expect(200)).body as PipelineDetailView).cost;
+      // Real runs now: (0.03 + 0.01) / 2 per run, 30 a month; the dry run counts in what was spent, the old run not.
+      expect(cost).toEqual({ days: 30, runs: 3, dryRuns: 1, totalUsd: 0.09, perRunUsd: 0.02, runsPerMonth: 30, perMonthUsd: 0.6 });
+      const list = (await agent.get(`/api/runs?pipelineId=${scheduled.pipelineId}`).expect(200)).body as RunSummaryView[];
+      expect(list.find((r) => r.runId === a)?.costUsd).toBe(0.03);
+
+      const manual = await createPipeline();
+      expect(((await agent.get(`/api/pipelines/${manual.pipelineId}`).expect(200)).body as PipelineDetailView).cost).toMatchObject({ runsPerMonth: null, perMonthUsd: null });
     });
   });
 });

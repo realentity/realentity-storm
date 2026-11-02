@@ -1,4 +1,5 @@
 import {
+  type ApplicationView,
   type ApproveProposalRequest,
   type BuilderChatSummaryView,
   type BuilderChatView,
@@ -13,6 +14,7 @@ import {
   type FactView,
   type GoogleStatusView,
   type ImportRecipeRequest,
+  type InsightView,
   type JobFilter,
   type JobPostingView,
   type JobStatusName,
@@ -41,6 +43,7 @@ import {
   type SuggestionStatusName,
   type TeachRecipeRequest,
   type TeachStartedView,
+  type UpdateApplicationRequest,
   type UpdatePipelineRequest,
   type WebhookView,
   type UpdateRuleRequest,
@@ -81,6 +84,7 @@ export const api = {
     takeOver: (runId: string) => request<void>("POST", `/runs/${runId}/takeover`),
     continue: (runId: string) => request<void>("POST", `/runs/${runId}/continue`),
     abort: (runId: string) => request<void>("POST", `/runs/${runId}/abort`),
+    retry: (runId: string) => request<RunDetailView>("POST", `/runs/${runId}/retry`),
   },
   /** Runs waiting for me in the live view. */
   takeovers: () => request<(TakeoverView & { runId: string; pipelineName: string })[]>("GET", "/takeovers"),
@@ -138,6 +142,10 @@ export const api = {
   jobs: {
     list: (filter: Partial<JobFilter> = {}) => request<JobPostingView[]>("GET", `/jobs${query(filter)}`),
     setStatus: (jobPostingId: string, status: JobStatusName) => request<JobPostingView>("PATCH", `/jobs/${jobPostingId}`, { status }),
+    setOutcome: (applicationId: string, body: UpdateApplicationRequest) => request<ApplicationView>("PATCH", `/applications/${applicationId}`, body),
+  },
+  insight: {
+    get: (days: number) => request<InsightView>("GET", `/insight?days=${days}`),
   },
   documents: {
     list: () => request<DocumentView[]>("GET", "/documents"),

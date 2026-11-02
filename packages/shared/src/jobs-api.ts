@@ -43,8 +43,54 @@ export interface ApplicationView {
   applicationId: string;
   status: ApplicationStatusName;
   submittedAt: string | null;
+  /** When the employer answered, invited me, turned me down (M16): kept when the status moves on. */
+  respondedAt: string | null;
+  interviewAt: string | null;
+  rejectedAt: string | null;
+  notes: string | null;
   /** The run that prepared or submitted it. */
   runId: string | null;
+}
+
+/** The order outcomes happen in (M16): an email moves an application forward only; by hand, anywhere. */
+const OUTCOME_ORDER: Record<ApplicationStatusName, number> = { PREPARED: 0, SUBMITTED: 1, RESPONDED: 2, INTERVIEW: 3, REJECTED: 4 };
+
+export function movesForward(from: ApplicationStatusName, to: ApplicationStatusName): boolean {
+  return OUTCOME_ORDER[to] > OUTCOME_ORDER[from];
+}
+
+/** The outcome date a status sets (the first time only): RESPONDED → respondedAt, and so on. */
+export const OUTCOME_DATE = { RESPONDED: "respondedAt", INTERVIEW: "interviewAt", REJECTED: "rejectedAt" } as const;
+
+/** An application's outcome set by hand on the Jobs page (M16-T3). */
+export const UpdateApplicationSchema = z
+  .object({ status: z.enum(["SUBMITTED", "RESPONDED", "INTERVIEW", "REJECTED"]), note: z.string().trim().max(500).optional() })
+  .strict();
+export type UpdateApplicationRequest = z.infer<typeof UpdateApplicationSchema>;
+
+/** One row of the job-search funnel (M16-T1): a source, a score band, or all of them. */
+export interface FunnelRow {
+  key: string;
+  found: number;
+  shortlisted: number;
+  applied: number;
+  replied: number;
+  interview: number;
+  rejected: number;
+  /** Applied, no answer yet. */
+  waiting: number;
+}
+
+/** The job-search dashboard (M16-T1): postings found in the window and what came of them. */
+export interface InsightView {
+  days: number;
+  from: string;
+  totals: FunnelRow;
+  bySource: FunnelRow[];
+  /** The calibration view: does a higher score get more replies and interviews? Bands 80+, 60-79, 40-59, 0-39, unscored. */
+  byScore: FunnelRow[];
+  /** Applications answered: the median days from applying to the first answer; null without any. */
+  medianDaysToAnswer: number | null;
 }
 
 // #endregion
