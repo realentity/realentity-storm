@@ -1,5 +1,34 @@
 import { z } from "zod";
 
+/**
+ * pipelines/prices.yaml, for "Create the Prices pipeline" on the Prices page (the api image has no pipelines/
+ * folder). A test keeps the two the same.
+ */
+export const PRICES_PIPELINE = `# M24: every morning, the products on the Prices page, at each of their shops; a message only when something is
+# new: a shop at or under my target (once), the lowest in 90 days, back in stock, with the cheapest shop named.
+# Add products on the Prices page: no allowedDomains needed here.
+name: Prices
+description: My watched products, told only when a price is worth knowing.
+trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+steps:
+  - id: watch
+    type: price.watch
+    with: { lowestDays: 90 }
+  - id: tell
+    type: notify.telegram
+    when: "{{watch.text}}"
+    with: { text: "{{watch.text}}" }
+  - id: trouble
+    type: notify.telegram
+    when: "{{watch.problems}}"
+    with: { text: "Prices: can't read {{watch.problems}}" }
+`;
+
+/** What checks the watched products: the pipelines whose current version has a price.watch step. */
+export interface PricesStatusView {
+  pipelines: { pipelineId: string; name: string; enabled: boolean }[];
+}
+
 /** The DataPoint collection price.watch keeps each shop's prices in (key: watchedOfferId). */
 export const PRICE_WATCH_COLLECTION = "price-watch";
 

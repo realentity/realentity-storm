@@ -1,6 +1,10 @@
 import { Prisma, type WatchedOffer, type WatchedProduct } from "@ai-me/db";
 import {
+  type CompiledDefinition,
+  type PipelineDetailView,
   PRICE_WATCH_COLLECTION,
+  PRICES_PIPELINE,
+  type PricesStatusView,
   WatchedProductSchema,
   type PriceHistoryView,
   type WatchedOfferView,
@@ -9,6 +13,7 @@ import {
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { type z } from "zod";
 import { PrismaService } from "../database/prisma.service";
+import { PipelinesService } from "../pipelines/pipelines.service";
 
 type WatchedProductBody = z.infer<typeof WatchedProductSchema>;
 
@@ -17,7 +22,36 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** The Prices page (M24): the products price.watch checks, and what it read. */
 @Injectable()
 export class PricesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pipelines: PipelinesService,
+  ) {}
+
+  /** The pipelines that check the watched products: the page says when none is enabled. */
+  async status(userId: string): Promise<PricesStatusView> {
+    const pipelines = await this.prisma.client.pipeline.findMany({
+      where: { userId, currentVersionId: { not: null } },
+      select: { pipelineId: true, name: true, enabled: true, currentVersionId: true },
+      orderBy: { name: "asc" },
+    });
+    const versions = await this.prisma.client.pipelineVersion.findMany({
+      where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
+      select: { pipelineVersionId: true, definition: true },
+    });
+    const watching = new Set(
+      versions
+        .filter((v) => (v.definition as unknown as CompiledDefinition).steps.some((step) => step.type === "price.watch"))
+        .map((v) => v.pipelineVersionId),
+    );
+    return {
+      pipelines: pipelines.filter((p) => watching.has(p.currentVersionId!)).map(({ pipelineId, name, enabled }) => ({ pipelineId, name, enabled })),
+    };
+  }
+
+  /** The Prices pipeline from its template, off until I turn it on. */
+  createPipeline(userId: string): Promise<PipelineDetailView> {
+    return this.pipelines.create(userId, PRICES_PIPELINE);
+  }
 
   async list(userId: string): Promise<WatchedProductView[]> {
     const products = await this.prisma.client.watchedProduct.findMany({

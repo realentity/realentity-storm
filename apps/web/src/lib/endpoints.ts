@@ -1,4 +1,5 @@
 import {
+  type PricesStatusView,
   type HealthView,
   type PriceHistoryView,
   type WatchedProductRequest,
@@ -146,6 +147,8 @@ export const api = {
     update: (id: string, body: WatchedProductRequest) => request<WatchedProductView>("PUT", `/prices/${id}`, body),
     remove: (id: string) => request<void>("DELETE", `/prices/${id}`),
     history: (id: string) => request<PriceHistoryView>("GET", `/prices/${id}/history`),
+    status: () => request<PricesStatusView>("GET", "/prices/status"),
+    createPipeline: () => request<PipelineDetailView>("POST", "/prices/pipeline"),
   },
   costs: {
     get: (days: number) => request<CostsView>("GET", `/costs?days=${days}`),

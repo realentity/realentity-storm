@@ -1,6 +1,7 @@
-import { type PriceHistoryView, type WatchedProductRequest, type WatchedProductView } from "@ai-me/shared";
+import { type PriceHistoryView, type PricesStatusView, type WatchedProductRequest, type WatchedProductView } from "@ai-me/shared";
 import { IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { PriceChart } from "../components/PriceChart";
 import { Empty, ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
@@ -10,6 +11,7 @@ import { useAction, useLoad } from "../lib/use-load";
 /** M24: the products price.watch checks, at each shop, with their history. */
 export function PricesPage() {
   const products = useLoad(() => api.prices.list(), []);
+  const status = useLoad(() => api.prices.status(), []);
   const [editing, setEditing] = useState<WatchedProductView | "new" | null>(null);
   if (!products.data) return products.error ? <ErrorAlert error={products.error} /> : <Loading />;
   return (
@@ -23,6 +25,7 @@ export function PricesPage() {
           </button>
         }
       />
+      {status.data && <Checker status={status.data} />}
       {products.data.length === 0 ? (
         <Empty>Nothing watched yet. Add a product with its shops' pages; the Prices pipeline (pipelines/prices.yaml) checks them.</Empty>
       ) : (
@@ -43,6 +46,36 @@ export function PricesPage() {
         />
       )}
     </>
+  );
+}
+
+/** Nothing reads these prices without an enabled pipeline with price.watch: say so, and offer the template. */
+function Checker({ status }: { status: PricesStatusView }) {
+  const action = useAction();
+  const navigate = useNavigate();
+  if (status.pipelines.some((p) => p.enabled)) return null;
+  const create = async () => {
+    const pipeline = await action.run(() => api.prices.createPipeline());
+    if (pipeline) void navigate(`/pipelines/${pipeline.pipelineId}`);
+  };
+  const off = status.pipelines[0];
+  return (
+    <div className="alert alert-warning" data-testid="prices-unchecked">
+      <ErrorAlert error={action.error} />
+      {off ? (
+        <>
+          Nothing checks these prices: <Link to={`/pipelines/${off.pipelineId}`}>{off.name}</Link> is off. Turn it on to check them every morning, or
+          open it and press Run to check now.
+        </>
+      ) : (
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <span>Nothing checks these prices yet: the Prices pipeline reads every shop each morning and tells you only what's new.</span>
+          <button type="button" className="btn btn-sm btn-primary" disabled={action.busy} onClick={() => void create()}>
+            Create the Prices pipeline
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -188,7 +221,8 @@ function ProductForm({ product, onClose, onSaved }: { product: WatchedProductVie
       </div>
       <label className="form-check form-switch">
         <input className="form-check-input" type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        <span className="form-check-label">Checked by the Prices pipeline</span>
+        <span className="form-check-label">Watching</span>
+        <div className="small text-secondary">Off: paused. The Prices pipeline skips it; its shops and price history are kept.</div>
       </label>
     </Modal>
   );

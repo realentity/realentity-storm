@@ -1,4 +1,4 @@
-import { WatchedProductSchema, type PriceHistoryView, type WatchedProductView } from "@ai-me/shared";
+import { WatchedProductSchema, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@ai-me/shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
 import { type z } from "zod";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
@@ -15,6 +15,16 @@ export class PricesController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser): Promise<WatchedProductView[]> {
     return this.prices.list(user.userId);
+  }
+
+  @Get("status")
+  status(@CurrentUser() user: AuthenticatedUser): Promise<PricesStatusView> {
+    return this.prices.status(user.userId);
+  }
+
+  @Post("pipeline")
+  createPipeline(@CurrentUser() user: AuthenticatedUser): Promise<PipelineDetailView> {
+    return this.prices.createPipeline(user.userId);
   }
 
   @Post()

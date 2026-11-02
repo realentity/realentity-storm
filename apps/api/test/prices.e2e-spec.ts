@@ -1,5 +1,7 @@
 import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { PRICE_WATCH_COLLECTION, type PriceHistoryView, type WatchedProductView } from "@ai-me/shared";
+import { PRICE_WATCH_COLLECTION, PRICES_PIPELINE, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@ai-me/shared";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { TestEnvironment } from "@ai-me/testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -21,6 +23,7 @@ describe("prices", () => {
   afterEach(async () => {
     await db.client.watchedProduct.deleteMany();
     await db.client.dataPoint.deleteMany();
+    await db.client.pipeline.deleteMany();
   });
 
   afterAll(async () => {
@@ -87,5 +90,20 @@ describe("prices", () => {
     await agent.post("/api/prices").send({ ...JACKET, offers: [] }).expect(400);
     await agent.post("/api/prices").send({ ...JACKET, currency: "euro" }).expect(400);
     expect(await db.client.watchedProduct.count()).toBe(0);
+  });
+
+  it("says when nothing checks the prices; creates the Prices pipeline from its template, off until turned on", async () => {
+    const status = async () => ((await agent.get("/api/prices/status").expect(200)).body as PricesStatusView).pipelines;
+    expect(await status()).toEqual([]);
+
+    const pipeline = (await agent.post("/api/prices/pipeline").expect(201)).body as PipelineDetailView;
+    expect(pipeline).toMatchObject({ name: "Prices", enabled: false, currentVersion: 1 });
+    expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices", enabled: false }]);
+    await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
+    expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices", enabled: true }]);
+
+    // The template the button uses is pipelines/prices.yaml.
+    const file = await readFile(join(__dirname, "../../../pipelines/prices.yaml"), "utf8");
+    expect(PRICES_PIPELINE).toBe(file.replace(/\r\n/g, "\n"));
   });
 });
