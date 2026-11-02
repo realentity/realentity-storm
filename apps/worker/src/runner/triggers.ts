@@ -153,6 +153,9 @@ function matches(trigger: EventTrigger, job: EventJob): boolean {
     case "flow.later":
       // Started by its own scheduled start (fireLater), never by an event.
       return false;
+    case "view.action":
+      // Started by the api, from a row's button (M27).
+      return false;
   }
 }
 

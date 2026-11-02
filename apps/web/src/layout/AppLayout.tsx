@@ -16,12 +16,13 @@ import {
   IconSettings,
 } from "@tabler/icons-react";
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { KillSwitchButton } from "../components/KillSwitchButton";
 import { useSession } from "../context/use-session";
 import { api } from "../lib/endpoints";
 import { useConnectionState } from "../lib/events";
 import { useLoad } from "../lib/use-load";
+import { VIEW_ICON } from "../lib/view";
 
 const NAVIGATION = [
   { to: "/inbox", label: "Inbox", icon: IconInbox },
@@ -44,6 +45,9 @@ export function AppLayout() {
   const { session, logout } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const connection = useConnectionState();
+  const { pathname } = useLocation();
+  // Pipelines' pages (M27): saving a pipeline changes them, so the menu is read again on every page change.
+  const pages = useLoad(() => api.views.menu(), [pathname]);
   const pending = useLoad(
     () => api.proposals.list(),
     [],
@@ -83,6 +87,29 @@ export function AppLayout() {
                   </NavLink>
                 </li>
               ))}
+              {(pages.data?.length ?? 0) > 0 && (
+                <li className="nav-item mt-3">
+                  <div className="nav-link text-uppercase small text-secondary py-1">Pages</div>
+                </li>
+              )}
+              {pages.data?.map((page) => {
+                const Icon = VIEW_ICON[page.icon] ?? VIEW_ICON.list;
+                return (
+                  <li key={page.pipelineId} className="nav-item" data-testid="view-menu-item">
+                    <NavLink
+                      to={`/v/${page.pipelineId}`}
+                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                      title={page.pipelineName}
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <span className="nav-link-icon">
+                        <Icon size={20} />
+                      </span>
+                      <span className="nav-link-title">{page.label}</span>
+                    </NavLink>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>

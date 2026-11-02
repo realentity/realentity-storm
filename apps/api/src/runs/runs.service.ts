@@ -44,8 +44,17 @@ export class RunsService {
     return this.startVersion(userId, pipeline.currentVersionId, dryRun, trigger);
   }
 
-  /** A run of one version (the current one, or a draft's dry run). */
-  async startVersion(userId: string, pipelineVersionId: string, dryRun: boolean, trigger: "manual" | "telegram" = "manual"): Promise<RunDetailView> {
+  /**
+   * A run of one version (the current one, or a draft's dry run). `triggerData` is {{trigger.*}} of a run started
+   * here for a trigger event (M27: a row's button on a pipeline's page).
+   */
+  async startVersion(
+    userId: string,
+    pipelineVersionId: string,
+    dryRun: boolean,
+    trigger: "manual" | "telegram" | "view" = "manual",
+    triggerData?: Record<string, unknown>,
+  ): Promise<RunDetailView> {
     await this.controls.assertNotPaused(userId);
     const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
     if (!version.savedAt && !dryRun) throw new ConflictException("A draft only gets dry runs; save it first");
@@ -59,6 +68,7 @@ export class RunsService {
         dryRun,
         // A pipeline started by an event or a webhook gets an example of one in a dry run, so {{trigger.*}} has values.
         ...(dryRun && exampleTriggerData(definition.trigger) ? { triggerData: exampleTriggerData(definition.trigger) as Prisma.InputJsonValue } : {}),
+        ...(triggerData && !dryRun ? { triggerData: triggerData as Prisma.InputJsonValue } : {}),
         headed: this.catalog.needsHeaded(definition.steps),
         status: "QUEUED",
       },

@@ -7,11 +7,14 @@ import {
   type CompiledStep,
   type CompileIssue,
   type CompileResult,
+  type PipelineDefinition,
   type PipelineStep,
   type ProvenanceRule,
   type TargetKind,
   type Trigger,
   hostMatches,
+  isEventTrigger,
+  isWebhookTrigger,
 } from "@ai-me/shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
@@ -128,6 +131,8 @@ export class PipelineCompiler {
       // The runner applies limits before a side effect executes (README §2.2); elsewhere they would do nothing.
       else if (!limited.sideEffect) errors.push({ path: `limits.${type}`, message: "only side-effect steps have rate limits" });
     }
+
+    if (definition.view) checkView(definition, errors);
 
     const steps = errors.length === 0 ? this.placeGates(definition.steps, known, errors, warnings) : [];
     if (errors.length > 0) return { ok: false, errors };
@@ -314,6 +319,38 @@ export class PipelineCompiler {
     });
     return result;
   }
+}
+
+/**
+ * The page (M27) shows what this pipeline keeps: its collection is one a data.save step of it writes, its chart one
+ * its data.history writes. A page button runs a pipeline as a manual run, which one started by an event can't be.
+ */
+function checkView(definition: PipelineDefinition, errors: CompileIssue[]): void {
+  const view = definition.view!;
+  const written = (type: string) =>
+    new Set(definition.steps.filter((s) => s.type === type && typeof s.with.collection === "string").map((s) => s.with.collection as string));
+  if (!written("data.save").has(view.collection)) {
+    errors.push({ path: "view.collection", message: `no data.save step of this pipeline writes the collection "${view.collection}"` });
+  }
+  if (view.detail.history && !written("data.history").has(view.detail.history)) {
+    errors.push({ path: "view.detail.history", message: `no data.history step of this pipeline writes "${view.detail.history}"` });
+  }
+  const marks = new Set<string>();
+  view.marks.forEach((mark, i) => {
+    if (marks.has(mark.id)) errors.push({ path: `view.marks[${i}].id`, message: `"${mark.id}" is used by an earlier mark` });
+    marks.add(mark.id);
+  });
+  const labels = new Set<string>();
+  view.actions.forEach((action, i) => {
+    if (labels.has(action.label)) errors.push({ path: `view.actions[${i}].label`, message: `"${action.label}" is used by an earlier button` });
+    labels.add(action.label);
+    const self = action.run === "self" || action.run === definition.name;
+    if (self && action.row) {
+      errors.push({ path: `view.actions[${i}].run`, message: "a row's button starts another pipeline, one triggered by { on: view.action }" });
+    } else if (self && (isEventTrigger(definition.trigger) || isWebhookTrigger(definition.trigger))) {
+      errors.push({ path: `view.actions[${i}].run`, message: "a pipeline started by an event or a webhook can't be run from a button" });
+    }
+  });
 }
 
 function addTarget(

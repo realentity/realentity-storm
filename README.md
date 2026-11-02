@@ -110,6 +110,7 @@ limits:
 - **Map → gate → act:** steps that interact with external forms are split into a read-only mapping step that produces the payload, a gate, and a single side-effect step that executes it. No browser is held open while a proposal waits for me.
 - **Attaching a file counts as an upload.** Any step that selects files on an external site is a side-effect step, since many ATSs upload on file selection.
 - **Limits:** a pipeline may declare rate limits for its side-effect step types (`limits: { browser.fillAndSubmit: 10/day }`, `N/day` or `N/hour`, a rolling window), counted over its own runs. Settings hold global caps per step type, counted over every pipeline. When a limit is reached, the run waits (`Run.resumeAt`) and continues once the window allows.
+- **Page (`view`, M27):** a pipeline that keeps a collection (`data.save` with `collection`) may declare its page: a menu entry, columns (a field by dotted path, in a fixed format: text, number, money, date, link, …), sort, my marks (`done`, kept apart from what the pipeline saves) and buttons that start pipelines (the page's as a manual run, a row's with the row as `{{trigger.item}}`). The compiler checks the collection is this pipeline's; a row's values are always shown as text and links are http(s) only.
 - **Policy:** each pipeline version declares what its side-effect steps may target, shown on the review screen and enforced by the policy layer at run time:
 
   | Kind | Example | Enforced how |
@@ -208,6 +209,7 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 | `{ on: application.status, status: [INTERVIEW] }` | an application is prepared, submitted, … (any status when left out) | `applicationId`, `status`, `job` (title, company, location, url) |
 | `{ on: recipe.broken, site: dev.bg }` | a recipe stops matching its page (once per breakage) | `site`, `recipe`, `version`, `reason`, `fixProposed` |
 | `{ on: email.classified, label: [recruiter] }` | an `email.classify` step gives an email one of these labels (one run per email) | `label`, `reason`, `message` (the email) |
+| `{ on: view.action, collection: releases }` | I press a row's button on a pipeline's page (M27), started by the api, not an event | `collection`, `key`, `item` (the row), `action` |
 | `{ webhook: hmac-sha256 }` or `{ webhook: token }` | a call to the pipeline's webhook address | `body` (JSON, or the text), `event` (`X-GitHub-Event`), `receivedAt` |
 
 - **Only enabled pipelines** start on a trigger, never with the kill switch on, never on their own event, and a chain of triggered runs stops at depth 3. Dry runs trigger nothing.
@@ -558,6 +560,7 @@ Monorepo setup: **pnpm** workspaces with a version **catalog** in `pnpm-workspac
 
 - **Run page**: live view (only a step that opens a window draws on the display: teach mode, `browser.submit`, `browser.fillAndSubmit`, a step with `headed: true`, or one waiting for me; while a step works in the hidden browser, or between steps, the live view says so and shows the latest screenshot instead of an empty desktop), step timeline (per `forEach` item), screenshots, payloads, results, LLM usage, trace download. A failed run has **Retry from the failed step**: the failed steps run again, those before keep their outputs (no LLM call paid twice) and nothing that ran is repeated; not when a side effect failed (or was left running), since it may have gone out: that is a new run, after I checked.
 - **Cost**: each run's LLM cost in the runs lists; on the pipeline page, its last 30 days (spent, runs, per run) and, for a schedule, about what a month costs (per run × how often it fires); enabling a schedule asks first, with that estimate.
+- **Pipeline pages** (M27): under Pages in the menu, one per pipeline with a `view`: its rows by tab (current, each mark, removed), searched, a row's own page with its history chart, my marks, its buttons. Jobs, Bills and Prices keep their own pages.
 - **Insight**: the job search in numbers (M16): found, applied, replied, interviews, rejections, by source and score band.
 - **History**: filter by pipeline, version, status, date, target.
 - **Daily digest** (email or Telegram): what ran, what's waiting for me, failures, suggested rules and pipeline changes.

@@ -73,6 +73,8 @@ export function describeTrigger(trigger: Trigger): string {
       return `When an email is labelled ${trigger.label?.join(" or ") ?? "(any label)"}`;
     case "flow.later":
       return "Started later by another pipeline (flow.later), with its data";
+    case "view.action":
+      return `From a row's button on a pipeline's page${trigger.collection ? ` (${trigger.collection})` : ""}, with the row`;
   }
 }
 

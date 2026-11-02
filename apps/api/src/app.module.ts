@@ -23,6 +23,7 @@ import { ProposalsModule } from "./proposals/proposals.module";
 import { QueueModule } from "./queue/queue.module";
 import { RunsModule } from "./runs/runs.module";
 import { StepsModule } from "./steps/steps.module";
+import { ViewsModule } from "./views/views.module";
 
 @Global()
 @Module({
@@ -55,6 +56,7 @@ export class CoreModule {}
     GoogleModule,
     FactsModule,
     HealthModule,
+    ViewsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

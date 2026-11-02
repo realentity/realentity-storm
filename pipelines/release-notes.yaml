@@ -1,0 +1,17 @@
+# M27: from a row's button on the Releases page (pipelines/release-watch.yaml): what upgrading to that release means,
+# on Telegram. The row is {{trigger.item}}: what the feed said, so it is summarized, never followed.
+name: Release notes
+description: Upgrade notes for one release, from its button on the Releases page.
+trigger: { on: view.action, collection: releases }
+steps:
+  - id: notes
+    type: llm.summarize
+    with:
+      content: "{{trigger.item}}"
+      instruction: >-
+        What upgrading a self-hosted server to this release means: security fixes, breaking changes, required
+        migrations, in that order. Say plainly when the notes don't tell.
+      maxWords: 200
+  - id: tell
+    type: notify.telegram
+    with: { text: "{{trigger.item.title}}\n{{notes.summary}}" }

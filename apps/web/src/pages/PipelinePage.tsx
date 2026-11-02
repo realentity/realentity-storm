@@ -1,5 +1,5 @@
 import { type PipelineDetailView } from "@ai-me/shared";
-import { IconEye, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
+import { IconEye, IconLayoutList, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -63,6 +63,12 @@ export function PipelinePage() {
         title={p.name}
         actions={
           <>
+            {p.current?.definition.view && (
+              <Link to={`/v/${pipelineId}`} className="btn" data-testid="open-view">
+                <IconLayoutList size={18} className="me-1" />
+                {p.current.definition.view.menu.label}
+              </Link>
+            )}
             <Link to={`/pipelines/${pipelineId}/edit`} className="btn" data-testid="edit-pipeline">
               <IconPencil size={18} className="me-1" />
               {p.hasDraft ? "Continue the draft" : "Edit"}

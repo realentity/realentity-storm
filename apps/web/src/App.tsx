@@ -22,6 +22,8 @@ import { RecipePage, RecipesPage } from "./pages/RecipesPage";
 import { RunPage } from "./pages/RunPage";
 import { RulesPage } from "./pages/RulesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ViewPage } from "./pages/ViewPage";
+import { ViewRowPage } from "./pages/ViewRowPage";
 
 /** Signed out: the login page for every path (the path is kept, so it opens after signing in). */
 export function App() {
@@ -60,6 +62,8 @@ export function App() {
             <Route path="credentials" element={<CredentialsPage />} />
             <Route path="health" element={<HealthPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="v/:pipelineId" element={<ViewPage />} />
+            <Route path="v/:pipelineId/rows/:key" element={<ViewRowPage />} />
             <Route
               path="*"
               element={

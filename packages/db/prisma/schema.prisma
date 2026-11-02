@@ -837,6 +837,8 @@ model DataRecord {
   lastSeenAt   DateTime  @default(now())
   /// Missing from a complete save; back when it appears again.
   removedAt    DateTime?
+  /// Mine (M27): mark id → when I set it on the row's page. data.save never writes it.
+  marks        Json      @default("{}")
 
   @@unique([userId, collection, key])
   @@map("DataRecords")

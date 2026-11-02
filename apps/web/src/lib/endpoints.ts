@@ -54,6 +54,11 @@ import {
   type UpdatePipelineRequest,
   type WebhookView,
   type UpdateRuleRequest,
+  type ViewMenuItem,
+  type ViewPageView,
+  type ViewQuery,
+  type ViewRow,
+  type ViewRowView,
 } from "@ai-me/shared";
 import { query, request } from "./api";
 
@@ -130,7 +135,8 @@ export const api = {
     disconnect: () => request<void>("DELETE", "/google"),
   },
   scheduledStarts: {
-    list: (pipelineId?: string) => request<ScheduledStartView[]>("GET", `/scheduled-starts${pipelineId ? `?pipelineId=${pipelineId}` : ""}`),
+    list: (pipelineId?: string) =>
+      request<ScheduledStartView[]>("GET", `/scheduled-starts${pipelineId ? `?pipelineId=${pipelineId}` : ""}`),
     cancel: (id: string) => request<void>("DELETE", `/scheduled-starts/${id}`),
   },
   prices: {
@@ -142,6 +148,16 @@ export const api = {
   },
   health: {
     get: () => request<HealthView>("GET", "/health/checks"),
+  },
+  /** Pipelines' pages (M27). A row's key may be a URL: always encoded. */
+  views: {
+    menu: () => request<ViewMenuItem[]>("GET", "/views"),
+    page: (pipelineId: string, q: Partial<ViewQuery> = {}) => request<ViewPageView>("GET", `/views/${pipelineId}${query(q)}`),
+    row: (pipelineId: string, key: string) => request<ViewRowView>("GET", `/views/${pipelineId}/rows/${encodeURIComponent(key)}`),
+    mark: (pipelineId: string, key: string, markId: string, on: boolean) =>
+      request<ViewRow>("PUT", `/views/${pipelineId}/rows/${encodeURIComponent(key)}/marks/${markId}`, { on }),
+    act: (pipelineId: string, index: number, key?: string) =>
+      request<RunDetailView>("POST", `/views/${pipelineId}/actions/${index}`, key === undefined ? {} : { key }),
   },
   bills: {
     list: () => request<BillsView>("GET", "/bills"),
@@ -164,7 +180,8 @@ export const api = {
   jobs: {
     list: (filter: Partial<JobFilter> = {}) => request<JobPostingView[]>("GET", `/jobs${query(filter)}`),
     setStatus: (jobPostingId: string, status: JobStatusName) => request<JobPostingView>("PATCH", `/jobs/${jobPostingId}`, { status }),
-    setOutcome: (applicationId: string, body: UpdateApplicationRequest) => request<ApplicationView>("PATCH", `/applications/${applicationId}`, body),
+    setOutcome: (applicationId: string, body: UpdateApplicationRequest) =>
+      request<ApplicationView>("PATCH", `/applications/${applicationId}`, body),
   },
   insight: {
     get: (days: number) => request<InsightView>("GET", `/insight?days=${days}`),

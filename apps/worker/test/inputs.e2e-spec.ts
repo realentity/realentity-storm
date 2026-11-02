@@ -270,6 +270,17 @@ describe("M13: inputs without a browser and change detection", () => {
       await run([{ url: "https://shop.test/a", price: 1 }], {}, true);
       expect(await db.client.dataRecord.count()).toBe(0);
     });
+
+    it("leaves my marks (M27) as they are, through a change, a removal and a return", async () => {
+      const a = { url: "https://shop.test/a", price: 1 };
+      await run([a]);
+      await db.client.dataRecord.updateMany({ data: { marks: { done: "2026-11-02T10:00:00.000Z" } } });
+      await run([{ ...a, price: 2 }]);
+      await run([{ url: "https://shop.test/b", price: 3 }], { complete: true });
+      await run([a]);
+      const saved = await db.client.dataRecord.findFirstOrThrow({ where: { key: a.url } });
+      expect([saved.value, saved.marks, saved.removedAt]).toEqual([a, { done: "2026-11-02T10:00:00.000Z" }, null]);
+    });
   });
 
   describe("M13-I3: data.history", () => {

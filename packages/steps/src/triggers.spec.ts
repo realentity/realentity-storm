@@ -8,6 +8,7 @@ describe("example trigger data for dry runs", () => {
     { on: "recipe.broken", site: "dev.bg" },
     { on: "email.classified", label: ["interview"] },
     { on: "flow.later" },
+    { on: "view.action", collection: "releases" },
     { webhook: "token" },
   ];
 

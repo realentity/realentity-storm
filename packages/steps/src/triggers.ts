@@ -32,6 +32,14 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     scheduledAt: z.string(),
     scheduledByRunId: z.string().nullable(),
   }),
+  "view.action": z.object({
+    collection: z.string(),
+    key: z.string(),
+    /** The row as data.save kept it: read from pages, feeds or emails, so never a target. */
+    item: z.record(z.string(), z.unknown()),
+    /** The button's label. */
+    action: z.string(),
+  }),
 };
 
 export const WEBHOOK_DATA = z.object({
@@ -59,6 +67,7 @@ export function triggerTargetIssue(trigger: Trigger, source: string): string | n
     if (trigger.on === "email.classified" && source.startsWith("trigger.message.")) return null;
     if (trigger.on === "application.status" && source === "trigger.job.url") return null;
     if (trigger.on === "flow.later") return `{{${source}}} can't be a target: a flow.later's data is written by a pipeline, maybe from LLM text`;
+    if (trigger.on === "view.action") return `{{${source}}} can't be a target: a row holds what a pipeline read from pages, feeds or emails`;
     return `{{${source}}} can't be a target: only an email's own addresses (email.classified) or a posting's URL (application.status) can`;
   }
   if (isWebhookTrigger(trigger)) return `{{${source}}} can't be a target: a webhook's body is written by whoever calls it`;
@@ -120,5 +129,12 @@ export function exampleTriggerData(trigger: Trigger): Record<string, unknown> | 
       };
     case "flow.later":
       return { data: {}, key: null, scheduledAt: now, scheduledByRunId: null };
+    case "view.action":
+      return {
+        collection: trigger.collection ?? "example",
+        key: "example",
+        item: { id: "example", title: "An example row (dry run)", url: "https://example.com/example" },
+        action: "Example",
+      };
   }
 }

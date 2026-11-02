@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { HOST_PATTERN } from "./credentials";
 import { APPLICATION_STATUSES } from "./jobs-api";
+import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 
 /**
  * Pipeline definition (README §2.2): what a pipeline is authored as (YAML or JSON) before compilation.
@@ -30,7 +31,7 @@ function isTimeZone(value: string): boolean {
 }
 
 /** What happens in AI ME that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
-export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later"] as const;
+export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later", "view.action"] as const;
 export type TriggerEventName = (typeof TRIGGER_EVENTS)[number];
 
 const list = <T extends z.ZodType>(schema: T) => z.array(schema).min(1).optional();
@@ -51,6 +52,8 @@ export const EventTriggerSchema = z.discriminatedUnion("on", [
   z.object({ on: z.literal("email.classified"), label: list(z.string().min(1)) }).strict(),
   /** Started by another pipeline's flow.later (M14-T3), with the data it gave: {{trigger.data}}. */
   z.object({ on: z.literal("flow.later") }).strict(),
+  /** Started by a row's button on a pipeline's page (M27), with the row: {{trigger.item}}. `collection` limits it to one. */
+  z.object({ on: z.literal("view.action"), collection: z.string().regex(VIEW_COLLECTION).optional() }).strict(),
 ]);
 export type EventTrigger = z.infer<typeof EventTriggerSchema>;
 
@@ -115,6 +118,8 @@ export const PipelineDefinitionSchema = z
     steps: z.array(PipelineStepSchema).min(1).max(50),
     limits: z.record(z.string(), z.string().regex(LIMIT, '"N/day" or "N/hour"')).default({}),
     policy: PipelinePolicySchema.default({ allowedDomains: [], allowedRecipients: [] }),
+    /** Its page (M27): the collection it saves, in the menu, as a list with my marks and buttons. */
+    view: PipelineViewSchema.optional(),
   })
   .strict();
 export type PipelineDefinition = z.infer<typeof PipelineDefinitionSchema>;
