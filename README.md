@@ -545,7 +545,7 @@ Monorepo setup: **pnpm** workspaces with a version **catalog** in `pnpm-workspac
 
 ## 12. Reporting
 
-- **Run page**: live view, step timeline (per `forEach` item), screenshots, payloads, results, LLM usage, trace download. A failed run has **Retry from the failed step**: the failed steps run again, those before keep their outputs (no LLM call paid twice) and nothing that ran is repeated; not when a side effect failed (or was left running), since it may have gone out: that is a new run, after I checked.
+- **Run page**: live view (only a step that opens a window draws on the display: teach mode, `browser.submit`, `browser.fillAndSubmit`, a step with `headed: true`, or one waiting for me; while a step works in the hidden browser, or between steps, the live view says so and shows the latest screenshot instead of an empty desktop), step timeline (per `forEach` item), screenshots, payloads, results, LLM usage, trace download. A failed run has **Retry from the failed step**: the failed steps run again, those before keep their outputs (no LLM call paid twice) and nothing that ran is repeated; not when a side effect failed (or was left running), since it may have gone out: that is a new run, after I checked.
 - **Cost**: each run's LLM cost in the runs lists; on the pipeline page, its last 30 days (spent, runs, per run) and, for a schedule, about what a month costs (per run × how often it fires); enabling a schedule asks first, with that estimate.
 - **Insight**: the job search in numbers (M16): found, applied, replied, interviews, rejections, by source and score band.
 - **History**: filter by pipeline, version, status, date, target.

@@ -1,4 +1,4 @@
-import { type RunDetailView } from "@ai-me/shared";
+import { type LiveView as LiveViewState, type RunDetailView } from "@ai-me/shared";
 import RFB from "@novnc/novnc";
 import { IconClipboard, IconHandStop, IconPlayerPlay, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
@@ -29,6 +29,8 @@ export function LiveView({ run }: { run: RunDetailView }) {
   const action = useAction();
   const view = live.data;
   const password = view?.active ? view.password : null;
+  // The connection stays up while no window is open, so the browser shows as soon as one opens.
+  const blank = Boolean(view?.active && password && !view.window.open);
 
   // One connection per password: the view-only one, then the full one while I'm in control.
   useEffect(() => {
@@ -136,7 +138,8 @@ export function LiveView({ run }: { run: RunDetailView }) {
         <div className="card-body text-secondary">No live view: set VNC_PASSWORD and VNC_VIEW_PASSWORD in .env.</div>
       )}
       {connection === "refused" && <div className="card-body text-danger">The live view refused the password.</div>}
-      <div ref={screen} className="live-screen" style={{ height: password ? "70vh" : 0, background: "#1e293b" }} />
+      {blank && view && <NoWindow now={view.window} />}
+      <div ref={screen} className="live-screen" style={{ height: password && !blank ? "70vh" : 0, background: "#1e293b" }} />
       {view?.control && (
         <div className="card-footer d-flex gap-2 align-items-start">
           <textarea
@@ -152,6 +155,24 @@ export function LiveView({ run }: { run: RunDetailView }) {
             To the browser
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Instead of an empty desktop: why there is no browser window now, and the run's latest screenshot. */
+function NoWindow({ now }: { now: LiveViewState["window"] }) {
+  return (
+    <div className="card-body" data-testid="no-window">
+      <div className="text-secondary mb-2">
+        {now.step
+          ? `Step ${now.step.stepKey} (${now.step.type}) works in a hidden browser: there is no window to watch. The browser shows here when a step opens one, or when the run needs you.`
+          : "No browser window is open between steps. The browser shows here when a step opens one, or when the run needs you."}
+      </div>
+      {now.screenshotId && (
+        <a href={api.artifactUrl(now.screenshotId)} target="_blank" rel="noreferrer">
+          <img src={api.artifactUrl(now.screenshotId)} alt="The latest screenshot" className="img-fluid border rounded" style={{ maxHeight: "60vh" }} />
+        </a>
       )}
     </div>
   );

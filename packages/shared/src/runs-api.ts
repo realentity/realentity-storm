@@ -246,6 +246,20 @@ export interface LiveView {
   path: string;
   password: string | null;
   control: boolean;
+  /**
+   * What the display shows now. Most browser steps work in a hidden (headless) browser, and a headed step's window
+   * closes when it ends: then the screen is an empty desktop, so the live view says so and shows the latest screenshot.
+   */
+  window: LiveWindow;
+}
+
+export interface LiveWindow {
+  /** A browser window is on the display: a step that draws there is running, or the run waits for me in it. */
+  open: boolean;
+  /** The step running now, if any. */
+  step: { stepKey: string; type: string } | null;
+  /** The run's latest screenshot (the hidden browser's too). */
+  screenshotId: string | null;
 }
 
 // #endregion

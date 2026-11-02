@@ -54,7 +54,14 @@ describe("live view and takeover", () => {
 
   it("M8-S5: the view-only password while the run works; the full one only while it waits for me", async () => {
     const { runId } = await run("RUNNING");
-    expect(await live(runId)).toEqual({ available: true, active: true, path: "/vnc/", password: VIEW, control: false });
+    expect(await live(runId)).toEqual({
+      available: true,
+      active: true,
+      path: "/vnc/",
+      password: VIEW,
+      control: false,
+      window: { open: false, step: null, screenshotId: null },
+    });
 
     await agent.post(`/api/runs/${runId}/takeover`).expect(204);
     expect(await live(runId)).toMatchObject({ password: FULL, control: true });
@@ -71,6 +78,43 @@ describe("live view and takeover", () => {
     const headless = await run("RUNNING", false);
     expect(await live(headless.runId)).toMatchObject({ active: false, password: null });
     await agent.post(`/api/runs/${headless.runId}/takeover`).expect(409);
+  });
+
+  it("says whether a browser window is on the display: a headed step, or waiting for me; else the latest screenshot", async () => {
+    const pipeline = await db.client.pipeline.create({ data: { userId, name: "Watch" } });
+    const steps = [
+      { id: "search", type: "browser.extract", with: { recipes: ["jobs.bg/search"] } },
+      { id: "look", type: "browser.open", with: { url: "https://jobs.bg/", headed: true } },
+      { id: "quiet", type: "browser.open", with: { url: "https://jobs.bg/" } },
+    ];
+    const version = await db.client.pipelineVersion.create({
+      data: { pipelineId: pipeline.pipelineId, version: 1, definition: { name: "Watch", steps }, policy: {}, savedAt: new Date() },
+    });
+    const { runId } = await db.client.run.create({ data: { userId, pipelineVersionId: version.pipelineVersionId, trigger: "manual", status: "RUNNING", headed: true } });
+    const step = (stepKey: string, type: string) => db.client.step.create({ data: { runId, stepKey, type, status: "RUNNING", startedAt: new Date() } });
+    const done = (stepKey: string) => db.client.step.updateMany({ where: { runId, stepKey }, data: { status: "DONE" } });
+
+    // Between steps: no window, nothing to show yet.
+    expect((await live(runId)).window).toEqual({ open: false, step: null, screenshotId: null });
+
+    // A hidden-browser step: no window; its screenshot instead.
+    await step("search", "browser.extract");
+    const shot = await db.client.artifact.create({ data: { userId, runId, kind: "screenshot", stepKey: "search", path: `${runId}/s.png`, mime: "image/png" } });
+    expect((await live(runId)).window).toEqual({ open: false, step: { stepKey: "search", type: "browser.extract" }, screenshotId: shot.artifactId });
+
+    // headed: true draws on the display; the same step type without it doesn't.
+    await done("search");
+    await step("look", "browser.open");
+    expect((await live(runId)).window).toMatchObject({ open: true, step: { stepKey: "look" } });
+    await done("look");
+    await step("quiet", "browser.open");
+    expect((await live(runId)).window).toMatchObject({ open: false, step: { stepKey: "quiet" } });
+
+    // Waiting for me: the window is there, whatever the step.
+    await db.client.takeover.create({ data: { runId, status: "OPEN", reason: "A CAPTCHA" } });
+    expect((await live(runId)).window).toMatchObject({ open: true });
+    await db.client.run.deleteMany();
+    await db.client.pipeline.delete({ where: { pipelineId: pipeline.pipelineId } });
   });
 
   it("a run that needs me is listed until I continue or abort it", async () => {

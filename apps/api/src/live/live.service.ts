@@ -1,4 +1,5 @@
-import { type ServerEnv, type LiveView, type TakeoverView } from "@ai-me/shared";
+import { type CompiledDefinition, type LiveView, type LiveWindow, type ServerEnv, type TakeoverView } from "@ai-me/shared";
+import { StepCatalog } from "@ai-me/steps";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { createReadStream, type ReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -28,6 +29,7 @@ export class LiveService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
+    private readonly catalog: StepCatalog,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
   ) {}
 
@@ -43,7 +45,26 @@ export class LiveService {
       path: LIVE_PATH,
       password: available && active ? ((control ? this.env.VNC_PASSWORD : this.env.VNC_VIEW_PASSWORD) ?? null) : null,
       control,
+      window: await this.window(run.runId, run.pipelineVersionId, active, control),
     };
+  }
+
+  /**
+   * Whether a browser window is on the display now: the running step is one that draws there (always, or with
+   * `headed: true`), or the run waits for me (only a headed step waits in the live view).
+   */
+  private async window(runId: string, pipelineVersionId: string, active: boolean, control: boolean): Promise<LiveWindow> {
+    const [running, screenshot] = await Promise.all([
+      this.prisma.client.step.findFirst({ where: { runId, status: "RUNNING" }, orderBy: { startedAt: "desc" }, select: { stepKey: true, type: true } }),
+      this.prisma.client.artifact.findFirst({ where: { runId, kind: "screenshot" }, orderBy: { dateCreated: "desc" }, select: { artifactId: true } }),
+    ]);
+    let open = active && control;
+    if (active && running && !open) {
+      const version = await this.prisma.client.pipelineVersion.findUnique({ where: { pipelineVersionId }, select: { definition: true } });
+      const step = (version?.definition as unknown as CompiledDefinition | undefined)?.steps.find((s) => s.id === running.stepKey);
+      open = this.catalog.needsHeaded([step ?? { type: running.type }]);
+    }
+    return { open, step: running, screenshotId: screenshot?.artifactId ?? null };
   }
 
   /** Take over at any time while a headed run runs: its step pauses at its next safe point. */
