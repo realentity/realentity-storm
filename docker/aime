@@ -52,12 +52,22 @@ restore_test() {
     return 1
   fi
 
+  # The dump's schema: a deploy after it adds tables (and rows) the dump can't have.
+  local latest='SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name DESC LIMIT 1;'
+  local dumped current schema
+  dumped="$(sql -d "$db" -c "$latest" 2>/dev/null || echo "?")"
+  current="$(sql -d storm -c "$latest" 2>/dev/null || echo "?")"
+  [ "$dumped" = "?" ] && problems+=("the dump has no migrations table")
+  if [ "$dumped" = "$current" ]; then schema="schema $dumped"; else schema="schema $dumped (live: $current, migrated since)"; fi
+
+  # The tables there since M2, which a working install never has empty; the rest are shown, not checked.
   local table restored live counts=()
   for table in Pipelines Runs Credentials Facts Applications; do
-    restored="$(sql -d "$db" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "?")"
-    live="$(sql -d storm -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "?")"
+    restored="$(sql -d "$db" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "-")"
+    live="$(sql -d storm -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "-")"
     counts+=("$table $restored/$live")
-    [ "$restored" = "?" ] && problems+=("$table is missing from the dump")
+    case "$table" in Pipelines | Runs | Credentials) ;; *) continue ;; esac
+    [ "$restored" = "-" ] && problems+=("$table is missing from the dump")
     [ "$restored" = "0" ] && [ "$live" != "0" ] && problems+=("$table is empty in the dump")
   done
 
@@ -70,7 +80,7 @@ restore_test() {
   [ "$status" -eq 0 ] || problems+=("credentials: ${credentials##*$'\n'}")
 
   local summary
-  summary="$(basename "$dump"), restored/live: ${counts[*]}. ${credentials%%$'\n'*}"
+  summary="$(basename "$dump"), $schema; restored/live: ${counts[*]}. ${credentials%%$'\n'*}"
   echo "$summary"
   if [ "${#problems[@]}" -gt 0 ]; then
     printf '  %s\n' "${problems[@]}" >&2
