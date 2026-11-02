@@ -1,4 +1,13 @@
-import { CLAUDE_MODELS, EFFORTS, LLM_TASKS, type LlmTask, type SettingsRequest, type SettingsView, type StepTypeView } from "@ai-me/shared";
+import {
+  CLAUDE_MODELS,
+  EFFORTS,
+  LLM_TASKS,
+  type LlmTask,
+  type SettingsRequest,
+  type SettingsView,
+  type SpendingView,
+  type StepTypeView,
+} from "@ai-me/shared";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
@@ -13,6 +22,7 @@ const SOURCE_LABEL = { settings: "chosen here", env: "from .env", default: "defa
 /** Model per LLM task, the monthly LLM budget, and global rate limits for side-effect steps (README §5, §2.2). */
 export function SettingsPage() {
   const settings = useLoad(() => api.settings.get(), []);
+  const spending = useLoad(() => api.settings.spending(), [settings.data?.monthlyBudgetUsd]);
   const catalog = useCatalog();
   if (!settings.data) return settings.error ? <ErrorAlert error={settings.error} /> : <Loading />;
   return (
@@ -20,12 +30,16 @@ export function SettingsPage() {
       <PageHeader title="Settings" />
       <div className="row g-3">
         <div className="col-lg-7">
-          <Models settings={settings.data} onSaved={settings.reload} />
+          <div className="d-flex flex-column gap-3">
+            <Models settings={settings.data} onSaved={settings.reload} />
+            {spending.data && <Spending spending={spending.data} />}
+          </div>
         </div>
         <div className="col-lg-5 d-flex flex-column gap-3">
-          <Budget settings={settings.data} onSaved={settings.reload} />
+          <Budget settings={settings.data} spending={spending.data} onSaved={settings.reload} />
           <GoogleCalendarCard />
           <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
+          <WeeklyReview settings={settings.data} onSaved={settings.reload} />
           <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
         </div>
       </div>
@@ -74,6 +88,86 @@ function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSa
       </div>
     </div>
   );
+}
+
+/** M19-T4: the weekly review on the AI ME bot. */
+function WeeklyReview({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  return (
+    <div className="card">
+      <div className="card-body">
+        <ErrorAlert error={action.error} />
+        <label className="form-check form-switch mb-0">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            checked={settings.weeklyReview}
+            disabled={action.busy}
+            onChange={(e) =>
+              void action.save({ weeklyReview: e.target.checked }, e.target.checked ? "The weekly review is on" : "The weekly review is off")
+            }
+            data-testid="weekly-review"
+          />
+          <span className="form-check-label">Weekly review on Telegram</span>
+          <div className="small text-secondary">
+            Sunday evening: the week's runs and failures, the LLM cost against the budget, what waits for you, application outcomes,
+            broken and quiet recipes.
+          </div>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/** M19-T3: where the money went in the last 30 days, to choose cheaper models where quality allows. */
+function Spending({ spending }: { spending: SpendingView }) {
+  const share = (usd: number) => (spending.totalUsd > 0 ? Math.round((usd / spending.totalUsd) * 100) : 0);
+  return (
+    <div className="card" data-testid="spending">
+      <div className="card-header">
+        <h3 className="card-title">LLM cost, last 30 days</h3>
+        <div className="card-actions text-secondary">{money(spending.totalUsd)}</div>
+      </div>
+      {spending.rows.length === 0 ? (
+        <div className="card-body text-secondary">Nothing spent in the last 30 days.</div>
+      ) : (
+        <div className="table-responsive">
+          <table className="table table-vcenter card-table">
+            <thead>
+              <tr>
+                <th>Step type</th>
+                <th>Model</th>
+                <th className="text-end">Calls</th>
+                <th className="text-end">Cost</th>
+                <th className="text-end">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {spending.rows.map((row) => (
+                <tr key={`${row.source} ${row.model}`}>
+                  <td>
+                    <code>{row.source}</code>
+                  </td>
+                  <td className="text-secondary">{row.model}</td>
+                  <td className="text-end">{row.calls}</td>
+                  <td className="text-end">{money(row.costUsd)}</td>
+                  <td className="text-end text-secondary">{share(row.costUsd)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="card-footer small text-secondary">
+        reflection: the nightly reflection; builder: the pipeline chat. A step that fell back to a second model shows both.
+      </div>
+    </div>
+  );
+}
+
+/** Two decimals, or four below a cent so small costs don't show as $0.00. */
+function money(usd: number): string {
+  return `$${usd.toFixed(usd > 0 && usd < 0.01 ? 4 : 2)}`;
 }
 
 function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
@@ -158,7 +252,7 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
   );
 }
 
-function Budget({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+function Budget({ settings, spending, onSaved }: { settings: SettingsView; spending?: SpendingView; onSaved: () => void }) {
   const action = useSave(onSaved);
   const [value, setValue] = useState(settings.monthlyBudgetUsd?.toString() ?? "");
   useEffect(() => setValue(settings.monthlyBudgetUsd?.toString() ?? ""), [settings.monthlyBudgetUsd]);
@@ -194,10 +288,41 @@ function Budget({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
         </div>
         <div className="form-hint">
           {settings.budgetSource === "env" && "Currently from LLM_MONTHLY_BUDGET_USD. "}
-          When this month's LLM cost reaches it, non-essential pipelines stop before their next LLM step. Empty: back to .env (or no limit).
+          When this month's LLM cost reaches it, non-essential pipelines stop before their next LLM step. Telegram tells you at 80% and
+          when it is reached. Empty: back to .env (or no limit).
         </div>
+        {spending && <MonthSpent spending={spending} />}
       </div>
     </form>
+  );
+}
+
+function MonthSpent({ spending }: { spending: SpendingView }) {
+  const budget = spending.monthlyBudgetUsd;
+  const percent = budget ? Math.min(100, Math.round((spending.monthSpentUsd / budget) * 100)) : null;
+  return (
+    <div className="mt-3" data-testid="month-spent">
+      <div className="d-flex justify-content-between small">
+        <span>This month</span>
+        <span>
+          {money(spending.monthSpentUsd)}
+          {budget !== null && ` of ${money(budget)} (${percent}%)`}
+        </span>
+      </div>
+      {percent !== null && (
+        <div className="progress progress-sm mt-1">
+          <div
+            className={`progress-bar ${percent >= 100 ? "bg-danger" : percent >= 80 ? "bg-warning" : ""}`}
+            style={{ width: `${percent}%` }}
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Of the monthly budget"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

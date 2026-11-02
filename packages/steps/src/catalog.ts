@@ -22,6 +22,11 @@ export interface StepDefinition {
    * the step's `headed` parameter is true.
    */
   headed?: boolean | "input";
+  /**
+   * Calls the LLM, so the monthly budget applies (README §5, M19-T1): once it is reached, a non-essential run stops
+   * before this step. browser.extract isn't one: only its fallback calls the LLM, and that checks the budget itself.
+   */
+  llm?: boolean;
   /** Its output may contain text an LLM wrote: a side-effect target can never come from it (README §2.2). */
   llmOutput?: boolean;
   /** Output fields of an llmOutput step that come from the page, not the LLM (a form's address): they may be targets. */
@@ -339,6 +344,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "the headless browser, and with no data there either the cheap model reads the price from its text. `id` is the " +
       "product and the variant asked for: the key for data.history. Only hosts in policy.allowedDomains.",
     sideEffect: false,
+    llm: true,
     saasSafe: true,
     reads: ["url", "urls", "products"],
     reports: "report",
@@ -366,6 +372,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.classify",
     description: "Labels each item with the LLM following `instruction`; items with a `keep` label go to `kept`.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({
@@ -384,6 +391,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.score",
     description: "Scores each item 0–100 against `against` (a profile or criteria text); `top` keeps the best N.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({
@@ -402,6 +410,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.generate",
     description: "Writes text following `instruction`, using `context`.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     learns: "text",
     saasSafe: true,
@@ -416,6 +425,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "llm.summarize",
     description: "Summarizes `content`.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({
@@ -433,6 +443,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "true when none is missing. Dates and times come as ISO 8601 with the offset the content implies (else " +
       "`timeZone`'s), e.g. 2026-11-12T10:00:00+02:00.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({
@@ -454,6 +465,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "only; the date kept, the email noted; application.status emitted, which cancels a follow-up flow.later). " +
       "matched false when it isn't about one (an automatic \"we received it\" isn't an answer). A dry run moves nothing.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({ message: EmailMessageSchema }),
@@ -517,6 +529,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.classify",
     description: "Labels each email with the LLM following `instruction`; emails with a `keep` label go to `kept`.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({
@@ -535,6 +548,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.draftReply",
     description: "Drafts a reply to `message` in my voice, in the email's language, without inventing facts.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     learns: "body",
     saasSafe: true,
@@ -710,6 +724,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "proposes a recipe from the page, it is checked on the page (items outlined), and Continue saves it as the next " +
       "version of `recipe`. Used once per site, not in scheduled pipelines.",
     sideEffect: false,
+    llm: true,
     headed: true,
     llmOutput: true,
     saasSafe: false,
@@ -737,6 +752,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "following `message`; attaches the stored document `cv` to the CV field. Its output is the payload for " +
       "browser.fillAndSubmit, which I see and edit at the gate.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     pageFields: ["formUrl"],
     saasSafe: false,
@@ -849,6 +865,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "actions. It sends nothing: no submit button is pressed, nothing typed leaves the page, no file is picked. " +
       "Its recorded actions and final button are the payload of browser.submit, which I see at the gate.",
     sideEffect: false,
+    llm: true,
     llmOutput: true,
     pageFields: ["url"],
     headed: "input",

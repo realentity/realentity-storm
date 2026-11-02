@@ -25,6 +25,8 @@ export const QUEUES = {
   webhooks: "webhooks",
   /** A flow.later start whose time has come (M14-T3); the ScheduledStart row decides whether it still runs. */
   later: "later",
+  /** Sunday evening: the week on Telegram (M19-T4). */
+  weeklyReview: "weekly-review",
 } as const;
 
 export interface RunJob {
@@ -40,6 +42,9 @@ export const REFLECTION_SCHEDULE = { cron: "30 3 * * *", tz: "Europe/Sofia" } as
 
 /** Nightly housekeeping, after the reflection. */
 export const MAINTENANCE_SCHEDULE = { cron: "15 4 * * *", tz: "Europe/Sofia" } as const;
+
+/** The weekly review: Sunday evening, when there's time to act on it before the week starts. */
+export const WEEKLY_REVIEW_SCHEDULE = { cron: "0 19 * * 0", tz: "Europe/Sofia" } as const;
 
 export interface LearningJob {
   proposalId: string;
@@ -106,6 +111,7 @@ export const QUEUE_DEFINITIONS: PgBoss.Queue[] = [
   { name: QUEUES.reflection, policy: "stately", retryLimit: 2, retryDelay: 300 },
   { name: QUEUES.reflectionPoll, policy: "standard", retryLimit: 5, retryDelay: 120, retryBackoff: true },
   { name: QUEUES.maintenance, policy: "stately", retryLimit: 2, retryDelay: 600 },
+  { name: QUEUES.weeklyReview, policy: "stately", retryLimit: 2, retryDelay: 600 },
   { name: QUEUES.events, policy: "standard", retryLimit: 3, retryDelay: 30 },
   { name: QUEUES.webhooks, policy: "standard", retryLimit: 3, retryDelay: 30 },
   // Waits up to flow.later's longest delay (a year) before it may run.

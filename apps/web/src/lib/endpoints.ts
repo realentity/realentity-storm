@@ -39,6 +39,7 @@ import {
   type SessionView,
   type SettingsRequest,
   type SettingsView,
+  type SpendingView,
   type StepTypeView,
   type SuggestionStatusName,
   type TeachRecipeRequest,
@@ -129,6 +130,7 @@ export const api = {
   settings: {
     get: () => request<SettingsView>("GET", "/settings"),
     update: (body: SettingsRequest) => request<SettingsView>("PUT", "/settings", body),
+    spending: () => request<SpendingView>("GET", "/settings/spending"),
   },
   learning: {
     get: () => request<LearningView>("GET", "/learning"),

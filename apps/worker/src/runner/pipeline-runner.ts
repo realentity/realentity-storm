@@ -393,7 +393,7 @@ export class PipelineRunner {
     if (row?.status === "FAILED") return { kind: "failed" };
 
     // Step boundary: the kill switch and the budget apply to runs already in progress.
-    const reason = await this.controls.stopReason(state.controlled, step.type);
+    const reason = await this.controls.stopReason(state.controlled, definition);
     if (reason) return { kind: "stopped", reason };
 
     if (step.type === "gate.act") return this.gate(state, step, row, scope);
@@ -653,6 +653,7 @@ export class PipelineRunner {
       itemIndex: row.itemIndex,
       dryRun: state.dryRun,
       recordUsage,
+      budgetStops: () => this.controls.budgetStops(state.controlled),
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],
       emit: (event, data) => this.emitEvent(state, event, data),
       attention: this.takeovers
@@ -698,6 +699,12 @@ export class PipelineRunner {
       data: { status: "DONE", output: output as Prisma.InputJsonValue, finishedAt: new Date(), ...usageData(llmUsage) },
     });
     await this.saved(state, saved);
+    await this.spent(state, llmUsage);
+  }
+
+  /** A step that called the LLM: 80% of the budget, or all of it, is told on the AI ME bot (M19-T2). */
+  private async spent(state: RunState, llmUsage: LlmUsage | undefined): Promise<void> {
+    if (llmUsage && llmUsage.costUsd > 0) await this.controls.tellBudget(state.userId);
   }
 
   private async skip(state: RunState, step: CompiledStep, itemIndex: number | null, reason: string): Promise<void> {
@@ -725,6 +732,7 @@ export class PipelineRunner {
           data: { ...data, runId: state.runId, stepKey: step.id, itemIndex: scope?.index ?? null, type: step.type },
         });
     await this.saved(state, saved);
+    await this.spent(state, llmUsage);
   }
 
   /** Keeps the run's state in step with a saved Step row, and reports it. */

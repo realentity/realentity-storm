@@ -1,3 +1,4 @@
+import { llmCostSince, llmSpendSince } from "@ai-me/db";
 import { ModelRouter } from "@ai-me/llm";
 import {
   EFFORTS,
@@ -9,6 +10,7 @@ import {
   type ServerEnv,
   type SettingsRequest,
   type SettingsView,
+  type SpendingView,
 } from "@ai-me/shared";
 import { StepCatalog } from "@ai-me/steps";
 import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
@@ -109,7 +111,20 @@ export class ControlsService {
       budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
       profile: settings?.profile ?? "",
       telegramApprovals: settings?.telegramApprovals ?? true,
+      weeklyReview: settings?.weeklyReview ?? true,
     };
+  }
+
+  /** This month's LLM cost against the budget, and the last 30 days by step type and model (M19-T3). */
+  async spending(userId: string, now = new Date()): Promise<SpendingView> {
+    const since = new Date(now.getTime() - 30 * 86_400_000);
+    const [settings, monthSpentUsd, rows] = await Promise.all([
+      this.settings(userId),
+      llmSpendSince(this.prisma.client, userId, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))),
+      llmCostSince(this.prisma.client, userId, since),
+    ]);
+    const totalUsd = Math.round(rows.reduce((sum, row) => sum + row.costUsd, 0) * 1_000_000) / 1_000_000;
+    return { monthSpentUsd, monthlyBudgetUsd: settings.monthlyBudgetUsd, since: since.toISOString(), totalUsd, rows };
   }
 
   async updateSettings(userId: string, body: SettingsRequest): Promise<SettingsView> {
@@ -125,6 +140,7 @@ export class ControlsService {
       ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
       ...(body.profile !== undefined ? { profile: body.profile.trim() || null } : {}),
       ...(body.telegramApprovals !== undefined ? { telegramApprovals: body.telegramApprovals } : {}),
+      ...(body.weeklyReview !== undefined ? { weeklyReview: body.weeklyReview } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([

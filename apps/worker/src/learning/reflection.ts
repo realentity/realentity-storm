@@ -166,6 +166,7 @@ export class Reflector {
       data: { status: "DONE", finishedAt: now, llmUsage: result.usage as unknown as Prisma.InputJsonValue },
     });
     await this.events(reflection.userId, { type: "learning" });
+    await this.controls.tellBudget(reflection.userId);
     this.logger.log(`Reflection done: ${saved.rules} rule(s), ${saved.suggestions} pipeline suggestion(s)`);
   }
 

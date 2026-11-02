@@ -5,6 +5,7 @@ import {
   MAINTENANCE_SCHEDULE,
   QUEUES,
   REFLECTION_SCHEDULE,
+  WEEKLY_REVIEW_SCHEDULE,
   type JobQueue,
   type LaterJob,
   type LearningJob,
@@ -24,6 +25,7 @@ import { type PipelineRunner } from "../runner/pipeline-runner";
 import { type TakeoverDesk } from "../runner/takeovers";
 import { type Triggers } from "../runner/triggers";
 import { type ProposalNotifier } from "./proposal-notifier";
+import { type WeeklyReview } from "./weekly-review";
 
 export interface ConsumeOptions {
   /** Headless runs advanced at once by this process. Headed runs are always one at a time. */
@@ -50,7 +52,7 @@ export class JobHandlers {
     /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
     private readonly retention?: { artifacts: ArtifactStore; days: number },
     /** M12: event and webhook triggers; proposals told on the AI ME bot. */
-    private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier } = {},
+    private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier; review?: WeeklyReview } = {},
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -76,6 +78,11 @@ export class JobHandlers {
       await boss.work<EventJob>(QUEUES.events, work, async ([job]) => job && triggers.fire(job.data));
       await boss.work<WebhookJob>(QUEUES.webhooks, work, async ([job]) => job && triggers.webhook(job.data));
       await boss.work<LaterJob>(QUEUES.later, work, async ([job]) => job && triggers.fireLater(job.data));
+    }
+    const { review } = this.more;
+    if (review) {
+      await boss.work(QUEUES.weeklyReview, work, () => review.sendAll());
+      await boss.schedule(QUEUES.weeklyReview, WEEKLY_REVIEW_SCHEDULE.cron, {}, { tz: WEEKLY_REVIEW_SCHEDULE.tz });
     }
     if (this.retention) {
       await boss.work(QUEUES.maintenance, work, () => this.maintain());

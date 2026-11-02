@@ -5,6 +5,7 @@ import {
   type KillSwitchView,
   type SettingsRequest,
   type SettingsView,
+  type SpendingView,
 } from "@ai-me/shared";
 import { Body, Controller, Get, Put } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
@@ -33,6 +34,11 @@ export class SettingsController {
   @Get()
   get(@CurrentUser() user: AuthenticatedUser): Promise<SettingsView> {
     return this.controls.settings(user.userId);
+  }
+
+  @Get("spending")
+  spending(@CurrentUser() user: AuthenticatedUser): Promise<SpendingView> {
+    return this.controls.spending(user.userId);
   }
 
   @Put()

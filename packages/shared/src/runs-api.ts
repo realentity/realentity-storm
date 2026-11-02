@@ -323,6 +323,8 @@ export const SettingsSchema = z
     profile: z.string().max(10_000).optional(),
     /** Approve and Reject on the AI ME bot's messages (M12-T4). */
     telegramApprovals: z.boolean().optional(),
+    /** The weekly review on Telegram, Sunday evening (M19-T4). */
+    weeklyReview: z.boolean().optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -343,6 +345,18 @@ export interface SettingsView {
   /** Facts for application forms (browser.mapForm). */
   profile: string;
   telegramApprovals: boolean;
+  weeklyReview: boolean;
+}
+
+/** Where the LLM money goes (M19-T3): this month against the budget, and the last 30 days by step type and model. */
+export interface SpendingView {
+  monthSpentUsd: number;
+  monthlyBudgetUsd: number | null;
+  /** The start of the 30 days. */
+  since: string;
+  totalUsd: number;
+  /** The most expensive first. `source`: a step type, "reflection" (nightly) or "builder" (the pipeline chat). */
+  rows: { source: string; model: string; calls: number; costUsd: number }[];
 }
 
 /** Google Calendar (M14-T1): as last seen when the calendar was used; nothing checks it in the background. */

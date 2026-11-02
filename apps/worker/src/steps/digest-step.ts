@@ -1,6 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
+import { llmSpendSince, type PrismaClient } from "@ai-me/db";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
-import { llmSpendSince } from "../runner/llm-spend";
 import { RunControls } from "../runner/run-controls";
 
 const STATUS_WORDS: Record<string, string> = {
@@ -29,19 +28,22 @@ export class DigestStep implements StepExecutor {
 
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly telegram: TextSender,
+    /** Without it (the weekly review), it only composes. */
+    private readonly telegram?: TextSender,
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
+    if (!this.telegram) throw new Error("notify.digest has no Telegram sender");
     const text = await this.compose(context.userId, Number(input.hours), context.runId);
     await this.telegram.execute({ text }, context);
     return { sent: true, text };
   }
 
-  async compose(userId: string, hours: number, ownRunId: string, now = new Date()): Promise<string> {
+  /** The digest's text; `ownRunId`: the run sending it, left out of its runs. */
+  async compose(userId: string, hours: number, ownRunId: string | null, now = new Date(), title = `AI ME · last ${hours} h`): Promise<string> {
     const since = new Date(now.getTime() - hours * 60 * 60 * 1000);
     const runs = await this.prisma.run.findMany({
-      where: { userId, startedAt: { gte: since }, runId: { not: ownRunId } },
+      where: { userId, startedAt: { gte: since }, ...(ownRunId ? { runId: { not: ownRunId } } : {}) },
       include: {
         pipelineVersion: { select: { pipeline: { select: { name: true } } } },
         steps: { where: { status: "FAILED" }, select: { stepKey: true, error: true }, take: 1 },
@@ -58,7 +60,7 @@ export class DigestStep implements StepExecutor {
       orderBy: { dateCreated: "asc" },
     });
 
-    const lines = [`AI ME · last ${hours} h`];
+    const lines = [title];
     const counts = new Map<string, number>();
     for (const run of runs) counts.set(run.status, (counts.get(run.status) ?? 0) + 1);
     lines.push(

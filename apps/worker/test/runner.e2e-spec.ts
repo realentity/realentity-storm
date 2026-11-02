@@ -1,7 +1,7 @@
 import { payloadHash } from "@ai-me/crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
 import { emptyUsage } from "@ai-me/llm";
-import { type AppEvent } from "@ai-me/shared";
+import { type AppEvent, type TelegramMessage } from "@ai-me/shared";
 import { TestEnvironment } from "@ai-me/testing";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { RunControls } from "../src/runner/run-controls";
@@ -565,6 +565,119 @@ steps:
       const essential = await runner.start(essentialId, { trigger: "manual" });
       await expect(runner.advance(essential)).resolves.toBe("DONE");
       expect(summarize.calls).toHaveLength(1);
+    });
+
+    /** This month's spend, as one finished LLM step. */
+    const spend = async (costUsd: number, name = "Spent") => {
+      const runId = await runner.start(await version(SUMMARY.replace("name: Summary", `name: ${name}`)), { trigger: "manual" });
+      await db.client.step.create({
+        data: { runId, stepKey: "summary", type: "llm.summarize", status: "DONE", startedAt: new Date(), llmUsage: { costUsd } },
+      });
+      await db.client.run.update({ where: { runId }, data: { status: "DONE" } });
+    };
+
+    // M19-I1
+    it("budget: every step that calls the LLM stops a non-essential run (agent, mapForm), and the extract fallback is told", async () => {
+      const url = "https://careers.example.test/jobs/1";
+      const agentOutput = { url, outcome: "done", answer: "nothing to apply to", actions: [], files: [], submit: null, pageUrl: url, notes: "" };
+      const agent = new Counting("browser.agent", () => agentOutput);
+      const mapForm = new Counting("browser.mapForm", () => ({}));
+      const budgetStops: (boolean | undefined)[] = [];
+      const extract: StepExecutor = {
+        type: "test.note",
+        execute: async (_input, context) => (budgetStops.push(await context.budgetStops?.()), { text: "read" }),
+      };
+      runner = new PipelineRunner(db.client, catalog, new ExecutorRegistry([agent, mapForm, extract]));
+      await db.client.userSetting.create({ data: { userId, monthlyBudgetUsd: 1 } });
+      await spend(1.2);
+
+      const pipeline = (name: string, type: string, extra = "") => `
+name: ${name}
+policy: { allowedDomains: [careers.example.test] }
+steps:
+  - id: read
+    type: test.note
+    with: { text: page }
+  - id: work
+    type: ${type}
+    with: { url: "${url}"${extra} }
+`;
+      for (const [name, type, extra] of [
+        ["Agent", "browser.agent", ", goal: Apply"],
+        ["Form", "browser.mapForm", ""],
+      ]) {
+        const runId = await runner.start(await version(pipeline(name, type, extra)), { trigger: "manual" });
+        await expect(runner.advance(runId)).resolves.toBe("ABORTED");
+        expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).summary).toMatch(/Monthly LLM budget reached/);
+      }
+      expect(agent.calls).toHaveLength(0);
+      expect(mapForm.calls).toHaveLength(0);
+      // A step that isn't flagged runs, and can ask before an optional LLM call (browser.extract's fallback).
+      expect(budgetStops).toEqual([true, true]);
+
+      const essentialId = await version(pipeline("Essential agent", "browser.agent", ", goal: Apply"));
+      const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: essentialId } });
+      await db.client.pipeline.update({ where: { pipelineId }, data: { essential: true } });
+      const essential = await runner.start(essentialId, { trigger: "manual" });
+      await expect(runner.advance(essential)).resolves.toBe("DONE");
+      expect(agent.calls).toHaveLength(1);
+      expect(budgetStops).toEqual([true, true, false]);
+    });
+
+    // M19-I2
+    it("budget messages: 80% and reached, once a month each; a step that spends tells them", async () => {
+      const sent: TelegramMessage[] = [];
+      const controls = new RunControls(db.client, { notify: (m) => (sent.push(m), Promise.resolve()), appOrigin: "https://aime.test" });
+      await db.client.userSetting.create({ data: { userId, monthlyBudgetUsd: 10 } });
+      const texts = () => sent.map((m) => m.text);
+
+      await spend(7.9);
+      await controls.tellBudget(userId);
+      expect(sent).toHaveLength(0);
+
+      // The step that crosses 80% tells it, through the runner.
+      const summarize: StepExecutor = {
+        type: "llm.summarize",
+        execute: (_input, context) => {
+          context.recordUsage({ ...emptyUsage(), models: ["claude-haiku-5-5"], calls: 1, costUsd: 0.3 });
+          return Promise.resolve({ summary: "two jobs" });
+        },
+      };
+      runner = new PipelineRunner(db.client, catalog, new ExecutorRegistry([search, summarize]), controls);
+      await expect(runner.advance(await runner.start(await version(SUMMARY), { trigger: "manual" }))).resolves.toBe("DONE");
+      expect(texts()).toEqual(["AI ME: $8.20 of the $10.00 monthly LLM budget is spent (82%). When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes."]);
+      expect(sent[0]?.buttons).toEqual([[{ text: "Open Settings", url: "https://aime.test/settings" }]]);
+
+      await controls.tellBudget(userId);
+      expect(sent).toHaveLength(1);
+
+      await spend(2, "More");
+      await Promise.all([controls.tellBudget(userId), controls.tellBudget(userId)]);
+      expect(sent).toHaveLength(2);
+      expect(texts()[1]).toMatch(/^AI ME: the monthly LLM budget \(\$10\.00\) is reached: \$10\.20 spent\. Non-essential pipelines stop before their LLM steps until 1 \w+; essential ones go on\./);
+      await controls.tellBudget(userId);
+      expect(sent).toHaveLength(2);
+
+      // Told last month: told again this month.
+      const lastMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 15));
+      await db.client.userSetting.update({ where: { userId }, data: { budgetWarnedAt: lastMonth, budgetReachedAt: lastMonth } });
+      await controls.tellBudget(userId);
+      expect(texts().slice(2)).toEqual([expect.stringMatching(/is reached/)]);
+    });
+
+    it("budget messages: reached at once is told as reached only; none without a budget", async () => {
+      const sent: TelegramMessage[] = [];
+      const controls = new RunControls(db.client, { notify: (m) => (sent.push(m), Promise.resolve()) });
+      await spend(5);
+      await controls.tellBudget(userId);
+      expect(sent).toHaveLength(0);
+
+      await db.client.userSetting.create({ data: { userId, monthlyBudgetUsd: 4 } });
+      await controls.tellBudget(userId);
+      expect(sent.map((m) => m.text)).toEqual([expect.stringMatching(/budget \(\$4\.00\) is reached: \$5\.00 spent/)]);
+      expect(sent[0]?.buttons).toBeUndefined();
+      await controls.tellBudget(userId);
+      expect(sent).toHaveLength(1);
     });
   });
 

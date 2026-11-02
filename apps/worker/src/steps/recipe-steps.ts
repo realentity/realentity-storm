@@ -115,6 +115,10 @@ export class BrowserExtractStep implements StepExecutor {
           await this.markBroken(context, row, broken, false);
           throw new Error(failed);
         }
+        if (await context.budgetStops?.()) {
+          await this.markBroken(context, row, broken, false);
+          throw new Error(`${failed}. The fallback needs the LLM, and the monthly budget is reached`);
+        }
         let fixed: Recipe;
         try {
           fixed = await this.fallback.fix(context, row, recipe, combinations[0] ?? {}, timeout);

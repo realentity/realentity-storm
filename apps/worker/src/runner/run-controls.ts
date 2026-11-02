@@ -1,11 +1,17 @@
-import { type PrismaClient, type UserSetting } from "@ai-me/db";
-import { LIMIT } from "@ai-me/shared";
-import { llmSpendSince } from "./llm-spend";
+import { llmSpendSince, type PrismaClient, type UserSetting } from "@ai-me/db";
+import { Logger } from "@nestjs/common";
+import { LIMIT, type TelegramMessage } from "@ai-me/shared";
 
 export interface RunControlsOptions {
   /** LLM_MONTHLY_BUDGET_USD; a UserSetting overrides it. */
   monthlyBudgetUsd?: number;
+  /** The AI ME bot: 80% of the budget spent, and the budget reached (M19-T2). Without it, nothing is told. */
+  notify?: (message: TelegramMessage) => Promise<void>;
+  appOrigin?: string;
 }
+
+/** Told once a month: most of the budget is spent. */
+export const BUDGET_WARNING = 0.8;
 
 /** What the runner needs to know about a run to apply the controls. */
 export interface ControlledRun {
@@ -23,19 +29,75 @@ const WINDOW_MS = { hour: 3_600_000, day: 86_400_000 } as const;
  * Read from the database at every step boundary, so a change applies to runs already in progress.
  */
 export class RunControls {
+  private readonly logger = new Logger(RunControls.name);
+
   constructor(
     private readonly prisma: PrismaClient,
     private readonly options: RunControlsOptions = {},
   ) {}
 
-  /** Why the run must stop before this step, or null. */
-  async stopReason(run: ControlledRun, stepType: string): Promise<string | null> {
+  /** Why the run must stop before this step (one that calls the LLM: the catalog's `llm`), or null. */
+  async stopReason(run: ControlledRun, step: { llm?: boolean }): Promise<string | null> {
     const settings = await this.settings(run.userId);
     if (settings?.paused) return "Stopped by the kill switch";
-    if (!run.essential && stepType.startsWith("llm.") && (await this.overBudget(run.userId, settings))) {
+    if (step.llm && (await this.budgetStops(run, settings))) {
       return "Monthly LLM budget reached: non-essential pipelines are paused until next month";
     }
     return null;
+  }
+
+  /** The budget stops this run's LLM calls: it is reached and the pipeline isn't essential. */
+  async budgetStops(run: Pick<ControlledRun, "userId" | "essential">, known?: UserSetting | null): Promise<boolean> {
+    return !run.essential && (await this.overBudget(run.userId, known));
+  }
+
+  /**
+   * After LLM calls (M19-T2): at 80% of the budget, and when it is reached, a message on the AI ME bot, once a month
+   * each. Reached at once (one expensive step) is told as reached only. Never throws: spending goes on either way.
+   */
+  async tellBudget(userId: string, now = new Date()): Promise<void> {
+    const { notify } = this.options;
+    if (!notify) return;
+    try {
+      const settings = await this.settings(userId);
+      const budget = this.budgetOf(settings);
+      if (budget === undefined || budget <= 0) return;
+      const spent = await this.monthlySpendUsd(userId, now);
+      if (spent < budget * BUDGET_WARNING) return;
+      const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      const notThisMonth = (field: "budgetWarnedAt" | "budgetReachedAt") => ({ OR: [{ [field]: null }, { [field]: { lt: month } }] });
+      if (!settings) await this.prisma.userSetting.upsert({ where: { userId }, create: { userId }, update: {} });
+      const usd = (n: number) => `$${n.toFixed(2)}`;
+      const button = this.options.appOrigin ? [[{ text: "Open Settings", url: `${this.options.appOrigin}/settings` }]] : undefined;
+
+      if (spent >= budget) {
+        // Claimed before sending, so two runs finishing at once tell it once.
+        const claimed = await this.prisma.userSetting.updateMany({
+          where: { userId, ...notThisMonth("budgetReachedAt") },
+          data: { budgetReachedAt: now, budgetWarnedAt: now },
+        });
+        if (claimed.count === 0) return;
+        const until = next.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
+        await notify({
+          text:
+            `AI ME: the monthly LLM budget (${usd(budget)}) is reached: ${usd(spent)} spent. Non-essential pipelines stop ` +
+            `before their LLM steps until ${until}; essential ones go on. To continue now, raise the budget in Settings.`,
+          buttons: button,
+        });
+        return;
+      }
+      const claimed = await this.prisma.userSetting.updateMany({ where: { userId, ...notThisMonth("budgetWarnedAt") }, data: { budgetWarnedAt: now } });
+      if (claimed.count === 0) return;
+      await notify({
+        text:
+          `AI ME: ${usd(spent)} of the ${usd(budget)} monthly LLM budget is spent (${Math.floor((spent / budget) * 100)}%). ` +
+          `When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes.`,
+        buttons: button,
+      });
+    } catch (error) {
+      this.logger.warn(`Budget message not sent: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
@@ -61,9 +123,14 @@ export class RunControls {
   /** The monthly budget is reached (the nightly reflection is non-essential too). */
   async overBudget(userId: string, known?: UserSetting | null): Promise<boolean> {
     const settings = known === undefined ? await this.settings(userId) : known;
-    const budget = settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : this.options.monthlyBudgetUsd;
+    const budget = this.budgetOf(settings);
     if (budget === undefined) return false;
     return (await this.monthlySpendUsd(userId)) >= budget;
+  }
+
+  /** The budget in effect: the setting, else LLM_MONTHLY_BUDGET_USD. */
+  budgetOf(settings: UserSetting | null): number | undefined {
+    return settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : this.options.monthlyBudgetUsd;
   }
 
   private async waitFor(run: ControlledRun, stepType: string, limit: string | undefined, pipelineId: string | null): Promise<Date | null> {

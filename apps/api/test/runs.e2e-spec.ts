@@ -8,6 +8,7 @@ import {
   type RunDetailView,
   type RunSummaryView,
   type SettingsView,
+  type SpendingView,
 } from "@ai-me/shared";
 import { defaultCatalog, type StepDefinition } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
@@ -557,6 +558,36 @@ describe("runs, proposals and controls", () => {
 
       const done = await finished(pipeline, "DONE", [["search", "test.search", "DONE", 0]]);
       expect(((await agent.get(`/api/runs/${done}`).expect(200)).body as RunDetailView).retry).toBeNull();
+    });
+
+    // M19-T3, M19-T4 (the setting)
+    it("Settings: this month against the budget, the last 30 days by step type and model; the weekly review on and off", async () => {
+      const pipeline = await createPipeline();
+      const runId = await finished(pipeline, "DONE", [
+        ["search", "test.search", "DONE", 0],
+        ["score", "llm.score", "DONE", 0.5],
+        ["draft", "llm.generate", "DONE", 0.25],
+      ]);
+      await db.client.step.create({
+        data: { runId, stepKey: "score", itemIndex: 1, type: "llm.score", status: "DONE", startedAt: new Date(), llmUsage: { ...usage(0.125), models: ["claude-haiku-5-5"], calls: 3 } },
+      });
+      await db.client.step.create({
+        data: { runId, stepKey: "score", itemIndex: 2, type: "llm.score", status: "DONE", startedAt: new Date(Date.now() - 31 * 86_400_000), llmUsage: usage(9) },
+      });
+      await agent.put("/api/settings").send({ monthlyBudgetUsd: 10 }).expect(200);
+
+      const spending = (await agent.get("/api/settings/spending").expect(200)).body as SpendingView;
+      expect(spending).toMatchObject({ monthlyBudgetUsd: 10, totalUsd: 0.875 });
+      expect(spending.monthSpentUsd).toBeGreaterThanOrEqual(0.875); // the 31-day-old step may fall in this month too
+      expect(spending.rows).toEqual([
+        { source: "llm.score", model: "claude-sonnet-5-5", calls: 1, costUsd: 0.5 },
+        { source: "llm.generate", model: "claude-sonnet-5-5", calls: 1, costUsd: 0.25 },
+        { source: "llm.score", model: "claude-haiku-5-5", calls: 3, costUsd: 0.125 },
+      ]);
+
+      expect(((await agent.get("/api/settings").expect(200)).body as SettingsView).weeklyReview).toBe(true);
+      expect(((await agent.put("/api/settings").send({ weeklyReview: false }).expect(200)).body as SettingsView).weeklyReview).toBe(false);
+      await agent.put("/api/settings").send({ weeklyReview: true, monthlyBudgetUsd: null }).expect(200);
     });
 
     it("cost: per run in the runs list; per pipeline the last 30 days, per run, and per month on its schedule", async () => {

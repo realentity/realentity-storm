@@ -172,6 +172,11 @@ model UserSetting {
   profile           String?
   /// Approve and Reject on the AI ME bot's messages (M12-T4); off: they only link to the inbox.
   telegramApprovals Boolean   @default(true)
+  /// Told on Telegram that 80% of the budget is spent, and that it is reached (M19-T2): once a month each.
+  budgetWarnedAt    DateTime?
+  budgetReachedAt   DateTime?
+  /// The weekly review on Telegram, Sunday evening (M19-T4).
+  weeklyReview      Boolean   @default(true)
   dateUpdated       DateTime  @updatedAt
 
   @@map("UserSettings")

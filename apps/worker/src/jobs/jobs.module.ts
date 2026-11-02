@@ -27,6 +27,7 @@ import { coreSteps } from "../steps/core-steps";
 import { Triggers } from "../runner/triggers";
 import { JobHandlers } from "./job-handlers";
 import { ProposalNotifier } from "./proposal-notifier";
+import { WeeklyReview } from "./weekly-review";
 
 /** A message to me on the AI ME bot: text, or text with buttons. */
 function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promise<void> {
@@ -184,7 +185,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     {
       provide: RunControls,
       inject: [PrismaService, SERVER_ENV],
-      useFactory: (db: PrismaService, env: ServerEnv) => new RunControls(db.client, { monthlyBudgetUsd: env.LLM_MONTHLY_BUDGET_USD }),
+      useFactory: (db: PrismaService, env: ServerEnv) =>
+        new RunControls(db.client, { monthlyBudgetUsd: env.LLM_MONTHLY_BUDGET_USD, notify: notifier(env), appOrigin: env.APP_ORIGIN }),
     },
     {
       provide: TakeoverDesk,
@@ -233,7 +235,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing, LaterStarts],
+      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing, LaterStarts, RunControls],
       useFactory: (
         db: PrismaService,
         runner: PipelineRunner,
@@ -245,6 +247,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         env: ServerEnv,
         keys: KeyRing,
         later: LaterStarts,
+        controls: RunControls,
       ) =>
         new JobHandlers(
           db.client,
@@ -257,6 +260,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           {
             triggers: new Triggers(db.client, runner, queue, keys, later),
             notifier: new ProposalNotifier(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
+            review: new WeeklyReview(db.client, controls, notifier(env), env.APP_ORIGIN),
           },
         ),
     },

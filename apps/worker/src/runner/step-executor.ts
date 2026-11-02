@@ -12,6 +12,11 @@ export interface StepContext {
   dryRun: boolean;
   /** LLM steps report each call's usage; it is saved on the step (Step.llmUsage), also when the step fails. */
   recordUsage(usage: LlmUsage): void;
+  /**
+   * The monthly budget is reached and this pipeline isn't essential (M19-T1): for a step whose LLM calls are optional
+   * (browser.extract's fallback). Steps flagged `llm` in the catalog never start then.
+   */
+  budgetStops?(): Promise<boolean>;
   /** Headed steps: pausing for me in the live view (README §6). */
   attention: Attention;
   /**
