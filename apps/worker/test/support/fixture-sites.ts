@@ -26,6 +26,8 @@ export interface FixtureSites {
   addRequiredField(): void;
   /** careers.localhost's form: its final button gets another label from now on. */
   renameSubmit(): void;
+  /** careers.localhost's form asks for an earliest start date (no profile says it) from now on. */
+  askStartDate(): void;
   /** Back to a fresh state between tests: no posts or hits, the CAPTCHA unsolved, the job board as first built. */
   reset(): void;
   stop(): Promise<void>;
@@ -87,6 +89,7 @@ export async function startFixtureSites(): Promise<FixtureSites> {
   let redesigned = false;
   let extraField = false;
   let renamed = false;
+  let startField = false;
   let quiz = 0;
 
   /**
@@ -184,6 +187,7 @@ export async function startFixtureSites(): Promise<FixtureSites> {
            <input type="hidden" name="city" id="cityValue">
            <label class="upload">Upload CV<input type="file" name="cv" id="cvFile" style="display:none"></label>
            <label><input type="checkbox" name="consent" required> I agree to the processing of my data for this application</label>
+           ${startField ? '<label for="start">Earliest start date</label><input id="start" name="start" required>' : ""}
            <label for="quiz">3 + 4 =</label><input id="quiz" name="quiz">
            <button type="button" id="save">Save draft</button>
            <button type="submit">${renamed ? "Send it" : "Submit application"}</button>
@@ -396,6 +400,7 @@ export async function startFixtureSites(): Promise<FixtureSites> {
     redesignJobs: () => (redesigned = true),
     addRequiredField: () => (extraField = true),
     renameSubmit: () => (renamed = true),
+    askStartDate: () => (startField = true),
     reset: () => {
       posts.length = 0;
       hits.length = 0;
@@ -403,6 +408,7 @@ export async function startFixtureSites(): Promise<FixtureSites> {
       redesigned = false;
       extraField = false;
       renamed = false;
+      startField = false;
       quiz = 0;
     },
     stop: () => new Promise<void>((resolve) => server.close(() => resolve())),

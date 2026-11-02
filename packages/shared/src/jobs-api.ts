@@ -120,6 +120,9 @@ export interface RecipeSummaryView {
   /** The latest version: the one runs use. */
   version: number;
   lastVerifiedAt: string | null;
+  /** M18-T2: when it last found items; `quiet`: nothing found for a week (told on Telegram). */
+  lastItemsAt: string | null;
+  quiet: boolean;
   brokenAt: string | null;
   brokenReason: string | null;
   /** M11-T3: the agent found a fix for the broken version, waiting for me on the Recipes page. */
@@ -132,6 +135,8 @@ export interface RecipeVersionView {
   /** The recipe itself (@ai-me/steps RecipeSchema). */
   recipe: unknown;
   lastVerifiedAt: string | null;
+  lastItemsAt: string | null;
+  quiet: boolean;
   brokenAt: string | null;
   brokenReason: string | null;
   /** The teach-mode run that made it; null: imported. */

@@ -9,6 +9,9 @@ import { type RecipeFallback } from "./recipe-fallback";
 
 /** One search per combination of list params, at most this many per step. */
 const MAX_SEARCHES = 10;
+/** A recipe that finds nothing (its "no results" page) for this long may no longer see the list (M18-T2). */
+export const QUIET_DAYS = 7;
+const DAY_MS = 86_400_000;
 
 interface ExtractInput {
   recipes: string[];
@@ -42,7 +45,8 @@ export function searches(params: Record<string, string | string[]>): Record<stri
 /**
  * browser.extract (README §2.4): a list read with saved recipes, headless and without an LLM. A recipe that no longer
  * matches the page fails the step with what didn't match, is marked broken and I get a Telegram message the first
- * time (M9-T7); one that works is marked verified.
+ * time (M9-T7); one that works is marked verified. One that only ever finds its "no results" page for QUIET_DAYS is
+ * told once too (M18-T2): the site may have changed so that the list looks empty.
  */
 export class BrowserExtractStep implements StepExecutor {
   readonly type = "browser.extract";
@@ -79,6 +83,7 @@ export class BrowserExtractStep implements StepExecutor {
 
     for (const name of recipes) {
       const { row, recipe } = await latestRecipe(this.deps.prisma, context.userId, name);
+      const before = items.length;
       const storageState = await this.deps.sessions.load(context.userId, siteOf(name));
       const lease = await this.deps.pool.lease(false, { storageState, acceptDownloads: false });
       let broken: string | null = null;
@@ -97,10 +102,13 @@ export class BrowserExtractStep implements StepExecutor {
       }
 
       if (broken === null) {
+        const now = new Date();
+        const found = items.length > before;
         await this.deps.prisma.siteRecipe.update({
           where: { siteRecipeId: row.siteRecipeId },
-          data: { lastVerifiedAt: new Date(), brokenAt: null, brokenReason: null },
+          data: { lastVerifiedAt: now, brokenAt: null, brokenReason: null, ...(found ? { lastItemsAt: now, quietToldAt: null } : {}) },
         });
+        if (!found) await this.quiet(row, now);
       } else {
         const failed = `Recipe ${name} v${row.version} no longer matches the page: ${broken}`;
         if (!fallback || !this.fallback) {
@@ -149,6 +157,22 @@ export class BrowserExtractStep implements StepExecutor {
         .catch(() => undefined);
       await context.emit?.("recipe.broken", { site: row.site, recipe: row.name, version: row.version, reason, fixProposed });
     }
+  }
+
+  /** Nothing found for QUIET_DAYS (since it last found items, or was saved): told once, until it finds items again. */
+  private async quiet(row: SiteRecipe, now: Date): Promise<void> {
+    const since = row.lastItemsAt ?? row.dateCreated;
+    if (row.quietToldAt || now.getTime() - since.getTime() < QUIET_DAYS * DAY_MS) return;
+    await this.deps.prisma.siteRecipe.update({ where: { siteRecipeId: row.siteRecipeId }, data: { quietToldAt: now } });
+    const origin = this.deps.appOrigin;
+    await this.deps
+      .notify?.({
+        text:
+          `AI ME: recipe ${row.name} has found nothing since ${since.toISOString().slice(0, 10)}: the site's "no results" page every time. ` +
+          "If the site changed, teach it again on the Recipes page; if there's just nothing new, ignore this.",
+        buttons: origin ? [[{ text: "Open the recipe", url: `${origin}/recipes/${row.name}` }]] : [],
+      })
+      .catch(() => undefined);
   }
 
   private async screenshot(page: Page, context: StepContext): Promise<void> {

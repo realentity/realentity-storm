@@ -177,7 +177,9 @@ steps:
     const runId = await runner.start(await createVersion(db.client, userId, APPLY()), { trigger: "manual" });
     const advancing = runner.advance(runId);
 
-    const question = await until(() => db.client.question.findFirst({ where: { runId, status: "OPEN" } }), "the question");
+    // The wait, not the question: it is asked, sent on Telegram, then waited for (answered earlier, nothing continues).
+    await until(() => db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } }), "the wait for my answer");
+    const question = await db.client.question.findFirstOrThrow({ where: { runId, status: "OPEN" } });
     expect(question).toMatchObject({ question: "Salary expectation", site: "ats.localhost", stepKey: "map", options: [] });
     expect(telegram).toHaveLength(1);
     expect(telegram[0].text).toMatch(/^AI ME asks \(a form on ats\.localhost\): Salary expectation\n\nReply to this message/);
@@ -245,7 +247,8 @@ steps:
       const runId = await runner.start(await createVersion(db.client, userId, APPLY(`Apply ${claim.factId.slice(0, 4)}`)), { trigger: "manual", dryRun: true });
       const advancing = runner.advance(runId);
       // The field is empty, so the step asks me; I don't answer: the field stays empty for the gate.
-      const question = await until(() => db.client.question.findFirst({ where: { runId, status: "OPEN" } }), "the question");
+      await until(() => db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } }), "the wait for my answer");
+      const question = await db.client.question.findFirstOrThrow({ where: { runId, status: "OPEN" } });
       await db.client.takeover.updateMany({ where: { runId, waitsFor: "answer", status: "OPEN" }, data: { status: "CONTINUED" } });
       expect(await advancing).toBe("DONE");
       const map = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "map" } });

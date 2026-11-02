@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # AI ME's docker compose, from anywhere in the repository (docs/deployment.md).
-#   ./docker/aime up       build and start (or update) everything
-#   ./docker/aime check    every credential opens with this ENCRYPTION_KEY (values are never printed)
-#   ./docker/aime <args>   passed to docker compose: ps, logs -f worker, restart worker, down, ...
+#   ./docker/aime up             build and start (or update) everything
+#   ./docker/aime check          every credential opens with this ENCRYPTION_KEY (values are never printed)
+#   ./docker/aime restore-test   last night's dump restored into a test database and checked; the result on Telegram (M18-T4)
+#   ./docker/aime <args>         passed to docker compose: ps, logs -f worker, restart worker, down, ...
 # AIME_LOCAL=1 adds compose.local.yml (a PostgreSQL container, for testing on a workstation).
 set -euo pipefail
 # Git Bash on Windows (local tests): a native path (pwd -W), and no rewriting of container paths.
@@ -13,6 +14,69 @@ files=(-f "$here/compose.yml")
 [ "${AIME_LOCAL:-0}" = "1" ] && files+=(-f "$here/compose.local.yml")
 compose() { docker compose "${files[@]}" "$@"; }
 
+# A value from .env, never printed.
+env_value() { grep -m1 "^$1=" "$here/../.env" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+
+# The result on Telegram (the AI ME bot), when it is set up.
+tell() {
+  local token chat
+  token="$(env_value TELEGRAM_BOT_TOKEN || true)"
+  chat="$(env_value TELEGRAM_CHAT_ID || true)"
+  [ -n "$token" ] && [ -n "$chat" ] || return 0
+  curl -s -o /dev/null --max-time 20 --data-urlencode "chat_id=$chat" --data-urlencode "text=$1" \
+    "https://api.telegram.org/bot$token/sendMessage" || true
+}
+
+# The restore test of docs/deployment.md as one command: the newest nightly dump (or $2) into aime_restore_test,
+# the counts against the live database, the credentials opened with this ENCRYPTION_KEY, the test database dropped.
+restore_test() {
+  local dumps="${AIME_DUMPS:-/var/backups/postgres}" db=aime_restore_test dump age problems=()
+  dump="${1:-$(ls -1t "$dumps"/storm-*.dump 2>/dev/null | head -n1 || true)}"
+  if [ -z "$dump" ] || [ ! -f "$dump" ]; then
+    tell "AI ME restore test FAILED: no dump in $dumps"
+    echo "No dump in $dumps" >&2
+    return 1
+  fi
+  age=$(( ($(date +%s) - $(stat -c %Y "$dump")) / 86400 ))
+  [ "$age" -gt 2 ] && problems+=("the newest dump is $age days old: is the nightly backup running?")
+
+  sql() { sudo -u postgres psql -v ON_ERROR_STOP=1 -qtA "$@"; }
+  sudo -u postgres dropdb --if-exists "$db"
+  trap 'sudo -u postgres dropdb --if-exists aime_restore_test || true' EXIT
+  sudo -u postgres createdb -O storm_user "$db"
+  sql -d "$db" -c 'CREATE EXTENSION vector;' -c 'CREATE EXTENSION citext;'
+  if ! sudo -u postgres pg_restore -d "$db" --no-owner --no-comments --role=storm_user --exit-on-error "$dump"; then
+    problems+=("pg_restore failed")
+  fi
+
+  local table restored live counts=()
+  for table in Pipelines Runs Credentials Facts Applications; do
+    restored="$(sql -d "$db" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "?")"
+    live="$(sql -d storm -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "?")"
+    counts+=("$table $restored/$live")
+    [ "$restored" = "?" ] && problems+=("$table is missing from the dump")
+    [ "$restored" = "0" ] && [ "$live" != "0" ] && problems+=("$table is empty in the dump")
+  done
+
+  local url credentials
+  url="$(env_value DATABASE_URL | sed 's|/storm$|/'"$db"'|')"
+  if credentials="$(compose run --rm --no-deps -e DATABASE_URL="$url" worker node dist/tools/check-credentials.js 2>&1)"; then :; else
+    problems+=("credentials: ${credentials##*$'\n'}")
+  fi
+
+  local summary
+  summary="$(basename "$dump"), restored/live: ${counts[*]}. ${credentials%%$'\n'*}"
+  echo "$summary"
+  if [ "${#problems[@]}" -gt 0 ]; then
+    printf '  %s\n' "${problems[@]}" >&2
+    local joined
+    joined="$(printf '%s; ' "${problems[@]}")"
+    tell "AI ME restore test FAILED: ${joined%; }. $summary"
+    return 1
+  fi
+  tell "AI ME restore test passed: $summary"
+}
+
 case "${1:-}" in
   up)
     shift
@@ -21,6 +85,10 @@ case "${1:-}" in
     ;;
   check)
     compose exec worker node dist/tools/check-credentials.js
+    ;;
+  restore-test)
+    shift
+    restore_test "$@"
     ;;
   *)
     compose "$@"

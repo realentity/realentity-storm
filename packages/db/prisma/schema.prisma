@@ -325,6 +325,10 @@ model SiteRecipe {
   // The page stopped matching it; cleared when it works again or a new version is saved.
   brokenAt        DateTime?
   brokenReason    String?
+  // Last run that found items with it (lastVerifiedAt also counts its "no results" page); M18-T2.
+  lastItemsAt     DateTime?
+  // Told that it has found nothing for a week (M18-T2); cleared when it finds items again.
+  quietToldAt     DateTime?
   // The teach-mode run that made it; null: imported.
   taughtInRunId   String?   @db.Uuid
   // A fix browser.extract's fallback found when this version broke (M11-T3), waiting for me: approved, it is saved

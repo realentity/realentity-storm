@@ -390,7 +390,8 @@ export async function sent(page: Page, fields: FormField[], before: string): Pro
   if ((after.match(THANKS)?.length ?? 0) > (before.match(THANKS)?.length ?? 0)) return true;
   const typed = fields.filter((f) => typeof f.value === "string" && f.value !== "" && !["select", "radio", "checkbox", "file"].includes(f.type) && !f.human);
   if (typed.length === 0) return false;
-  const values = await Promise.all(typed.map((f) => page.locator(f.key).first().inputValue().catch(() => null)));
+  // Not the page's default timeout: a field the site removes meanwhile would hold this check (and sentWithin) that long.
+  const values = await Promise.all(typed.map((f) => page.locator(f.key).first().inputValue({ timeout: 1_000 }).catch(() => null)));
   return values.every((value) => value === "");
 }
 

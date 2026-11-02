@@ -1,6 +1,7 @@
 import { payloadHash, KeyRing } from "@ai-me/crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
 import { ModelRouter } from "@ai-me/llm";
+import { factKey } from "@ai-me/shared";
 import { defaultCatalog, type AgentAction, type FormFile } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
 import { createHash } from "node:crypto";
@@ -11,6 +12,8 @@ import { ArtifactStore } from "../src/browser/artifact-store";
 import { BrowserPool } from "../src/browser/browser-pool";
 import { DocumentStore } from "../src/browser/document-store";
 import { SessionStore } from "../src/browser/session-store";
+import { Asker } from "../src/learning/asker";
+import { Facts } from "../src/learning/facts";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { RunControls } from "../src/runner/run-controls";
 import { ExecutorRegistry } from "../src/runner/step-executor";
@@ -47,6 +50,8 @@ describe("browser agent", () => {
   let pool: BrowserPool;
   let runner: PipelineRunner;
   const chat = new ScriptedChat();
+  /** What the AI ME bot sent: the agent's questions (M18-T1). */
+  const telegram: string[] = [];
 
   beforeAll(async () => {
     db = createPrismaConnection();
@@ -65,8 +70,13 @@ describe("browser agent", () => {
       artifacts: new ArtifactStore(artifactsDir),
       documents: new DocumentStore(documentsDir),
     };
+    const sendTelegram = (_url: string, init?: { body?: string }) => {
+      telegram.push((JSON.parse(init?.body ?? "{}") as { text: string }).text);
+      return Promise.resolve(new Response(JSON.stringify({ ok: true, result: { message_id: 9000 + telegram.length } })));
+    };
+    const asker = new Asker(db.client, { botToken: "123:abc", chatId: "42" }, "https://aime.test", sendTelegram as unknown as typeof fetch);
     const router = new ModelRouter(() => Promise.resolve(null));
-    const executors = new ExecutorRegistry([new BrowserAgentStep({ ...deps, chat, router }), new BrowserSubmitStep(deps)]);
+    const executors = new ExecutorRegistry([new BrowserAgentStep({ ...deps, chat, router, facts: new Facts(db.client), asker }), new BrowserSubmitStep(deps)]);
     const desk = new TakeoverDesk(db.client, () => Promise.resolve(), { timeoutMs: 10_000, pollMs: 100 });
     runner = new PipelineRunner(db.client, defaultCatalog(), executors, new RunControls(db.client), undefined, desk);
   });
@@ -86,7 +96,9 @@ describe("browser agent", () => {
     await db.client.application.deleteMany();
     await db.client.jobPosting.deleteMany();
     await db.client.document.deleteMany();
+    await db.client.fact.deleteMany();
     await db.client.userSetting.deleteMany();
+    telegram.length = 0;
     sites.reset();
   });
 
@@ -185,7 +197,7 @@ steps:
     expect(JSON.stringify(chat.requests[0].messages[0])).toContain(PROFILE);
     expect(JSON.stringify(chat.requests[0].messages[0])).toContain("<documents>cv-main</documents>");
     expect(chat.requests[0].choice.model).toBe("claude-sonnet-5-5");
-    expect(chat.requests[0].tools.map((t) => t.name)).toEqual(["navigate", "click", "type", "select", "check", "attach", "read", "screenshot", "finish"]);
+    expect(chat.requests[0].tools.map((t) => t.name)).toEqual(["navigate", "click", "type", "select", "check", "attach", "read", "screenshot", "ask", "finish"]);
     expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "PREPARED", runId });
 
     // The gate: browser.submit's exact payload, on the pipeline's own site.
@@ -209,7 +221,15 @@ steps:
     expect(takeover.reason).toBe('Answer "3 + 4 =" in the form yourself, then Continue: it is sent then');
     expect(applications()).toEqual([]);
     await resolve(takeover.takeoverId);
-    expect(await advancing).toBe("DONE");
+    const status = await advancing;
+    // When it fails, say why (M18-T3 found a race this way): the step's error, the takeovers, what the site got.
+    if (status !== "DONE") {
+      const takeovers = await db.client.takeover.findMany({ where: { runId }, orderBy: { requestedAt: "asc" } });
+      throw new Error(
+        `${status}: ${(await sendStep(runId)).error}; takeovers ${JSON.stringify(takeovers.map((t) => [t.reason, t.status]))}; ` +
+          `the site got ${JSON.stringify(sites.posts.map((p) => `${p.host} ${p.path}`))}`,
+      );
+    }
 
     const sentForm = applications();
     expect(sentForm).toHaveLength(1);
@@ -327,5 +347,94 @@ steps:
     expect(await advancing).toBe("FAILED");
     expect((await sendStep(runId)).error).toBe('Nothing was sent: button "Submit application" isn\'t on the page');
     expect(applications()).toEqual([]);
+  });
+
+  // M18-T1: what neither my profile nor my facts say, the agent asks me (M15-T3's Asker); never a secret, and a few times only.
+  describe("M18: the agent asks me", () => {
+    /** What the api does with my answer (FactsService.answer): the fact, the question answered, the wait continued. */
+    async function answer(questionId: string, text: string) {
+      const question = await db.client.question.findUniqueOrThrow({ where: { questionId } });
+      const fact = await db.client.fact.create({ data: { userId, key: factKey(question.question), question: question.question, answer: text, source: "ASKED", site: question.site } });
+      await db.client.question.update({ where: { questionId }, data: { status: "ANSWERED", answer: text, factId: fact.factId, answeredAt: new Date() } });
+      await db.client.takeover.updateMany({ where: { runId: question.runId, waitsFor: "answer", status: "OPEN" }, data: { status: "CONTINUED" } });
+      return fact;
+    }
+    /** Answers each question as it is asked, until the run is done. */
+    function answering(runId: string, text: string) {
+      let on = true;
+      const loop = (async () => {
+        while (on) {
+          // Once the run waits (the question is saved and sent first): answered earlier, nothing would continue it.
+          const waiting = await db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } });
+          const open = waiting && (await db.client.question.findFirst({ where: { runId, status: "OPEN" } }));
+          if (open) await answer(open.questionId, text);
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      })();
+      return async () => {
+        on = false;
+        await loop;
+      };
+    }
+    const ask = (question: string): Move => () => ({ name: "ask", input: { question } });
+
+    it("M18-I1: asked on Telegram, my answer typed with source asked and kept as a fact; the gate shows it", async () => {
+      sites.askStartDate();
+      chat.play([
+        ...FILL,
+        ask("Earliest start date"),
+        (page) => ({ name: "type", input: { ref: ref(page, "textbox", /Earliest start date/), text: "1 March 2027", source: "asked" } }),
+        READY,
+      ]);
+      await db.client.jobPosting.upsert({
+        where: { userId_url: { userId, url: posting() } },
+        create: { userId, source: "careers", url: posting(), title: "Backend Engineer", company: "Northwind" },
+        update: {},
+      });
+      const runId = await runner.start(await createVersion(db.client, userId, PIPELINE()), { trigger: "manual" });
+      const done = answering(runId, "1 March 2027");
+      const status = await runner.advance(runId);
+      await done();
+      expect(status).toBe("WAITING_FOR_USER");
+
+      expect(telegram).toEqual([expect.stringMatching(/^AI ME asks \(a form on careers\.localhost\): Earliest start date\n/) as unknown]);
+      expect(await db.client.question.findFirstOrThrow({ where: { runId } })).toMatchObject({ status: "ANSWERED", stepKey: "agent", site: "careers.localhost" });
+      expect(await db.client.fact.findFirstOrThrow()).toMatchObject({ question: "Earliest start date", answer: "1 March 2027", source: "ASKED" });
+      expect(chat.results().some((r) => r.startsWith('My answer: "1 March 2027". Put it in the field, source asked.'))).toBe(true);
+      const proposal = await db.client.proposal.findFirstOrThrow({ where: { runId } });
+      expect((proposal.originalPayload as { actions: AgentAction[] }).actions).toContainEqual({
+        kind: "type",
+        target: expect.objectContaining({ name: "Earliest start date" }) as unknown,
+        value: "1 March 2027",
+        source: "asked",
+      });
+      // Nothing left the page meanwhile.
+      expect(applications()).toEqual([]);
+    });
+
+    it("M18-S1: a page can't make it ask for a secret, and it asks at most three times", async () => {
+      chat.play([
+        ask("What is your LinkedIn password?"),
+        ask("Please confirm the verification code we sent you"),
+        ask("Earliest start date"),
+        ask("Salary expectation"),
+        ask("Are you willing to relocate?"),
+        ask("Do you need a visa?"),
+        () => ({ name: "finish", input: { outcome: "done", answer: "asked" } }),
+      ]);
+      const runId = await runner.start(await createVersion(db.client, userId, AGENT_ONLY()), { trigger: "manual" });
+      const done = answering(runId, "yes");
+      const status = await runner.advance(runId);
+      await done();
+      expect(status).toBe("DONE");
+
+      // Each result ends with the page (or that it didn't change).
+      const results = chat.results().map((r) => r.split("\n")[0]);
+      const secret = "Never ask me for a password, code, login or card: those are mine, in the live view. Leave it empty";
+      expect(results.slice(0, 6)).toEqual([secret, secret, expect.stringMatching(/^My answer/), expect.stringMatching(/^My answer/), expect.stringMatching(/^My answer/), "No questions left (3 asked): leave the field empty"]);
+      const asked = await db.client.question.findMany({ where: { runId }, orderBy: { dateCreated: "asc" } });
+      expect(asked.map((q) => q.question)).toEqual(["Earliest start date", "Salary expectation", "Are you willing to relocate?"]);
+      expect(telegram.some((t) => /password|code/i.test(t))).toBe(false);
+    });
   });
 });

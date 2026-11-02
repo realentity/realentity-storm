@@ -98,13 +98,22 @@ export function RecipesPage() {
   );
 }
 
-function Health({ recipe }: { recipe: Pick<RecipeSummaryView, "brokenAt" | "brokenReason" | "lastVerifiedAt"> }) {
+function Health({ recipe }: { recipe: Pick<RecipeSummaryView, "brokenAt" | "brokenReason" | "lastVerifiedAt" | "lastItemsAt" | "quiet"> }) {
   if (recipe.brokenAt) {
     return (
       <span className="text-danger" title={recipe.brokenReason ?? undefined}>
         <IconAlertTriangle size={16} className="me-1" />
         Broken since {formatDateTime(recipe.brokenAt)}
         {recipe.brokenReason && <div className="small">{recipe.brokenReason}</div>}
+      </span>
+    );
+  }
+  if (recipe.quiet) {
+    return (
+      <span className="text-warning" title="Only its &quot;no results&quot; page for a week: the site may have changed">
+        <IconAlertTriangle size={16} className="me-1" />
+        Nothing found {recipe.lastItemsAt ? `since ${formatDateTime(recipe.lastItemsAt)}` : "yet"}
+        <div className="small text-secondary">Its &quot;no results&quot; page every time: teach it again if the site changed.</div>
       </span>
     );
   }

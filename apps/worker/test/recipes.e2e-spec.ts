@@ -194,6 +194,31 @@ steps:
     expect((await db.client.siteRecipe.findFirstOrThrow()).brokenAt).toBeNull();
   });
 
+  it('M18-I2: a recipe that finds only its "no results" page for a week is told once; finding items again clears it', async () => {
+    const recipe = await saveRecipe(boardRecipe());
+    const quiet = () => db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } });
+    // Found items 6 days ago: an empty search now is still news to nobody.
+    await db.client.siteRecipe.update({ where: { siteRecipeId: recipe.siteRecipeId }, data: { lastItemsAt: new Date(Date.now() - 6 * 86_400_000) } });
+    expect((await run(SEARCH("cobol"))).status).toBe("DONE");
+    expect(notified).toEqual([]);
+
+    // Eight days: told once, with the day it last found something; the next empty run says nothing new.
+    const last = new Date(Date.now() - 8 * 86_400_000);
+    await db.client.siteRecipe.update({ where: { siteRecipeId: recipe.siteRecipeId }, data: { lastItemsAt: last } });
+    for (let i = 0; i < 2; i++) expect((await run(SEARCH("cobol"))).status).toBe("DONE");
+    expect(notified).toEqual([
+      `AI ME: recipe jobs.localhost/search has found nothing since ${last.toISOString().slice(0, 10)}: the site's "no results" page every time. ` +
+        "If the site changed, teach it again on the Recipes page; if there's just nothing new, ignore this.",
+    ]);
+    expect(await quiet()).toMatchObject({ quietToldAt: expect.any(Date) as unknown, lastItemsAt: last, brokenAt: null });
+
+    // Items again: no longer quiet, and a later quiet week is told again.
+    expect((await run(SEARCH())).status).toBe("DONE");
+    expect(await quiet()).toMatchObject({ quietToldAt: null, lastItemsAt: expect.any(Date) as unknown });
+    expect((await quiet()).lastItemsAt!.getTime()).toBeGreaterThan(Date.now() - 60_000);
+    expect(notified).toHaveLength(1);
+  });
+
   it("M9-I2: a second run over the same list saves no new postings", async () => {
     await saveRecipe(boardRecipe());
     const first = await run(DAILY);
