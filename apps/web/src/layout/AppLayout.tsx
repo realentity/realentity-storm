@@ -64,7 +64,8 @@ export function AppLayout() {
             <IconMenu2 size={20} />
           </button>
           <div className="navbar-brand navbar-brand-autodark">
-            <NavLink to="/inbox" className="text-reset text-decoration-none fw-bold fs-2">
+            <NavLink to="/inbox" className="text-reset text-decoration-none fw-bold fs-2 d-flex align-items-center gap-2">
+              <img src="/logo.svg" alt="" width={32} height={32} />
               AI ME
             </NavLink>
           </div>
