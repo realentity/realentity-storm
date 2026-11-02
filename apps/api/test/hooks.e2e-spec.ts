@@ -6,7 +6,10 @@ import { TestEnvironment } from "@ai-me/testing";
 import { createHmac } from "node:crypto";
 import request from "supertest";
 import { z } from "zod";
+import { TelegramBot } from "../src/telegram/telegram-bot";
+import { TELEGRAM_CHAT_IDLE_MS } from "../src/telegram/telegram-builder";
 import { TELEGRAM_FETCH } from "../src/telegram/telegram-notices";
+import { propose, say, ScriptedChat } from "./support/scripted-chat";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const TEST_STEPS: StepDefinition[] = [
@@ -66,6 +69,7 @@ describe("M12: the AI ME bot and webhooks", () => {
   let userId: string;
   let calls: Call[];
   let updates = 0;
+  const llm = new ScriptedChat();
 
   beforeAll(async () => {
     Object.assign(process.env, ENV);
@@ -73,7 +77,7 @@ describe("M12: the AI ME bot and webhooks", () => {
       calls.push({ method: (input as string).split("/").pop()!, body: JSON.parse(init?.body as string) as Record<string, unknown> });
       return Promise.resolve(new Response(JSON.stringify({ ok: true, result: { message_id: 100 + calls.length } })));
     };
-    api = await createTestApp({ catalog: defaultCatalog().with(...TEST_STEPS), overrides: [{ provide: TELEGRAM_FETCH, useValue: fakeFetch }] });
+    api = await createTestApp({ catalog: defaultCatalog().with(...TEST_STEPS), overrides: [{ provide: TELEGRAM_FETCH, useValue: fakeFetch }], builderLlm: llm });
     agent = await api.signedIn();
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
@@ -81,9 +85,11 @@ describe("M12: the AI ME bot and webhooks", () => {
 
   beforeEach(() => {
     calls = [];
+    llm.reset();
   });
 
   afterEach(async () => {
+    await db.client.builderChat.deleteMany();
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
     await db.client.userSetting.deleteMany();
@@ -362,11 +368,13 @@ describe("M12: the AI ME bot and webhooks", () => {
       expect(await db.client.takeover.findUniqueOrThrow({ where: { takeoverId: wait.takeoverId } })).toMatchObject({ status: "CONTINUED" });
       expect(sent().at(-1)?.body.text).toBe('Thanks: "Salary expectation" is 4 000 EUR net. Kept for the next forms; the run goes on.');
 
-      // Again: already answered, said so; a reply to another message is no answer (the help).
+      // Again: already answered, said so; a reply to another message is no answer: it goes to the builder (M21).
       await telegram(reply("5 000", 777)).expect(200);
       expect(sent().at(-1)?.body.text).toBe("Not taken: Already answered");
+      llm.answer(say("What should the pipeline do?"));
       await telegram(reply("hello", 12345)).expect(200);
-      expect(sent().at(-1)?.body.text).toContain("/run <pipeline>");
+      await api.app.get(TelegramBot).settled();
+      expect(sent().at(-1)?.body.text).toBe("What should the pipeline do?\n\n(/new starts over)");
       // Only my chat answers.
       const other = await asked([], 778);
       await telegram({ ...reply("1 EUR", 778), message: { ...reply("1 EUR", 778).message, from: { id: 1 }, chat: { id: 1, type: "private" } } }).expect(200);
@@ -393,6 +401,127 @@ describe("M12: the AI ME bot and webhooks", () => {
       expect(((await agent.get("/api/facts").expect(200)).body as unknown[]).length).toBe(1);
       await agent.delete(`/api/facts/${created.factId}`).expect(204);
       expect((await agent.get("/api/facts").expect(200)).body).toEqual([]);
+    });
+  });
+
+  describe("M21: the builder on Telegram", () => {
+    const MORNING = { name: "Morning hi", trigger: { schedule: "0 8 * * *", tz: "Europe/Sofia" }, steps: [{ id: "tell", type: "notify.telegram", with: { text: "hi" } }] };
+    const bot = () => api.app.get(TelegramBot);
+
+    /** A sentence to the bot, and the bot's answer once the builder has answered. */
+    async function talk(text: string): Promise<Call> {
+      await telegram(message(text)).expect(200);
+      await bot().settled();
+      return sent().at(-1)!;
+    }
+    const button = (call: Call, text: string) => buttonsOf(call).find((b) => b.text === text)?.callback_data;
+    const chats = () => db.client.builderChat.findMany({ orderBy: { dateCreated: "asc" }, include: { messages: true } });
+
+    // M21-I1
+    it("a sentence gets the builder's answer and proposal; Save makes v1, Turn on enables it", async () => {
+      llm.answer(propose(MORNING, "Says hi every morning"), say("Here it is: a hi at 8 every morning."));
+      const reply = await talk("Say hi to me every morning at 8");
+
+      expect(sent("sendChatAction").length).toBeGreaterThan(0);
+      expect(String(reply.body.text).split("\n")).toEqual([
+        "Here it is: a hi at 8 every morning.",
+        "",
+        "Proposal: Says hi every morning",
+        "Morning hi, on the schedule 0 8 * * * (Europe/Sofia)",
+        "1. tell: notify.telegram",
+        "",
+        "(/new starts over)",
+      ]);
+      const [chat] = await chats();
+      expect(buttonsOf(reply).map((b) => b.text)).toEqual(["Save", "Dry run", "Open in AI ME"]);
+      expect(buttonsOf(reply).at(-1)?.url).toBe(`https://aime.test/builder/${chat.builderChatId}`);
+
+      await telegram(press(button(reply, "Save")!)).expect(200);
+      expect(answer()).toBe("Saved");
+      const pipeline = await db.client.pipeline.findFirstOrThrow({ where: { name: "Morning hi" } });
+      expect(pipeline.enabled).toBe(false);
+      const saved = sent().at(-1)!;
+      expect(saved.body.text).toBe("Saved: Morning hi v1. It is off: Turn on to run it on the schedule 0 8 * * * (Europe/Sofia).");
+
+      await telegram(press(button(saved, "Turn on")!)).expect(200);
+      expect(answer()).toBe("Turned on");
+      expect((await db.client.pipeline.findUniqueOrThrow({ where: { pipelineId: pipeline.pipelineId } })).enabled).toBe(true);
+      expect(sent().at(-1)?.body.text).toBe("Morning hi is on: it runs on its trigger.");
+    });
+
+    it("Dry run makes the proposal a draft and starts a dry run", async () => {
+      llm.answer(propose(MORNING), say("Try it."));
+      const reply = await talk("Say hi every morning");
+      await telegram(press(button(reply, "Dry run")!)).expect(200);
+      expect(answer()).toBe("Dry run started");
+      const run = await db.client.run.findFirstOrThrow({ where: { dryRun: true } });
+      expect(buttonsOf(sent().at(-1)!).at(-1)?.url).toBe(`https://aime.test/runs/${run.runId}`);
+    });
+
+    // M21-I2
+    it("the next sentence continues the chat; /new and two idle hours start a new one; /edit chats about a pipeline", async () => {
+      llm.answer(say("What should it say?"));
+      await talk("A morning message");
+      llm.answer(say("Got it."));
+      await talk("Just hi");
+      expect((await chats()).map((c) => c.messages.length)).toEqual([4]);
+      // The second turn saw the first.
+      expect(JSON.stringify(llm.last.messages)).toContain("A morning message");
+
+      await telegram(message("/new")).expect(200);
+      expect(sent().at(-1)?.body.text).toMatch(/^New chat/);
+      llm.answer(say("Sure."));
+      await talk("Something else");
+      expect((await chats()).map((c) => c.messages.length)).toEqual([4, 2]);
+
+      const [, second] = await chats();
+      await db.client.$executeRaw`UPDATE "BuilderChats" SET "dateUpdated" = ${new Date(Date.now() - TELEGRAM_CHAT_IDLE_MS - 60_000)} WHERE "builderChatId" = ${second.builderChatId}::uuid`;
+      llm.answer(say("Hello again."));
+      await talk("Later that day");
+      expect((await chats()).map((c) => c.messages.length)).toEqual([4, 2, 2]);
+
+      const pipeline = await createPipeline(REPLY);
+      await telegram(message("/edit repl")).expect(200);
+      expect(sent().at(-1)?.body.text).toBe("Talking about Replies v1: what should change?");
+      llm.answer(say("I'll make it shorter."));
+      await talk("Shorter replies");
+      const last = (await chats()).at(-1)!;
+      expect(last).toMatchObject({ pipelineId: pipeline.pipelineId });
+      expect(last.messages).toHaveLength(2);
+      expect(JSON.stringify(llm.last.messages)).toContain("name: Replies");
+    });
+
+    // M21-S1
+    it("only my private chat reaches the builder; a superseded or saved proposal's button changes nothing", async () => {
+      await telegram(message("Make me a pipeline", 999)).expect(200);
+      await telegram(message("Make me a pipeline", ME, { id: -100, type: "group" })).expect(200);
+      await bot().settled();
+      expect(llm.requests).toHaveLength(0);
+      expect(calls).toEqual([]);
+
+      llm.answer(propose(MORNING, "First"), say("One."));
+      const first = await talk("Say hi every morning");
+      llm.answer(propose({ ...MORNING, name: "Evening hi" }, "Second"), say("Two."));
+      const second = await talk("No, in the evening");
+
+      await telegram(press(button(first, "Save")!)).expect(200);
+      expect(answer()).toBe("This proposal was superseded");
+      await telegram(press(button(second, "Save")!)).expect(200);
+      await telegram(press(button(second, "Save")!)).expect(200);
+      expect(answer()).toBe("This proposal was saved");
+      expect((await db.client.pipeline.findMany()).map((p) => p.name)).toEqual(["Evening hi"]);
+      expect(await db.client.pipelineVersion.count()).toBe(1);
+
+      await telegram(press(`bs:${"0".repeat(8)}-0000-0000-0000-000000000000`)).expect(200);
+      expect(answer()).toBe("That proposal is gone");
+    });
+
+    it("says when the builder can't answer", async () => {
+      llm.answer(() => {
+        throw new Error("overloaded");
+      });
+      const reply = await talk("Say hi");
+      expect(reply.body.text).toMatch(/^The builder failed: /);
     });
   });
 });

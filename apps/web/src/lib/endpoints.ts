@@ -1,4 +1,10 @@
 import {
+  type HealthView,
+  type PriceHistoryView,
+  type WatchedProductRequest,
+  type WatchedProductView,
+  type BillsView,
+  type BillView,
   type ApplicationView,
   type ApproveProposalRequest,
   type BuilderChatSummaryView,
@@ -126,6 +132,20 @@ export const api = {
   scheduledStarts: {
     list: (pipelineId?: string) => request<ScheduledStartView[]>("GET", `/scheduled-starts${pipelineId ? `?pipelineId=${pipelineId}` : ""}`),
     cancel: (id: string) => request<void>("DELETE", `/scheduled-starts/${id}`),
+  },
+  prices: {
+    list: () => request<WatchedProductView[]>("GET", "/prices"),
+    create: (body: WatchedProductRequest) => request<WatchedProductView>("POST", "/prices", body),
+    update: (id: string, body: WatchedProductRequest) => request<WatchedProductView>("PUT", `/prices/${id}`, body),
+    remove: (id: string) => request<void>("DELETE", `/prices/${id}`),
+    history: (id: string) => request<PriceHistoryView>("GET", `/prices/${id}/history`),
+  },
+  health: {
+    get: () => request<HealthView>("GET", "/health/checks"),
+  },
+  bills: {
+    list: () => request<BillsView>("GET", "/bills"),
+    paid: (billId: string, paid: boolean) => request<BillView>("PUT", `/bills/${billId}/paid`, { paid }),
   },
   settings: {
     get: () => request<SettingsView>("GET", "/settings"),

@@ -6,6 +6,8 @@ import { type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock } from "./email-block";
+import { BillReadStep, BillSaveStep } from "./bill-steps";
+import { DraftFollowUpStep, EmailAwaitingStep } from "./follow-up-steps";
 import { DATA_ONLY, EXAMPLES_RULE, LlmStep } from "./llm-steps";
 
 export { emailBlock };
@@ -172,6 +174,10 @@ export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
     new EmailFetchStep(deps.mail, deps.prisma),
     new EmailClassifyStep(deps.llm, deps.router, deps.learning),
     new DraftReplyStep(deps.llm, deps.router, deps.learning),
+    new EmailAwaitingStep(deps.mail, deps.prisma),
+    new DraftFollowUpStep(deps.llm, deps.router, deps.learning),
+    new BillReadStep(deps.mail, deps.llm, deps.router, deps.learning),
+    new BillSaveStep(deps.prisma),
     new EmailSendStep(deps.mail),
   ];
 }

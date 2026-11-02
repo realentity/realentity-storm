@@ -113,6 +113,9 @@ model User {
 
   sessions      UserSession[]
   settings      UserSetting?
+  followUps     FollowUp[]
+  bills         Bill[]
+  watched       WatchedProduct[]
   pipelines     Pipeline[]
   builderChats  BuilderChat[]
   siteRecipes   SiteRecipe[]
@@ -159,25 +162,29 @@ model UserSession {
 
 /// Run-time controls (README §2.2, §2.6, §5). One row per user, created on first change.
 model UserSetting {
-  userId            String    @id @db.Uuid
-  user              User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  userId                String    @id @db.Uuid
+  user                  User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
   /// Kill switch: no run starts or continues, no side effect executes.
-  paused            Boolean   @default(false)
-  pausedAt          DateTime?
+  paused                Boolean   @default(false)
+  pausedAt              DateTime?
   /// Step type → "N/day" | "N/hour": caps across all pipelines (a pipeline's own `limits` count only its runs).
-  rateLimits        Json      @default("{}")
+  rateLimits            Json      @default("{}")
   /// Overrides LLM_MONTHLY_BUDGET_USD.
-  monthlyBudgetUsd  Decimal?  @db.Decimal(10, 2)
+  monthlyBudgetUsd      Decimal?  @db.Decimal(10, 2)
   /// Facts about me for application forms (name, contacts, location, work permit, notice period...), as I write them.
-  profile           String?
+  profile               String?
   /// Approve and Reject on the AI ME bot's messages (M12-T4); off: they only link to the inbox.
-  telegramApprovals Boolean   @default(true)
+  telegramApprovals     Boolean   @default(true)
   /// Told on Telegram that 80% of the budget is spent, and that it is reached (M19-T2): once a month each.
-  budgetWarnedAt    DateTime?
-  budgetReachedAt   DateTime?
+  budgetWarnedAt        DateTime?
+  budgetReachedAt       DateTime?
   /// The weekly review on Telegram, Sunday evening (M19-T4).
-  weeklyReview      Boolean   @default(true)
-  dateUpdated       DateTime  @updatedAt
+  weeklyReview          Boolean   @default(true)
+  /// The morning brief on Telegram, every day at 07:30 (M25).
+  morningBrief          Boolean   @default(true)
+  /// The builder chat my plain messages to the AI ME bot continue (M21); /new clears it.
+  telegramBuilderChatId String?   @db.Uuid
+  dateUpdated           DateTime  @updatedAt
 
   @@map("UserSettings")
 }
@@ -234,6 +241,94 @@ model Webhook {
 
 /// Where a pipeline's email.fetch stopped in a mailbox: messages with a higher UID are new. A new UIDVALIDITY (the
 /// server renumbered the mailbox) starts over from the look-back window.
+/// A product I watch on the Prices page (M24): a target price, and the shops that sell it.
+model WatchedProduct {
+  watchedProductId String         @id @default(uuid()) @db.Uuid
+  userId           String         @db.Uuid
+  user             User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name             String
+  targetPrice      Decimal?       @db.Decimal(12, 2)
+  /// The target's currency; a shop in another currency is never compared with it.
+  currency         String?
+  enabled          Boolean        @default(true)
+  offers           WatchedOffer[]
+  dateCreated      DateTime       @default(now())
+  dateUpdated      DateTime       @updatedAt
+
+  @@index([userId])
+  @@map("WatchedProducts")
+}
+
+/// One shop's page for a watched product, with what price.watch read last. Its history is in DataPoint
+/// (collection "price-watch", key: watchedOfferId).
+model WatchedOffer {
+  watchedOfferId   String         @id @default(uuid()) @db.Uuid
+  watchedProductId String         @db.Uuid
+  product          WatchedProduct @relation(fields: [watchedProductId], references: [watchedProductId], onDelete: Cascade)
+  url              String
+  /// The variant, as shop.product's select: { size: M, color: Black }.
+  select           Json?
+  lastPrice        Decimal?       @db.Decimal(12, 2)
+  lastCurrency     String?
+  lastInStock      Boolean?
+  lastTitle        String?
+  lastProblem      String?
+  lastCheckedAt    DateTime?
+  dateCreated      DateTime       @default(now())
+
+  @@index([watchedProductId])
+  @@map("WatchedOffers")
+}
+
+/// A bill read from an email or its PDF (M23, bill.save): one row per bill, however many emails mention it.
+model Bill {
+  billId      String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// Who bills, as the bill names it (e.g. "EVN Bulgaria").
+  issuer      String
+  /// The sender's domain: bills from one issuer are compared with each other by it.
+  issuerKey   String
+  /// issuerKey with the bill's reference, else its period, else its due date, else the email: the same bill again is
+  /// the same row.
+  billKey     String
+  amount      Decimal   @db.Decimal(12, 2)
+  currency    String
+  dueDate     DateTime? @db.Date
+  /// The month it is for, YYYY-MM.
+  period      String?
+  reference   String?
+  messageId   String
+  from        String
+  subject     String
+  paidAt      DateTime?
+  runId       String?   @db.Uuid
+  dateCreated DateTime  @default(now())
+  dateUpdated DateTime  @updatedAt
+
+  @@unique([userId, billKey])
+  @@index([userId, issuerKey])
+  @@map("Bills")
+}
+
+/// One of my sent emails that email.awaiting proposed a follow-up for (M22): never proposed again, whatever I decided.
+/// Another message of mine in the thread is a new one to follow up.
+model FollowUp {
+  followUpId  String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// The Message-ID of my email that got no answer.
+  messageId   String
+  threadId    String
+  to          String
+  subject     String
+  runId       String?  @db.Uuid
+  dateCreated DateTime @default(now())
+
+  @@unique([userId, messageId])
+  @@map("FollowUps")
+}
+
 model MailCursor {
   mailCursorId String   @id @default(uuid()) @db.Uuid
   userId       String   @db.Uuid
@@ -701,6 +796,22 @@ model Document {
 
 /// Liveness of a long-running process (the worker): it writes every 30 s; the api alerts when it goes stale.
 /// Not user data, so no userId.
+/// What the server's own jobs reported (M26): the nightly backup, the monthly restore test, disk and failed services.
+/// A report that is not ok, or one that stops coming (older than maxAgeHours), is a problem: told once, and once
+/// when it is fine again.
+model HealthCheck {
+  name        String    @id
+  ok          Boolean
+  detail      String
+  reportedAt  DateTime
+  maxAgeHours Int
+  /// The last state told on Telegram: each change is told once.
+  toldProblem Boolean   @default(false)
+  toldAt      DateTime?
+
+  @@map("HealthChecks")
+}
+
 model ServiceHeartbeat {
   service    String   @id
   startedAt  DateTime

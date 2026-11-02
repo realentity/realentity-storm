@@ -6,6 +6,7 @@ import {
   parseProposalCallback,
   proposalMessage,
   sendTelegramMessage,
+  sendTelegramTyping,
   type ServerEnv,
   type TargetView,
   type TelegramMessage,
@@ -18,12 +19,15 @@ import { PrismaService } from "../database/prisma.service";
 import { FactsService } from "../facts/facts.service";
 import { ProposalsService } from "../proposals/proposals.service";
 import { RunsService } from "../runs/runs.service";
+import { parseBuilderCallback, TelegramBuilder } from "./telegram-builder";
 import { forTelegram, TELEGRAM_PROPOSAL_INCLUDE, TelegramNotices } from "./telegram-notices";
 
 /** A command sent while the bot couldn't be reached arrives late; older than this, it's dropped. */
 const MAX_COMMAND_AGE_SECONDS = 300;
 /** /inbox sends this many proposals with their buttons; more get a list. */
 const ONE_BY_ONE = 5;
+/** Telegram shows "typing…" for about five seconds: renewed while the builder works. */
+const TYPING_EVERY_MS = 4_000;
 
 const Chat = z.object({ id: z.number(), type: z.string() });
 const UpdateSchema = z.object({
@@ -57,6 +61,9 @@ const HELP = [
   "/inbox: the proposals waiting for me",
   "/pause: kill switch on (nothing runs or acts)",
   "/resume: kill switch off",
+  "/new: a new chat with the pipeline builder",
+  "/edit <pipeline>: change a pipeline with the builder",
+  "Anything else goes to the pipeline builder: say what a pipeline should do.",
 ].join("\n");
 
 /**
@@ -67,6 +74,8 @@ const HELP = [
 export class TelegramBot {
   private readonly logger = new Logger(TelegramBot.name);
   private readonly ownerId: number | null;
+  /** Builder turns answering in the background. */
+  private readonly working = new Set<Promise<void>>();
 
   constructor(
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
@@ -76,6 +85,7 @@ export class TelegramBot {
     private readonly controls: ControlsService,
     private readonly notices: TelegramNotices,
     private readonly facts: FactsService,
+    private readonly builder: TelegramBuilder,
   ) {
     this.ownerId = env.TELEGRAM_CHAT_ID ? Number(env.TELEGRAM_CHAT_ID) : null;
   }
@@ -93,6 +103,11 @@ export class TelegramBot {
     }
   }
 
+  /** Until every builder turn started so far has answered (tests, shutdown). */
+  async settled(): Promise<void> {
+    while (this.working.size > 0) await Promise.all([...this.working]);
+  }
+
   private mine(from: { id: number } | undefined, chat: { id: number; type: string } | undefined): boolean {
     return from?.id === this.ownerId && chat?.type === "private" && chat.id === this.ownerId;
   }
@@ -103,10 +118,17 @@ export class TelegramBot {
       if (await this.answer(message.reply_to_message.message_id, message.text)) return;
     }
     if (now.getTime() / 1000 - message.date > MAX_COMMAND_AGE_SECONDS) return;
-    const [word = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
+    const text = (message.text ?? "").trim();
+    const [word = "", ...rest] = text.split(/\s+/);
     const command = word.toLowerCase().replace(/@\w+$/, "");
     const userId = await this.userId();
+    if (text && !text.startsWith("/")) return this.talk(userId, text);
     switch (command) {
+      case "/new":
+        await this.builder.forget(userId);
+        return this.tell("New chat with the pipeline builder: say what the pipeline should do.");
+      case "/edit":
+        return this.editPipeline(userId, rest.join(" "));
       case "/run":
         return this.run(userId, rest.join(" "));
       case "/status":
@@ -139,17 +161,54 @@ export class TelegramBot {
     return true;
   }
 
-  private async run(userId: string, name: string): Promise<void> {
+  /**
+   * A message for the builder (M21): answered in the background, since a turn can take longer than Telegram waits
+   * for this webhook (it would send the update again). "typing…" until then.
+   */
+  private talk(userId: string, text: string): void {
+    const typing = () => void sendTelegramTyping(this.notices.config, this.notices.send).catch(() => undefined);
+    typing();
+    const timer = setInterval(typing, TYPING_EVERY_MS);
+    const turn = this.builder
+      .talk(userId, text)
+      .then((answer) => this.tell(answer))
+      .catch((error: unknown) => this.tell(`The builder didn't answer: ${reasonOf(error)}`))
+      .catch((error: unknown) => this.logger.warn(`Builder answer not sent: ${reasonOf(error)}`))
+      .finally(() => {
+        clearInterval(timer);
+        this.working.delete(turn);
+      });
+    this.working.add(turn);
+  }
+
+  private async editPipeline(userId: string, name: string): Promise<void> {
+    const pipeline = await this.pipelineNamed(userId, name, "/edit");
+    if (!pipeline) return;
+    const chat = await this.builder.edit(userId, pipeline.pipelineId);
+    await this.tell(`Talking about ${pipeline.name}${chat.currentVersion ? ` v${chat.currentVersion}` : ""}: what should change?`);
+  }
+
+  /** One of my saved pipelines by its name or the start of it; otherwise says which there are, and null. */
+  private async pipelineNamed(userId: string, name: string, command: string): Promise<{ pipelineId: string; name: string } | null> {
     const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
     const wanted = name.trim().toLowerCase();
-    if (!wanted) return this.tell(`/run <pipeline>. Pipelines: ${pipelines.map((p) => p.name).join(", ") || "none yet"}`);
+    if (!wanted) {
+      await this.tell(`${command} <pipeline>. Pipelines: ${pipelines.map((p) => p.name).join(", ") || "none yet"}`);
+      return null;
+    }
     const exact = pipelines.filter((p) => p.name.toLowerCase() === wanted);
     const found = exact.length ? exact : pipelines.filter((p) => p.name.toLowerCase().startsWith(wanted));
     if (found.length !== 1) {
       const which = found.length ? `"${name}" could be: ${found.map((p) => p.name).join(", ")}` : `No pipeline "${name}"`;
-      return this.tell(`${which}. Pipelines: ${pipelines.map((p) => p.name).join(", ") || "none yet"}`);
+      await this.tell(`${which}. Pipelines: ${pipelines.map((p) => p.name).join(", ") || "none yet"}`);
+      return null;
     }
-    const pipeline = found[0];
+    return found[0];
+  }
+
+  private async run(userId: string, name: string): Promise<void> {
+    const pipeline = await this.pipelineNamed(userId, name, "/run");
+    if (!pipeline) return;
     try {
       const run = await this.runs.start(userId, pipeline.pipelineId, false, "telegram");
       await this.say({ text: `Started ${pipeline.name}.`, buttons: this.open(`/runs/${run.runId}`, "Open the run") });
@@ -206,6 +265,16 @@ export class TelegramBot {
   private async button(query: NonNullable<Update["callback_query"]>): Promise<void> {
     if (!this.mine(query.from, query.message?.chat)) return;
     const answer = (text: string) => answerTelegramCallback(this.notices.config, query.id, text, this.notices.send);
+    const built = parseBuilderCallback(query.data ?? "");
+    if (built) {
+      try {
+        const result = await this.builder.press(await this.userId(), built);
+        if (result.message) await this.tell(result.message);
+        return answer(result.answer);
+      } catch (error) {
+        return answer(reasonOf(error).slice(0, 190));
+      }
+    }
     const callback = parseProposalCallback(query.data ?? "");
     if (!callback) return answer("Unknown button");
     const userId = await this.userId();

@@ -202,7 +202,7 @@ process.stdin.on("end", async () => {
  * A PDF's text, parsed in a child process: a PDF from a site is untrusted input, and pdf.js stays out of the worker
  * (its own worker module also loads only outside Jest's module system).
  */
-function pdfText(content: Buffer): Promise<string> {
+export function pdfText(content: Buffer): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(process.execPath, ["-e", PDF_TEXT], { timeout: PDF_TIMEOUT_MS, maxBuffer: 20 * 1_048_576, encoding: "utf8" }, (error, stdout, stderr) => {
       if (error) reject(new Error(`The PDF couldn't be read: ${stderr.trim() || error.message}`));

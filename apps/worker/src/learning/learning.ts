@@ -33,7 +33,9 @@ export const NO_LEARNING: StepLearning = {
  * Emails are rendered as the draft step shows them to the LLM (they are untrusted data there too).
  */
 export function learningContext(stepType: string, input: Record<string, unknown>): string | null {
-  if (stepType === "email.draftReply") return input.message ? emailBlock(input.message as EmailMessage) : null;
+  if (stepType === "email.draftReply" || stepType === "email.draftFollowUp") {
+    return input.message ? emailBlock(input.message as EmailMessage) : null;
+  }
   if (stepType === "llm.generate") {
     const context = input.context === undefined ? "" : `\n<context>\n${asText(input.context)}\n</context>`;
     return `<instruction>${asText(input.instruction)}</instruction>${context}`;

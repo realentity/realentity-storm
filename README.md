@@ -124,7 +124,8 @@ The builder can only use these. Each step type is a TypeScript class in the work
 
 | Group | Steps | Side effect? |
 | --- | --- | --- |
-| Email | `email.fetch`, `email.classify`, `email.draftReply`, `email.send` | `send` |
+| Email | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` | `send` |
+| Bills | `bill.read`, `bill.save` | none |
 | Browser | `browser.open`, `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent`, `browser.submit` | `fillAndSubmit`, `upload`, `submit`* |
 | LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` (named fields out of an email or page: times as ISO 8601 with their offset); `llm.score` with `outcomes: true` calibrates on my applications' outcomes (interviews, rejections, no answer in 3 weeks) | no |
 | Applications | `application.outcome`: what an email says about one of my submitted applications (replied, interview, rejected), matched by the company first; the application moves forward only, the date of each outcome kept, and `application.status` emitted | no (internal DB) |
@@ -140,6 +141,12 @@ The builder can only use these. Each step type is a TypeScript class in the work
 \* `browser.agent` sends nothing itself: what it would submit is the payload of `browser.submit`, behind a gate.
 
 New capabilities are added by writing a new step class, never by the LLM.
+
+**Follow-ups (M22):** `email.awaiting` reads the Sent folder (the one the server marks `\Sent`, else one named like it) and the inbox, read-only, and lists my emails whose thread got nothing back for `afterDays`, matched by Message-ID, In-Reply-To and References, never by subject; automatic addresses (no-reply and the like) are left out, and so is a thread with `maxFollowUps` follow-ups in a row already. Each of my emails is listed once ever, so rejecting the follow-up at the gate leaves the thread alone, and writing in it again makes it count again. `email.draftFollowUp` writes the nudge in the email's language and learns from my edits like `email.draftReply`; `email.send` sends it in the thread. See `pipelines/email-follow-ups.yaml`.
+
+**Prices (M24):** the **Prices** page keeps the products I watch: a name, a target price and its currency, and one or more shop pages (with the variant in the page's own words, `size=M, color=Black`). `price.watch` reads each page the way `shop.product` does, keeps each shop's price (a year of them), and says only what's new: a shop at or under the target (once, when it crosses), the lowest in 90 days, back in stock, naming a cheaper shop when there is one; nothing when nothing changed. The page shows each product's cheapest shop now and its price per shop over 90 days. The addresses are mine, entered on the page, so `pipelines/prices.yaml` needs no allowedDomains; each read may still go to its own shop only.
+
+**Bills (M23):** `bill.read` gives each email's text and the text of its PDF attachments (up to two, read in a child process like `file.read`) to the LLM, which says whether it is a bill (an amount to pay, not a receipt or an offer) and reads the issuer, amount, currency, due date, period and reference; it never guesses a field the text doesn't give. `bill.save` keeps them on the **Bills** page, one row per bill (the sender's domain with the reference, else the period, else the due date), so a reminder email or a retried run updates the row; it lists the new ones with a due date for `calendar.create` (a reminder 3 days before, behind its gate) and tells when a bill is more than 30% above the issuer's usual (the median of its last six). Nothing is paid: the page marks bills paid by hand. See `pipelines/bills.yaml`.
 
 **Conditions (`when`):** any step can carry `when: "{{step.field}}"`: it runs only when that value isn't empty (a non-empty list or text, true, a number other than 0); otherwise it is skipped, and so is every later step that uses its output. A watch tells me only about changes this way: `http.fetch` → `data.save` into a collection → `llm.summarize` with `when: "{{save.added}}"` → `notify.telegram` (see `pipelines/release-watch.yaml`, `pipelines/price-watch.yaml`, `pipelines/product-watch.yaml`). A run that skipped steps this way says so at the top of its page ("Done, nothing to tell: cheaper.items was empty, so tell was skipped"), with what it read where a step reports it (`shop.product`: each product's price and stock).
 
@@ -212,6 +219,7 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 - **Tells me** what a run waits for: each new proposal with **Approve / Reject / Open** (one message for a gate with more than 5), "needs you" with **Open the live view**, a broken recipe with **Open the recipe**. When I decide anywhere, the message says so and loses its buttons.
 - **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens AI ME. **Settings → Approve on Telegram** turns the buttons off.
 - **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`. Only from my private chat (`TELEGRAM_CHAT_ID` is my user id); commands older than 5 minutes are dropped.
+- **The builder (M21):** any other message goes to the pipeline builder, and its answer comes back with the proposal (what it does, when, its steps, the warnings) and Save, Dry run and Open in AI ME. The chat goes on while I'm on it (two hours); `/new` starts over, `/edit <pipeline>` talks about one pipeline. A saved pipeline is off until I press Turn on. The answer comes in the background ("typing…" meanwhile), since a turn can take longer than Telegram waits.
 
 **How it reaches AI ME,** which stays off the Internet: Telegram and webhook callers → Cloudflare (`hooks.example.com`) → the VPS's Traefik → **hooks-gateway** (checks the bot's secret path and header and my user id, or the webhook path's shape and size) → Tailscale → server `:8101`, a second Caddy site that serves only `POST /hooks/*` → the api's `/api/hooks/*`. The api checks Telegram's secret header and my user id again. The VPS can reach nothing else of AI ME.
 
@@ -320,7 +328,7 @@ All LLM work uses the Claude API (`@anthropic-ai/sdk`). The model is chosen **pe
 | --- | --- | --- |
 | Pipeline builder (chat → definition, diffs) | **Claude Opus 5.5** (`claude-opus-5-5`) | Low volume, needs careful reasoning and correct structured output |
 | Reflection (rules, pipeline improvements) | **Claude Opus 5.5** via Batch API | Runs nightly, not latency-sensitive, batch pricing |
-| `email.draftReply`, `llm.generate` (CV, cover letter), `llm.summarize` | **Claude Sonnet 5.5** (`claude-sonnet-5-5`) | Writing quality in my voice, moderate volume |
+| `email.draftReply`, `email.draftFollowUp`, `llm.generate` (CV, cover letter), `llm.summarize` | **Claude Sonnet 5.5** (`claude-sonnet-5-5`) | Writing quality in my voice, moderate volume |
 | `browser.mapForm` field mapping, `browser.agent` | **Claude Sonnet 5.5** | Good speed/intelligence balance for multi-step tool use; escalate to Opus 5.5 on repeated failure |
 | `email.classify`, `llm.classify`, `llm.score`, extraction | **Claude Haiku 5.5** (`claude-haiku-5-5`) | High volume, cheap and fast |
 
@@ -333,6 +341,8 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
 - **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices) and builder turn (`BuilderMessage.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
+- **Watching the server (M26):** the nightly backup, the monthly restore test and the host's `health-alert` (disk use, failed services, every 4 hours) report their result to AI ME (`POST /hooks/health` on the hooks-only site, with `HEALTH_REPORT_TOKEN`). A report that isn't ok, or one that stops coming (the backup after 26 hours, `health-alert` after 5, the restore test after 35 days), is told on the AI ME bot once, and once when it is fine again; the worker keeps its own watchdog. The **Health** page shows them all.
+- **Morning brief (M25):** every day at 07:30 (Europe/Sofia), on the AI ME bot: today's calendar (when Google is connected), what waits for me (proposals to approve per pipeline, runs paused in the live view), the runs that failed in the last day, and unpaid bills due within three days or overdue. A day with none of it is one line. Off in Settings.
 - **Weekly review:** Sunday 19:00 (Europe/Sofia), on the AI ME bot: the week's digest (runs, failures, what waits for me, reflection's suggestions, broken recipes, LLM cost), the budget so far, the three most expensive step types and models, application outcomes and quiet recipes. Off in Settings.
 
 **Embeddings:** Anthropic doesn't provide an embeddings model. AI ME uses **OpenAI** `text-embedding-3-large` (multilingual, Bulgarian + English) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
@@ -675,6 +685,8 @@ TELEGRAM_CHAT_ID=
 TELEGRAM_WEBHOOK_SECRET=
 # Public address of the webhooks (shown on the pipeline page)
 HOOKS_PUBLIC_URL=https://hooks.example.com/aime
+# the server's own jobs reporting to the Health page (M26)
+HEALTH_REPORT_TOKEN=
 ```
 
 ---

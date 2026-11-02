@@ -563,6 +563,133 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
   },
   {
+    type: "email.awaiting",
+    description:
+      "My sent emails that got no answer (M22): threads whose last message is mine (the Sent folder), older than " +
+      "`afterDays`, with nothing from the other side in `mailbox` since. Each of my emails is listed once ever: a " +
+      "thread comes back only when I write in it again. Draft the nudge with email.draftFollowUp (message: " +
+      "{{item.message}}) and send it with email.send to {{item.to}}, inReplyTo {{item.message.messageId}}, " +
+      "references {{item.references}}. Read-only.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      afterDays: z.number().int().min(1).max(60).default(5).describe("how long without an answer before a follow-up"),
+      lookbackDays: z.number().int().min(7).max(90).default(30).describe("sent emails older than this are left alone"),
+      mailbox: z.string().min(1).max(200).default("INBOX").describe("where answers arrive"),
+      sentMailbox: z.string().min(1).max(200).optional().describe("default: the server's Sent folder"),
+      maxFollowUps: z.number().int().min(1).max(3).default(1).describe("follow-ups in a row without an answer, at most"),
+      limit: z.number().int().min(1).max(20).default(5),
+    }),
+    output: z.object({
+      threads: z.array(
+        z.object({
+          threadId: z.string(),
+          to: z.string().describe("who my email went to (its first To)"),
+          subject: z.string(),
+          sentAt: z.string(),
+          daysWaiting: z.number().int(),
+          followUps: z.number().int().describe("follow-ups already sent in a row"),
+          message: EmailMessageSchema.describe("my email that got no answer"),
+          references: z.array(z.string()).describe("the thread so far, for email.send"),
+        }),
+      ),
+    }),
+  },
+  {
+    type: "email.draftFollowUp",
+    description:
+      "Drafts a short, polite follow-up to `message`, my own email that got no answer: in its language, asking " +
+      "whether they had a chance to look, without new facts or pressure.",
+    sideEffect: false,
+    llm: true,
+    llmOutput: true,
+    learns: "body",
+    saasSafe: true,
+    input: z.object({
+      message: EmailMessageSchema,
+      instruction: z.string().min(1).default("A short, friendly nudge: two or three sentences."),
+      daysWaiting: z.number().int().optional(),
+      signature: z.string().max(500).optional(),
+    }),
+    output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
+  },
+  {
+    type: "price.watch",
+    description:
+      "Checks the products on my Prices page (M24): each shop's page read like shop.product, its price kept per " +
+      "shop. `news`: a shop now at or under my target (once, when it crosses), the lowest in `lowestDays`, back in " +
+      "stock; `text` says so with the cheapest shop for each (empty when nothing is new, for `when`). The addresses " +
+      "are mine from the Prices page, so they need no allowedDomains. A dry run records nothing.",
+    sideEffect: false,
+    llm: true,
+    saasSafe: true,
+    reports: "report",
+    input: z.object({
+      product: z.string().min(1).max(200).optional().describe("only this product (its name); default: every enabled one"),
+      lowestDays: z.number().int().min(7).max(365).default(90),
+    }),
+    output: z.object({
+      products: Items,
+      news: Items,
+      text: z.string(),
+      problems: z.array(z.string()),
+      report: z.string(),
+    }),
+  },
+  {
+    type: "bill.read",
+    description:
+      "Reads bills out of `messages` (M23): for each email, its text and the text of its PDF attachments go to the " +
+      "LLM, which says whether it is a bill (an amount I have to pay) and reads issuer, amount, currency, due date, " +
+      "period and reference. Emails that aren't bills are dropped. Nothing is paid or saved: bill.save keeps them.",
+    sideEffect: false,
+    llm: true,
+    llmOutput: true,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      mailbox: z.string().min(1).max(200).default("INBOX").describe("where the messages are, to read their PDFs"),
+    }),
+    output: z.object({
+      bills: z.array(
+        z.object({
+          messageId: z.string(),
+          from: z.string(),
+          subject: z.string(),
+          issuer: z.string(),
+          amount: z.number(),
+          currency: z.string(),
+          dueDate: z.string().nullable().describe("YYYY-MM-DD"),
+          period: z.string().nullable().describe("YYYY-MM"),
+          reference: z.string().nullable(),
+        }),
+      ),
+      notBills: z.number().int(),
+    }),
+  },
+  {
+    type: "bill.save",
+    description:
+      "Keeps bills from bill.read on the Bills page (M23): the same bill again (same sender, reference or period) " +
+      "updates its row. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
+      "(`remindDaysBefore` days before, 09:00) for calendar.create; `jumps`: new bills more than `jumpPercent` above " +
+      "the usual (the median of the issuer's last six), and `jumpText` saying so (empty when none, for `when`).",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      bills: Items,
+      remindDaysBefore: z.number().int().min(0).max(30).default(3),
+      jumpPercent: z.number().int().min(5).max(500).default(30),
+    }),
+    output: z.object({
+      added: Items,
+      updated: Items,
+      remind: Items,
+      jumps: Items,
+      jumpText: z.string(),
+    }),
+  },
+  {
     type: "email.send",
     description:
       "Sends an email from my mailbox (SMTP); with `inReplyTo` (and the original's `references`) a reply in the same " +

@@ -157,6 +157,8 @@ describe("email steps", () => {
     const sent: OutgoingMail[] = [];
     const mail: MailConnector = {
       fetch: () => Promise.reject(new Error("unused")),
+      recent: () => Promise.reject(new Error("unused")),
+      attachments: () => Promise.reject(new Error("unused")),
       send: (_user, message) => (sent.push(message), Promise.resolve({ messageId: "<r@aime.test>", accepted: [message.to] })),
     };
     const step = new EmailSendStep(mail);

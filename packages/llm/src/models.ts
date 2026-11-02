@@ -26,6 +26,9 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "application.outcome": "classify",
   "email.classify": "classify",
   "email.draftReply": "writing",
+  "email.draftFollowUp": "writing",
+  // Amounts and dates out of a bill's text: worth the writing model.
+  "bill.read": "writing",
   reflection: "reflection",
   builder: "builder",
   // Selectors from a page outline: Sonnet does it at half Opus's price (M13 follow-up; Settings can choose Opus).

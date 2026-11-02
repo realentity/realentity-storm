@@ -90,30 +90,37 @@ function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSa
   );
 }
 
-/** M19-T4: the weekly review on the AI ME bot. */
+/** M19-T4, M25: the weekly review and the morning brief on the AI ME bot. */
 function WeeklyReview({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
   const action = useSave(onSaved);
+  const toggle = (field: "weeklyReview" | "morningBrief", label: string, hint: string) => (
+    <label className="form-check form-switch mb-2">
+      <input
+        className="form-check-input"
+        type="checkbox"
+        checked={settings[field]}
+        disabled={action.busy}
+        onChange={(e) => void action.save({ [field]: e.target.checked }, `${label} is ${e.target.checked ? "on" : "off"}`)}
+        data-testid={field === "weeklyReview" ? "weekly-review" : "morning-brief"}
+      />
+      <span className="form-check-label">{label}</span>
+      <div className="small text-secondary">{hint}</div>
+    </label>
+  );
   return (
     <div className="card">
       <div className="card-body">
         <ErrorAlert error={action.error} />
-        <label className="form-check form-switch mb-0">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            checked={settings.weeklyReview}
-            disabled={action.busy}
-            onChange={(e) =>
-              void action.save({ weeklyReview: e.target.checked }, e.target.checked ? "The weekly review is on" : "The weekly review is off")
-            }
-            data-testid="weekly-review"
-          />
-          <span className="form-check-label">Weekly review on Telegram</span>
-          <div className="small text-secondary">
-            Sunday evening: the week's runs and failures, the LLM cost against the budget, what waits for you, application outcomes,
-            broken and quiet recipes.
-          </div>
-        </label>
+        {toggle(
+          "morningBrief",
+          "Morning brief",
+          "Every day at 07:30: today's calendar, what waits for you, what failed overnight, bills due soon.",
+        )}
+        {toggle(
+          "weeklyReview",
+          "Weekly review",
+          "Sunday evening: the week's runs and failures, the LLM cost against the budget, what waits for you, application outcomes, broken and quiet recipes.",
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
-import { type ServerEnv, type WebhookView } from "@ai-me/shared";
+import { HealthReportSchema, type ServerEnv, type WebhookView } from "@ai-me/shared";
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -18,7 +19,9 @@ import { Throttle } from "@nestjs/throttler";
 import { type Request } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { CurrentUser, Public, type AuthenticatedUser } from "../auth/public.decorator";
+import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { SERVER_ENV } from "../config/server-env";
+import { HealthChecks } from "../health/health-checks";
 import { TelegramBot } from "../telegram/telegram-bot";
 import { WebhooksService } from "./webhooks.service";
 
@@ -36,7 +39,24 @@ export class HooksController {
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
     private readonly bot: TelegramBot,
     private readonly webhooks: WebhooksService,
+    private readonly health: HealthChecks,
   ) {}
+
+  /**
+   * the server's own jobs reporting (M26): the nightly backup, the restore test, disk and services. From the host, through
+   * the hooks-only site. A wrong token gets the same 404 as an unknown path.
+   */
+  @Post("health")
+  @HttpCode(204)
+  async report(
+    @Headers("x-aime-health-token") token: string | undefined,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const expected = this.env.HEALTH_REPORT_TOKEN;
+    if (!expected || !token || !timingSafeEqual(digest(token), digest(expected))) throw new NotFoundException();
+    // Checked after the token: without it, nothing about the endpoint shows.
+    await this.health.report(new ZodBodyPipe(HealthReportSchema).transform(body));
+  }
 
   /** The AI ME bot's updates. A wrong secret gets the same 404 as an unknown path. */
   @Post("telegram")

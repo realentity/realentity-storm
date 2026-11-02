@@ -280,6 +280,8 @@ export interface KillSwitchView {
 export const LLM_TASKS = [
   "email.classify",
   "email.draftReply",
+  "email.draftFollowUp",
+  "bill.read",
   "llm.classify",
   "llm.score",
   "llm.generate",
@@ -325,6 +327,8 @@ export const SettingsSchema = z
     telegramApprovals: z.boolean().optional(),
     /** The weekly review on Telegram, Sunday evening (M19-T4). */
     weeklyReview: z.boolean().optional(),
+    /** The morning brief on Telegram (M25). */
+    morningBrief: z.boolean().optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -346,6 +350,7 @@ export interface SettingsView {
   profile: string;
   telegramApprovals: boolean;
   weeklyReview: boolean;
+  morningBrief: boolean;
 }
 
 /** Where the LLM money goes (M19-T3): this month against the budget, and the last 30 days by step type and model. */

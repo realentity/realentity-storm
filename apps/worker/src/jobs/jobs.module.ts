@@ -27,13 +27,29 @@ import { coreSteps } from "../steps/core-steps";
 import { Triggers } from "../runner/triggers";
 import { JobHandlers } from "./job-handlers";
 import { ProposalNotifier } from "./proposal-notifier";
+import { MorningBrief, type TodaysEvents } from "./morning-brief";
 import { WeeklyReview } from "./weekly-review";
+import { listEvents } from "../steps/calendar-steps";
 
 /** A message to me on the AI ME bot: text, or text with buttons. */
 function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promise<void> {
   const config = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
   return async (message) => {
     await sendTelegramMessage(config, typeof message === "string" ? { text: message } : message);
+  };
+}
+
+/** Today's events for the morning brief; none when Google was never connected. */
+function calendarEvents(db: PrismaService, google: GoogleConnection): TodaysEvents {
+  return async (userId, from, to) => {
+    if (!(await db.client.googleConnection.findUnique({ where: { userId }, select: { userId: true } }))) return null;
+    const events = await listEvents(google, userId, from, to, undefined, 20);
+    return events.map((e) => ({
+      title: e.summary ?? "(no title)",
+      start: new Date(e.start?.dateTime ?? `${e.start?.date ?? ""}T00:00:00`),
+      allDay: Boolean(e.start?.date && !e.start.dateTime),
+      location: e.location ?? null,
+    }));
   };
 }
 
@@ -235,7 +251,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing, LaterStarts, RunControls],
+      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing, LaterStarts, RunControls, GoogleConnection],
       useFactory: (
         db: PrismaService,
         runner: PipelineRunner,
@@ -248,6 +264,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         keys: KeyRing,
         later: LaterStarts,
         controls: RunControls,
+        google: GoogleConnection,
       ) =>
         new JobHandlers(
           db.client,
@@ -261,6 +278,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             triggers: new Triggers(db.client, runner, queue, keys, later),
             notifier: new ProposalNotifier(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
             review: new WeeklyReview(db.client, controls, notifier(env), env.APP_ORIGIN),
+            brief: new MorningBrief(db.client, notifier(env), calendarEvents(db, google), env.APP_ORIGIN),
           },
         ),
     },

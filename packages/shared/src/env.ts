@@ -80,6 +80,8 @@ export const ServerEnvSchema = z
      * VPS. Unset: /hooks/telegram answers nothing.
      */
     TELEGRAM_WEBHOOK_SECRET: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
+    /** What the server's own jobs send with their reports (POST /hooks/health, M26). */
+    HEALTH_REPORT_TOKEN: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
     /** The public address of the webhooks, e.g. https://hooks.example.com/aime; shown on the pipeline page. */
     HOOKS_PUBLIC_URL: optional(z.url({ protocol: /^https$/ }).transform((url) => url.replace(/\/+$/, ""))),
 

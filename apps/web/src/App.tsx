@@ -3,8 +3,10 @@ import { ToastContainer } from "react-toastify";
 import { Loading } from "./components/ui";
 import { useSession } from "./context/use-session";
 import { AppLayout } from "./layout/AppLayout";
+import { BillsPage } from "./pages/BillsPage";
 import { BuilderPage } from "./pages/BuilderPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
+import { HealthPage } from "./pages/HealthPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { InboxPage } from "./pages/InboxPage";
 import { InsightPage } from "./pages/InsightPage";
@@ -13,6 +15,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { PipelineEditorPage } from "./pages/PipelineEditorPage";
 import { PipelinePage } from "./pages/PipelinePage";
 import { PipelinesPage } from "./pages/PipelinesPage";
+import { PricesPage } from "./pages/PricesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ProposalPage } from "./pages/ProposalPage";
 import { RecipePage, RecipesPage } from "./pages/RecipesPage";
@@ -49,10 +52,13 @@ export function App() {
             <Route path="insight" element={<InsightPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="rules" element={<RulesPage />} />
+            <Route path="bills" element={<BillsPage />} />
+            <Route path="prices" element={<PricesPage />} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:site/:what" element={<RecipePage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="credentials" element={<CredentialsPage />} />
+            <Route path="health" element={<HealthPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route
               path="*"

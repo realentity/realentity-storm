@@ -21,6 +21,23 @@ export interface FetchResult {
   position: MailboxPosition;
 }
 
+/** A mailbox's messages since a date, without a cursor (M22): the newest `limit`, oldest first. */
+export interface RecentRequest {
+  /** SENT_MAILBOX: the server's Sent folder. */
+  mailbox: string;
+  since: Date;
+  limit: number;
+}
+
+/** An attachment's bytes (M23: a bill's PDF). */
+export interface MailAttachment {
+  filename: string | null;
+  contentType: string;
+  content: Buffer;
+}
+
+export const SENT_MAILBOX = "\\Sent";
+
 export interface OutgoingMail {
   to: string;
   subject: string;
@@ -40,6 +57,9 @@ export interface SentMail {
  */
 export interface MailConnector {
   fetch(userId: string, request: FetchRequest): Promise<FetchResult>;
+  recent(userId: string, request: RecentRequest): Promise<EmailMessage[]>;
+  /** One message's attachments, read-only; the message whole up to `maxBytes`. */
+  attachments(userId: string, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]>;
   send(userId: string, mail: OutgoingMail): Promise<SentMail>;
 }
 

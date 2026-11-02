@@ -1,0 +1,57 @@
+import { z } from "zod";
+
+/** The DataPoint collection price.watch keeps each shop's prices in (key: watchedOfferId). */
+export const PRICE_WATCH_COLLECTION = "price-watch";
+
+const Select = z.record(z.string().trim().min(1).max(40), z.string().trim().min(1).max(80));
+
+/** A watched product as I enter it on the Prices page (M24). */
+export const WatchedProductSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    targetPrice: z.number().positive().max(10_000_000).nullable().default(null),
+    currency: z
+      .string()
+      .trim()
+      .regex(/^[A-Z]{3}$/, "a currency code, e.g. EUR")
+      .nullable()
+      .default(null),
+    enabled: z.boolean().default(true),
+    offers: z
+      .array(z.object({ url: z.url({ protocol: /^https?$/ }), select: Select.optional() }).strict())
+      .min(1)
+      .max(10),
+  })
+  .strict();
+export type WatchedProductRequest = z.input<typeof WatchedProductSchema>;
+
+export interface WatchedOfferView {
+  watchedOfferId: string;
+  url: string;
+  /** The shop's host. */
+  shop: string;
+  select: Record<string, string> | null;
+  price: number | null;
+  currency: string | null;
+  inStock: boolean | null;
+  title: string | null;
+  problem: string | null;
+  checkedAt: string | null;
+}
+
+export interface WatchedProductView {
+  watchedProductId: string;
+  name: string;
+  targetPrice: number | null;
+  currency: string | null;
+  enabled: boolean;
+  offers: WatchedOfferView[];
+  /** The lowest price now, in stock (or not known to be sold out). */
+  cheapest: WatchedOfferView | null;
+}
+
+/** A product's price history per shop, the last `days`. */
+export interface PriceHistoryView {
+  days: number;
+  offers: { watchedOfferId: string; shop: string; currency: string | null; points: { at: string; value: number }[] }[];
+}

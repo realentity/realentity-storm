@@ -112,6 +112,7 @@ export class ControlsService {
       profile: settings?.profile ?? "",
       telegramApprovals: settings?.telegramApprovals ?? true,
       weeklyReview: settings?.weeklyReview ?? true,
+      morningBrief: settings?.morningBrief ?? true,
     };
   }
 
@@ -141,6 +142,7 @@ export class ControlsService {
       ...(body.profile !== undefined ? { profile: body.profile.trim() || null } : {}),
       ...(body.telegramApprovals !== undefined ? { telegramApprovals: body.telegramApprovals } : {}),
       ...(body.weeklyReview !== undefined ? { weeklyReview: body.weeklyReview } : {}),
+      ...(body.morningBrief !== undefined ? { morningBrief: body.morningBrief } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([

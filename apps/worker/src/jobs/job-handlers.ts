@@ -6,6 +6,7 @@ import {
   QUEUES,
   REFLECTION_SCHEDULE,
   WEEKLY_REVIEW_SCHEDULE,
+  MORNING_BRIEF_SCHEDULE,
   type JobQueue,
   type LaterJob,
   type LearningJob,
@@ -25,6 +26,7 @@ import { type PipelineRunner } from "../runner/pipeline-runner";
 import { type TakeoverDesk } from "../runner/takeovers";
 import { type Triggers } from "../runner/triggers";
 import { type ProposalNotifier } from "./proposal-notifier";
+import { type MorningBrief } from "./morning-brief";
 import { type WeeklyReview } from "./weekly-review";
 
 export interface ConsumeOptions {
@@ -52,7 +54,7 @@ export class JobHandlers {
     /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
     private readonly retention?: { artifacts: ArtifactStore; days: number },
     /** M12: event and webhook triggers; proposals told on the AI ME bot. */
-    private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier; review?: WeeklyReview } = {},
+    private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier; review?: WeeklyReview; brief?: MorningBrief } = {},
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -79,7 +81,11 @@ export class JobHandlers {
       await boss.work<WebhookJob>(QUEUES.webhooks, work, async ([job]) => job && triggers.webhook(job.data));
       await boss.work<LaterJob>(QUEUES.later, work, async ([job]) => job && triggers.fireLater(job.data));
     }
-    const { review } = this.more;
+    const { review, brief } = this.more;
+    if (brief) {
+      await boss.work(QUEUES.morningBrief, work, () => brief.sendAll());
+      await boss.schedule(QUEUES.morningBrief, MORNING_BRIEF_SCHEDULE.cron, {}, { tz: MORNING_BRIEF_SCHEDULE.tz });
+    }
     if (review) {
       await boss.work(QUEUES.weeklyReview, work, () => review.sendAll());
       await boss.schedule(QUEUES.weeklyReview, WEEKLY_REVIEW_SCHEDULE.cron, {}, { tz: WEEKLY_REVIEW_SCHEDULE.tz });

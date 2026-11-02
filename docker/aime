@@ -17,6 +17,20 @@ compose() { docker compose "${files[@]}" "$@"; }
 # A value from .env, never printed.
 env_value() { grep -m1 "^$1=" "$here/../.env" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 
+# A result for AI ME's Health page (M26): POST /hooks/health on the hooks-only site, with HEALTH_REPORT_TOKEN; AI ME
+# alerts once per problem. Without the token (or AI ME down), the result goes to Telegram directly.
+#   report <name> <ok: true|false> <detail> [maxAgeHours]
+report() {
+  local token body
+  token="$(env_value HEALTH_REPORT_TOKEN || true)"
+  body="$(printf '{"name":"%s","ok":%s,"detail":"%s","maxAgeHours":%s}' "$1" "$2" "$(printf '%s' "$3" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ' | cut -c1-1900)" "${4:-26}")"
+  if [ -n "$token" ] && curl -fsS -o /dev/null --max-time 20 -X POST -H "content-type: application/json" \
+    -H "x-aime-health-token: $token" --data "$body" "${AIME_HOOKS:-http://127.0.0.1:7101}/hooks/health"; then
+    return 0
+  fi
+  if [ "$2" = "true" ]; then tell "AI ME $1 passed: $3"; else tell "AI ME $1 FAILED: $3"; fi
+}
+
 # The result on Telegram (the AI ME bot), when it is set up.
 tell() {
   local token chat
@@ -29,11 +43,14 @@ tell() {
 
 # The restore test of docs/deployment.md as one command: the newest nightly dump (or $2) into aime_restore_test,
 # the counts against the live database, the credentials opened with this ENCRYPTION_KEY, the test database dropped.
+# The restore test runs on the 1st: a report older than a month and a few days means it stopped.
+MONTH_HOURS=$((35 * 24))
+
 restore_test() {
   local dumps="${AIME_DUMPS:-/var/backups/postgres}" db=aime_restore_test dump age problems=()
   dump="${1:-$(ls -1t "$dumps"/storm-*.dump 2>/dev/null | head -n1 || true)}"
   if [ -z "$dump" ] || [ ! -f "$dump" ]; then
-    tell "AI ME restore test FAILED: no dump in $dumps"
+    report restore-test false "no dump in $dumps" "$MONTH_HOURS"
     echo "No dump in $dumps" >&2
     return 1
   fi
@@ -47,7 +64,7 @@ restore_test() {
   sql -d "$db" -c 'CREATE EXTENSION vector;' -c 'CREATE EXTENSION citext;'
   # The dumps are root's (the nightly backup's): read here, given to pg_restore on stdin.
   if ! sudo -u postgres pg_restore -d "$db" --no-owner --no-comments --role=storm_user --exit-on-error < "$dump"; then
-    tell "AI ME restore test FAILED: pg_restore failed for $(basename "$dump")"
+    report restore-test false "pg_restore failed for $(basename "$dump")" "$MONTH_HOURS"
     echo "pg_restore failed for $dump" >&2
     return 1
   fi
@@ -86,10 +103,10 @@ restore_test() {
     printf '  %s\n' "${problems[@]}" >&2
     local joined
     joined="$(printf '%s; ' "${problems[@]}")"
-    tell "AI ME restore test FAILED: ${joined%; }. $summary"
+    report restore-test false "${joined%; }. $summary" "$MONTH_HOURS"
     return 1
   fi
-  tell "AI ME restore test passed: $summary"
+  report restore-test true "$summary" "$MONTH_HOURS"
 }
 
 case "${1:-}" in

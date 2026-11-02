@@ -1,7 +1,10 @@
 import {
   IconBriefcase,
+  IconReceipt,
+  IconTag,
   IconBulb,
   IconChartBar,
+  IconHeartbeat,
   IconHistory,
   IconId,
   IconInbox,
@@ -25,11 +28,14 @@ const NAVIGATION = [
   { to: "/pipelines", label: "Pipelines", icon: IconRoute },
   { to: "/jobs", label: "Jobs", icon: IconBriefcase },
   { to: "/insight", label: "Insight", icon: IconChartBar },
+  { to: "/bills", label: "Bills", icon: IconReceipt },
+  { to: "/prices", label: "Prices", icon: IconTag },
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/rules", label: "Rules", icon: IconBulb },
   { to: "/recipes", label: "Recipes", icon: IconListSearch },
   { to: "/profile", label: "Profile", icon: IconId },
   { to: "/credentials", label: "Credentials", icon: IconKey },
+  { to: "/health", label: "Health", icon: IconHeartbeat },
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];
 

@@ -5,6 +5,8 @@ import { defaultCatalog, type EmailMessage } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
 import { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { type z } from "zod";
 import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
 import { type MailConnector } from "../src/mail/mail-connector";
@@ -13,6 +15,7 @@ import { ExecutorRegistry, NO_ATTENTION } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { coreSteps } from "../src/steps/core-steps";
 import { EmailFetchStep } from "../src/steps/email-steps";
+import { EmailAwaitingStep } from "../src/steps/follow-up-steps";
 import { APP_PASSWORD, MAILBOX, startMailServer, type TestMailServer } from "./support/greenmail";
 import { createVersion } from "./support/test-steps";
 
@@ -291,7 +294,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       const pipelineVersionId = await freshPipeline();
       await server.deliver({ from: "ana@acme.test", subject: "Interview", text: "When can we talk?" });
       let sends = 0;
-      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), send: (u, m) => (sends++, connector.send(u, m)) };
+      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), recent: (u, r) => connector.recent(u, r), attachments: (u, r) => connector.attachments(u, r), send: (u, m) => (sends++, connector.send(u, m)) };
       const run = runner(new FakeLlm(), counting);
       const runId = await run.start(pipelineVersionId, { trigger: "manual" });
       await run.advance(runId);
@@ -347,6 +350,95 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     }
     return parts.join("\n");
   }
+
+  describe("M22: follow-ups", () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const ago = (days: number) => new Date(Date.now() - days * DAY);
+    let n = 0;
+    /** A message as a server keeps it: in `mailbox`, dated `date` (my sent ones in Sent, like Gmail's). */
+    async function put(mailbox: string, m: { from?: string; to?: string; subject: string; id: string; inReplyTo?: string; references?: string[]; date: Date }) {
+      const raw = [
+        `From: ${m.from ?? MAILBOX}`,
+        `To: ${m.to ?? MAILBOX}`,
+        `Subject: ${m.subject}`,
+        `Message-ID: ${m.id}`,
+        ...(m.inReplyTo ? [`In-Reply-To: ${m.inReplyTo}`] : []),
+        ...(m.references?.length ? [`References: ${m.references.join(" ")}`] : []),
+        `Date: ${m.date.toUTCString()}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        `Message ${++n}.`,
+        "",
+      ].join("\r\n");
+      const client = new ImapFlow({ host: server.host, port: server.imapPort, secure: false, auth: { user: MAILBOX, pass: APP_PASSWORD }, logger: false });
+      await client.connect();
+      try {
+        if (!(await client.list()).some((box) => box.path === mailbox)) await client.mailboxCreate(mailbox);
+        await client.append(mailbox, raw, [], m.date);
+      } finally {
+        await client.logout();
+      }
+    }
+    const awaiting = (dryRun = false, input: Record<string, unknown> = {}) =>
+      new EmailAwaitingStep(connector, db.client).execute(
+        { afterDays: 5, lookbackDays: 30, mailbox: "INBOX", maxFollowUps: 1, limit: 5, ...input },
+        { ...baseContext(userId, randomUUID()), runId: randomUUID(), dryRun },
+      ) as Promise<{ threads: { to: string; subject: string; daysWaiting: number; followUps: number; message: EmailMessage; references: string[] }[] }>;
+
+    beforeAll(async () => {
+      // A: waits 6 days. B: answered. C: too recent. D: to a no-reply address. E: already followed up once.
+      await put("Sent", { to: "ana@acme.test", subject: "Contract proposal", id: "<a1@aime.test>", date: ago(6) });
+      await put("Sent", { to: "bob@corp.test", subject: "Invoice question", id: "<b1@aime.test>", date: ago(8) });
+      await put("INBOX", { from: "bob@corp.test", subject: "Re: Invoice question", id: "<b2@corp.test>", inReplyTo: "<b1@aime.test>", references: ["<b1@aime.test>"], date: ago(7) });
+      await put("Sent", { to: "cat@x.test", subject: "Lunch?", id: "<c1@aime.test>", date: ago(2) });
+      await put("Sent", { to: "noreply@shop.test", subject: "Order 42", id: "<d1@aime.test>", date: ago(10) });
+      await put("Sent", { to: "eve@y.test", subject: "Quote", id: "<e1@aime.test>", date: ago(20) });
+      await put("Sent", { to: "eve@y.test", subject: "Re: Quote", id: "<e2@aime.test>", inReplyTo: "<e1@aime.test>", references: ["<e1@aime.test>"], date: ago(9) });
+    });
+
+    afterEach(async () => {
+      await db.client.followUp.deleteMany();
+    });
+
+    // M22-I1, M22-I2
+    it("finds only my unanswered emails, waiting long enough, once ever; a dry run doesn't remember", async () => {
+      const dry = await awaiting(true);
+      expect(dry.threads.map((t) => [t.to, t.subject, t.daysWaiting, t.followUps])).toEqual([["ana@acme.test", "Contract proposal", 6, 0]]);
+      expect(dry.threads[0]?.references).toEqual(["<a1@aime.test>"]);
+
+      expect((await awaiting()).threads.map((t) => t.message.messageId)).toEqual(["<a1@aime.test>"]);
+      expect(await db.client.followUp.findMany({ select: { messageId: true, to: true } })).toEqual([{ messageId: "<a1@aime.test>", to: "ana@acme.test" }]);
+      // Proposed once: rejected or not, it doesn't come back.
+      expect((await awaiting()).threads).toEqual([]);
+
+      // Two follow-ups in a row allowed: E's second is due.
+      const more = await awaiting(true, { maxFollowUps: 2 });
+      expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@aime.test>", "<e2@aime.test>"]]]);
+    });
+
+    it("the follow-ups pipeline: a draft in the thread, to whom my email went, waiting at the gate", async () => {
+      const source = await readFile(join(__dirname, "../../../pipelines/email-follow-ups.yaml"), "utf8");
+      const pipelineVersionId = await createVersion(db.client, userId, source);
+      const llm = new FakeLlm(() => "Hi Ana, did you have a chance to look at my proposal? Best");
+      const steps = coreSteps({ llm, router: new ModelRouter(() => Promise.resolve(null)), telegram: {}, mail: connector, prisma: db.client });
+      const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry(steps));
+      const runId = await runner.start(pipelineVersionId, { trigger: "manual" });
+      await expect(runner.advance(runId)).resolves.toBe("WAITING_FOR_USER");
+
+      const proposals = await db.client.proposal.findMany({ where: { runId } });
+      expect(proposals.map((p) => p.originalPayload)).toEqual([
+        {
+          to: "ana@acme.test",
+          subject: "Re: Contract proposal",
+          body: "Hi Ana, did you have a chance to look at my proposal? Best",
+          inReplyTo: "<a1@aime.test>",
+          references: ["<a1@aime.test>"],
+        },
+      ]);
+      expect(llm.requests[0]?.system).toContain("an email I sent that got no answer");
+    });
+  });
 
   async function seenFlags(): Promise<boolean[]> {
     const client = new ImapFlow({

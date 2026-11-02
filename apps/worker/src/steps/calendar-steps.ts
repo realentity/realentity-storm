@@ -130,7 +130,7 @@ export class CalendarCreateStep implements StepExecutor {
   }
 }
 
-async function listEvents(google: GoogleConnection, userId: string, from: Date, to: Date, query: string | undefined, max: number): Promise<GoogleEvent[]> {
+export async function listEvents(google: GoogleConnection, userId: string, from: Date, to: Date, query: string | undefined, max: number): Promise<GoogleEvent[]> {
   const { body } = await google.call<{ items?: GoogleEvent[] }>(userId, "GET", "/calendars/primary/events", {
     timeMin: from.toISOString(),
     timeMax: to.toISOString(),

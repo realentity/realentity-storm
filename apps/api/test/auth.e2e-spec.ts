@@ -25,12 +25,13 @@ describe("auth", () => {
   // route is covered without being listed here (the WebSocket is covered in events.e2e-spec).
   it("rejects every other route without a session", async () => {
     // The hooks (M12) take no session: each call carries its own secret, and without it they answer 404.
-    const HOOKS = ["POST /api/hooks/telegram", "POST /api/hooks/:webhookId"];
+    const HOOKS = ["POST /api/hooks/telegram", "POST /api/hooks/health", "POST /api/hooks/:webhookId"];
     // Google's way back (M14): the browser comes from accounts.google.com without the strict cookie; only a sign-in
     // started here (its one-time state) does anything.
     const GOOGLE = ["GET /api/google/callback"];
     const PUBLIC = ["GET /api/health", "POST /api/auth/login", ...HOOKS, ...GOOGLE];
     await http().post("/api/hooks/telegram").send({}).expect(404);
+    await http().post("/api/hooks/health").send({}).expect(404);
     expect((await http().get("/api/google/callback?code=x&state=made-up").expect(302)).headers.location).toMatch(/^\/settings\?google=the%20sign-in%20expired/);
     await http().post(`/api/hooks/${"A".repeat(43)}`).send({}).expect(404);
     const routes = registeredRoutes(api);

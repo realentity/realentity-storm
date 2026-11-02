@@ -16,6 +16,7 @@ import { emailSteps } from "./email-steps";
 import { FillAndSubmitStep, MapFormStep, type FormDependencies } from "./form-steps";
 import { HistoryStep } from "./history-step";
 import { HttpFetchStep, type HttpFetchOptions } from "./http-steps";
+import { PriceWatchStep } from "./price-steps";
 import { ProductStep } from "./product-step";
 import { FlowCancelStep, FlowLaterStep } from "./flow-steps";
 import { ClassifyStep, ExtractStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
@@ -52,13 +53,15 @@ export interface CoreStepDependencies {
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
 export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
   const telegram = new TelegramStep(deps.telegram, deps.fetch);
+  const product = new ProductStep(deps.llm, deps.router, deps.http, deps.browser?.pool);
   return [
     new DedupeStep(deps.prisma),
     new FilterStep(),
     new SaveStep(deps.prisma),
     new HistoryStep(deps.prisma),
     new HttpFetchStep(deps.prisma, deps.http),
-    new ProductStep(deps.llm, deps.router, deps.http, deps.browser?.pool),
+    product,
+    new PriceWatchStep(deps.prisma, product),
     new ClassifyStep(deps.llm, deps.router, deps.learning),
     new ScoreStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new ApplicationOutcomeStep(deps.prisma, deps.llm, deps.router, deps.learning),

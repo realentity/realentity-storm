@@ -1,0 +1,33 @@
+# M23: bills from email (the text or a PDF): kept on the Bills page, a calendar reminder 3 days before each is
+# due (after Act at the gate, like every event), and a message when one is much higher than usual. Nothing is paid.
+name: Bills
+description: Bills from email, kept with a reminder before they're due.
+trigger: { schedule: "0 8,18 * * *", tz: Europe/Sofia }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 7 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: "bill: an invoice, a utility or phone bill, or a payment request with an amount for me to pay"
+  - id: read
+    type: bill.read
+    when: "{{triage.kept}}"
+    with: { messages: "{{triage.kept}}" }
+  - id: save
+    type: bill.save
+    with: { bills: "{{read.bills}}", remindDaysBefore: 3, jumpPercent: 30 }
+  - id: remind
+    type: calendar.create
+    forEach: "{{save.remind}}"
+    with:
+      title: "{{item.title}}"
+      start: "{{item.remindAt}}"
+      durationMinutes: 15
+      description: "{{item.subject}}"
+  - id: jump
+    type: notify.telegram
+    when: "{{save.jumpText}}"
+    with: { text: "{{save.jumpText}}" }

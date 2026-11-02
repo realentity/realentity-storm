@@ -36,5 +36,6 @@ import { BUILDER_LLM, BuilderService } from "./builder.service";
     },
     BuilderService,
   ],
+  exports: [BuilderService],
 })
 export class BuilderModule {}

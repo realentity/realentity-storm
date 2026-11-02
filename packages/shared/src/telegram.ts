@@ -54,6 +54,11 @@ export async function answerTelegramCallback(config: TelegramConfig, callbackQue
   await callTelegram(config, "answerCallbackQuery", { callback_query_id: callbackQueryId, ...(text ? { text } : {}) }, send);
 }
 
+/** "typing…" in the chat for about five seconds, while a slow answer is on its way. */
+export async function sendTelegramTyping(config: TelegramConfig, send: typeof fetch = fetch): Promise<void> {
+  await callTelegram(config, "sendChatAction", { chat_id: config.chatId, action: "typing" }, send);
+}
+
 async function callTelegram(config: TelegramConfig, method: string, body: Record<string, unknown>, send: typeof fetch): Promise<unknown> {
   const { botToken, chatId } = config;
   if (!botToken || !chatId) throw new Error("Telegram is not configured (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)");

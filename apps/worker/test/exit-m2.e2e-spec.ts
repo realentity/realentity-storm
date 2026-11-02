@@ -65,7 +65,7 @@ describe("M2 exit criteria", () => {
       router: new ModelRouter(() => Promise.resolve(null)),
       telegram: { botToken: "123:test-token", chatId: "42" },
       fetch: telegram,
-      mail: { fetch: () => Promise.reject(new Error("no mail here")), send: () => Promise.reject(new Error("no mail here")) },
+      mail: { fetch: () => Promise.reject(new Error("no mail here")), recent: () => Promise.reject(new Error("no mail here")), attachments: () => Promise.reject(new Error("no mail here")), send: () => Promise.reject(new Error("no mail here")) },
       prisma: db.client,
     });
     return new JobHandlers(db.client, new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry(steps)), queue);

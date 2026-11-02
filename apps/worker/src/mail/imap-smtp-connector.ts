@@ -10,9 +10,12 @@ import {
   withoutSecret,
   type FetchRequest,
   type FetchResult,
+  type MailAttachment,
   type MailConnector,
   type OutgoingMail,
+  type RecentRequest,
   type SentMail,
+  SENT_MAILBOX,
 } from "./mail-connector";
 
 export interface MailServerConfig {
@@ -40,7 +43,35 @@ export class ImapSmtpConnector implements MailConnector {
     private readonly vault: CredentialVault,
   ) {}
 
-  async fetch(userId: string, request: FetchRequest): Promise<FetchResult> {
+  async recent(userId: string, request: RecentRequest): Promise<EmailMessage[]> {
+    return this.imap(userId, async (client) => {
+      const name = request.mailbox === SENT_MAILBOX ? await sentMailbox(client) : request.mailbox;
+      const lock = await client.getMailboxLock(name, { readOnly: true });
+      try {
+        const found = (await client.search({ since: request.since }, { uid: true })) || [];
+        return await fetchMessages(client, found.sort((a, b) => a - b).slice(-request.limit));
+      } finally {
+        lock.release();
+      }
+    });
+  }
+
+  async attachments(userId: string, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]> {
+    return this.imap(userId, async (client) => {
+      const lock = await client.getMailboxLock(request.mailbox, { readOnly: true });
+      try {
+        const fetched = await client.fetchOne(String(request.uid), { source: { maxLength: request.maxBytes } }, { uid: true });
+        if (!fetched || !fetched.source) throw new Error(`No message ${request.uid} in ${request.mailbox}`);
+        const parsed = await simpleParser(fetched.source, { skipImageLinks: true, skipTextToHtml: true });
+        return parsed.attachments.map((a) => ({ filename: a.filename ?? null, contentType: a.contentType, content: a.content }));
+      } finally {
+        lock.release();
+      }
+    });
+  }
+
+  /** A read-only IMAP session; errors without the password. */
+  private async imap<T>(userId: string, work: (client: ImapFlow) => Promise<T>): Promise<T> {
     const host = this.config.imapHost;
     if (!host) throw new Error("Mail is not configured (IMAP_HOST)");
     const login = await this.login(userId, host);
@@ -56,6 +87,16 @@ export class ImapSmtpConnector implements MailConnector {
     });
     try {
       await client.connect();
+      return await work(client);
+    } catch (error) {
+      throw new Error(`IMAP: ${withoutSecret(message(error), login.pass)}`);
+    } finally {
+      await client.logout().catch(() => client.close());
+    }
+  }
+
+  async fetch(userId: string, request: FetchRequest): Promise<FetchResult> {
+    return this.imap(userId, async (client) => {
       // Read-only: EXAMINE, so even fetching a body doesn't set \Seen.
       const lock = await client.getMailboxLock(request.mailbox, { readOnly: true });
       try {
@@ -71,29 +112,14 @@ export class ImapSmtpConnector implements MailConnector {
           .filter((uid) => uid > floor)
           .sort((a, b) => a - b)
           .slice(0, request.limit);
-
-        const messages: EmailMessage[] = [];
-        if (uids.length > 0) {
-          for await (const message of client.fetch(
-            uids,
-            { uid: true, bodyStructure: true, internalDate: true, source: { maxLength: SOURCE_LIMIT } },
-            { uid: true },
-          )) {
-            messages.push(await toEmailMessage(message));
-          }
-        }
-        messages.sort((a, b) => a.uid - b.uid);
+        const messages = await fetchMessages(client, uids);
         // Next time: after the last message returned, or (nothing new) after everything the mailbox has now.
         const lastUid = uids.length > 0 ? uids[uids.length - 1] : Math.max(floor, mailbox.uidNext - 1);
         return { messages, position: { uidValidity: mailbox.uidValidity, lastUid } };
       } finally {
         lock.release();
       }
-    } catch (error) {
-      throw new Error(`IMAP: ${withoutSecret(message(error), login.pass)}`);
-    } finally {
-      await client.logout().catch(() => client.close());
-    }
+    });
   }
 
   async send(userId: string, mail: OutgoingMail): Promise<SentMail> {
@@ -132,6 +158,30 @@ export class ImapSmtpConnector implements MailConnector {
     if (!credential.username) throw new Error(`Credential "${this.config.credential}" needs a username: the email address`);
     return { user: credential.username, pass: credential.secret };
   }
+}
+
+/** The messages with these UIDs, in UID order. */
+async function fetchMessages(client: ImapFlow, uids: number[]): Promise<EmailMessage[]> {
+  const messages: EmailMessage[] = [];
+  if (uids.length === 0) return messages;
+  for await (const message of client.fetch(
+    uids,
+    { uid: true, bodyStructure: true, internalDate: true, source: { maxLength: SOURCE_LIMIT } },
+    { uid: true },
+  )) {
+    messages.push(await toEmailMessage(message));
+  }
+  return messages.sort((a, b) => a.uid - b.uid);
+}
+
+/** The Sent folder: the one the server marks \\Sent, else one named like it. */
+async function sentMailbox(client: ImapFlow): Promise<string> {
+  const boxes = await client.list();
+  const marked = boxes.find((box) => box.specialUse === SENT_MAILBOX);
+  if (marked) return marked.path;
+  const named = boxes.find((box) => /^(sent|sent items|sent messages|\[gmail\]\/sent mail)$/i.test(box.path));
+  if (named) return named.path;
+  throw new Error("No Sent folder: set sentMailbox");
 }
 
 async function toEmailMessage(fetched: FetchMessageObject): Promise<EmailMessage> {
