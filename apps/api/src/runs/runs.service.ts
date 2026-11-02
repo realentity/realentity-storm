@@ -2,6 +2,7 @@ import { type Prisma, type Takeover } from "@ai-me/db";
 import { JobQueue } from "@ai-me/queue";
 import {
   type CompiledDefinition,
+  type CostsView,
   type RunDetailView,
   type RetryView,
   type RunFilter,
@@ -19,6 +20,9 @@ import { EventsService } from "../events/events.service";
 import { questionView } from "../facts/facts.service";
 import { PROPOSAL_INCLUDE, proposalView } from "../proposals/proposal-view";
 import { runCosts } from "./run-costs";
+
+/** The Costs page lists at most this many runs, newest first. */
+const COSTS_LIMIT = 2000;
 
 const RUN_INCLUDE = {
   pipelineVersion: { select: { pipelineId: true, version: true, pipeline: { select: { name: true } } } },
@@ -103,6 +107,47 @@ export class RunsService {
     });
     const costs = await runCosts(this.prisma, runs.map((r) => r.runId));
     return runs.map((run) => runSummary(run, costs.get(run.runId) ?? 0));
+  }
+
+  /** M28: every run of the last `days` (up to COSTS_LIMIT, newest first), with the steps that called the LLM. */
+  async costs(userId: string, days: number, now = new Date()): Promise<CostsView> {
+    const since = new Date(now.getTime() - days * 86_400_000);
+    const runs = await this.prisma.client.run.findMany({
+      where: { userId, startedAt: { gte: since } },
+      include: {
+        ...RUN_INCLUDE,
+        steps: {
+          select: { stepKey: true, itemIndex: true, type: true, llmUsage: true },
+          orderBy: [{ startedAt: { sort: "asc", nulls: "last" } }, { itemIndex: "asc" }],
+        },
+      },
+      orderBy: [{ startedAt: "desc" }, { runId: "desc" }],
+      take: COSTS_LIMIT + 1,
+    });
+    return {
+      days,
+      since: since.toISOString(),
+      limit: COSTS_LIMIT,
+      truncated: runs.length > COSTS_LIMIT,
+      runs: runs.slice(0, COSTS_LIMIT).map((run) => {
+        const steps = run.steps.flatMap((s) => {
+          const usage = stepUsage(s.llmUsage);
+          return usage ? [{ stepKey: s.stepKey, itemIndex: s.itemIndex, type: s.type, ...usage }] : [];
+        });
+        return {
+          runId: run.runId,
+          pipelineId: run.pipelineVersion.pipelineId,
+          pipelineName: run.pipelineVersion.pipeline.name,
+          version: run.pipelineVersion.version,
+          trigger: run.trigger,
+          dryRun: run.dryRun,
+          status: run.status,
+          startedAt: run.startedAt.toISOString(),
+          costUsd: Math.round(steps.reduce((sum, s) => sum + s.costUsd, 0) * 1_000_000) / 1_000_000,
+          steps,
+        };
+      }),
+    };
   }
 
   /**
@@ -218,6 +263,8 @@ function stepUsage(value: Prisma.JsonValue): StepUsageView | null {
     calls: count("calls"),
     inputTokens: count("inputTokens"),
     outputTokens: count("outputTokens"),
+    cacheReadTokens: count("cacheReadTokens"),
+    cacheWriteTokens: count("cacheWriteTokens"),
     costUsd: count("costUsd"),
   };
 }

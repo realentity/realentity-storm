@@ -4,6 +4,7 @@ import {
   IconTag,
   IconBulb,
   IconChartBar,
+  IconCoin,
   IconHeartbeat,
   IconHistory,
   IconId,
@@ -36,6 +37,7 @@ const NAVIGATION = [
   { to: "/recipes", label: "Recipes", icon: IconListSearch },
   { to: "/profile", label: "Profile", icon: IconId },
   { to: "/credentials", label: "Credentials", icon: IconKey },
+  { to: "/costs", label: "Costs", icon: IconCoin },
   { to: "/health", label: "Health", icon: IconHeartbeat },
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];

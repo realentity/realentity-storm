@@ -1,5 +1,8 @@
 import {
+  CostsQuerySchema,
   RunFilterSchema,
+  type CostsQuery,
+  type CostsView,
   StartRunSchema,
   type RunDetailView,
   type RunFilter,
@@ -30,6 +33,12 @@ export class RunsController {
   @Get("runs")
   list(@CurrentUser() user: AuthenticatedUser, @Query(new ZodBodyPipe(RunFilterSchema)) filter: RunFilter): Promise<RunSummaryView[]> {
     return this.runs.list(user.userId, filter);
+  }
+
+  /** M28: every run of the last `days` with its LLM steps (the Costs page). */
+  @Get("costs")
+  costs(@CurrentUser() user: AuthenticatedUser, @Query(new ZodBodyPipe(CostsQuerySchema)) query: CostsQuery): Promise<CostsView> {
+    return this.runs.costs(user.userId, query.days);
   }
 
   /** M17-T1: a failed run goes on from its failed steps (not a failed side effect). */

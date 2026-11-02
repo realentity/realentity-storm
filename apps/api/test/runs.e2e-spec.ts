@@ -3,6 +3,7 @@ import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { QUEUES } from "@ai-me/queue";
 import {
   type KillSwitchView,
+  type CostsView,
   type PipelineDetailView,
   type ProposalView,
   type RunDetailView,
@@ -355,6 +356,8 @@ describe("runs, proposals and controls", () => {
         calls: 2,
         inputTokens: 1000,
         outputTokens: 200,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
         costUsd: 0.0002,
       });
     });
@@ -590,6 +593,34 @@ describe("runs, proposals and controls", () => {
       expect(((await agent.get("/api/settings").expect(200)).body as SettingsView).weeklyReview).toBe(true);
       expect(((await agent.put("/api/settings").send({ weeklyReview: false }).expect(200)).body as SettingsView).weeklyReview).toBe(false);
       await agent.put("/api/settings").send({ weeklyReview: true, monthlyBudgetUsd: null }).expect(200);
+    });
+
+    // M28-I1
+    it("Costs: every run of the window with its LLM steps (items, cache tokens); runs without LLM calls too; older runs left out", async () => {
+      const pipeline = await createPipeline();
+      const runId = await finished(pipeline, "DONE", [
+        ["search", "test.search", "DONE", 0],
+        ["score", "llm.score", "DONE", 0.5],
+      ]);
+      await db.client.step.create({
+        data: { runId, stepKey: "draft", itemIndex: 1, type: "llm.generate", status: "DONE", startedAt: new Date(Date.now() + 1000), llmUsage: { ...usage(0.25), cacheReadTokens: 900, cacheWriteTokens: 50 } },
+      });
+      const dry = await finished(pipeline, "DONE", [["search", "test.search", "DONE", 0]], true);
+      const old = await finished(pipeline, "DONE", [["score", "llm.score", "DONE", 9]]);
+      await db.client.run.update({ where: { runId: old }, data: { startedAt: new Date(Date.now() - 10 * 86_400_000) } });
+
+      const costs = (await agent.get("/api/costs?days=7").expect(200)).body as CostsView;
+      expect(costs).toMatchObject({ days: 7, truncated: false });
+      expect(costs.runs.map((r) => [r.runId, r.dryRun, r.costUsd]).sort()).toEqual([[dry, true, 0], [runId, false, 0.75]].sort());
+      const paid = costs.runs.find((r) => r.runId === runId)!;
+      expect(paid).toMatchObject({ pipelineName: "Replies", version: 1, status: "DONE" });
+      expect(paid.steps).toEqual([
+        { stepKey: "score", itemIndex: null, type: "llm.score", models: ["claude-sonnet-5-5"], calls: 1, inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.5 },
+        { stepKey: "draft", itemIndex: 1, type: "llm.generate", models: ["claude-sonnet-5-5"], calls: 1, inputTokens: 1000, outputTokens: 100, cacheReadTokens: 900, cacheWriteTokens: 50, costUsd: 0.25 },
+      ]);
+
+      expect(((await agent.get("/api/costs").expect(200)).body as CostsView).runs).toHaveLength(3);
+      await agent.get("/api/costs?days=0").expect(400);
     });
 
     it("cost: per run in the runs list; per pipeline the last 30 days, per run, and per month on its schedule", async () => {

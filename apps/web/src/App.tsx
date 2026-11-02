@@ -5,6 +5,7 @@ import { useSession } from "./context/use-session";
 import { AppLayout } from "./layout/AppLayout";
 import { BillsPage } from "./pages/BillsPage";
 import { BuilderPage } from "./pages/BuilderPage";
+import { CostsPage } from "./pages/CostsPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { HealthPage } from "./pages/HealthPage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -60,6 +61,7 @@ export function App() {
             <Route path="recipes/:site/:what" element={<RecipePage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="credentials" element={<CredentialsPage />} />
+            <Route path="costs" element={<CostsPage />} />
             <Route path="health" element={<HealthPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="v/:pipelineId" element={<ViewPage />} />

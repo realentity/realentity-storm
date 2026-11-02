@@ -145,7 +145,43 @@ export interface StepUsageView {
   calls: number;
   inputTokens: number;
   outputTokens: number;
+  /** Prompt tokens read from the cache (a tenth of the input price, or less) and written to it (1.25×). */
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   costUsd: number;
+}
+
+/** Costs (M28): every run of the last `days`, with its LLM steps, to see where the money goes and copy it out. */
+export const CostsQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }).strict();
+export type CostsQuery = z.infer<typeof CostsQuerySchema>;
+
+export interface CostsView {
+  days: number;
+  since: string;
+  /** Only the newest this many runs are listed; `truncated` says there were more. */
+  limit: number;
+  truncated: boolean;
+  runs: RunCostView[];
+}
+
+export interface RunCostView {
+  runId: string;
+  pipelineId: string;
+  pipelineName: string;
+  version: number;
+  trigger: string;
+  dryRun: boolean;
+  status: RunStatusName;
+  startedAt: string;
+  costUsd: number;
+  /** The steps that called the LLM, in the order they started. */
+  steps: StepCostView[];
+}
+
+export interface StepCostView extends StepUsageView {
+  stepKey: string;
+  itemIndex: number | null;
+  type: string;
 }
 
 export interface RunDetailView extends RunSummaryView {

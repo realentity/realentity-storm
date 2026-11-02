@@ -4,6 +4,7 @@ import {
   type WatchedProductRequest,
   type WatchedProductView,
   type BillsView,
+  type CostsView,
   type BillView,
   type ApplicationView,
   type ApproveProposalRequest,
@@ -145,6 +146,9 @@ export const api = {
     update: (id: string, body: WatchedProductRequest) => request<WatchedProductView>("PUT", `/prices/${id}`, body),
     remove: (id: string) => request<void>("DELETE", `/prices/${id}`),
     history: (id: string) => request<PriceHistoryView>("GET", `/prices/${id}/history`),
+  },
+  costs: {
+    get: (days: number) => request<CostsView>("GET", `/costs?days=${days}`),
   },
   health: {
     get: () => request<HealthView>("GET", "/health/checks"),
