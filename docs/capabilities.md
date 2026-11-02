@@ -327,9 +327,10 @@ steps:
 
 #### `db.query`
 Reads a PostgreSQL database with one SQL query; the rows become `items` (column names as fields, counts as numbers,
-dates as ISO text). `connection` is a database credential: on the Credentials page, kind *database*, the secret a
-connection URL (`postgresql://reader:password@host:5432/app`) and its host as the allowed host (a name, a tailnet
-name, an IP address or a Docker service such as `postgres`). It is read-only whatever the user may do: the query runs
+dates as ISO text). `connection` is a database credential: on the Credentials page, kind *database*, and one field,
+the connection string (`postgresql://reader:password@host:5432/app`). The form shows what it connects to (database,
+host, port, user; never the password), and its host becomes the only one it may connect to: a name, a tailnet name,
+an IP address or a Docker service such as `postgres`. Another server is another credential. It is read-only whatever the user may do: the query runs
 as a subquery (so only `SELECT`, `VALUES` or `WITH … SELECT` fit), as one statement, in a read-only transaction that
 is rolled back, and is stopped after `timeoutSeconds`. Still, give it a database user that may only read.
 - In: `connection` (`{{cred:name}}`), `sql`, `params` (the values of `$1`, `$2`, …; never paste values into the SQL),

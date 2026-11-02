@@ -1,7 +1,7 @@
 import { KeyRing, seal } from "@ai-me/crypto";
 import { Prisma } from "@ai-me/db";
-import { type CreateCredentialRequest, type CredentialView } from "@ai-me/shared";
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { CredentialKind, databaseProblem, type CreateCredentialRequest, type CredentialView } from "@ai-me/shared";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 
@@ -65,6 +65,10 @@ export class CredentialsService {
   /** Seals a new value for the same row (new data key, current key version). */
   async replaceSecret(userId: string, credentialId: string, secret: string): Promise<CredentialView> {
     await this.requireOwned(userId, credentialId);
+    const { kind, allowedHosts } = await this.prisma.client.credential.findUniqueOrThrow({ where: { credentialId }, select: { kind: true, allowedHosts: true } });
+    // A database's new connection string stays on its hosts (M29-T7): another server is another credential.
+    const problem = kind === CredentialKind.DATABASE ? databaseProblem(secret, allowedHosts) : null;
+    if (problem) throw new BadRequestException({ message: "Validation failed", errors: [{ path: "", message: problem }] });
     const row = await this.prisma.client.credential.update({
       where: { credentialId },
       data: { ...seal(this.keys, credentialId, secret) },

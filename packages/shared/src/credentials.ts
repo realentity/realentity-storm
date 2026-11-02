@@ -20,14 +20,32 @@ export const HOST_PATTERN = /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z
  */
 export const CREDENTIAL_HOST = new RegExp(`${HOST_PATTERN.source}|^(\\d{1,3}\\.){3}\\d{1,3}$|^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`);
 
-/** The host of a PostgreSQL connection URL, lowercase; null when it isn't one. */
-export function databaseHost(url: string): string | null {
+/** What a PostgreSQL connection URL connects to, without its password; null when it isn't one. */
+export function databaseConnection(url: string): { host: string; port: number; database: string | null; user: string | null } | null {
   try {
-    const parsed = new URL(url);
-    return ["postgres:", "postgresql:"].includes(parsed.protocol) && parsed.hostname ? parsed.hostname.toLowerCase() : null;
+    const parsed = new URL(url.trim());
+    if (!["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname) return null;
+    return {
+      host: parsed.hostname.toLowerCase(),
+      port: parsed.port ? Number(parsed.port) : 5432,
+      database: decodeURIComponent(parsed.pathname.replace(/^\//, "")) || null,
+      user: parsed.username ? decodeURIComponent(parsed.username) : null,
+    };
   } catch {
     return null;
   }
+}
+
+/** The host of a PostgreSQL connection URL, lowercase; null when it isn't one. */
+export function databaseHost(url: string): string | null {
+  return databaseConnection(url)?.host ?? null;
+}
+
+/** Why a DATABASE credential's value can't be stored with these hosts; null when it can. Never quotes the value. */
+export function databaseProblem(secret: string, allowedHosts: readonly string[]): string | null {
+  const host = databaseHost(secret);
+  if (!host) return "the connection string must be a URL: postgresql://user:password@host:5432/database";
+  return allowedHosts.includes(host) ? null : `the database's host (${host}) must be one of its allowed hosts`;
 }
 
 /** A credential name as referenced in pipelines: {{cred:<name>}}. */
@@ -53,9 +71,8 @@ export const CreateCredentialSchema = z
   .superRefine((credential, issues) => {
     if (credential.kind !== CredentialKind.DATABASE) return;
     // Never the value in the message: only what is wrong with it.
-    const host = databaseHost(credential.secret);
-    if (!host) issues.addIssue({ code: "custom", path: [], message: "the secret must be a connection URL: postgresql://user:password@host:5432/database" });
-    else if (!credential.allowedHosts.includes(host)) issues.addIssue({ code: "custom", path: ["allowedHosts"], message: `the database's host (${host}) must be one of them` });
+    const problem = databaseProblem(credential.secret, credential.allowedHosts);
+    if (problem) issues.addIssue({ code: "custom", path: [], message: problem });
   });
 export type CreateCredentialRequest = z.infer<typeof CreateCredentialSchema>;
 

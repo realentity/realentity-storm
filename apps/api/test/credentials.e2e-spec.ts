@@ -84,11 +84,20 @@ describe("credentials", () => {
     await database(`postgresql://reader:${password}@postgres:5432/app`, ["postgres"]).expect(201);
     await database(`postgres://reader:${password}@100.101.102.103/app`, ["100.101.102.103"]).expect(201);
     const elsewhere = await database(`postgresql://reader:${password}@db.example.com/app`, ["postgres"]).expect(400);
-    expect(JSON.stringify(elsewhere.body)).toContain("the database's host (db.example.com) must be one of them");
+    expect(JSON.stringify(elsewhere.body)).toContain("the database's host (db.example.com) must be one of its allowed hosts");
     expectNoSecret(elsewhere.body, password);
     const notUrl = await database(`host=postgres password=${password}`, ["postgres"]).expect(400);
-    expect(JSON.stringify(notUrl.body)).toContain("a connection URL");
+    expect(JSON.stringify(notUrl.body)).toContain("the connection string must be a URL");
     expectNoSecret(notUrl.body, password);
+
+    // Replacing it: still a connection string, still on its host.
+    const stored = (await database(`postgresql://reader:${password}@postgres:5432/app`, ["postgres"]).expect(201)).body as { credentialId: string };
+    const replace = (secret: string) => agent.put(`/api/credentials/${stored.credentialId}/secret`).send({ secret });
+    await replace(`postgresql://reader:new-${password}@postgres:5432/app`).expect(200);
+    const moved = await replace(`postgresql://reader:${password}@db.example.com/app`).expect(400);
+    expect(JSON.stringify(moved.body)).toContain("the database's host (db.example.com) must be one of its allowed hosts");
+    expectNoSecret(moved.body, password);
+    await replace("not a url").expect(400);
   });
 
   it("does not touch another user's credentials", async () => {

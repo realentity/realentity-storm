@@ -44,3 +44,35 @@ test("the credentials page never displays a stored value (DOM and network)", asy
   expect(everything).not.toContain(secret);
   expect(everything).not.toContain(replacement);
 });
+
+// M29: a database is one connection string; its host becomes the allowed host
+test("a database credential: one connection string, checked as it is typed, its host the allowed host", async ({ page }) => {
+  const name = `e2e-db-${Date.now().toString(36)}`;
+  const password = `e2e-DBPASS-${Date.now()}`;
+  await page.goto("/credentials");
+  await page.getByTestId("add-credential").click();
+  const form = page.getByTestId("credential-form");
+  await form.getByLabel("Name", { exact: true }).fill(name);
+  await form.getByLabel("Kind").selectOption("DATABASE");
+  await expect(form.getByLabel("Allowed hosts")).toHaveCount(0);
+  await expect(form.getByLabel("Username (optional)")).toHaveCount(0);
+
+  const connection = form.getByLabel("Connection string");
+  await connection.fill("host=postgres dbname=app");
+  await expect(form).toContainText("Not a connection string");
+  await expect(form.getByRole("button", { name: "Store" })).toBeDisabled();
+  await connection.fill(`postgresql://reader:${password}@storm.example.ts.net:5433/shop`);
+  await expect(page.getByTestId("connection-hint")).toHaveText("Connects to database shop on storm.example.ts.net:5433 as reader, and nowhere else.");
+  await page.screenshot({ path: "test-results/credential-database.png" });
+  await form.getByRole("button", { name: "Store" }).click();
+
+  const row = page.getByTestId("credentials").locator("tr", { hasText: name });
+  await expect(row).toContainText("database");
+  await expect(row).toContainText("storm.example.ts.net");
+
+  await row.getByRole("button", { name: "Replace" }).click();
+  await page.getByLabel("New connection string").fill(`postgresql://reader:${password}@elsewhere.example.org/shop`);
+  await expect(page.getByTestId("connection-hint")).toContainText("not storm.example.ts.net. Another server is another credential.");
+  // The preview names the server, never the password.
+  await expect(page.getByTestId("connection-hint")).not.toContainText(password);
+});
