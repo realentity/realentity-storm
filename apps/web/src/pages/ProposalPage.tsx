@@ -1,5 +1,5 @@
 import { canonicalJson, type ProposalView, type TargetView } from "@ai-me/shared";
-import { IconAlertTriangle, IconBolt, IconPencil, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowBackUp, IconBolt, IconPencil, IconX } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -57,7 +57,7 @@ export function ProposalPage() {
         </div>
         <div className="col-lg-4 d-flex flex-column gap-3">
           {p.kind === "act" && <Targets targets={p.targets} />}
-          <Decision proposal={p} />
+          <Decision proposal={p} onUndone={proposal.reload} />
           {p.reasoning && (
             <div className="card card-sm">
               <div className="card-body">
@@ -112,15 +112,38 @@ function basisText(basis: TargetView["basis"]): string {
   return "not allowed yet";
 }
 
-function Decision({ proposal }: { proposal: ProposalView }) {
+/** My decision; a rejection by mistake can be undone while the run still waits for me. */
+function Decision({ proposal, onUndone }: { proposal: ProposalView; onUndone: () => void }) {
+  const action = useAction();
   if (!proposal.decision) return null;
   const d = proposal.decision;
+  const undo = async () => {
+    const result = await action.run(() => api.proposals.undoReject(proposal.proposalId));
+    if (!result) return;
+    toast.info("Rejection undone: it waits for your decision");
+    onUndone();
+  };
   return (
     <div className="card card-sm" data-testid="decision">
       <div className="card-body">
         <div className="fw-bold">{d.kind === "REJECTED" ? "Rejected" : d.kind === "EDITED" ? "Approved with edits" : "Approved"}</div>
         {d.reason && <div className="mt-1">“{d.reason}”</div>}
         <div className="small text-secondary mt-1">{formatDateTime(d.decidedAt)}</div>
+        {proposal.status === "REJECTED" && (
+          <>
+            <ErrorAlert error={action.error} />
+            <button
+              type="button"
+              className="btn btn-sm mt-2"
+              disabled={action.busy}
+              onClick={() => void undo()}
+              data-testid="undo-reject"
+            >
+              <IconArrowBackUp size={16} className="me-1" />
+              Undo rejection
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

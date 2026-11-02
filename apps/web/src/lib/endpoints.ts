@@ -110,6 +110,7 @@ export const api = {
     approve: (proposalId: string, body: Partial<ApproveProposalRequest>) =>
       request<ProposalView>("POST", `/proposals/${proposalId}/approve`, body),
     reject: (proposalId: string, reason?: string) => request<ProposalView>("POST", `/proposals/${proposalId}/reject`, { reason }),
+    undoReject: (proposalId: string) => request<ProposalView>("POST", `/proposals/${proposalId}/undo-reject`),
   },
   credentials: {
     list: () => request<CredentialView[]>("GET", "/credentials"),

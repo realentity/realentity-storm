@@ -1,5 +1,5 @@
 import { payloadHash } from "@ai-me/crypto";
-import { type Prisma } from "@ai-me/db";
+import { Prisma } from "@ai-me/db";
 import { JobQueue } from "@ai-me/queue";
 import {
   canonicalJson,
@@ -20,6 +20,9 @@ import { PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./prop
 type Via = "the app" | "Telegram";
 
 const ReviewSelectionSchema = z.object({ items: z.array(z.unknown()) }).strict();
+
+/** What the worker writes on the steps a rejection skips (pipeline-runner). */
+const REJECTED_AT_GATE = "Rejected at the gate";
 
 /**
  * My decisions on proposals (README §3). A decision records the exact payload and its hash, then queues the run:
@@ -76,6 +79,49 @@ export class ProposalsService {
     assertPending(proposal);
     await this.decide(proposal, { proposal: { status: "REJECTED" }, decision: { kind: "REJECTED", reason: reason ?? null } });
     await this.telegram.decided(proposalId, `✖ Rejected in ${via}`);
+    return this.get(userId, proposalId);
+  }
+
+  /**
+   * A rejection by mistake: the proposal waits for my decision again. Only while its run waits for me and nothing went
+   * on since the rejection but other items of the same list; the rejection's skips are undone, and its decision goes,
+   * so reflection never learns from it.
+   */
+  async undoReject(userId: string, proposalId: string): Promise<ProposalView> {
+    const proposal = await this.find(userId, proposalId);
+    if (proposal.status !== "REJECTED" || !proposal.decision) {
+      throw new ConflictException(`This proposal is ${proposal.status}, not rejected`);
+    }
+    const decidedAt = proposal.decision.decidedAt;
+    const steps = (proposal.run.pipelineVersion.definition as unknown as CompiledDefinition).steps;
+    const forEachOf = (stepKey: string) => steps.find((s) => s.id === stepKey)?.forEach;
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // Holds the run's row, so the worker can't claim the run until this is saved.
+      const held = await tx.run.updateMany({ where: { runId: proposal.runId, status: "WAITING_FOR_USER" }, data: { status: "WAITING_FOR_USER" } });
+      if (held.count === 0) throw new ConflictException("The run no longer waits for me, so the rejection can't be undone");
+
+      const rows = await tx.step.findMany({ where: { runId: proposal.runId } });
+      const gate = rows.find((s) => s.stepId === proposal.stepId);
+      const list = gate ? forEachOf(gate.stepKey) : undefined;
+      const skippedByIt = rows.filter((s) => s.status === "SKIPPED" && s.error === REJECTED_AT_GATE && s.itemIndex === proposal.itemIndex);
+      const otherItem = (s: (typeof rows)[number]) => list !== undefined && s.itemIndex !== proposal.itemIndex && forEachOf(s.stepKey) === list;
+      const since = (date: Date | null) => date !== null && date >= decidedAt;
+      const moved = rows.find(
+        (s) => s !== gate && !skippedByIt.includes(s) && !otherItem(s) && (since(s.startedAt) || since(s.finishedAt)),
+      );
+      if (moved) throw new ConflictException(`The run went on after the rejection (${moved.stepKey}), so it can't be undone`);
+
+      await tx.step.deleteMany({ where: { stepId: { in: skippedByIt.map((s) => s.stepId) } } });
+      await tx.step.update({ where: { stepId: proposal.stepId }, data: { status: "WAITING", output: Prisma.DbNull, finishedAt: null } });
+      await tx.decision.delete({ where: { proposalId } });
+      await tx.proposal.update({
+        where: { proposalId },
+        data: { status: "PENDING_REVIEW", finalPayload: Prisma.DbNull, payloadHash: null, approvedNewTargets: [] },
+      });
+    });
+    await this.events.publish(userId, { type: "proposal", proposalId, runId: proposal.runId, status: "PENDING_REVIEW" });
+    await this.telegram.decided(proposalId, "↩ Rejection undone in the app: decide there");
     return this.get(userId, proposalId);
   }
 

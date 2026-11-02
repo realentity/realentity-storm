@@ -264,7 +264,7 @@ PENDING_REVIEW ──► APPROVED ──► EXECUTING ──► DONE | FAILED
 PREVIEW: a dry run's proposal; never approved, never executed
 ```
 
-Decisions go through `POST /api/proposals/:id/approve` (optionally with an edited payload, still validated against the step's input schema, and any new targets it introduces) and `POST /api/proposals/:id/reject` (optional reason). Each records a `Decision` (approved, edited with the changed fields, or rejected) and queues the run.
+Decisions go through `POST /api/proposals/:id/approve` (optionally with an edited payload, still validated against the step's input schema, and any new targets it introduces) and `POST /api/proposals/:id/reject` (optional reason). Each records a `Decision` (approved, edited with the changed fields, or rejected) and queues the run. A rejection by mistake is undone with `POST /api/proposals/:id/undo-reject` (**Undo rejection** on the proposal) while the run still waits for me and nothing but other items of the same list went on since: the proposal waits again, and its decision is deleted, so reflection never learns from it.
 
 **Payload integrity:** the payload I approve is hashed. The worker executes only that exact payload. If a page requires anything not in it (an extra field, a different URL), the worker **pauses** and asks. It never improvises.
 

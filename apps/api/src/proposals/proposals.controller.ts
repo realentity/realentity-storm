@@ -51,4 +51,10 @@ export class ProposalsController {
   ): Promise<ProposalView> {
     return this.proposals.reject(user.userId, proposalId, body.reason);
   }
+
+  @Post(":proposalId/undo-reject")
+  @HttpCode(200)
+  undoReject(@CurrentUser() user: AuthenticatedUser, @Param("proposalId", ParseUUIDPipe) proposalId: string): Promise<ProposalView> {
+    return this.proposals.undoReject(user.userId, proposalId);
+  }
 }

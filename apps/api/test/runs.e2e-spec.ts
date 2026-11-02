@@ -234,6 +234,50 @@ describe("runs, proposals and controls", () => {
       expect((await queued()).map((job) => job.name).sort()).toEqual([QUEUES.learning, QUEUES.runs]);
     });
 
+    /** A rejection as the worker leaves it: the gate done, the item's later steps skipped. */
+    async function rejected(): Promise<{ runId: string; proposalId: string }> {
+      const waiting = await waitingAt("act");
+      await agent.post(`/api/proposals/${waiting.proposalId}/reject`).send({ reason: "Wrong one" }).expect(200);
+      await db.client.step.updateMany({
+        where: { runId: waiting.runId, stepKey: "replyGate" },
+        data: { status: "DONE", output: { approved: false }, finishedAt: new Date() },
+      });
+      await db.client.step.create({
+        data: { runId: waiting.runId, stepKey: "reply", itemIndex: 0, type: "test.send", status: "SKIPPED", error: "Rejected at the gate", finishedAt: new Date() },
+      });
+      await db.client.$executeRaw`DELETE FROM pgboss.job`;
+      return waiting;
+    }
+
+    it("undo reject: the proposal waits again, its decision and the rejection's skips gone", async () => {
+      const { proposalId, runId } = await rejected();
+      const view = (await agent.post(`/api/proposals/${proposalId}/undo-reject`).expect(200)).body as ProposalView;
+      expect(view).toMatchObject({ status: "PENDING_REVIEW", finalPayload: null, decision: null });
+      expect(await db.client.decision.count({ where: { proposalId } })).toBe(0);
+      const steps = await db.client.step.findMany({ where: { runId } });
+      expect(steps.map((s) => [s.stepKey, s.status, s.output])).toEqual([["replyGate", "WAITING", null]]);
+      expect(await queued()).toEqual([]);
+
+      await agent.post(`/api/proposals/${proposalId}/approve`).send({}).expect(200);
+      expect((await queued()).map((job) => job.name).sort()).toEqual([QUEUES.learning, QUEUES.runs]);
+    });
+
+    it("undo reject: not once the run went on, or no longer waits for me", async () => {
+      const went = await rejected();
+      await db.client.step.create({
+        data: { runId: went.runId, stepKey: "after", type: "test.search", status: "DONE", startedAt: new Date(), finishedAt: new Date() },
+      });
+      await agent.post(`/api/proposals/${went.proposalId}/undo-reject`).expect(409);
+
+      const done = await rejected();
+      await db.client.run.update({ where: { runId: done.runId }, data: { status: "DONE", finishedAt: new Date() } });
+      await agent.post(`/api/proposals/${done.proposalId}/undo-reject`).expect(409);
+      expect(await db.client.proposal.findUniqueOrThrow({ where: { proposalId: done.proposalId } })).toMatchObject({ status: "REJECTED" });
+
+      const { proposalId } = await waitingAt("act");
+      await agent.post(`/api/proposals/${proposalId}/undo-reject`).expect(409);
+    });
+
     it("previews of a dry run can't be approved", async () => {
       const { proposalId } = await waitingAt("act");
       await db.client.proposal.update({ where: { proposalId }, data: { status: "PREVIEW" } });
