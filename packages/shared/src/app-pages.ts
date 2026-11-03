@@ -272,7 +272,8 @@ export const AppListQuerySchema = z
     limit: z.coerce.number().int().min(1).max(200).default(50),
   })
   .strict();
-export type AppListQuery = z.input<typeof AppListQuerySchema>;
+/** As the web app sends it: offset and limit as numbers (the schema reads them from the query string). */
+export type AppListQuery = Omit<z.input<typeof AppListQuerySchema>, "offset" | "limit"> & { offset?: number; limit?: number };
 export type AppListQueryParsed = z.output<typeof AppListQuerySchema>;
 
 export interface AppPageHeader {
