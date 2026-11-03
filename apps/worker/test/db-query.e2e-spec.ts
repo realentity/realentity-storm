@@ -1,4 +1,5 @@
 import { KeyRing, seal } from "@ai-me/crypto";
+import { readAppSource } from "@ai-me/shared";
 import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
@@ -57,6 +58,7 @@ describe("M29: db.query", () => {
     await db.client.credential.deleteMany();
     await db.client.dataPoint.deleteMany();
     await db.client.dataRecord.deleteMany();
+    await db.client.app.deleteMany();
   });
 
   afterAll(async () => {
@@ -129,7 +131,14 @@ describe("M29: db.query", () => {
   });
 
   it("M29-I3: pipelines/table-growth.yaml: told when a table grows 3 times faster than usual, and when it is back", async () => {
-    const versionId = await createVersion(db.client, userId, readFileSync(join(__dirname, "../../../pipelines/table-growth.yaml"), "utf8"), new PipelineCompiler(defaultCatalog()));
+    // M33: in the Tables App.
+    const tables = readFileSync(join(__dirname, "../../../pipelines/apps/tables.yaml"), "utf8");
+    const app = await db.client.app.create({ data: { userId, name: "Tables" } });
+    const appVersion = await db.client.appVersion.create({ data: { appId: app.appId, version: 1, definition: {}, source: tables } });
+    await db.client.app.update({ where: { appId: app.appId }, data: { currentVersionId: appVersion.appVersionId } });
+    const versionId = await createVersion(db.client, userId, readFileSync(join(__dirname, "../../../pipelines/table-growth.yaml"), "utf8"), new PipelineCompiler(defaultCatalog()), {
+      app: readAppSource(tables),
+    });
     const telegram = new Counting("notify.telegram", () => ({ sent: true }));
     const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([step, new SaveStep(db.client), new HistoryStep(db.client), new AlertStep(db.client), telegram]));
     const hour = async (orders: number, users: number) => {

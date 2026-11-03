@@ -111,7 +111,7 @@ describe("builder chat", () => {
     expect(system).toContain("## email.send");
     expect(system).toContain("to: string (email)");
     expect(system).not.toContain("shell");
-    expect(tools.map((t) => t.name)).toEqual(["propose_pipeline", "list_runs", "read_run"]);
+    expect(tools.map((t) => t.name)).toEqual(["propose_pipeline", "propose_app", "draft_type", "list_runs", "read_run"]);
   });
 
   it("M7-S2: a builder-made pipeline still gets the gate before its side effect; saving it makes v1 of a new pipeline", async () => {
@@ -284,14 +284,14 @@ describe("builder chat", () => {
     await send(chat.chatId, "Second try");
     expect(llm.last.messages).toHaveLength(1);
     // The failed turn's recipe list never reached the builder: shown again.
-    expect(userText(llm.last)).toBe("<saved_recipes>\nnone yet\n</saved_recipes>\n\nSecond try");
+    expect(userText(llm.last)).toBe("<apps>\nnone yet\n</apps>\n\n<saved_recipes>\nnone yet\n</saved_recipes>\n\nSecond try");
   });
 
   it("M9: the builder sees the saved recipes in my message when they change; a chat keeps the system prompt it started with", async () => {
     const chat = await newChat();
     llm.answer(say("Which site?"));
     await send(chat.chatId, "Find .NET jobs on dev.bg every morning");
-    expect(userText(llm.last)).toBe("<saved_recipes>\nnone yet\n</saved_recipes>\n\nFind .NET jobs on dev.bg every morning");
+    expect(userText(llm.last)).toBe("<apps>\nnone yet\n</apps>\n\n<saved_recipes>\nnone yet\n</saved_recipes>\n\nFind .NET jobs on dev.bg every morning");
     const started = llm.last.system;
     expect((await db.client.builderChat.findUniqueOrThrow({ where: { builderChatId: chat.chatId } })).system).toBe(started);
 

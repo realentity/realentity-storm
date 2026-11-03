@@ -11,6 +11,7 @@ import { ApplicationOutcomeStep } from "./application-steps";
 import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
 import { CalendarCreateStep, CalendarFindStep } from "./calendar-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
+import { ReadStep } from "./entity-steps";
 import { DbQueryStep } from "./db-step";
 import { DigestStep } from "./digest-step";
 import { BrowserDownloadStep, BrowserUploadStep, FileReadStep } from "./file-steps";
@@ -63,6 +64,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new DedupeStep(deps.prisma),
     new FilterStep(),
     new SaveStep(deps.prisma),
+    new ReadStep(deps.prisma),
     new HistoryStep(deps.prisma),
     new MapStep(),
     new AlertStep(deps.prisma),

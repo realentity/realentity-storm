@@ -1,0 +1,22 @@
+# M33: the Tables App, once table-growth.yaml's page (M29). Table growth keeps each table's latest count as a Table,
+# and its hourly counts as the chart above the list; a table's own page charts its own.
+# Save it on the Apps page before table-growth.yaml, then on its page move the "tables" collection into Table.
+name: Tables
+description: My database's tables and how they grow
+icon: chart
+types:
+  Table:
+    key: name
+    fields:
+      name: { type: text, required: true }
+      rows: { type: number }
+pages:
+  - list: Table
+    menu: { label: Tables, icon: chart }
+    columns: [name, rows, "@lastSeen"]
+    sort: -rows
+    chart: { history: table-rows, label: Rows }
+    actions:
+      - { label: Count now, run: Table growth }
+  - view: Table
+    history: { collection: table-rows, label: Rows }

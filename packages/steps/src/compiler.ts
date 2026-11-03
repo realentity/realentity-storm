@@ -1,4 +1,5 @@
 import {
+  type AppDefinition,
   PipelineDefinitionSchema,
   REFERENCE,
   WHOLE_REFERENCE,
@@ -18,8 +19,10 @@ import {
 } from "@ai-me/shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
-import { defaultCatalog, type StepCatalog, type StepDefinition } from "./catalog";
+import { defaultCatalog, type EntityContract, type StepCatalog, type StepDefinition } from "./catalog";
 import { triggerDataSchema, triggerTargetIssue } from "./triggers";
+import { contractProblems } from "./domain-entities";
+import { entityTypeInfo, entityTypeOf } from "./entity-types";
 import { describeSchema, formatType, isAssignable, isOptional, navigate, UNKNOWN, type TypeInfo } from "./type-info";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,6 +31,15 @@ interface CompiledStepInfo {
   definition: StepDefinition;
   /** The forEach source path ("search.items"), when the step fans out. */
   forEach?: string;
+  /** Its output typed by more than the catalog knows: data.read's items by their App type (M30). */
+  output?: TypeInfo;
+  /** data.read of a type pipelines write (M32): its items are what pages, feeds and emails said, never a target. */
+  untrusted?: string;
+}
+
+/** What a pipeline is compiled against besides the catalog: its App's current version (M30), found by the caller. */
+export interface CompileContext {
+  app?: AppDefinition;
 }
 
 interface Scope {
@@ -38,6 +50,7 @@ interface Scope {
   itemType?: TypeInfo;
   /** The pipeline's trigger: {{trigger.*}} has its event's data. */
   trigger: Trigger;
+  app?: AppDefinition;
 }
 
 type Resolution = { ok: true; type: TypeInfo; credential?: boolean } | { ok: false; message: string };
@@ -51,17 +64,17 @@ export class PipelineCompiler {
   constructor(private readonly catalog: StepCatalog = defaultCatalog()) {}
 
   /** From YAML (or JSON, which is YAML). */
-  compileText(text: string): CompileResult {
+  compileText(text: string, context: CompileContext = {}): CompileResult {
     let parsed: unknown;
     try {
       parsed = parseYaml(text);
     } catch (error) {
       return { ok: false, errors: [{ path: "", message: `Not valid YAML: ${error instanceof Error ? error.message : String(error)}` }] };
     }
-    return this.compile(parsed);
+    return this.compile(parsed, context);
   }
 
-  compile(input: unknown): CompileResult {
+  compile(input: unknown, context: CompileContext = {}): CompileResult {
     const structure = PipelineDefinitionSchema.safeParse(input);
     if (!structure.success) {
       return { ok: false, errors: structure.error.issues.map((issue) => ({ path: formatPath(issue.path), message: issue.message })) };
@@ -76,6 +89,9 @@ export class PipelineCompiler {
       allowedRecipients: [...definition.policy.allowedRecipients],
       provenance: [],
     };
+    const app = definition.app && context.app?.name === definition.app ? context.app : undefined;
+    if (definition.app && !app) errors.push({ path: "app", message: `there is no App named "${definition.app}"` });
+    checkAppTrigger(definition.trigger, app, Boolean(definition.app), errors);
 
     definition.steps.forEach((step, index) => {
       const path = `steps[${index}]`;
@@ -88,7 +104,7 @@ export class PipelineCompiler {
         return;
       }
 
-      const scope: Scope = { step, definition: stepDefinition, path, trigger: definition.trigger };
+      const scope: Scope = { step, definition: stepDefinition, path, trigger: definition.trigger, app };
       if (step.forEach) {
         const source = referencePath(step.forEach);
         const resolved = this.resolve(source, { ...scope }, known);
@@ -121,8 +137,10 @@ export class PipelineCompiler {
       }
 
       this.checkInputs(scope, known, errors);
+      const entities = this.checkEntitySteps(scope, Boolean(definition.app), known, errors);
+      for (const contract of stepDefinition.entities ?? []) checkContract(stepDefinition, contract, definition.app, app, path, errors);
       if (stepDefinition.sideEffect) this.collectTargets(scope, known, policy, errors);
-      known.set(step.id, { definition: stepDefinition, forEach: scope.forEach });
+      known.set(step.id, { definition: stepDefinition, forEach: scope.forEach, ...entities });
     });
 
     for (const [type] of Object.entries(definition.limits)) {
@@ -210,6 +228,86 @@ export class PipelineCompiler {
     }
   }
 
+  /**
+   * data.save with `type` and data.read (M30): the type is one of the App's, and the fields they name are its fields;
+   * a pipeline never writes a field of mine. data.read's items are typed by the type, so {{item.salery}} is a mistake.
+   */
+  private checkEntitySteps(
+    scope: Scope,
+    inApp: boolean,
+    known: Map<string, CompiledStepInfo>,
+    errors: CompileIssue[],
+  ): Pick<CompiledStepInfo, "output" | "untrusted"> {
+    const { step, path } = scope;
+    if (step.type !== "data.save" && step.type !== "data.read" && step.type !== "data.dedupe") return {};
+    const typeName = step.type === "data.dedupe" ? step.with.againstType : step.with.type;
+    if (typeof typeName !== "string") return {};
+    const at = `${path}.with`;
+    if (!inApp) {
+      errors.push({ path: `${at}.type`, message: "entity types belong to an App: say which with `app:` at the top of the pipeline" });
+      return {};
+    }
+    if (!scope.app) return {}; // the missing App is already said
+    const type = entityTypeOf(scope.app, typeName);
+    if (!type) {
+      errors.push({ path: `${at}.type`, message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})` });
+      return {};
+    }
+    const fieldIssue = (field: unknown, where: string, extra: string[] = []) => {
+      if (typeof field === "string" && referencesIn(field).length > 0) {
+        errors.push({ path: where, message: "names a field of the type as it is, not through a reference" });
+        return;
+      }
+      if (typeof field !== "string" || extra.includes(field) || field in type.fields) return;
+      errors.push({ path: where, message: `${typeName} has no field "${field}" (fields: ${Object.keys(type.fields).join(", ")})` });
+    };
+
+    if (step.type === "data.dedupe") return {};
+    if (step.type === "data.save") {
+      const stage = step.with.stage;
+      if (typeof stage === "string" && referencesIn(stage).length === 0) {
+        if (!type.stages) errors.push({ path: `${at}.stage`, message: `${typeName} has no stages` });
+        else if (!type.stages.states.includes(stage)) {
+          errors.push({ path: `${at}.stage`, message: `"${stage}" is not a state of ${typeName} (states: ${type.stages.states.join(", ")})` });
+        }
+      }
+      if (type.mine) {
+        errors.push({ path: `${at}.type`, message: `${typeName} is a type of mine: pipelines read it, only I write it` });
+        return {};
+      }
+      if (step.with.collection !== undefined) errors.push({ path: `${at}.collection`, message: "saves into a type or a collection, not both" });
+      if (step.with.key !== undefined) errors.push({ path: `${at}.key`, message: `${typeName}'s key (${type.key}) identifies its entities` });
+      if (Array.isArray(step.with.fields)) step.with.fields.forEach((field, i) => fieldIssue(field, `${at}.fields[${i}]`));
+      const items = typeof step.with.items === "string" ? WHOLE_REFERENCE.exec(step.with.items)?.[1]?.trim() : undefined;
+      const resolved = items ? this.resolve(items, scope, known) : undefined;
+      const element = resolved?.ok && resolved.type.kind === "array" ? resolved.type.element : undefined;
+      if (element?.kind === "object") {
+        for (const [name, field] of Object.entries(type.fields)) {
+          const found = navigate(element, name.split("."));
+          if (field.mine && found.ok && found.type.kind !== "unknown") {
+            errors.push({ path: `${at}.items`, message: `${typeName}.${name} is mine: a pipeline can't write it` });
+          }
+        }
+        const stage = type.stages?.field;
+        if (stage && stage in element.fields && !type.stages!.moves.some((m) => m.by.includes("pipeline"))) {
+          errors.push({ path: `${at}.items`, message: `${typeName}.${stage} is moved only by me: no move of it is by: [pipeline]` });
+        }
+      }
+      return {};
+    }
+
+    if (Array.isArray(step.with.where)) {
+      step.with.where.forEach((condition, i) => {
+        if (condition && typeof condition === "object") fieldIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`);
+      });
+    }
+    if (typeof step.with.sort === "string") fieldIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, ["@firstSeen", "@lastSeen"]);
+    return {
+      output: { kind: "object", fields: { items: { kind: "array", element: entityTypeInfo(type) }, count: { kind: "number" } } },
+      ...(type.mine ? {} : { untrusted: typeName }),
+    };
+  }
+
   /** Resolves a reference path in the scope of a step: {{step.field}}, {{item.field}} or {{cred:name}}. */
   private resolve(path: string, scope: Scope, known: Map<string, CompiledStepInfo>): Resolution {
     if (path.startsWith("cred:")) {
@@ -223,7 +321,7 @@ export class PipelineCompiler {
     if (root === "trigger") {
       const data = triggerDataSchema(scope.trigger);
       if (!data) return { ok: false, message: `{{${path}}} is only available in a pipeline triggered by an event or a webhook` };
-      const result = navigate(describeSchema(data), rest);
+      const result = navigate(triggerType(describeSchema(data), scope.trigger, scope.app), rest);
       return result.ok ? result : { ok: false, message: `{{${path}}}: ${result.message.replace("the output", "the trigger")}` };
     }
 
@@ -238,7 +336,7 @@ export class PipelineCompiler {
       const later = scope.step.id === root ? "this step itself" : `"${root}", which is not an earlier step`;
       return { ok: false, message: `{{${path}}} refers to ${later}` };
     }
-    const result = navigate(describeSchema(source.definition.output), rest);
+    const result = navigate(source.output ?? describeSchema(source.definition.output), rest);
     if (!result.ok) return { ok: false, message: `{{${path}}}: ${result.message}` };
 
     // A forEach step's output is per item. Steps iterating over the same list see the matching item's value;
@@ -255,7 +353,12 @@ export class PipelineCompiler {
       const values = Array.isArray(value) ? (value as unknown[]) : [value];
       for (const [i, entry] of values.entries()) {
         const path = `${scope.path}.with.${field}${Array.isArray(value) ? `[${i}]` : ""}`;
-        const issue = addTarget(entry, kind, scope.step.id, field, policy, (root) => known.get(root)?.definition, scope.trigger);
+        const entity = entityTargetIssue(entry, scope, known);
+        if (entity) {
+          errors.push({ path, message: entity });
+          continue;
+        }
+        const issue = addTarget(entry, kind, scope.step.id, field, policy, (root) => known.get(root)?.definition, scope.trigger, scope.app);
         if (issue) errors.push({ path, message: issue });
       }
     }
@@ -325,6 +428,87 @@ export class PipelineCompiler {
 }
 
 /**
+ * A step that writes entities of its own (bill.save, M33) needs its pipeline's App to have that type: the key, each
+ * field of the kind it writes, and the states it sets.
+ */
+function checkContract(
+  step: StepDefinition,
+  contract: EntityContract,
+  appName: string | undefined,
+  app: AppDefinition | undefined,
+  path: string,
+  errors: CompileIssue[],
+): void {
+  const at = `${path}.type`;
+  const verb = contract.mine ? "reads" : "writes";
+  if (!appName && contract.optional) return;
+  if (!appName) {
+    errors.push({ path: at, message: `${step.type} ${verb} ${contract.type} entities: say which App with \`app:\` (one with a ${contract.type} type)` });
+    return;
+  }
+  if (!app) return; // the missing App is already said
+  const type = entityTypeOf(app, contract.type);
+  if (!type) {
+    errors.push({ path: at, message: `${step.type} ${verb} ${contract.type} entities, and "${app.name}" has no type ${contract.type}` });
+    return;
+  }
+  const problems = contractProblems(type, contract);
+  if (problems.length > 0) errors.push({ path: at, message: `${step.type} ${verb} ${contract.type} entities: ${problems.join("; ")}` });
+}
+
+/** entity.changed (M30) watches a type of the pipeline's own App. */
+function checkAppTrigger(trigger: Trigger, app: AppDefinition | undefined, inApp: boolean, errors: CompileIssue[]): void {
+  if (!isEventTrigger(trigger) || (trigger.on !== "entity.changed" && trigger.on !== "entity.action")) return;
+  if (!inApp) {
+    errors.push({ path: "trigger.type", message: `${trigger.on} is about a type of the pipeline's App: say which with \`app:\`` });
+    return;
+  }
+  if (!app || trigger.type === undefined) return;
+  const type = entityTypeOf(app, trigger.type);
+  if (!type) {
+    errors.push({ path: "trigger.type", message: `"${app.name}" has no type "${trigger.type}" (types: ${Object.keys(app.types).join(", ")})` });
+    return;
+  }
+  if (trigger.on !== "entity.changed") return;
+  if (trigger.field && !(trigger.field in type.fields)) {
+    errors.push({ path: "trigger.field", message: `${trigger.type} has no field "${trigger.field}" (fields: ${Object.keys(type.fields).join(", ")})` });
+  }
+  if (trigger.stage !== undefined) {
+    if (!type.stages) errors.push({ path: "trigger.stage", message: `${trigger.type} has no stages` });
+    else if (!type.stages.states.includes(trigger.stage)) {
+      errors.push({ path: "trigger.stage", message: `"${trigger.stage}" is not a state of ${trigger.type} (states: ${type.stages.states.join(", ")})` });
+    }
+  }
+}
+
+/** The entity type of an entity.changed or entity.action trigger, when it names one of its App's. */
+function triggerEntityType(trigger: Trigger, app: AppDefinition | undefined) {
+  if (!isEventTrigger(trigger) || (trigger.on !== "entity.changed" && trigger.on !== "entity.action") || !trigger.type || !app) return undefined;
+  return entityTypeOf(app, trigger.type);
+}
+
+/** {{trigger.item}} and {{trigger.before}} of entity.changed and entity.action, typed by the entity's type. */
+function triggerType(data: TypeInfo, trigger: Trigger, app: AppDefinition | undefined): TypeInfo {
+  const type = triggerEntityType(trigger, app);
+  if (!type || data.kind !== "object") return data;
+  const entity = entityTypeInfo(type);
+  return { kind: "object", fields: { ...data.fields, item: entity, ...("before" in data.fields ? { before: entity } : {}) } };
+}
+
+/**
+ * A target from data.read's items (M32): only from a type of mine, which I wrote on its form; a type pipelines write
+ * holds what pages, feeds and emails said.
+ */
+function entityTargetIssue(value: unknown, scope: Scope, known: Map<string, CompiledStepInfo>): string | null {
+  const source = typeof value === "string" ? WHOLE_REFERENCE.exec(value)?.[1]?.trim() : undefined;
+  if (!source) return null;
+  const root = source.split(".")[0] ?? "";
+  const step = root === "item" ? scope.forEach?.split(".")[0] : root;
+  const untrusted = step ? known.get(step)?.untrusted : undefined;
+  return untrusted ? `{{${source}}} can't be a target: ${untrusted} is written by pipelines, from what pages, feeds or emails said; only a type of mine can be` : null;
+}
+
+/**
  * The page (M27) shows what this pipeline keeps: its collection is one a data.save step of it writes, its chart one
  * its data.history writes. A page button runs a pipeline as a manual run, which one started by an event can't be.
  */
@@ -367,6 +551,7 @@ function addTarget(
   policy: CompiledPolicy,
   stepOf: (stepId: string) => StepDefinition | undefined,
   trigger: Trigger,
+  app?: AppDefinition,
 ): string | null {
   if (typeof value !== "string") return `a ${kind} target must be text or a single reference`;
   const whole = WHOLE_REFERENCE.exec(value);
@@ -374,7 +559,9 @@ function addTarget(
     const source = whole[1].trim();
     if (source.startsWith("cred:")) return "a credential can't be a target";
     if (source === "trigger" || source.startsWith("trigger.")) {
-      const issue = triggerTargetIssue(trigger, source);
+      // An entity of a type of mine (M32): I wrote it on its form, so its fields may be targets.
+      const mine = triggerEntityType(trigger, app)?.mine && source.startsWith("trigger.item.");
+      const issue = mine ? null : triggerTargetIssue(trigger, source);
       if (issue) return issue;
       policy.provenance.push({ stepId, field, kind, source });
       return null;

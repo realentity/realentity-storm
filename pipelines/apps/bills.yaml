@@ -1,0 +1,42 @@
+# M33: the Bills App. bill.save (pipelines/bills.yaml) keeps each bill read from email as a Bill, due until I mark it
+# paid; the morning brief tells me the unpaid ones due soon. Save it on the Apps page before pipelines/bills.yaml, then
+# press "Move my bills here" on its page to bring the bills the old Bills page kept.
+name: Bills
+description: Bills from email, by month, paid or not
+icon: receipt
+types:
+  Bill:
+    key: billKey                 # the sender's domain with the bill's reference, period or due date: the same bill again is the same Bill
+    title: issuer
+    stages:
+      field: status
+      initial: due
+      states: [due, paid]
+      moves:
+        - { from: due, to: [paid] }
+        - { from: paid, to: [due] }
+    fields:
+      billKey: { type: text, required: true, label: Bill }
+      issuer: { type: text, required: true }
+      issuerKey: { type: text, label: Sender }
+      amount: { type: money, required: true, currency: currency }
+      currency: { type: text }
+      dueDate: { type: date, label: Due }
+      month: { type: date }        # the month it is for (its first day): the period, else the due date's, else when it came
+      period: { type: text }
+      reference: { type: text }
+      from: { type: email }
+      subject: { type: text }
+      messageId: { type: text }
+pages:
+  - list: Bill
+    menu: { label: Bills, icon: receipt }
+    columns: [issuer, amount, { field: dueDate, due: { days: 3, unless: { status: paid } } }, reference, status]
+    filters: [status]
+    sort: dueDate
+    group: { by: month, period: month, totals: [amount, { field: amount, label: Unpaid, when: { status: due } }] }
+    moves: true
+  - view: Bill
+    sections:
+      - { title: Bill, fields: [issuer, amount, dueDate, period, reference] }
+      - { title: Email, fields: [from, subject] }

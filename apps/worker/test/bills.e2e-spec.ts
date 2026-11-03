@@ -3,7 +3,9 @@ import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@ai-me/llm";
 import { type EmailMessage } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { type z } from "zod";
 import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
@@ -28,7 +30,10 @@ class BillReader implements LlmClient {
   }
 }
 
-// M23
+/** The Bills App bill.save writes into (M33). */
+const BILLS_APP = readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8");
+
+// M23, M33
 describe("bills", () => {
   let server: TestMailServer;
   let db: PrismaConnection;
@@ -50,8 +55,17 @@ describe("bills", () => {
     );
   }, 120_000);
 
+  let appId: string;
+
+  beforeEach(async () => {
+    const app = await db.client.app.create({ data: { userId, name: "Bills" } });
+    const version = await db.client.appVersion.create({ data: { appId: app.appId, version: 1, definition: {}, source: BILLS_APP } });
+    await db.client.app.update({ where: { appId: app.appId }, data: { currentVersionId: version.appVersionId } });
+    appId = app.appId;
+  });
+
   afterEach(async () => {
-    await db.client.bill.deleteMany();
+    await db.client.app.deleteMany();
   });
 
   afterAll(async () => {
@@ -68,9 +82,11 @@ describe("bills", () => {
     stepKey: "read",
     itemIndex: null,
     dryRun,
+    app: "Bills",
     recordUsage: () => undefined,
     attention: NO_ATTENTION,
   });
+  const bills = () => db.client.dataEntity.findMany({ where: { appId, type: "Bill" }, orderBy: { key: "asc" } });
   const inbox = async () => (await connector.fetch(userId, { mailbox: "INBOX", after: null, since: new Date(Date.now() - 86_400_000), limit: 50 })).messages;
   const save = (bills: unknown[], dryRun = false) =>
     new BillSaveStep(db.client).execute({ bills, remindDaysBefore: 3, jumpPercent: 30 }, context(dryRun)) as Promise<{
@@ -112,9 +128,14 @@ describe("bills", () => {
       ["Pay evn.test: 84.20 BGN", "2026-11-17T09:00:00"],
       ["Pay telco.test: 120.50 EUR", "2026-11-22T09:00:00"],
     ]);
-    expect(await db.client.bill.findMany({ orderBy: { issuer: "asc" }, select: { issuerKey: true, billKey: true, period: true } })).toEqual([
-      { issuerKey: "evn.test", billKey: "evn.test|E-1001", period: "2026-11" },
-      { issuerKey: "telco.test", billKey: "telco.test|T-77", period: "2026-11" },
+    // M33: Bill entities of the App, due until I mark them paid.
+    expect((await bills()).map((b) => [b.key, b.stage, b.value])).toEqual([
+      [
+        "evn.test|E-1001",
+        "due",
+        expect.objectContaining({ issuer: "evn.test", issuerKey: "evn.test", amount: 84.2, currency: "BGN", dueDate: "2026-11-20", month: "2026-11-01", period: "2026-11" }),
+      ],
+      ["telco.test|T-77", "due", expect.objectContaining({ issuerKey: "telco.test", amount: 120.5, currency: "EUR", reference: "T-77" })],
     ]);
   });
 
@@ -133,17 +154,25 @@ describe("bills", () => {
     });
     await save([bill("2026-07", 80), bill("2026-08", 90), bill("2026-09", 85)]);
 
+    // Paid by me, then read again (a reminder): it stays paid.
+    await db.client.dataEntity.updateMany({ where: { key: "evn.test|E-2026-09" }, data: { stage: "paid" } });
     const again = await save([bill("2026-09", 85)]);
     expect([again.added.length, again.updated.length]).toEqual([0, 1]);
-    expect(await db.client.bill.count()).toBe(3);
+    expect((await bills()).map((b) => b.stage)).toEqual(["due", "due", "paid"]);
 
     expect((await save([bill("2026-10", 100)], true)).jumps).toEqual([]);
     const dry = await save([bill("2026-11", 130)], true);
     expect(dry.jumps.map((j) => [j.issuer, j.percent])).toEqual([["EVN", 53]]);
-    expect(await db.client.bill.count()).toBe(3);
+    expect(await bills()).toHaveLength(3);
 
     const jump = await save([bill("2026-11", 130)]);
     expect(jump.jumpText).toBe("Bills higher than usual:\nEVN: 130.00 BGN, 53% above the usual 85.00 (2026-11)");
-    expect(await db.client.bill.count()).toBe(4);
+    expect(await bills()).toHaveLength(4);
+  });
+
+  it("needs a pipeline in an App with a Bill type", async () => {
+    await expect(new BillSaveStep(db.client).execute({ bills: [], remindDaysBefore: 3, jumpPercent: 30 }, { ...context(), app: undefined })).rejects.toThrow(
+      "Bill is an App's type, and this pipeline has no app:",
+    );
   });
 });

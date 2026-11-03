@@ -20,6 +20,11 @@ import { PricesPage } from "./pages/PricesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ProposalPage } from "./pages/ProposalPage";
 import { RecipePage, RecipesPage } from "./pages/RecipesPage";
+import { AppEditorPage } from "./pages/AppEditorPage";
+import { AppEntityPage } from "./pages/AppEntityPage";
+import { AppListPage } from "./pages/AppListPage";
+import { AppPage } from "./pages/AppPage";
+import { AppsPage } from "./pages/AppsPage";
 import { RunPage } from "./pages/RunPage";
 import { RulesPage } from "./pages/RulesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -64,6 +69,12 @@ export function App() {
             <Route path="costs" element={<CostsPage />} />
             <Route path="health" element={<HealthPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="apps" element={<AppsPage />} />
+            <Route path="apps/new" element={<AppEditorPage />} />
+            <Route path="apps/:appId" element={<AppPage />} />
+            <Route path="apps/:appId/edit" element={<AppEditorPage />} />
+            <Route path="a/:appId/:type" element={<AppListPage />} />
+            <Route path="a/:appId/:type/:key" element={<AppEntityPage />} />
             <Route path="v/:pipelineId" element={<ViewPage />} />
             <Route path="v/:pipelineId/rows/:key" element={<ViewRowPage />} />
             <Route

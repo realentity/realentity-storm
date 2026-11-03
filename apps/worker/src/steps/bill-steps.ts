@@ -1,8 +1,9 @@
-import { Prisma, type PrismaClient } from "@ai-me/db";
-import { type EmailMessage } from "@ai-me/steps";
+import { type PrismaClient } from "@ai-me/db";
+import { billValue, type EmailMessage } from "@ai-me/steps";
 import { z } from "zod";
 import { type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { appType } from "./entity-steps";
 import { emailBlock } from "./email-block";
 import { pdfText } from "./file-steps";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
@@ -99,8 +100,10 @@ interface ReadBill {
 }
 
 /**
- * bill.save (M23): bills kept for the Bills page. The same bill read again (a reminder, the run retried) updates its
- * row instead of adding one. New ones are compared with the issuer's usual amount; a dry run saves nothing.
+ * bill.save (M23): bills kept as Bill entities of the pipeline's App (M33, pipelines/apps/bills.yaml), by the sender's
+ * domain with the bill's reference, period or due date: the same bill read again (a reminder, the run retried)
+ * updates it, keeping whether I paid it. A new one is `due`, and compared with the issuer's usual amount; a dry run
+ * saves nothing.
  */
 export class BillSaveStep implements StepExecutor {
   readonly type = "bill.save";
@@ -109,41 +112,44 @@ export class BillSaveStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { bills, remindDaysBefore, jumpPercent } = input as { bills: ReadBill[]; remindDaysBefore: number; jumpPercent: number };
+    const { appId, app } = await appType(this.prisma, context, "Bill");
     const added: ReadBill[] = [];
     const updated: ReadBill[] = [];
     const jumps: (ReadBill & { usual: number; percent: number })[] = [];
     for (const bill of bills) {
       const issuerKey = domainOf(bill.from);
       const billKey = `${issuerKey}|${bill.reference ?? bill.period ?? bill.dueDate ?? bill.messageId}`;
-      const existing = await this.prisma.bill.findUnique({ where: { userId_billKey: { userId: context.userId, billKey } } });
-      if (existing) {
+      const where = { appId_type_key: { appId, type: "Bill", key: billKey } };
+      const existing = await this.prisma.dataEntity.findUnique({ where });
+      if (existing && !existing.removedAt) {
         updated.push(bill);
       } else {
         added.push(bill);
-        const usual = await this.usual(context.userId, issuerKey, bill.currency);
+        const usual = await this.usual(appId, issuerKey, bill.currency);
         if (usual !== null && bill.amount > usual * (1 + jumpPercent / 100)) {
           jumps.push({ ...bill, usual, percent: Math.round((bill.amount / usual - 1) * 100) });
         }
       }
       if (context.dryRun) continue;
-      const data = {
-        issuer: bill.issuer,
-        issuerKey,
-        amount: new Prisma.Decimal(bill.amount),
-        currency: bill.currency,
-        dueDate: bill.dueDate ? new Date(`${bill.dueDate}T00:00:00Z`) : null,
-        period: bill.period,
-        reference: bill.reference,
-        messageId: bill.messageId,
-        from: bill.from,
-        subject: bill.subject,
-        runId: context.runId,
-      };
-      await this.prisma.bill.upsert({
-        where: { userId_billKey: { userId: context.userId, billKey } },
-        create: { userId: context.userId, billKey, ...data },
-        update: data,
+      const value = billValue(bill, billKey, issuerKey);
+      const now = new Date();
+      await this.prisma.dataEntity.upsert({
+        where,
+        create: { appId, type: "Bill", key: billKey, value, stage: "due", stageDates: { due: now.toISOString() }, firstSeenAt: now, lastSeenAt: now },
+        update: { value, lastSeenAt: now, removedAt: null },
       });
+      if (!existing) {
+        await context.emit?.("entity.changed", {
+          app: app.name,
+          type: "Bill",
+          key: billKey,
+          item: { ...value, status: "due" },
+          before: null,
+          changed: [...Object.keys(value), "status"],
+          by: "pipeline",
+          stage: { from: null, to: "due" },
+        });
+      }
     }
     const remind = added
       .filter((bill) => bill.dueDate)
@@ -155,15 +161,23 @@ export class BillSaveStep implements StepExecutor {
   }
 
   /** The median of the issuer's last six bills in this currency, or null with fewer than two. */
-  private async usual(userId: string, issuerKey: string, currency: string): Promise<number | null> {
-    const earlier = await this.prisma.bill.findMany({
-      where: { userId, issuerKey, currency },
-      orderBy: [{ period: "desc" }, { dateCreated: "desc" }],
-      take: USUAL_OF,
-      select: { amount: true },
+  private async usual(appId: string, issuerKey: string, currency: string): Promise<number | null> {
+    const earlier = await this.prisma.dataEntity.findMany({
+      where: { appId, type: "Bill", AND: [{ value: { path: ["issuerKey"], equals: issuerKey } }, { value: { path: ["currency"], equals: currency } }] },
+      orderBy: { firstSeenAt: "desc" },
+      take: 50,
+      select: { value: true, firstSeenAt: true },
     });
-    if (earlier.length < 2) return null;
-    const amounts = earlier.map((b) => Number(b.amount)).sort((a, b) => a - b);
+    const bills = earlier.map((e) => e.value as { amount?: unknown; period?: unknown });
+    // The latest periods first (a bill read late is still its month's); then the newest.
+    const amounts = bills
+      .map((b, i) => ({ amount: Number(b.amount), period: typeof b.period === "string" ? b.period : "", i }))
+      .filter((b) => Number.isFinite(b.amount))
+      .sort((a, b) => b.period.localeCompare(a.period) || a.i - b.i)
+      .slice(0, USUAL_OF)
+      .map((b) => b.amount)
+      .sort((a, b) => a - b);
+    if (amounts.length < 2) return null;
     const middle = Math.floor(amounts.length / 2);
     return amounts.length % 2 ? amounts[middle] : (amounts[middle - 1] + amounts[middle]) / 2;
   }

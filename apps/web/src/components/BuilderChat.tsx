@@ -10,6 +10,7 @@ import { formatUsd } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 import { CompileErrors, DiffList, PlanView, StepGraphView } from "./PlanView";
 import { ErrorAlert, Loading } from "./ui";
+import { AppProposal } from "./AppProposal";
 
 interface BuilderChatProps {
   /** null: no chat yet; one is created with the first message. */
@@ -142,6 +143,7 @@ function Message({
       {message.error && <div className="alert alert-danger mb-0">{message.error}</div>}
       {message.compileErrors && <CompileErrors errors={message.compileErrors} title="The builder's last proposal doesn't compile" />}
       {message.proposal && <Proposal chat={chat} message={message} onSaved={onSaved} onChanged={onChanged} />}
+      {message.appProposal && <AppProposal chat={chat} message={message} onChanged={onChanged} />}
     </div>
   );
 }

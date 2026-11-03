@@ -1,7 +1,7 @@
 import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 
 /** Tables owned through their parent; every other table must carry userId (README §9, §17). */
-const OWNED_THROUGH_PARENT = ["BuilderMessages", "Decisions", "PipelineVersions", "Steps", "Takeovers", "WatchedOffers"];
+const OWNED_THROUGH_PARENT = ["AppVersions", "BuilderMessages", "DataEntities", "Decisions", "PipelineVersions", "Steps", "Takeovers", "WatchedOffers"];
 /** System tables: not user data. */
 const SYSTEM = ["HealthChecks", "ServiceHeartbeats"];
 

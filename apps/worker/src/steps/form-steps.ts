@@ -11,6 +11,7 @@ import { type Asker } from "../learning/asker";
 import { type Facts } from "../learning/facts";
 import { type StepLearning } from "../learning/learning";
 import { NO_ATTENTION, RunStopped, type Attention, type StepContext, type StepExecutor } from "../runner/step-executor";
+import { jobAppOf, moveJob } from "./job-entities";
 import { type BrowserDependencies } from "./browser-steps";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
 
@@ -430,8 +431,14 @@ function cvFieldOf(fields: PageField[]): PageField | undefined {
   return files.find((f) => CV_FIELD.test(f.label) || CV_FIELD.test(f.key)) ?? files.find((f) => f.required) ?? files[0];
 }
 
-/** M10-T5: the posting's Application, prepared (a submitted one stays submitted). */
+/** M10-T5: the posting's Application, prepared (a submitted one stays submitted). M33: in an App, the Job moved. */
 export async function prepareApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
+  const job = await jobAppOf(prisma, context);
+  if (job) {
+    const entity = await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } });
+    if (entity) await moveJob(prisma, context, job, entity, "prepared");
+    return;
+  }
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
   if (!posting) return;
   const existing = await prisma.application.findUnique({ where: { jobPostingId: posting.jobPostingId } });
@@ -444,8 +451,14 @@ export async function prepareApplication(prisma: PrismaClient, context: StepCont
   if (!existing) await emitApplication(context, application.applicationId, "PREPARED", posting);
 }
 
-/** M10-T5: sent: the Application submitted, the posting applied. */
+/** M10-T5: sent: the Application submitted, the posting applied. M33: in an App, the Job moved to applied. */
 export async function submitApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
+  const job = await jobAppOf(prisma, context);
+  if (job) {
+    const entity = await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } });
+    if (entity) await moveJob(prisma, context, job, entity, "applied");
+    return;
+  }
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
   if (!posting) return;
   const now = new Date();

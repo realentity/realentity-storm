@@ -1,8 +1,9 @@
 import { config } from "dotenv";
+import { readAppSource } from "@ai-me/shared";
 import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type ChatMessage, type LlmUsage } from "@ai-me/llm";
 import { definitionToSource, type CompiledDefinition } from "@ai-me/shared";
 import { defaultCatalog, diffDefinitions, PipelineCompiler } from "@ai-me/steps";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Builder, type TurnResult } from "../src/builder/builder";
 
@@ -83,7 +84,12 @@ async function main(): Promise<void> {
   const builder = new Builder(ClaudeChat.fromApiKey(apiKey), compiler, catalog);
   const choice = await new ModelRouter(() => Promise.resolve(null), process.env).choose("eval", "builder");
   const load = (file: string): CompiledDefinition => {
-    const compiled = compiler.compileText(readFileSync(resolve(__dirname, "../../../pipelines", file), "utf8"));
+    const text = readFileSync(resolve(__dirname, "../../../pipelines", file), "utf8");
+    // M33: a pipeline of an App compiles against its definition in pipelines/apps.
+    const appName = /^app: (.+)$/m.exec(text)?.[1]?.trim();
+    const appFile = appName && readdirSync(resolve(__dirname, "../../../pipelines/apps")).find((f) => readFileSync(resolve(__dirname, "../../../pipelines/apps", f), "utf8").includes(`name: ${appName}\n`));
+    const app = appFile ? readAppSource(readFileSync(resolve(__dirname, "../../../pipelines/apps", appFile), "utf8")) : undefined;
+    const compiled = compiler.compileText(text, app ? { app } : {});
     if (!compiled.ok) throw new Error(`pipelines/${file} doesn't compile`);
     return compiled.definition;
   };
@@ -98,7 +104,7 @@ async function main(): Promise<void> {
       const shown = showCurrent && current ? `<current_pipeline version="1" id="eval">\n${definitionToSource(current)}</current_pipeline>\n\n` : "";
       const recipes = showCurrent ? `<saved_recipes>\n${c.recipes ?? "none yet"}\n</saved_recipes>\n\n` : "";
       const user: ChatMessage = { role: "user", content: [{ type: "text", text: `${shown}${recipes}${text}` }] };
-      const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000 });
+      const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [] });
       usage = addUsage(usage, turn.usage);
       if (turn.transcript) history.push(user, ...turn.transcript);
       turns.push(turn);

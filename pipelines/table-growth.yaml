@@ -1,10 +1,11 @@
 # M29: every hour, the row count of the tables named in `sql`; a message once when one grows more than 3 times faster
-# than usual (the median of its hourly growth over the last week), and once when it is back under 1.5 times. Its page
-# (Tables, in the menu) lists the latest counts with a chart of the week.
+# than usual (the median of its hourly growth over the last week), and once when it is back under 1.5 times. M33: the
+# Tables App (pipelines/apps/tables.yaml: save it first) lists the latest counts with a chart of the week.
 # Needs a credential named app-db, kind database: postgresql://reader:…@host:5432/app (a user that may only read),
 # with the database's host as its allowed host. For big tables, pg_stat_user_tables is a free estimate instead of
 # count(*): SELECT relname AS name, n_live_tup AS rows FROM pg_stat_user_tables.
 name: Table growth
+app: Tables
 description: Told when a table grows much faster than usual, and when it is back to normal.
 trigger: { schedule: "0 * * * *", tz: Europe/Sofia }
 steps:
@@ -17,7 +18,7 @@ steps:
         UNION ALL SELECT 'users', count(*) FROM users
   - id: latest
     type: data.save
-    with: { items: "{{counts.items}}", collection: tables, key: name, complete: true }
+    with: { items: "{{counts.items}}", type: Table, complete: true }
   - id: trend
     type: data.history
     with: { items: "{{counts.items}}", collection: table-rows, key: name, value: rows, keep: 168 }
@@ -28,11 +29,3 @@ steps:
     type: notify.telegram
     when: "{{fast.text}}"
     with: { text: "Tables growing faster than usual (times their usual hourly growth):\n{{fast.text}}" }
-view:
-  menu: { label: Tables, icon: chart }
-  collection: tables
-  columns: [name, { field: rows, as: number }, { field: "@lastSeen", label: Counted, as: datetime }]
-  sort: -rows
-  detail: { history: table-rows }
-  chart: { history: table-rows, label: Rows }
-  actions: [{ label: Count now, run: self }]

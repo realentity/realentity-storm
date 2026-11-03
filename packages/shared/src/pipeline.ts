@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { APP_NAME, ENTITY_FIELD, TYPE_NAME } from "./app";
 import { HOST_PATTERN } from "./credentials";
 import { APPLICATION_STATUSES } from "./jobs-api";
 import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
@@ -31,7 +32,7 @@ function isTimeZone(value: string): boolean {
 }
 
 /** What happens in AI ME that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
-export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later", "view.action"] as const;
+export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later", "view.action", "entity.changed", "entity.action"] as const;
 export type TriggerEventName = (typeof TRIGGER_EVENTS)[number];
 
 const list = <T extends z.ZodType>(schema: T) => z.array(schema).min(1).optional();
@@ -54,6 +55,21 @@ export const EventTriggerSchema = z.discriminatedUnion("on", [
   z.object({ on: z.literal("flow.later") }).strict(),
   /** Started by a row's button on a pipeline's page (M27), with the row: {{trigger.item}}. `collection` limits it to one. */
   z.object({ on: z.literal("view.action"), collection: z.string().regex(VIEW_COLLECTION).optional() }).strict(),
+  /**
+   * An entity of the pipeline's App was added or changed (M30): by another pipeline's data.save, or by me (M32).
+   * `field` limits it to changes of that field.
+   */
+  z
+    .object({
+      on: z.literal("entity.changed"),
+      type: z.string().regex(TYPE_NAME),
+      field: z.string().regex(ENTITY_FIELD).optional(),
+      /** Only a move into this stage (M32). */
+      stage: z.string().trim().min(1).max(40).optional(),
+    })
+    .strict(),
+  /** An entity's button on its page (M32), with the entity: {{trigger.item}}. `type` limits it to one. */
+  z.object({ on: z.literal("entity.action"), type: z.string().regex(TYPE_NAME).optional() }).strict(),
 ]);
 export type EventTrigger = z.infer<typeof EventTriggerSchema>;
 
@@ -114,6 +130,8 @@ export const PipelineDefinitionSchema = z
   .object({
     name: z.string().trim().min(1).max(100),
     description: z.string().max(2000).optional(),
+    /** The App it belongs to (M30), by name: its steps write, read and watch that App's types. */
+    app: z.string().trim().regex(APP_NAME).optional(),
     trigger: TriggerSchema.default("manual"),
     steps: z.array(PipelineStepSchema).min(1).max(50),
     limits: z.record(z.string(), z.string().regex(LIMIT, '"N/day" or "N/hour"')).default({}),

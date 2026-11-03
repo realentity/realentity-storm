@@ -10,6 +10,8 @@ export interface StepContext {
   stepKey: string;
   itemIndex: number | null;
   dryRun: boolean;
+  /** The pipeline's App (M30), by name: data.save { type } and data.read work on its entities. */
+  app?: string;
   /** LLM steps report each call's usage; it is saved on the step (Step.llmUsage), also when the step fails. */
   recordUsage(usage: LlmUsage): void;
   /**

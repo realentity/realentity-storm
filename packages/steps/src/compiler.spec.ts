@@ -1,4 +1,4 @@
-import { type CompileResult, type CompiledDefinition } from "@ai-me/shared";
+import { readAppSource, type CompileResult, type CompiledDefinition } from "@ai-me/shared";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -443,8 +443,12 @@ steps:
     });
 
     // M4-T6: the hand-written pipelines in /pipelines stay valid.
+    // M30: a pipeline of an App compiles against the App's definition in pipelines/apps.
+    const apps = readdirSync(join(PIPELINES, "apps")).map((f) => readAppSource(readFileSync(join(PIPELINES, "apps", f), "utf8")));
     it.each(readdirSync(PIPELINES).filter((f) => f.endsWith(".yaml")))("pipelines/%s compiles", (file) => {
-      const result = ok(compiler.compileText(readFileSync(join(PIPELINES, file), "utf8")));
+      const text = readFileSync(join(PIPELINES, file), "utf8");
+      const app = apps.find((a) => /^app: (.+)$/m.exec(text)?.[1]?.trim() === a.name);
+      const result = ok(compiler.compileText(text, app ? { app } : {}));
       if (file === "recruiter-replies.yaml") {
         expect(ids(result.definition)).toEqual(["fetch", "triage", "draft", "sendGate", "send"]);
         expect(result.policy).toEqual({

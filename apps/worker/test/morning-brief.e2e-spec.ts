@@ -32,7 +32,7 @@ describe("morning brief", () => {
   afterEach(async () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
-    await db.client.bill.deleteMany();
+    await db.client.app.deleteMany();
     await db.client.userSetting.deleteMany();
   });
 
@@ -62,20 +62,16 @@ describe("morning brief", () => {
     await run(jobs, "FAILED", 30, "too old to tell");
     await run(jobs, "FAILED", 3, "a dry run", true);
 
+    // M33: Bill entities of a Bills App; paid ones are left out.
+    const { appId } = await db.client.app.create({ data: { userId, name: "Bills" } });
     const bill = (issuer: string, amount: number, dueDate: string, paid = false) =>
-      db.client.bill.create({
+      db.client.dataEntity.create({
         data: {
-          userId,
-          issuer,
-          issuerKey: issuer,
-          billKey: `${issuer}|${dueDate}`,
-          amount,
-          currency: "BGN",
-          dueDate: new Date(`${dueDate}T00:00:00Z`),
-          messageId: `<${issuer}${dueDate}@test>`,
-          from: `billing@${issuer}`,
-          subject: "Bill",
-          paidAt: paid ? new Date() : null,
+          appId,
+          type: "Bill",
+          key: `${issuer}|${dueDate}`,
+          value: { billKey: `${issuer}|${dueDate}`, issuer, issuerKey: issuer, amount, currency: "BGN", dueDate, month: `${dueDate.slice(0, 7)}-01` },
+          stage: paid ? "paid" : "due",
         },
       });
     await bill("telco", 30, "2026-11-01");

@@ -24,6 +24,7 @@ describe("prices", () => {
     await db.client.watchedProduct.deleteMany();
     await db.client.dataPoint.deleteMany();
     await db.client.pipeline.deleteMany();
+    await db.client.app.deleteMany();
   });
 
   afterAll(async () => {
@@ -96,6 +97,10 @@ describe("prices", () => {
     const status = async () => ((await agent.get("/api/prices/status").expect(200)).body as PricesStatusView).pipelines;
     expect(await status()).toEqual([]);
 
+    // M33: the template's pipeline belongs to the Prices App, saved first.
+    await agent.post("/api/prices/pipeline").expect(400);
+    const app = await readFile(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8");
+    await agent.post("/api/apps").send({ source: app }).expect(201);
     const pipeline = (await agent.post("/api/prices/pipeline").expect(201)).body as PipelineDetailView;
     expect(pipeline).toMatchObject({ name: "Prices", enabled: false, currentVersion: 1 });
     expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices", enabled: false }]);

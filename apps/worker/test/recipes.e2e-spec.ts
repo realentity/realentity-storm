@@ -231,7 +231,7 @@ steps:
     const second = await run(DAILY);
     expect(second.status).toBe("DONE");
     expect(await output(second.runId, "fresh")).toEqual({ items: [], duplicates: 12 });
-    expect(await output(second.runId, "save")).toEqual({ saved: 0, created: 0, skipped: 0, added: [], changed: [], removed: [] });
+    expect(await output(second.runId, "save")).toEqual({ saved: 0, created: 0, skipped: 0, added: [], changed: [], removed: [], invalid: [] });
     expect(await db.client.jobPosting.count()).toBe(12);
   });
 

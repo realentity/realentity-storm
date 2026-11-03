@@ -6,6 +6,7 @@ import { z } from "zod";
 import { type StepLearning } from "../learning/learning";
 import { type StepContext } from "../runner/step-executor";
 import { emailBlock } from "./email-block";
+import { jobAppOf, jobItem, moveJob, STAGE_STATUS, type JobApp } from "./job-entities";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
 
 /** Applications an email may be about: submitted and not turned down yet, the most recent first. */
@@ -51,6 +52,8 @@ export class ApplicationOutcomeStep extends LlmStep {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const message = input.message as EmailMessage;
+    const jobApp = await jobAppOf(this.prisma, context);
+    if (jobApp) return this.onJobs(jobApp, message, context);
     const open = await this.prisma.application.findMany({
       where: { userId: context.userId, status: { in: ["SUBMITTED", "RESPONDED", "INTERVIEW"] } },
       include: { jobPosting: true },
@@ -82,6 +85,31 @@ export class ApplicationOutcomeStep extends LlmStep {
       await context.emit?.("application.status", { applicationId: application.applicationId, status, job: { ...job, location: application.jobPosting.location } });
     }
     return { matched: true, applicationId: application.applicationId, job, status, changed, reason: answer.reason };
+  }
+
+  /** M33: the same, on the Jobs of the pipeline's App: a Job I applied to moves forward as its stages allow. */
+  private async onJobs(app: JobApp, message: EmailMessage, context: StepContext): Promise<unknown> {
+    const rows = await this.prisma.dataEntity.findMany({ where: { appId: app.appId, type: "Job", removedAt: null, stage: { in: ["applied", "responded", "interview"] } } });
+    const applied = (e: (typeof rows)[number]) => (e.stageDates as Record<string, string>).applied ?? "";
+    const open = rows.sort((a, b) => applied(b).localeCompare(applied(a))).slice(0, MAX_CANDIDATES);
+    if (open.length === 0) return unmatched("No submitted application is waiting for an answer");
+    const asCandidate = (e: (typeof rows)[number]) => {
+      const item = jobItem(app, e);
+      return { entity: e, item, posting: { url: e.key, company: typeof item.company === "string" ? item.company : null } };
+    };
+    const all = open.map(asCandidate);
+    const pointed = all.filter((c) => pointsTo(message, { jobPosting: c.posting } as Candidate));
+    const candidates = pointed.length ? pointed : all;
+    const listed = candidates.map((c) =>
+      JSON.stringify({ id: c.entity.dataEntityId, title: c.item.title, company: c.item.company, site: hostOf(c.entity.key), status: STAGE_STATUS[c.entity.stage ?? ""] }),
+    );
+    const answer = await this.call(context, SYSTEM, `<applications>\n${listed.join("\n")}\n</applications>\n${emailBlock(message)}`, OutcomeSchema);
+    const found = candidates.find((c) => c.entity.dataEntityId === answer.applicationId);
+    if (!found || answer.outcome === "none") return unmatched(answer.reason);
+    const note = `${new Date().toISOString().slice(0, 10)} ${answer.outcome}: "${message.subject}" from ${message.from}`;
+    const changed = await moveJob(this.prisma, context, app, found.entity, answer.outcome, note);
+    const job = { title: found.item.title, company: found.item.company ?? null, url: found.entity.key };
+    return { matched: true, applicationId: found.entity.dataEntityId, job, status: STATUS[answer.outcome], changed, reason: answer.reason };
   }
 }
 

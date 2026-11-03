@@ -1,5 +1,6 @@
 import { JobQueue } from "@ai-me/queue";
-import { OUTCOME_DATE, type ApplicationView, type FunnelRow, type InsightView, type UpdateApplicationRequest } from "@ai-me/shared";
+import { OUTCOME_DATE, readAppSource, type ApplicationView, type FunnelRow, type InsightView, type UpdateApplicationRequest } from "@ai-me/shared";
+import { contractProblems, JOB_ENTITY } from "@ai-me/steps";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 
@@ -25,32 +26,31 @@ export class InsightService {
 
   async insight(userId: string, days: number, now = new Date()): Promise<InsightView> {
     const from = new Date(now.getTime() - days * DAY_MS);
-    const postings = await this.prisma.client.jobPosting.findMany({ where: { userId, firstSeenAt: { gte: from } }, include: { applications: true } });
+    const postings = await this.postings(userId, from);
     const totals = row("all");
     const sources = new Map<string, FunnelRow>();
     const bands = new Map<string, FunnelRow>([...BANDS.map((b) => [b.key, row(b.key)] as const), ["unscored", row("unscored")]]);
     const answerDays: number[] = [];
 
     for (const posting of postings) {
-      const application = posting.applications[0];
       const source = sources.get(posting.source) ?? row(posting.source);
       sources.set(posting.source, source);
       const band = bands.get(posting.score === null ? "unscored" : BANDS.find((b) => posting.score! >= b.min)!.key)!;
-      const answered = application ? [application.respondedAt, application.interviewAt, application.rejectedAt].filter((d): d is Date => d !== null) : [];
+      const answered = [posting.respondedAt, posting.interviewAt, posting.rejectedAt].filter((d): d is Date => d !== null);
       for (const target of [totals, source, band]) {
         target.found++;
-        if (posting.status === "SHORTLISTED" || posting.status === "APPLIED" || application) target.shortlisted++;
-        if (application?.submittedAt) {
+        if (posting.shortlisted) target.shortlisted++;
+        if (posting.submittedAt) {
           target.applied++;
           if (answered.length) target.replied++;
           else target.waiting++;
-          if (application.interviewAt) target.interview++;
-          if (application.rejectedAt) target.rejected++;
+          if (posting.interviewAt) target.interview++;
+          if (posting.rejectedAt) target.rejected++;
         }
       }
-      if (application?.submittedAt && answered.length) {
+      if (posting.submittedAt && answered.length) {
         const first = Math.min(...answered.map((d) => d.getTime()));
-        answerDays.push((first - application.submittedAt.getTime()) / DAY_MS);
+        answerDays.push((first - posting.submittedAt.getTime()) / DAY_MS);
       }
     }
     return {
@@ -61,6 +61,55 @@ export class InsightService {
       byScore: [...bands.values()],
       medianDaysToAnswer: median(answerDays),
     };
+  }
+
+  /**
+   * The postings found since `from` and what came of each. M33: from the Jobs of my Apps when I have one (the dates
+   * each reached its stages), else from what the old Jobs page kept.
+   */
+  private async postings(userId: string, from: Date): Promise<Posting[]> {
+    const appIds = await this.jobApps(userId);
+    if (appIds.length > 0) {
+      const jobs = await this.prisma.client.dataEntity.findMany({ where: { appId: { in: appIds }, type: "Job", firstSeenAt: { gte: from } } });
+      return jobs.map((job) => {
+        const value = job.value as { score?: unknown; source?: unknown };
+        const dates = job.stageDates as Record<string, string>;
+        const at = (stage: string) => (dates[stage] ? new Date(dates[stage]) : null);
+        return {
+          source: typeof value.source === "string" && value.source ? value.source : hostOf(job.key),
+          score: typeof value.score === "number" ? value.score : null,
+          shortlisted: ["shortlisted", "prepared", "applied"].some((stage) => dates[stage]),
+          submittedAt: at("applied"),
+          respondedAt: at("responded"),
+          interviewAt: at("interview"),
+          rejectedAt: at("rejected"),
+        };
+      });
+    }
+    const postings = await this.prisma.client.jobPosting.findMany({ where: { userId, firstSeenAt: { gte: from } }, include: { applications: true } });
+    return postings.map((posting) => {
+      const application = posting.applications[0];
+      return {
+        source: posting.source,
+        score: posting.score,
+        shortlisted: posting.status === "SHORTLISTED" || posting.status === "APPLIED" || application !== undefined,
+        submittedAt: application?.submittedAt ?? null,
+        respondedAt: application?.respondedAt ?? null,
+        interviewAt: application?.interviewAt ?? null,
+        rejectedAt: application?.rejectedAt ?? null,
+      };
+    });
+  }
+
+  /** My Apps that keep jobs: a Job type the job steps can move. */
+  private async jobApps(userId: string): Promise<string[]> {
+    const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } } });
+    const versions = await this.prisma.client.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
+    return apps.flatMap((app) => {
+      const version = versions.find((v) => v.appVersionId === app.currentVersionId);
+      const type = version ? readAppSource(version.source).types[JOB_ENTITY.type] : undefined;
+      return type && contractProblems(type, JOB_ENTITY).length === 0 ? [app.appId] : [];
+    });
   }
 
   /** By hand: any status (a mistake undone too); the outcome's date set the first time; the pipelines told. */
@@ -83,6 +132,24 @@ export class InsightService {
       await this.queue.enqueueEvent({ userId, event: "application.status", data: { applicationId, status: updated.status, job: { title, company, location, url } }, source: { depth: 0 } });
     }
     return applicationView(updated);
+  }
+}
+
+interface Posting {
+  source: string;
+  score: number | null;
+  shortlisted: boolean;
+  submittedAt: Date | null;
+  respondedAt: Date | null;
+  interviewAt: Date | null;
+  rejectedAt: Date | null;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "unknown";
   }
 }
 

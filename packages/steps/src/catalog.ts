@@ -1,4 +1,4 @@
-import { type TargetKind } from "@ai-me/shared";
+import { TYPE_NAME, type FieldKind, type TargetKind } from "@ai-me/shared";
 import jsonata from "jsonata";
 import { z } from "zod";
 import { RecipeNameSchema } from "./recipe";
@@ -60,9 +60,85 @@ export interface StepDefinition {
    * `policy.allowedDomains`, and at run time every one is checked against it.
    */
   reads?: string[];
+  /**
+   * The entity types it writes or reads, which its pipeline's App must have (M33): that key, these fields of these
+   * kinds, these states when it sets the stage. The App may have more fields; the compiler checks these are there.
+   */
+  entities?: EntityContract[];
   input: z.ZodObject;
   output: z.ZodObject;
 }
+
+export interface EntityContract {
+  type: string;
+  key: string;
+  fields: Record<string, FieldKind>;
+  states?: string[];
+  /** A type of mine the step reads (price.watch's Product); otherwise one it writes, so never mine. */
+  mine?: boolean;
+  /**
+   * The step works outside an App too (on what the old pages kept, until they go: M33-T4): the type is checked only
+   * when its pipeline names an App.
+   */
+  optional?: boolean;
+}
+
+/** bill.save's Bill (M33): the type a Bills App gives it. */
+export const BILL_ENTITY: EntityContract = {
+  type: "Bill",
+  key: "billKey",
+  fields: {
+    billKey: "text",
+    issuer: "text",
+    issuerKey: "text",
+    amount: "money",
+    currency: "text",
+    dueDate: "date",
+    month: "date",
+    period: "text",
+    reference: "text",
+    from: "email",
+    subject: "text",
+    messageId: "text",
+  },
+  states: ["due", "paid"],
+};
+
+/** A job and my application to it (M33): what the job steps and application.outcome move through its stages. */
+export const JOB_ENTITY: EntityContract = {
+  type: "Job",
+  key: "url",
+  optional: true,
+  fields: { url: "url", title: "text", company: "text", location: "text", description: "longtext", score: "number", scoreReason: "longtext", source: "text" },
+  states: ["new", "skipped", "shortlisted", "prepared", "applied", "responded", "interview", "rejected"],
+};
+
+/** price.watch's Product (M33): a type of mine, a shop per line of `shops` ("https://… | size: M, color: Black"). */
+export const PRODUCT_ENTITY: EntityContract = {
+  type: "Product",
+  key: "name",
+  mine: true,
+  fields: { name: "text", targetPrice: "money", currency: "text", enabled: "yesno", shops: "list" },
+};
+
+/** price.watch's Offer (M33): what it read last on one shop's page for one product. */
+export const OFFER_ENTITY: EntityContract = {
+  type: "Offer",
+  key: "offer",
+  fields: {
+    offer: "text",
+    product: "text",
+    shop: "text",
+    url: "url",
+    variant: "text",
+    price: "money",
+    currency: "text",
+    inStock: "yesno",
+    title: "text",
+    problem: "text",
+    checkedAt: "datetime",
+  },
+};
 
 export class StepCatalog {
   private readonly steps = new Map<string, StepDefinition>();
@@ -261,13 +337,15 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "data.dedupe",
     description:
       "Removes items whose `key` field repeats, keeping the first; with `against: JobPosting`, also the jobs saved " +
-      "before (by data.save), so each posting comes through once.",
+      "before (by data.save), so each posting comes through once; with `againstType` (a type of the pipeline's App, " +
+      "M33), the items whose key is already an entity of it.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
       from: Items,
       key: z.string().min(1),
       against: z.enum(SAVED_LISTS).optional().describe("also drop items whose key is already saved there (key: the posting's url)"),
+      againstType: z.string().regex(TYPE_NAME).optional().describe("also drop items whose key is already an entity of this type of the pipeline's App"),
     }),
     output: z.object({ items: Items, duplicates: z.number().int() }),
   },
@@ -286,7 +364,9 @@ export const CORE_STEPS: StepDefinition[] = [
       "location, description, score, scoreReason, source) for the Jobs page and deduplication; a posting saved again " +
       "keeps its first-seen date and `status` only moves forward (NEW → SKIPPED or SHORTLISTED; APPLIED stays). With " +
       "`collection`: into that named list, one item per `key`; `changed` compares `fields` (default every field); " +
-      "`complete: true` means the items are the whole list, so missing ones are `removed`.",
+      "`complete: true` means the items are the whole list, so missing ones are `removed`. With `type` (a type of the " +
+      "pipeline's App, M30): as entities of that type, by its key; each field read as its kind, a wrong one left out " +
+      "and said in `invalid`, an item without a required field not saved.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -297,6 +377,8 @@ export const CORE_STEPS: StepDefinition[] = [
       key: z.string().min(1).optional().describe("the field that identifies an item in the collection, e.g. url or id"),
       fields: z.array(z.string().min(1)).min(1).optional().describe("the fields whose change counts (default: all)"),
       complete: z.boolean().default(false).describe("the items are the whole list: saved ones missing from it are removed"),
+      type: z.string().regex(TYPE_NAME, "a type of the pipeline's App, e.g. Job").optional().describe("an entity type of the pipeline's App instead of a collection"),
+      stage: z.string().trim().min(1).max(40).optional().describe("with type: move each item to this stage, as its type's moves allow a pipeline (M33)"),
     }),
     output: z.object({
       saved: z.number().int(),
@@ -310,7 +392,26 @@ export const CORE_STEPS: StepDefinition[] = [
       ),
       /** With `complete: true`, saved before and missing now (the last saved values). */
       removed: Items,
+      /** With `type`: items with fields that aren't their kind (left out), or not saved (`saved: false`). */
+      invalid: z.array(z.object({ key: z.string().nullable(), saved: z.boolean(), problems: z.array(z.string()) })).default([]),
     }),
+  },
+  {
+    type: "data.read",
+    description:
+      "Reads entities of a type of the pipeline's App (M30), as items: their fields, mine included. `where` keeps " +
+      "those matching every condition (as data.filter, on the type's fields), `sort` orders them (\"-salary\": highest " +
+      "first), `limit` caps them; `removed: true` reads the removed ones instead.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      type: z.string().regex(TYPE_NAME, "a type of the pipeline's App, e.g. Job"),
+      where: z.array(FilterCondition).min(1).optional(),
+      sort: z.string().regex(/^-?[A-Za-z_@][\w.@-]*$/, '"field" or "-field"').optional(),
+      limit: z.number().int().min(1).max(1000).default(100),
+      removed: z.boolean().default(false),
+    }),
+    output: z.object({ items: Items, count: z.number().int() }),
   },
   {
     type: "data.history",
@@ -518,6 +619,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "llm.score",
+    entities: [JOB_ENTITY],
     description: "Scores each item 0–100 against `against` (a profile or criteria text); `top` keeps the best N.",
     sideEffect: false,
     llm: true,
@@ -588,6 +690,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "application.outcome",
+    entities: [JOB_ENTITY],
     description:
       "What an email says about one of my submitted applications: matched by the company and role (the sender's " +
       "domain or the company's name first), and the application moved on: replied, interview, rejected (forward " +
@@ -745,14 +848,15 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "price.watch",
     description:
-      "Checks the products on my Prices page (M24): each shop's page read like shop.product, its price kept per " +
-      "shop. `news`: a shop now at or under my target (once, when it crosses), the lowest in `lowestDays`, back in " +
+      "Checks my enabled Products of the pipeline's App (M33, pipelines/apps/prices.yaml): each shop line's page read " +
+      "like shop.product, kept as an Offer with its price history (a removed line's Offer goes). `news`: a shop now at or under my target (once, when it crosses), the lowest in `lowestDays`, back in " +
       "stock; `text` says so with the cheapest shop for each (empty when nothing is new, for `when`). The addresses " +
-      "are mine from the Prices page, so they need no allowedDomains. A dry run records nothing.",
+      "are mine (a type of mine), so they need no allowedDomains. A dry run records nothing.",
     sideEffect: false,
     llm: true,
     saasSafe: true,
     reports: "report",
+    entities: [OFFER_ENTITY, PRODUCT_ENTITY],
     input: z.object({
       product: z.string().min(1).max(200).optional().describe("only this product (its name); default: every enabled one"),
       lowestDays: z.number().int().min(7).max(365).default(90),
@@ -799,12 +903,13 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "bill.save",
     description:
-      "Keeps bills from bill.read on the Bills page (M23): the same bill again (same sender, reference or period) " +
-      "updates its row. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
+      "Keeps bills from bill.read as Bill entities of the pipeline's App (M33; see pipelines/apps/bills.yaml): the same " +
+      "bill again (same sender, reference or period) updates it, a new one is `due` until I mark it paid. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
       "(`remindDaysBefore` days before, 09:00) for calendar.create; `jumps`: new bills more than `jumpPercent` above " +
       "the usual (the median of the issuer's last six), and `jumpText` saying so (empty when none, for `when`).",
     sideEffect: false,
     saasSafe: true,
+    entities: [BILL_ENTITY],
     input: z.object({
       bills: Items,
       remindDaysBefore: z.number().int().min(0).max(30).default(3),
@@ -1002,6 +1107,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.mapForm",
+    entities: [JOB_ENTITY],
     description:
       "Opens an application form (following the page's Apply button when the form isn't there) and reads every field, " +
       "typing and attaching nothing. Proposes each value from my profile (Settings) and writes free-text answers " +
@@ -1030,6 +1136,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.fillAndSubmit",
+    entities: [JOB_ENTITY],
     description:
       "Fills an application form with exactly the approved fields and files and submits it, in the live browser. " +
       "Before typing it reads the form again: a field that changed, a new required field or another address pauses " +

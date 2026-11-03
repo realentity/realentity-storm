@@ -1,6 +1,8 @@
-import { Prisma, type PrismaClient, type WatchedOffer, type WatchedProduct } from "@ai-me/db";
-import { PRICE_WATCH_COLLECTION } from "@ai-me/shared";
+import { type DataEntity, type Prisma, type PrismaClient } from "@ai-me/db";
+import { entityItem, PRICE_WATCH_COLLECTION } from "@ai-me/shared";
+import { offerKey, parseShopLine } from "@ai-me/steps";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { appType } from "./entity-steps";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Prices kept per shop: a year of daily checks. */
@@ -8,8 +10,25 @@ const KEEP = 400;
 
 type Item = Record<string, unknown>;
 
+interface Product {
+  name: string;
+  targetPrice: number | null;
+  currency: string | null;
+  shops: string[];
+}
+
+interface Offer {
+  key: string;
+  shop: string;
+  url: string;
+  variant?: string;
+  select?: Record<string, string>;
+  /** What it read last time, when it read anything. */
+  last: { price: number | null; inStock: boolean | null } | null;
+}
+
 interface Read {
-  offer: WatchedOffer;
+  offer: Offer;
   shop: string;
   url: string;
   price: number | null;
@@ -20,10 +39,10 @@ interface Read {
 }
 
 /**
- * price.watch (M24): the products on my Prices page, each shop's page read by shop.product (schema.org data, the
- * browser, the cheap model, in that order). Each price is kept per shop; what's new is told once: a shop crossing
- * my target, a new low over `lowestDays`, back in stock. The addresses are mine (the Prices page), so each read may go
- * to its own shop only.
+ * price.watch (M24): my enabled Products (a type of mine in the pipeline's App, M33), each shop line's page read by
+ * shop.product (schema.org data, the browser, the cheap model, in that order). What each shop says is kept as an Offer
+ * with its price history; a line I removed takes its Offer off. What's new is told once: a shop crossing my target, a
+ * new low over `lowestDays`, back in stock. The addresses are mine, so each read may go to its own shop only.
  */
 export class PriceWatchStep implements StepExecutor {
   readonly type = "price.watch";
@@ -36,20 +55,42 @@ export class PriceWatchStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { product: only, lowestDays } = input as { product?: string; lowestDays: number };
-    const watched = await this.prisma.watchedProduct.findMany({
-      where: { userId: context.userId, enabled: true, ...(only ? { name: { equals: only, mode: "insensitive" } } : {}) },
-      include: { offers: { orderBy: { dateCreated: "asc" } } },
-      orderBy: { name: "asc" },
-    });
-    if (only && watched.length === 0) throw new Error(`No enabled product "${only}" on the Prices page`);
+    const { appId } = await appType(this.prisma, context, "Product");
+    await appType(this.prisma, context, "Offer");
+    const rows = await this.prisma.dataEntity.findMany({ where: { appId, type: "Product", removedAt: null }, orderBy: { key: "asc" } });
+    const watched = rows
+      .map((row) => productOf(row))
+      .filter((p) => p.enabled && (!only || p.name.toLowerCase() === only.toLowerCase()));
+    if (only && watched.length === 0) throw new Error(`No watched product "${only}"`);
+    const saved = new Map(
+      (await this.prisma.dataEntity.findMany({ where: { appId, type: "Offer" } })).map((e) => [e.key, e]),
+    );
 
     const products: Item[] = [];
     const news: Item[] = [];
     const problems: string[] = [];
     const report: string[] = [];
     for (const product of watched) {
+      const offers: Offer[] = [];
+      for (const line of product.shops) {
+        const shop = parseShopLine(line);
+        if (!shop) {
+          problems.push(`${product.name}: "${line}" isn't an address (https://…, then "| size: M" for a variant)`);
+          continue;
+        }
+        const key = offerKey(product.name, shop.url, shop.variant);
+        const last = saved.get(key);
+        const value = (last?.removedAt ? null : last?.value) as { price?: unknown; inStock?: unknown } | null | undefined;
+        offers.push({
+          key,
+          shop: new URL(shop.url).hostname,
+          url: shop.url,
+          ...(shop.variant ? { variant: shop.variant, select: shop.select } : {}),
+          last: value ? { price: typeof value.price === "number" ? value.price : null, inStock: typeof value.inStock === "boolean" ? value.inStock : null } : null,
+        });
+      }
       const reads: Read[] = [];
-      for (const offer of product.offers) reads.push(await this.read(offer, context));
+      for (const offer of offers) reads.push(await this.read(offer, context));
       const cheapest = cheapestOf(reads, product.currency);
       for (const read of reads) {
         if (read.price === null) {
@@ -59,24 +100,29 @@ export class PriceWatchStep implements StepExecutor {
         const why = await this.newsOf(context.userId, product, read, lowestDays);
         if (why.length) news.push({ product: product.name, shop: read.shop, url: read.url, price: read.price, currency: read.currency, why, cheapest: cheapest === read });
       }
-      for (const read of reads) if (!context.dryRun) await this.record(context.userId, read);
+      if (!context.dryRun) {
+        for (const read of reads) await this.record(context.userId, appId, product.name, read, saved.get(read.offer.key));
+        // A shop line I removed: its Offer goes (its history stays, should the line come back).
+        const kept = new Set(offers.map((o) => o.key));
+        const gone = [...saved.values()].filter((e) => !e.removedAt && (e.value as Item).product === product.name && !kept.has(e.key));
+        if (gone.length) await this.prisma.dataEntity.updateMany({ where: { dataEntityId: { in: gone.map((e) => e.dataEntityId) } }, data: { removedAt: new Date() } });
+      }
       products.push({
         name: product.name,
-        targetPrice: product.targetPrice === null ? null : Number(product.targetPrice),
+        targetPrice: product.targetPrice,
         cheapest: cheapest && { shop: cheapest.shop, url: cheapest.url, price: cheapest.price, currency: cheapest.currency },
-        offers: reads.map(({ offer: _, ...read }) => read),
+        offers: reads.map(({ offer, ...read }) => ({ ...read, ...(offer.variant ? { variant: offer.variant } : {}) })),
       });
       report.push(`${product.name}: ${cheapest ? `${money(cheapest.price!, cheapest.currency)} at ${cheapest.shop}` : "no price"}`);
     }
     return { products, news, text: textOf(news, products), problems, report: report.join("\n") };
   }
 
-  private async read(offer: WatchedOffer, context: StepContext): Promise<Read> {
-    const shop = new URL(offer.url).hostname;
-    const select = (offer.select as Record<string, string> | null) ?? undefined;
+  private async read(offer: Offer, context: StepContext): Promise<Read> {
+    const shop = offer.shop;
     try {
       const output = (await this.product.execute(
-        { products: [{ url: offer.url, ...(select ? { select } : {}) }], browser: "fallback", llm: true, timeoutSeconds: 30 },
+        { products: [{ url: offer.url, ...(offer.select ? { select: offer.select } : {}) }], browser: "fallback", llm: true, timeoutSeconds: 30 },
         { ...context, allowedDomains: [shop] },
       )) as { items: Item[] };
       const item = output.items[0] ?? {};
@@ -96,37 +142,48 @@ export class PriceWatchStep implements StepExecutor {
   }
 
   /** What's new about this shop's price, compared with what it read before. */
-  private async newsOf(userId: string, product: WatchedProduct, read: Read, lowestDays: number): Promise<string[]> {
+  private async newsOf(userId: string, product: Product, read: Read, lowestDays: number): Promise<string[]> {
     const price = read.price!;
-    const last = read.offer.lastPrice === null ? null : Number(read.offer.lastPrice);
-    const target = product.targetPrice === null ? null : Number(product.targetPrice);
+    const last = read.offer.last?.price ?? null;
+    const target = product.targetPrice;
     const why: string[] = [];
     if (target !== null && comparable(product.currency, read.currency) && price <= target && (last === null || last > target)) {
       why.push(`at or under your target ${money(target, product.currency)}`);
     }
     const earlier = await this.prisma.dataPoint.findMany({
-      where: { userId, collection: PRICE_WATCH_COLLECTION, key: read.offer.watchedOfferId, at: { gte: new Date(Date.now() - lowestDays * DAY_MS) } },
+      where: { userId, collection: PRICE_WATCH_COLLECTION, key: read.offer.key, at: { gte: new Date(Date.now() - lowestDays * DAY_MS) } },
       select: { value: true },
     });
     if (earlier.length > 0 && price < Math.min(...earlier.map((p) => p.value))) why.push(`the lowest in ${lowestDays} days`);
-    if (read.offer.lastInStock === false && read.inStock === true) why.push("back in stock");
+    if (read.offer.last?.inStock === false && read.inStock === true) why.push("back in stock");
     return why;
   }
 
-  private async record(userId: string, read: Read): Promise<void> {
-    const key = read.offer.watchedOfferId;
-    await this.prisma.watchedOffer.update({
-      where: { watchedOfferId: key },
-      data: {
-        lastCheckedAt: new Date(),
-        lastProblem: read.price === null ? read.problem : null,
-        ...(read.price === null
-          ? {}
-          : { lastPrice: new Prisma.Decimal(read.price), lastCurrency: read.currency, lastInStock: read.inStock, lastTitle: read.title }),
-      },
+  /** The Offer: what it read now, or (when it read no price) what it read last with the problem. */
+  private async record(userId: string, appId: string, product: string, read: Read, saved: DataEntity | undefined): Promise<void> {
+    const key = read.offer.key;
+    const previous = saved && !saved.removedAt ? (saved.value as Item) : {};
+    const now = new Date();
+    const value: Item = {
+      ...(read.price === null ? previous : {}),
+      offer: key,
+      product,
+      shop: read.shop,
+      url: read.url,
+      ...(read.offer.variant ? { variant: read.offer.variant } : {}),
+      checkedAt: now.toISOString(),
+      ...(read.price === null
+        ? { problem: read.problem ?? "no price" }
+        : withoutNulls({ price: read.price, currency: read.currency, inStock: read.inStock, title: read.title })),
+    };
+    if (read.price !== null) delete value.problem;
+    await this.prisma.dataEntity.upsert({
+      where: { appId_type_key: { appId, type: "Offer", key } },
+      create: { appId, type: "Offer", key, value: value as Prisma.InputJsonObject, firstSeenAt: now, lastSeenAt: now },
+      update: { value: value as Prisma.InputJsonObject, lastSeenAt: now, removedAt: null },
     });
     if (read.price === null) return;
-    await this.prisma.dataPoint.create({ data: { userId, collection: PRICE_WATCH_COLLECTION, key, value: read.price, at: new Date() } });
+    await this.prisma.dataPoint.create({ data: { userId, collection: PRICE_WATCH_COLLECTION, key, value: read.price, at: now } });
     const old = await this.prisma.dataPoint.findMany({
       where: { userId, collection: PRICE_WATCH_COLLECTION, key },
       orderBy: { at: "desc" },
@@ -135,6 +192,23 @@ export class PriceWatchStep implements StepExecutor {
     });
     if (old.length) await this.prisma.dataPoint.deleteMany({ where: { dataPointId: { in: old.map((p) => p.dataPointId) } } });
   }
+}
+
+/** A Product entity as price.watch reads it: watched unless I said not, its shops a line each. */
+function productOf(row: DataEntity): Product & { enabled: boolean } {
+  const item = entityItem(row.value, row.mine);
+  const shops = Array.isArray(item.shops) ? item.shops.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
+  return {
+    name: row.key,
+    targetPrice: typeof item.targetPrice === "number" ? item.targetPrice : null,
+    currency: typeof item.currency === "string" && item.currency ? item.currency.toUpperCase() : null,
+    enabled: item.enabled !== false,
+    shops,
+  };
+}
+
+function withoutNulls(value: Item): Item {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== null && v !== undefined));
 }
 
 /** The lowest price not known to be sold out, in the target's currency when there is one. */

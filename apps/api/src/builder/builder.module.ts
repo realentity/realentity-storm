@@ -1,4 +1,5 @@
 import { ClaudeChat, ModelRouter, type LlmChat } from "@ai-me/llm";
+import { AppsModule } from "../apps/apps.module";
 import { type ServerEnv } from "@ai-me/shared";
 import { PipelineCompiler, StepCatalog } from "@ai-me/steps";
 import { Module } from "@nestjs/common";
@@ -11,7 +12,7 @@ import { BuilderController } from "./builder.controller";
 import { BUILDER_LLM, BuilderService } from "./builder.service";
 
 @Module({
-  imports: [PipelinesModule, RunsModule],
+  imports: [AppsModule, PipelinesModule, RunsModule],
   controllers: [BuilderController],
   providers: [
     {

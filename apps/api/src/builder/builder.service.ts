@@ -12,12 +12,15 @@ import {
   type BuilderProposalStatus,
   type BuilderProposalView,
   type CompiledDefinition,
+  type AppDefinition,
   type CompiledPolicy,
   type CompileIssue,
   type EffortName,
   type ServerEnv,
 } from "@ai-me/shared";
-import { diffDefinitions, RecipeSchema } from "@ai-me/steps";
+import { diffApps, diffDefinitions, RecipeSchema } from "@ai-me/steps";
+import { readAppSource, type AppProposalView } from "@ai-me/shared";
+import { AppsService } from "../apps/apps.service";
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
@@ -34,6 +37,17 @@ const RECENT_CHATS = 20;
 const TITLE_CHARS = 80;
 
 /** What a proposal message stores (BuilderMessage.proposal). */
+/** M34: what an App proposal stores (BuilderMessage.proposal, kind app). */
+interface StoredAppProposal {
+  kind: "app";
+  status: BuilderProposalStatus;
+  summary: string;
+  appName: string;
+  appSource: string;
+  pipelines: CompiledDefinition[];
+  savedAppId: string | null;
+}
+
 interface StoredProposal {
   status: BuilderProposalStatus;
   summary: string;
@@ -63,6 +77,7 @@ export class BuilderService {
     private readonly pipelines: PipelinesService,
     private readonly runs: RunsService,
     private readonly events: EventsService,
+    private readonly apps: AppsService,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
   ) {}
 
@@ -78,12 +93,13 @@ export class BuilderService {
   }
 
   /** The model is chosen now (Settings, task "builder") and kept for the chat's lifetime. */
-  async create(userId: string, pipelineId?: string): Promise<BuilderChatView> {
+  async create(userId: string, pipelineId?: string, appId?: string): Promise<BuilderChatView> {
     if (pipelineId) await this.findPipeline(userId, pipelineId);
+    if (appId) await this.apps.forBuilder(userId, appId);
     const choice = await this.router.choose(userId, "builder");
     const chat = await this.prisma.client.builderChat.create({
       // The system prompt is kept with the chat: a later catalog change must not rewrite what earlier turns saw.
-      data: { userId, pipelineId: pipelineId ?? null, model: choice.model, effort: choice.effort, system: this.builder.system },
+      data: { userId, pipelineId: pipelineId ?? null, appId: appId ?? null, model: choice.model, effort: choice.effort, system: this.builder.system },
     });
     return this.get(userId, chat.builderChatId);
   }
@@ -102,6 +118,8 @@ export class BuilderService {
     ]);
     const version = await this.currentVersion(chat.pipelineId);
     const current = (version?.definition as unknown as CompiledDefinition | undefined) ?? null;
+    const apps = await this.apps.definitions(userId);
+    const appPipelines = await this.pipelineDefinitions(userId);
     return {
       ...summary(
         chat,
@@ -112,7 +130,7 @@ export class BuilderService {
       tokensUsed: chat.tokensUsed,
       tokenCap: this.env.BUILDER_CHAT_MAX_TOKENS,
       costUsd: round(messages.reduce((sum, m) => sum + (usageOf(m)?.costUsd ?? 0), 0)),
-      messages: messages.map((m) => messageView(m, current)),
+      messages: messages.map((m) => messageView(m, current, apps, appPipelines)),
       suggestions: suggestions.map((s) => ({
         suggestionId: s.suggestionId,
         pipelineId: s.pipelineId,
@@ -164,6 +182,49 @@ export class BuilderService {
     return this.get(userId, chatId);
   }
 
+  /**
+   * M34: an App proposal saved: the App (new, or its next version when it changed), then each pipeline (new, or its
+   * next version when it changed). Everything is checked against the App before anything is written, so it is saved
+   * whole or, on a refusal, not at all.
+   */
+  async saveApp(userId: string, chatId: string, messageId: string): Promise<BuilderChatView> {
+    await this.findChat(userId, chatId);
+    const message = await this.prisma.client.builderMessage.findFirst({ where: { builderMessageId: messageId, builderChatId: chatId } });
+    const stored = message?.proposal as unknown as StoredAppProposal | null | undefined;
+    if (!message || stored?.kind !== "app") throw new NotFoundException();
+    if (stored.status !== "open") throw new ConflictException(`This proposal was ${stored.status}`);
+
+    // Checked first, together: the App, and every pipeline against it (also those it leaves as they are).
+    const app = readAppSource(stored.appSource);
+    const existing = await this.apps.byName(userId, stored.appName);
+    const sources = stored.pipelines.map((p) => definitionToSource(p));
+    const checked = await Promise.all(sources.map((source) => this.apps.compileWith(source, app)));
+    const problems = checked.flatMap((r, i) => (r.ok ? [] : r.errors.map((e) => ({ path: `${stored.pipelines[i].name}: ${e.path}`, message: e.message }))));
+    if (problems.length > 0) throw new BadRequestException({ message: "The proposal no longer compiles", errors: problems });
+
+    let appId = existing?.appId ?? null;
+    if (!existing) appId = (await this.apps.create(userId, stored.appSource)).appId;
+    else if (diffApps(existing.definition, app).length > 0) await this.apps.save(userId, existing.appId, stored.appSource);
+    const byName = new Map((await this.prisma.client.pipeline.findMany({ where: { userId } })).map((p) => [p.name, p]));
+    for (const [i, definition] of stored.pipelines.entries()) {
+      const pipeline = byName.get(definition.name);
+      if (!pipeline?.currentVersionId) {
+        await this.pipelines.create(userId, sources[i], chatId);
+        continue;
+      }
+      const current = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: pipeline.currentVersionId } });
+      if (diffDefinitions(current.definition as unknown as CompiledDefinition, definition).changes.length > 0) {
+        await this.pipelines.addVersion(userId, pipeline.pipelineId, sources[i], chatId);
+      }
+    }
+    await this.prisma.client.$transaction([
+      this.prisma.client.builderMessage.update({ where: { builderMessageId: messageId }, data: { proposal: json({ ...stored, status: "saved", savedAppId: appId }) } }),
+      this.prisma.client.builderChat.update({ where: { builderChatId: chatId }, data: { appId } }),
+    ]);
+    await this.changed(userId, chatId, false);
+    return this.get(userId, chatId);
+  }
+
   /** A dry run of a proposal: it becomes the pipeline's draft (a new pipeline gets one, and the chat with it). */
   async dryRun(userId: string, chatId: string, messageId: string): Promise<BuilderDryRunResponse> {
     const chat = await this.findChat(userId, chatId);
@@ -193,6 +254,15 @@ export class BuilderService {
         `<current_pipeline version="${current.version}" id="${current.pipelineVersionId}">\n${definitionToSource(definition)}</current_pipeline>`,
       );
     }
+    // M34: my Apps (names and their types' fields), and the App this chat is about, whole, with its pipelines.
+    const appsList = await this.apps.definitions(userId);
+    const appsBlock = `<apps>\n${appsList.map((a) => `${a.name}: ${Object.entries(a.types).map(([t, d]) => `${t} (${Object.keys(d.fields).join(", ")})`).join("; ")}`).join("\n") || "none yet"}\n</apps>`;
+    if (appsBlock !== lastShown(history, "apps")) parts.push(appsBlock);
+    const about = chat.appId ? await this.apps.forBuilder(userId, chat.appId) : null;
+    if (about) {
+      const block = `<current_app name="${about.name}">\n${about.source}${about.pipelines.map((p) => `\n<app_pipeline>\n${definitionToSource(p)}</app_pipeline>`).join("")}\n</current_app>`;
+      if (block !== lastShown(history, "current_app")) parts.push(block);
+    }
     const recipes = await this.recipesBlock(userId);
     if (recipes !== lastShown(history, "saved_recipes")) parts.push(recipes);
     if (suggestion) {
@@ -211,6 +281,13 @@ export class BuilderService {
       runs: chat.pipelineId ? this.runsOf(userId, chat.pipelineId) : null,
       system: chat.system ?? undefined,
       tokensLeft: this.env.BUILDER_CHAT_MAX_TOKENS - chat.tokensUsed,
+      apps: appsList,
+      ...(about ? { appPipelines: about.pipelines } : {}),
+      draftType: async (runId, stepKey) => {
+        if (!/^[0-9a-f-]{36}$/i.test(runId)) return null;
+        const draft = await this.apps.draftType(userId, { runId, stepKey }).catch(() => null);
+        return draft && `Drafted from ${draft.samples} item(s):\n${draft.source}`;
+      },
     });
 
     const proposal: StoredProposal | null = result.proposal && {
@@ -222,9 +299,18 @@ export class BuilderService {
       savedVersion: null,
       suggestionId: suggestion?.suggestionId ?? null,
     };
+    const appProposal: StoredAppProposal | null = result.appProposal && {
+      kind: "app",
+      status: "open",
+      summary: result.appProposal.summary,
+      appName: result.appProposal.app.name,
+      appSource: result.appProposal.source,
+      pipelines: result.appProposal.pipelines.map((p) => p.definition),
+      savedAppId: null,
+    };
     const ok = result.transcript !== null;
     await this.prisma.client.$transaction(async (tx) => {
-      if (proposal) await this.supersede(tx, chat.builderChatId);
+      if (proposal || appProposal) await this.supersede(tx, chat.builderChatId);
       const now = Date.now();
       await tx.builderMessage.create({
         data: {
@@ -242,7 +328,7 @@ export class BuilderService {
           role: "assistant",
           text: result.text,
           transcript: ok ? json(result.transcript) : Prisma.DbNull,
-          proposal: proposal ? json(proposal) : Prisma.DbNull,
+          proposal: proposal ? json(proposal) : appProposal ? json(appProposal) : Prisma.DbNull,
           compileErrors: result.compileErrors ? json(result.compileErrors) : Prisma.DbNull,
           error: result.error,
           llmUsage: json(result.usage),
@@ -274,6 +360,13 @@ export class BuilderService {
     }
   }
 
+  /** My pipelines' current definitions (M34: an App proposal's pipelines are compared with them by name). */
+  private async pipelineDefinitions(userId: string): Promise<CompiledDefinition[]> {
+    const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } } });
+    const versions = await this.prisma.client.pipelineVersion.findMany({ where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } } });
+    return versions.map((v) => v.definition as unknown as CompiledDefinition);
+  }
+
   private runsOf(userId: string, pipelineId: string): BuilderRuns {
     return {
       list: async (limit) => runList(await this.runs.list(userId, { pipelineId, limit })),
@@ -291,7 +384,7 @@ export class BuilderService {
   private async openProposal(chatId: string, messageId: string): Promise<{ message: BuilderMessage; proposal: StoredProposal }> {
     const message = await this.prisma.client.builderMessage.findFirst({ where: { builderMessageId: messageId, builderChatId: chatId } });
     const proposal = message?.proposal as unknown as StoredProposal | null | undefined;
-    if (!message || !proposal) throw new NotFoundException();
+    if (!message || !proposal || (proposal as unknown as { kind?: string }).kind === "app") throw new NotFoundException();
     if (proposal.status !== "open") throw new ConflictException(`This proposal was ${proposal.status}`);
     return { message, proposal };
   }
@@ -366,6 +459,7 @@ function summary(chat: BuilderChat, first: BuilderMessage | undefined): BuilderC
   return {
     chatId: chat.builderChatId,
     pipelineId: chat.pipelineId,
+    appId: chat.appId,
     title: title.length > TITLE_CHARS ? `${title.slice(0, TITLE_CHARS - 1)}…` : title || "New chat",
     model: chat.model,
     dateCreated: chat.dateCreated.toISOString(),
@@ -373,8 +467,10 @@ function summary(chat: BuilderChat, first: BuilderMessage | undefined): BuilderC
   };
 }
 
-function messageView(message: BuilderMessage, current: CompiledDefinition | null): BuilderMessageView {
-  const stored = message.proposal as unknown as StoredProposal | null;
+function messageView(message: BuilderMessage, current: CompiledDefinition | null, apps: AppDefinition[], pipelines: CompiledDefinition[]): BuilderMessageView {
+  const raw = message.proposal as unknown as (StoredProposal & { kind?: undefined }) | StoredAppProposal | null;
+  const appProposal = raw?.kind === "app" ? appProposalView(raw, apps, pipelines) : null;
+  const stored = raw?.kind === "app" ? null : raw;
   const proposal: BuilderProposalView | null = stored && {
     status: stored.status,
     summary: stored.summary,
@@ -391,10 +487,32 @@ function messageView(message: BuilderMessage, current: CompiledDefinition | null
     role: message.role === "user" ? "user" : "assistant",
     text: message.text,
     proposal,
+    appProposal,
     compileErrors: (message.compileErrors as CompileIssue[] | null) ?? null,
     error: message.error,
     costUsd: usageOf(message)?.costUsd ?? null,
     dateCreated: message.dateCreated.toISOString(),
+  };
+}
+
+/** An App proposal against my Apps and pipelines as they are now: another version may have been saved since. */
+function appProposalView(stored: StoredAppProposal, apps: AppDefinition[], pipelines: CompiledDefinition[]): AppProposalView {
+  const current = apps.find((a) => a.name === stored.appName);
+  const open = stored.status === "open";
+  return {
+    status: stored.status,
+    summary: stored.summary,
+    app: { name: stored.appName, source: stored.appSource, isNew: !current, changes: open && current ? diffApps(current, readAppSource(stored.appSource)) : [] },
+    pipelines: stored.pipelines.map((definition) => {
+      const before = pipelines.find((p) => p.name === definition.name);
+      return {
+        name: definition.name,
+        source: definitionToSource(definition),
+        isNew: !before,
+        changes: open && before ? diffDefinitions(before, definition).summary.split("\n").filter(Boolean) : [],
+      };
+    }),
+    savedAppId: stored.savedAppId,
   };
 }
 

@@ -1,4 +1,17 @@
 import {
+  type AppDetailView,
+  type AppDriftView,
+  type AppImportResult,
+  type ImportSource,
+  type AppEntityView,
+  type AppListQuery,
+  type AppListView,
+  type AppMenuItem,
+  type AppSummaryView,
+  type DraftTypeRequest,
+  type DraftTypeView,
+  type EntityListView,
+  type EntityQuery,
   type PricesStatusView,
   type HealthView,
   type PriceHistoryView,
@@ -167,6 +180,34 @@ export const api = {
     act: (pipelineId: string, index: number, key?: string) =>
       request<RunDetailView>("POST", `/views/${pipelineId}/actions/${index}`, key === undefined ? {} : { key }),
   },
+  apps: {
+    list: () => request<AppSummaryView[]>("GET", "/apps"),
+    get: (appId: string) => request<AppDetailView>("GET", `/apps/${appId}`),
+    create: (source: string) => request<AppDetailView>("POST", "/apps", { source }),
+    save: (appId: string, source: string) => request<AppDetailView>("PUT", `/apps/${appId}`, { source }),
+    entities: (appId: string, type: string, q: Partial<EntityQuery> = {}) =>
+      request<EntityListView>("GET", `/apps/${appId}/types/${encodeURIComponent(type)}/entities${query({ ...q, removed: q.removed ? "true" : undefined })}`),
+    draftType: (body: DraftTypeRequest) => request<DraftTypeView>("POST", "/apps/draft-type", body),
+    drift: (appId: string) => request<AppDriftView[]>("GET", `/apps/${appId}/drift`),
+    addField: (appId: string, type: string, field: string) => request<AppDetailView>("POST", `/apps/${appId}/drift`, { type, field }),
+    importFrom: (appId: string, from: ImportSource, into?: { collection: string; type: string }) =>
+      request<AppImportResult>("POST", `/apps/${appId}/import`, { from, ...into }),
+    menu: () => request<AppMenuItem[]>("GET", "/apps/menu"),
+    page: (appId: string, type: string, q: Partial<AppListQuery> = {}) =>
+      request<AppListView>("GET", `/apps/${appId}/pages/${encodeURIComponent(type)}${query(q)}`),
+    entity: (appId: string, type: string, key: string) =>
+      request<AppEntityView>("GET", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}`),
+    add: (appId: string, type: string, values: Record<string, unknown>) =>
+      request<AppEntityView>("POST", `/apps/${appId}/pages/${encodeURIComponent(type)}`, { values }),
+    saveValues: (appId: string, type: string, key: string, values: Record<string, unknown>) =>
+      request<AppEntityView>("PUT", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}/values`, { values }),
+    move: (appId: string, type: string, key: string, to: string) =>
+      request<AppEntityView>("PUT", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}/stage`, { to }),
+    remove: (appId: string, type: string, key: string) =>
+      request<void>("DELETE", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}`),
+    act: (appId: string, type: string, index: number, key?: string) =>
+      request<RunDetailView>("POST", `/apps/${appId}/actions/${encodeURIComponent(type)}/${index}`, key === undefined ? {} : { key }),
+  },
   bills: {
     list: () => request<BillsView>("GET", "/bills"),
     paid: (billId: string, paid: boolean) => request<BillView>("PUT", `/bills/${billId}/paid`, { paid }),
@@ -218,12 +259,13 @@ export const api = {
   builder: {
     /** Without a pipeline: chats about new pipelines, not saved yet. */
     list: (pipelineId?: string) => request<BuilderChatSummaryView[]>("GET", `/builder/chats${query({ pipelineId })}`),
-    create: (pipelineId?: string) => request<BuilderChatView>("POST", "/builder/chats", { pipelineId }),
+    create: (pipelineId?: string, appId?: string) => request<BuilderChatView>("POST", "/builder/chats", { pipelineId, appId }),
     get: (chatId: string) => request<BuilderChatView>("GET", `/builder/chats/${chatId}`),
     send: (chatId: string, text: string, suggestionId?: string) =>
       request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages`, { text, suggestionId }),
     save: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save`),
     dryRun: (chatId: string, messageId: string) =>
       request<BuilderDryRunResponse>("POST", `/builder/chats/${chatId}/messages/${messageId}/dry-run`),
+    saveApp: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save-app`),
   },
 };

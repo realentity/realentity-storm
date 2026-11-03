@@ -31,7 +31,7 @@ export class BuilderController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodBodyPipe(CreateBuilderChatSchema)) body: CreateBuilderChatRequest,
   ): Promise<BuilderChatView> {
-    return this.builder.create(user.userId, body.pipelineId);
+    return this.builder.create(user.userId, body.pipelineId, body.appId);
   }
 
   @Get(":chatId")
@@ -61,6 +61,16 @@ export class BuilderController {
     @Param("messageId", ParseUUIDPipe) messageId: string,
   ): Promise<BuilderChatView> {
     return this.builder.save(user.userId, chatId, messageId);
+  }
+
+  /** M34: an App proposal saved: the App and its pipelines. */
+  @Post(":chatId/messages/:messageId/save-app")
+  saveApp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("chatId", ParseUUIDPipe) chatId: string,
+    @Param("messageId", ParseUUIDPipe) messageId: string,
+  ): Promise<BuilderChatView> {
+    return this.builder.saveApp(user.userId, chatId, messageId);
   }
 
   @Post(":chatId/messages/:messageId/dry-run")

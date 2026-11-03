@@ -37,8 +37,8 @@ export class Triggers {
     }
     if (await this.paused(job.userId)) return [];
     const started: string[] = [];
-    for (const { pipelineId, name, versionId, trigger } of await this.enabled(job.userId)) {
-      if (!isEventTrigger(trigger) || !matches(trigger, job)) continue;
+    for (const { pipelineId, name, versionId, trigger, app } of await this.enabled(job.userId)) {
+      if (!isEventTrigger(trigger) || !matches(trigger, job, app)) continue;
       if (pipelineId === job.source.pipelineId) {
         this.logger.warn(`"${name}" is triggered by its own ${job.event}: not started`);
         continue;
@@ -132,13 +132,13 @@ export class Triggers {
     return pipelines.flatMap((p) => {
       const version = byId.get(p.currentVersionId!);
       if (!version) return [];
-      const trigger = (version.definition as unknown as CompiledDefinition).trigger;
-      return [{ pipelineId: p.pipelineId, name: p.name, versionId: version.pipelineVersionId, trigger }];
+      const { trigger, app } = version.definition as unknown as CompiledDefinition;
+      return [{ pipelineId: p.pipelineId, name: p.name, versionId: version.pipelineVersionId, trigger, app }];
     });
   }
 }
 
-function matches(trigger: EventTrigger, job: EventJob): boolean {
+function matches(trigger: EventTrigger, job: EventJob, app: string | undefined): boolean {
   if (trigger.on !== job.event) return false;
   const data = job.data;
   switch (trigger.on) {
@@ -155,6 +155,17 @@ function matches(trigger: EventTrigger, job: EventJob): boolean {
       return false;
     case "view.action":
       // Started by the api, from a row's button (M27).
+      return false;
+    case "entity.changed":
+      // Only a pipeline of the same App watches its types (M30).
+      return (
+        app === data.app &&
+        data.type === trigger.type &&
+        (!trigger.field || (Array.isArray(data.changed) && data.changed.includes(trigger.field))) &&
+        (!trigger.stage || (data.stage as { to?: string } | null)?.to === trigger.stage)
+      );
+    case "entity.action":
+      // Started by the api, from an entity's button (M32).
       return false;
   }
 }

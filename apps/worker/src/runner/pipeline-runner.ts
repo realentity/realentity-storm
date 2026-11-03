@@ -652,6 +652,7 @@ export class PipelineRunner {
       stepKey: row.stepKey,
       itemIndex: row.itemIndex,
       dryRun: state.dryRun,
+      ...(state.definition.app ? { app: state.definition.app } : {}),
       recordUsage,
       budgetStops: () => this.controls.budgetStops(state.controlled),
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],

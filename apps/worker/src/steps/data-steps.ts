@@ -1,18 +1,12 @@
 import { type JobPosting, type JobPostingStatus, type Prisma, type PrismaClient } from "@ai-me/db";
 import { canonicalJson } from "@ai-me/shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { matchesAll, valueAt, type Condition } from "./conditions";
+import { appType, saveEntities } from "./entity-steps";
+
+export { valueAt };
 
 type Item = Record<string, unknown>;
-
-/** A field of an item by dotted path ("company.name"); undefined when missing. */
-export function valueAt(item: Item, path: string): unknown {
-  let current: unknown = item;
-  for (const segment of path.split(".")) {
-    if (current === null || typeof current !== "object" || Array.isArray(current)) return undefined;
-    current = (current as Item)[segment];
-  }
-  return current;
-}
 
 /**
  * data.dedupe: the first item per `key` value wins. Items without the key are all kept. With `against: JobPosting`,
@@ -24,7 +18,7 @@ export class DedupeStep implements StepExecutor {
   constructor(private readonly prisma?: PrismaClient) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { from, key, against } = input as { from: Item[]; key: string; against?: "JobPosting" };
+    const { from, key, against, againstType } = input as { from: Item[]; key: string; against?: "JobPosting"; againstType?: string };
     const seen = new Set<string>();
     let items = from.filter((item) => {
       const value = valueAt(item, key);
@@ -42,6 +36,16 @@ export class DedupeStep implements StepExecutor {
       );
       items = items.filter((item) => !saved.has(valueAt(item, key) as string));
     }
+    if (againstType) {
+      // M33: the items whose key is already an entity of the type (removed ones too: seen before is seen).
+      if (!this.prisma) throw new Error("data.dedupe against a type needs the database");
+      const { appId } = await appType(this.prisma, context, againstType);
+      const keys = items.map((item) => valueAt(item, key)).filter((value): value is string => typeof value === "string");
+      const saved = new Set(
+        (await this.prisma.dataEntity.findMany({ where: { appId, type: againstType, key: { in: keys } }, select: { key: true } })).map((e) => e.key),
+      );
+      items = items.filter((item) => !saved.has(valueAt(item, key) as string));
+    }
     return { items, duplicates: from.length - items.length };
   }
 }
@@ -55,6 +59,8 @@ interface SaveInput {
   key?: string;
   fields?: string[];
   complete: boolean;
+  type?: string;
+  stage?: string;
 }
 
 interface Change {
@@ -77,6 +83,7 @@ export class SaveStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const save = input as unknown as SaveInput;
+    if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context);
     if (save.collection) return this.intoCollection(save, save.collection, context);
     const { items, status } = save;
     const postings = items.map(posting).filter((p) => p !== null);
@@ -203,52 +210,13 @@ function withoutEmpty<T extends object>(value: T): Partial<T> {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
-interface Condition {
-  field: string;
-  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in";
-  value: unknown;
-}
-
 /** data.filter: keeps items matching every condition. */
 export class FilterStep implements StepExecutor {
   readonly type = "data.filter";
 
   execute(input: Record<string, unknown>): Promise<unknown> {
     const { items, where } = input as { items: Item[]; where: Condition[] };
-    const kept = items.filter((item) => where.every((condition) => matches(valueAt(item, condition.field), condition)));
+    const kept = items.filter((item) => matchesAll(item, where));
     return Promise.resolve({ items: kept, removed: items.length - kept.length });
   }
-}
-
-function matches(actual: unknown, { op, value }: Condition): boolean {
-  switch (op) {
-    case "eq":
-      return same(actual, value);
-    case "neq":
-      return !same(actual, value);
-    case "gt":
-    case "gte":
-    case "lt":
-    case "lte": {
-      const order = compare(actual, value);
-      if (order === null) return false;
-      return op === "gt" ? order > 0 : op === "gte" ? order >= 0 : op === "lt" ? order < 0 : order <= 0;
-    }
-    case "contains":
-      if (typeof actual === "string" && typeof value === "string") return actual.toLowerCase().includes(value.toLowerCase());
-      return Array.isArray(actual) && actual.some((entry) => same(entry, value));
-    case "in":
-      return Array.isArray(value) && value.some((entry) => same(actual, entry));
-  }
-}
-
-function same(a: unknown, b: unknown): boolean {
-  return a !== undefined && canonicalJson(a) === canonicalJson(b);
-}
-
-/** Numbers compare as numbers, strings as strings (ISO dates order correctly); anything else doesn't compare. */
-function compare(a: unknown, b: unknown): number | null {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
-  return null;
 }

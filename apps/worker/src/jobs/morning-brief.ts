@@ -109,13 +109,18 @@ export class MorningBrief {
   private async bills(userId: string, now: Date): Promise<string | null> {
     const today = dayString(now);
     const until = dayString(new Date(now.getTime() + BILLS_DAYS * DAY_MS));
-    const due = await this.prisma.bill.findMany({
-      where: { userId, paidAt: null, dueDate: { not: null, lte: new Date(`${until}T00:00:00Z`) } },
-      orderBy: { dueDate: "asc" },
+    // M33: the Bill entities bill.save keeps in my Apps, not yet paid.
+    const unpaid = await this.prisma.dataEntity.findMany({
+      where: { type: "Bill", app: { userId }, removedAt: null, OR: [{ stage: null }, { stage: { not: "paid" } }] },
+      select: { value: true },
     });
+    const due = unpaid
+      .map((e) => e.value as { issuer?: unknown; amount?: unknown; currency?: unknown; dueDate?: unknown })
+      .filter((b): b is { issuer: string; amount: number; currency: string; dueDate: string } => typeof b.dueDate === "string" && b.dueDate <= until)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     if (due.length === 0) return null;
     const lines = due.map((bill) => {
-      const date = bill.dueDate!.toISOString().slice(0, 10);
+      const date = bill.dueDate;
       const when = date < today ? `overdue since ${date}` : date === today ? "due today" : `due ${date}`;
       return `• ${bill.issuer}: ${Number(bill.amount).toFixed(2)} ${bill.currency}, ${when}`;
     });

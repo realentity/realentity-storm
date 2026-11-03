@@ -1,8 +1,9 @@
-# M27: from a row's button on the Releases page (pipelines/release-watch.yaml): what upgrading to that release means,
-# on Telegram. The row is {{trigger.item}}: what the feed said, so it is summarized, never followed.
+# M27, M33: from a Release's button in the Releases App (pipelines/apps/releases.yaml): what upgrading to that release
+# means, on Telegram. The Release is {{trigger.item}}: what the feed said, so it is summarized, never followed.
 name: Release notes
-description: Upgrade notes for one release, from its button on the Releases page.
-trigger: { on: view.action, collection: releases }
+app: Releases
+description: Upgrade notes for one release, from its button on its page.
+trigger: { on: entity.action, type: Release }
 steps:
   - id: notes
     type: llm.summarize

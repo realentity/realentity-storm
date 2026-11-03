@@ -4,10 +4,12 @@ import { z } from "zod";
  * pipelines/prices.yaml, for "Create the Prices pipeline" on the Prices page (the api image has no pipelines/
  * folder). A test keeps the two the same.
  */
-export const PRICES_PIPELINE = `# M24: every morning, the products on the Prices page, at each of their shops; a message only when something is
-# new: a shop at or under my target (once), the lowest in 90 days, back in stock, with the cheapest shop named.
-# Add products on the Prices page: no allowedDomains needed here.
+export const PRICES_PIPELINE = `# M24: every morning, my watched products at each of their shops; a message only when something is new: a shop at or
+# under my target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
+# in the Prices App (pipelines/apps/prices.yaml: save it first), added on its Watched products page: no
+# allowedDomains needed here.
 name: Prices
+app: Prices
 description: My watched products, told only when a price is worth knowing.
 trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
 steps:

@@ -135,6 +135,7 @@ model User {
   suggestions   PipelineSuggestion[]
   webhooks      Webhook[]
   dataRecords   DataRecord[]
+  apps          App[]
   dataPoints    DataPoint[]
   httpCaches    HttpCache[]
   alertStates   AlertState[]
@@ -375,6 +376,9 @@ model BuilderChat {
   user          User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
   pipelineId    String?   @db.Uuid // null while drafting a new pipeline
   pipeline      Pipeline? @relation(fields: [pipelineId], references: [pipelineId], onDelete: SetNull)
+  /// M34: the App this chat changes (null: none).
+  appId         String?   @db.Uuid
+  app           App?      @relation(fields: [appId], references: [appId], onDelete: SetNull)
   model         String
   effort        String
   /// The system prompt the chat started with (catalog included), kept for its lifetime: earlier thinking blocks are
@@ -845,6 +849,64 @@ model DataRecord {
 
   @@unique([userId, collection, key])
   @@map("DataRecords")
+}
+
+/// An App (M30): what belongs together (Job Search, Bills), with its data types. Its pipelines name it (`app:`).
+model App {
+  appId            String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  user             User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name             String
+  currentVersionId String?  @db.Uuid
+  dateCreated      DateTime @default(now())
+  dateUpdated      DateTime @updatedAt
+
+  versions AppVersion[]
+  entities DataEntity[]
+  builderChats BuilderChat[]
+
+  @@unique([userId, name])
+  @@map("Apps")
+}
+
+/// A saved version of an App's definition; immutable, a change is a new one.
+model AppVersion {
+  appVersionId  String   @id @default(uuid()) @db.Uuid
+  appId         String   @db.Uuid
+  app           App      @relation(fields: [appId], references: [appId], onDelete: Cascade)
+  version       Int
+  definition    Json // AppDefinition: name, icon, types (jsonb: its keys reordered)
+  /// The YAML as I wrote it: the fields' order and my comments. What the App is read from (readAppSource).
+  source        String
+  changeSummary String?
+  dateCreated   DateTime @default(now())
+
+  @@unique([appId, version])
+  @@map("AppVersions")
+}
+
+/// An entity of an App's type (M30): what pipelines write with data.save { type }, by the type's key.
+model DataEntity {
+  dataEntityId String    @id @default(uuid()) @db.Uuid
+  appId        String    @db.Uuid
+  app          App       @relation(fields: [appId], references: [appId], onDelete: Cascade)
+  type         String
+  key          String
+  /// What pipelines wrote, each field as its kind; fields the type doesn't name kept as they came.
+  value        Json
+  /// My fields (M32's forms), by name; data.save never writes them.
+  mine         Json      @default("{}")
+  /// Its stage (M32), moved as the type's moves allow; null for a type without stages.
+  stage        String?
+  /// State → when it first reached it.
+  stageDates   Json      @default("{}")
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  /// Missing from a complete save; back when it appears again.
+  removedAt    DateTime?
+
+  @@unique([appId, type, key])
+  @@map("DataEntities")
 }
 
 /// One value of data.history: a number per key over time (prices, counts).

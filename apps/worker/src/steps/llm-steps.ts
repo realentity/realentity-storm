@@ -3,6 +3,7 @@ import { LlmError, type LlmClient, type ModelRouter } from "@ai-me/llm";
 import { z } from "zod";
 import { learningContext, NO_LEARNING, type ExampleText, type StepLearning } from "../learning/learning";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { jobAppOf, jobItem, type JobApp } from "./job-entities";
 
 export type Item = Record<string, unknown>;
 
@@ -128,7 +129,7 @@ export class ScoreStep extends LlmStep {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { items, against, instruction, top, outcomes } = input as { items: Item[]; against: string; instruction?: string; top?: number; outcomes: boolean };
-    const learned = outcomes ? await this.outcomes(context.userId) : "";
+    const learned = outcomes ? await this.outcomes(context.userId, context) : "";
     const schema = z.object({
       results: z.array(z.object({ index: z.number().int(), score: z.number().int().min(0).max(100), reason: z.string() })),
     });
@@ -149,8 +150,10 @@ export class ScoreStep extends LlmStep {
    * My recent applications with an outcome, as an <outcomes> block: an interview, a rejection, an answer, or none
    * after NO_ANSWER_DAYS. Empty without any.
    */
-  private async outcomes(userId: string): Promise<string> {
+  private async outcomes(userId: string, context?: StepContext): Promise<string> {
     if (!this.prisma) return "";
+    const job = context ? await jobAppOf(this.prisma, context) : null;
+    if (job) return jobOutcomesOf(this.prisma, job);
     const silentSince = new Date(Date.now() - NO_ANSWER_DAYS * 86_400_000);
     const applications = await this.prisma.application.findMany({
       where: {
@@ -174,6 +177,29 @@ export class ScoreStep extends LlmStep {
     );
     return `<outcomes>\n${lines.join("\n")}\n</outcomes>\n`;
   }
+}
+
+/** M33: the same outcomes from the Jobs of the pipeline's App, by the dates each reached its stages. */
+async function jobOutcomesOf(prisma: PrismaClient, job: JobApp): Promise<string> {
+  const silentSince = new Date(Date.now() - NO_ANSWER_DAYS * 86_400_000).toISOString();
+  const rows = await prisma.dataEntity.findMany({ where: { appId: job.appId, type: "Job", stage: { in: ["applied", "responded", "interview", "offer", "rejected"] } }, orderBy: { lastSeenAt: "desc" } });
+  const dated = rows
+    .map((row) => ({ row, dates: row.stageDates as Record<string, string> }))
+    .filter(({ row, dates }) => row.stage !== "applied" || (dates.applied ?? "") < silentSince)
+    .slice(0, MAX_OUTCOMES);
+  if (dated.length === 0) return "";
+  const lines = dated.map(({ row, dates }) => {
+    const item = jobItem(job, row);
+    return JSON.stringify({
+      title: item.title,
+      company: item.company ?? null,
+      location: item.location ?? null,
+      scoredThen: item.score ?? null,
+      // An interview that ended in a rejection still got an interview.
+      outcome: dates.interview ? "interview" : dates.rejected ? "rejected" : dates.responded ? "answered" : `no answer in ${NO_ANSWER_DAYS} days`,
+    });
+  });
+  return `<outcomes>\n${lines.join("\n")}\n</outcomes>\n`;
 }
 
 /** A submitted application this long without an answer counts as not answered. */

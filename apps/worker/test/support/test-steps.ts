@@ -1,5 +1,5 @@
 import { type Prisma, type PrismaClient } from "@ai-me/db";
-import { defaultCatalog, PipelineCompiler, type StepDefinition } from "@ai-me/steps";
+import { defaultCatalog, PipelineCompiler, type CompileContext, type StepDefinition } from "@ai-me/steps";
 import { z } from "zod";
 import { type StepExecutor } from "../../src/runner/step-executor";
 
@@ -68,8 +68,8 @@ export class Counting implements StepExecutor {
 }
 
 /** Compiles a pipeline and stores it as version 1 of a new pipeline. Returns the pipelineVersionId. */
-export async function createVersion(prisma: PrismaClient, userId: string, source: string, using = compiler): Promise<string> {
-  const result = using.compileText(source);
+export async function createVersion(prisma: PrismaClient, userId: string, source: string, using = compiler, context: CompileContext = {}): Promise<string> {
+  const result = using.compileText(source, context);
   if (!result.ok) throw new Error(result.errors.map((e) => `${e.path}: ${e.message}`).join("\n"));
   const pipeline = await prisma.pipeline.create({ data: { userId, name: result.definition.name } });
   const v = await prisma.pipelineVersion.create({

@@ -22,6 +22,7 @@ import { PricesModule } from "./prices/prices.module";
 import { ProposalsModule } from "./proposals/proposals.module";
 import { QueueModule } from "./queue/queue.module";
 import { RunsModule } from "./runs/runs.module";
+import { AppsModule } from "./apps/apps.module";
 import { StepsModule } from "./steps/steps.module";
 import { ViewsModule } from "./views/views.module";
 
@@ -57,6 +58,7 @@ export class CoreModule {}
     FactsModule,
     HealthModule,
     ViewsModule,
+    AppsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -1,0 +1,32 @@
+# M33: the Releases App, once release-watch.yaml's page (M27). Release watch keeps each release a feed lists as a
+# Release; Upgraded (mine) hides one from the list, Upgrade notes asks Release notes (release-notes.yaml) about it.
+# Save it on the Apps page before both pipelines, then on its page move the "releases" collection into Release.
+name: Releases
+description: Releases of what runs on the server
+icon: package
+types:
+  Release:
+    key: id
+    title: title
+    fields:
+      id: { type: text, required: true }
+      title: { type: text, required: true }
+      published: { type: datetime }
+      url: { type: url }
+      source: { type: url, label: Feed }
+      summary: { type: longtext }
+      upgraded: { type: yesno, mine: true }
+pages:
+  - list: Release
+    menu: { label: Releases, icon: package }
+    columns: [title, published, source, upgraded]
+    filters: [upgraded]
+    sort: -published
+    actions:
+      - { label: Check now, run: Release watch }
+  - view: Release
+    fields: [title, published, summary, url]
+    actions:
+      - { label: Upgrade notes, run: Release notes, confirm: "Send this release's upgrade notes to Telegram?" }
+  - form: Release
+    fields: [upgraded]

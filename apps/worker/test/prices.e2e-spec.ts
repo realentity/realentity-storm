@@ -2,6 +2,8 @@ import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import { ModelRouter, type LlmClient } from "@ai-me/llm";
 import { TestEnvironment } from "@ai-me/testing";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
@@ -51,7 +53,10 @@ blocked.addSubnet("10.0.0.0", 8, "ipv4");
 
 const NO_LLM: LlmClient = { structured: () => Promise.reject(new Error("no LLM in this test")) };
 
-// M24
+/** The Prices App price.watch reads Products from and writes Offers into (M33). */
+const PRICES_APP = readFileSync(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8");
+
+// M24, M33
 describe("price.watch", () => {
   let db: PrismaConnection;
   let userId: string;
@@ -67,10 +72,24 @@ describe("price.watch", () => {
     step = new PriceWatchStep(db.client, product);
   });
 
+  let appId: string;
+
+  beforeEach(async () => {
+    const app = await db.client.app.create({ data: { userId, name: "Prices" } });
+    const version = await db.client.appVersion.create({ data: { appId: app.appId, version: 1, definition: {}, source: PRICES_APP } });
+    await db.client.app.update({ where: { appId: app.appId }, data: { currentVersionId: version.appVersionId } });
+    appId = app.appId;
+  });
+
   afterEach(async () => {
-    await db.client.watchedProduct.deleteMany();
+    await db.client.app.deleteMany();
     await db.client.dataPoint.deleteMany();
   });
+
+  /** A Product of mine, as its form keeps it: the name is its key, the rest mine. */
+  const product = (name: string, fields: { targetPrice?: number; currency?: string; enabled?: boolean; shops: string[] }) =>
+    db.client.dataEntity.create({ data: { appId, type: "Product", key: name, value: { name }, mine: fields } });
+  const offers = () => db.client.dataEntity.findMany({ where: { appId, type: "Offer" }, orderBy: { key: "asc" } });
 
   afterAll(async () => {
     await shops.stop();
@@ -85,6 +104,7 @@ describe("price.watch", () => {
     stepKey: "watch",
     itemIndex: null,
     dryRun,
+    app: "Prices",
     recordUsage: () => undefined,
     attention: NO_ATTENTION,
     allowedDomains: [],
@@ -101,15 +121,7 @@ describe("price.watch", () => {
   it("tells only news: a new low, crossing the target once, back in stock; names the cheapest shop; nothing when nothing changed", async () => {
     shops.set("one.localhost", "/jacket", 320);
     shops.set("two.localhost", "/p/7", 330);
-    await db.client.watchedProduct.create({
-      data: {
-        userId,
-        name: "Jacket",
-        targetPrice: 300,
-        currency: "EUR",
-        offers: { create: [{ url: shops.url("one.localhost", "/jacket") }, { url: shops.url("two.localhost", "/p/7") }] },
-      },
-    });
+    await product("Jacket", { targetPrice: 300, currency: "EUR", shops: [shops.url("one.localhost", "/jacket"), shops.url("two.localhost", "/p/7")] });
 
     // The first look: nothing to compare with, and a dry run keeps nothing.
     expect((await watch(true)).text).toBe("");
@@ -118,6 +130,11 @@ describe("price.watch", () => {
     expect(first.news).toEqual([]);
     expect(first.products[0]?.cheapest).toMatchObject({ shop: "one.localhost", price: 320 });
     expect(await db.client.dataPoint.count()).toBe(2);
+    // M33: an Offer per shop line, keyed by the product and the address.
+    expect((await offers()).map((o) => [o.key, o.value])).toEqual([
+      [`Jacket | ${shops.url("one.localhost", "/jacket")}`, expect.objectContaining({ product: "Jacket", shop: "one.localhost", price: 320, currency: "EUR", inStock: true })],
+      [`Jacket | ${shops.url("two.localhost", "/p/7")}`, expect.objectContaining({ shop: "two.localhost", price: 330 })],
+    ]);
 
     // Shop one lower than ever.
     shops.set("one.localhost", "/jacket", 310);
@@ -140,19 +157,37 @@ describe("price.watch", () => {
     expect((await watch()).text).toBe(
       `Prices:\nJacket: 305.00 EUR at two.localhost, back in stock\n${shops.url("two.localhost", "/p/7")}`,
     );
+
+    // A shop line I removed: its Offer goes.
+    await db.client.dataEntity.updateMany({ where: { appId, type: "Product" }, data: { mine: { targetPrice: 300, currency: "EUR", shops: [shops.url("one.localhost", "/jacket")] } } });
+    await watch();
+    expect((await offers()).map((o) => o.removedAt === null)).toEqual([true, false]);
+  });
+
+  it("reads a variant from the shop line, and refuses a line that isn't an address", async () => {
+    shops.set("one.localhost", "/jacket", 320);
+    await product("Jacket", { shops: [`${shops.url("one.localhost", "/jacket")} | size: M, color: Black`, "not a shop"] });
+    const result = await watch();
+    // The variant goes to shop.product with the address: this page has none, so it says so.
+    expect(result.problems).toEqual([
+      'Jacket: "not a shop" isn\'t an address (https://…, then "| size: M" for a variant)',
+      expect.stringMatching(/^Jacket at one\.localhost: .*no variant with size M, color Black/),
+    ]);
+    expect((await offers()).map((o) => [o.key, (o.value as { variant?: string }).variant])).toEqual([
+      [`Jacket | ${shops.url("one.localhost", "/jacket")} | size: M, color: Black`, "size: M, color: Black"],
+    ]);
   });
 
   it("a page it can't read is a problem, not a failure; a paused product isn't checked", async () => {
     shops.set("one.localhost", "/kettle", 49.9);
-    await db.client.watchedProduct.create({
-      data: { userId, name: "Kettle", offers: { create: [{ url: shops.url("one.localhost", "/kettle") }, { url: shops.url("one.localhost", "/gone") }] } },
-    });
-    await db.client.watchedProduct.create({ data: { userId, name: "Paused", enabled: false, offers: { create: [{ url: shops.url("one.localhost", "/x") }] } } });
+    await product("Kettle", { shops: [shops.url("one.localhost", "/kettle"), shops.url("one.localhost", "/gone")] });
+    await product("Paused", { enabled: false, shops: [shops.url("one.localhost", "/x")] });
 
     const result = await watch();
     expect(result.products.map((p) => p.name)).toEqual(["Kettle"]);
     expect(result.problems).toEqual([expect.stringMatching(/^Kettle at one\.localhost: /)]);
-    const gone = await db.client.watchedOffer.findFirstOrThrow({ where: { url: shops.url("one.localhost", "/gone") } });
-    expect(gone).toMatchObject({ lastPrice: null, lastProblem: expect.any(String) as string });
+    const gone = await db.client.dataEntity.findFirstOrThrow({ where: { appId, key: `Kettle | ${shops.url("one.localhost", "/gone")}` } });
+    expect(gone.value).toMatchObject({ problem: expect.any(String) as string });
+    expect(gone.value).not.toHaveProperty("price");
   });
 });

@@ -15,8 +15,9 @@ import {
   type PipelineVersionView,
   type UpdatePipelineRequest,
 } from "@ai-me/shared";
-import { diffDefinitions, PipelineCompiler } from "@ai-me/steps";
+import { diffDefinitions } from "@ai-me/steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
+import { AppsService } from "../apps/apps.service";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";
@@ -36,15 +37,15 @@ type Tx = Prisma.TransactionClient;
 export class PipelinesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly compiler: PipelineCompiler,
     private readonly queue: JobQueue,
     private readonly runs: RunsService,
     private readonly controls: ControlsService,
+    private readonly apps: AppsService,
   ) {}
 
   /** Compiles without saving, for the review screen; with a pipeline, also the diff against its current version. */
   async compile(userId: string, source: string, pipelineId?: string): Promise<CompilePipelineResponse> {
-    const result = this.compiler.compileText(source);
+    const result = await this.apps.compileSource(userId, source);
     if (result.ok) result.warnings.push(...(await this.calendarWarnings(userId, result.definition)));
     if (!result.ok || !pipelineId) return { result };
     const current = await this.currentVersion(userId, pipelineId);
@@ -54,7 +55,7 @@ export class PipelinesService {
 
   /** `builderChatId`: the builder chat the source came from (README §2.1), kept with the version. */
   async create(userId: string, source: string, builderChatId?: string): Promise<PipelineDetailView> {
-    const compiled = this.compileOrThrow(source);
+    const compiled = await this.compileOrThrow(userId, source);
     const pipeline = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.pipeline.create({ data: { userId, name: compiled.definition.name } });
       const version = await tx.pipelineVersion.create({
@@ -77,7 +78,7 @@ export class PipelinesService {
    * changes nothing.
    */
   async addVersion(userId: string, pipelineId: string, source: string, builderChatId?: string): Promise<PipelineDetailView> {
-    const compiled = this.compileOrThrow(source);
+    const compiled = await this.compileOrThrow(userId, source);
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
     if (!pipeline) throw new NotFoundException();
     const current = await this.currentVersion(userId, pipelineId);
@@ -125,7 +126,7 @@ export class PipelinesService {
    * it. Without a pipeline, creates one that has only this draft until it is saved.
    */
   async dryRun(userId: string, source: string, pipelineId?: string): Promise<DryRunPipelineResponse> {
-    const compiled = this.compileOrThrow(source);
+    const compiled = await this.compileOrThrow(userId, source);
     await this.controls.assertNotPaused(userId);
     const draft = await this.guardConcurrentSave(() =>
       this.prisma.client.$transaction(async (tx) => {
@@ -213,8 +214,8 @@ export class PipelinesService {
     return versionView(row);
   }
 
-  private compileOrThrow(source: string): Compiled {
-    const result = this.compiler.compileText(source);
+  private async compileOrThrow(userId: string, source: string): Promise<Compiled> {
+    const result = await this.apps.compileSource(userId, source);
     if (!result.ok) throw new BadRequestException({ message: "The pipeline doesn't compile", errors: result.errors });
     return result;
   }

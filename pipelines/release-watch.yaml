@@ -3,9 +3,10 @@
 # day with nothing new. The first run reports everything the feeds list at the moment, once.
 # Add or remove projects in `urls` (GitHub: https://github.com/<owner>/<repo>/releases.atom); a site other than
 # github.com needs its host in policy.allowedDomains too.
-# M27: the releases kept are on the Releases page (in the menu), newest first; Upgraded hides one, and Upgrade notes
-# asks the Release notes pipeline (pipelines/release-notes.yaml) about it.
+# M27, M33: the releases kept are Releases of the Releases App (pipelines/apps/releases.yaml: save it first), on its
+# page newest first; Upgraded marks one, and Upgrade notes asks the Release notes pipeline (release-notes.yaml) about it.
 name: Release watch
+app: Releases
 description: New releases of the server's stack, summarized for upgrading; nothing on a quiet day.
 trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
 policy:
@@ -29,7 +30,7 @@ steps:
       maxItems: 300
   - id: seen
     type: data.save
-    with: { items: "{{feeds.items}}", collection: releases, key: id, fields: [title] }
+    with: { items: "{{feeds.items}}", type: Release, fields: [title] }
   - id: summary
     type: llm.summarize
     when: "{{seen.added}}"
@@ -43,14 +44,3 @@ steps:
   - id: tell
     type: notify.telegram
     with: { text: "New releases on the server's stack:\n{{summary.summary}}" }
-view:
-  menu: { label: Releases, icon: package }
-  collection: releases
-  columns: [title, { field: published, as: date }, { field: source, label: Feed, as: link }]
-  link: url
-  sort: -published
-  detail: { fields: [title, published, summary, url] }
-  marks: [{ id: upgraded, label: Upgraded, hides: true }]
-  actions:
-    - { label: Check now, run: self }
-    - { label: Upgrade notes, run: Release notes, row: true, confirm: "Send this release's upgrade notes to Telegram?" }

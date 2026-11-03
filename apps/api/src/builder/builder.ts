@@ -10,8 +10,9 @@ import {
   type LlmUsage,
   type ModelChoice,
 } from "@ai-me/llm";
-import { type CompiledDefinition, type CompileIssue, type CompileResult } from "@ai-me/shared";
-import { describeCatalog, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@ai-me/steps";
+import { AppDefinitionSchema, type AppDefinition, type CompiledDefinition, type CompileIssue, type CompileResult } from "@ai-me/shared";
+import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@ai-me/steps";
+import { stringify } from "yaml";
 import { z } from "zod";
 
 type Compiled = Extract<CompileResult, { ok: true }>;
@@ -40,6 +41,21 @@ export interface TurnRequest {
   system?: string;
   /** Tokens the chat may still use (the per-chat cap). */
   tokensLeft: number;
+  /** M34: my Apps as they are: a pipeline that names one compiles against it. */
+  apps: AppDefinition[];
+  /** M34: a chat about an App: its pipelines as they are (by name), checked against a proposed version. */
+  appPipelines?: CompiledDefinition[];
+  /** M34-T3: a type drafted from a run's step (as the Apps page's Try the source does); null when it has none. */
+  draftType?: (runId: string, stepKey: string) => Promise<string | null>;
+}
+
+/** M34: an App and its pipelines, each compiled against it. */
+export interface AppProposal {
+  summary: string;
+  app: AppDefinition;
+  /** The App as the builder wrote it, as YAML (without the defaults parsing adds). */
+  source: string;
+  pipelines: Compiled[];
 }
 
 export interface TurnResult {
@@ -47,6 +63,7 @@ export interface TurnResult {
   transcript: ChatMessage[] | null;
   text: string;
   proposal: { summary: string; compiled: Compiled } | null;
+  appProposal: AppProposal | null;
   /** The last proposal didn't compile and the builder gave up on it (M7-U1). */
   compileErrors: CompileIssue[] | null;
   error: string | null;
@@ -59,6 +76,15 @@ const ProposeInput = z.object({
     .record(z.string(), z.unknown())
     .describe("The whole pipeline definition (name, description, trigger, steps, limits, policy), not just the changes."),
 });
+const ProposeAppInput = z.object({
+  summary: z.string().describe("One line: what the App is for, or what this version changes."),
+  app: z.record(z.string(), z.unknown()).describe("The whole App definition (name, description, icon, types, pages)."),
+  pipelines: z
+    .array(z.record(z.string(), z.unknown()))
+    .max(10)
+    .describe("Its pipelines to add or change, each whole and with app: <the App's name>; leave out the ones that stay as they are."),
+});
+const DraftTypeInput = z.object({ runId: z.string(), stepKey: z.string().describe("The step whose items to draft from.") });
 const ListRunsInput = z.object({ limit: z.number().int().min(1).max(20).optional().describe("Default 10.") });
 const ReadRunInput = z.object({
   runId: z.string(),
@@ -80,6 +106,21 @@ export class Builder {
         "Propose the complete pipeline definition. It is compiled right away: you get the compile errors to fix, or " +
         "the gates the compiler inserted and the changes compared to the current version. I review and save it myself.",
       input: ProposeInput,
+    },
+    {
+      name: "propose_app",
+      description:
+        "Propose an App (its types and pages) with the pipelines that write, read and watch it, as one change. The App " +
+        "is checked, each pipeline compiled against it, and its other pipelines too: you get the errors to fix, or what " +
+        "changed. I review and save them together.",
+      input: ProposeAppInput,
+    },
+    {
+      name: "draft_type",
+      description:
+        "A type drafted from what a step of a run gave (a dry run of the source): field names and kinds from the real " +
+        "values, without the LLM. Use it to see what a source really gives before you write the type.",
+      input: DraftTypeInput,
     },
     {
       name: "list_runs",
@@ -107,8 +148,9 @@ export class Builder {
     const added: ChatMessage[] = [request.user];
     let usage = emptyUsage();
     let proposal: TurnResult["proposal"] = null;
+    let appProposal: AppProposal | null = null;
     let compileErrors: CompileIssue[] | null = null;
-    const fail = (error: string): TurnResult => ({ transcript: null, text: "", proposal: null, compileErrors: null, error, usage });
+    const fail = (error: string): TurnResult => ({ transcript: null, text: "", proposal: null, appProposal: null, compileErrors: null, error, usage });
 
     for (let call = 0; call < MAX_CALLS_PER_TURN; call++) {
       if (tokensOf(usage) >= request.tokensLeft) return fail("This chat reached its token limit. Start a new chat to continue.");
@@ -137,15 +179,35 @@ export class Builder {
             .map((m) => (m.role === "assistant" ? textOf(m.content) : ""))
             .join("\n\n")
             .trim();
-        return { transcript, text, proposal, compileErrors, error: null, usage };
+        return { transcript, text, proposal, appProposal, compileErrors, error: null, usage };
       }
 
       const results = [];
       for (const use of uses) {
+        if (use.name === "propose_app") {
+          const outcome = this.proposeApp(use.input, request);
+          if (outcome.ok) {
+            appProposal = outcome.proposal;
+            proposal = null;
+            compileErrors = null;
+          } else {
+            appProposal = null;
+            compileErrors = outcome.errors;
+          }
+          results.push(toolResult(use.id, outcome.message, !outcome.ok));
+          continue;
+        }
+        if (use.name === "draft_type") {
+          const parsed = DraftTypeInput.safeParse(use.input);
+          const draft = parsed.success && request.draftType ? await request.draftType(parsed.data.runId, parsed.data.stepKey).catch(() => null) : null;
+          results.push(toolResult(use.id, draft ?? "No items to draft from in that run's step.", draft === null));
+          continue;
+        }
         if (use.name === "propose_pipeline") {
-          const outcome = this.propose(use.input, request.current);
+          const outcome = this.propose(use.input, request.current, request.apps);
           if (outcome.ok) {
             proposal = { summary: outcome.summary, compiled: outcome.compiled };
+            appProposal = null;
             compileErrors = null;
           } else {
             proposal = null;
@@ -166,6 +228,7 @@ export class Builder {
   private propose(
     input: unknown,
     current: CompiledDefinition | null,
+    apps: AppDefinition[] = [],
   ): { ok: true; summary: string; compiled: Compiled; message: string } | { ok: false; errors: CompileIssue[]; message: string } {
     const parsed = ProposeInput.safeParse(input);
     if (!parsed.success) {
@@ -176,7 +239,9 @@ export class Builder {
       const errors = [{ path: "", message: "the definition is too large" }];
       return { ok: false, errors, message: errors[0].message };
     }
-    const result = this.compiler.compile(parsed.data.pipeline);
+    const named = parsed.data.pipeline.app;
+    const app = typeof named === "string" ? apps.find((a) => a.name === named.trim()) : undefined;
+    const result = this.compiler.compile(parsed.data.pipeline, app ? { app } : {});
     if (!result.ok) {
       return {
         ok: false,
@@ -195,6 +260,55 @@ export class Builder {
       ...(diff ? ["Changes compared to the current version:", diff.summary] : []),
     ];
     return { ok: true, summary: parsed.data.summary.trim().slice(0, 300), compiled: result, message: lines.join("\n") };
+  }
+
+  /**
+   * M34: an App and its pipelines as one change. The App must be valid; each pipeline must name it and compile against
+   * it; so must the App's pipelines that the proposal leaves as they are (a chat about an App).
+   */
+  private proposeApp(input: unknown, request: TurnRequest): { ok: true; proposal: AppProposal; message: string } | { ok: false; errors: CompileIssue[]; message: string } {
+    const refuse = (errors: CompileIssue[]) => ({
+      ok: false as const,
+      errors,
+      message: `It doesn't hold together:\n${errors.map((e) => `- ${e.path || "(app)"}: ${e.message}`).join("\n")}`,
+    });
+    const parsed = ProposeAppInput.safeParse(input);
+    if (!parsed.success) return refuse([{ path: "", message: "propose_app needs { summary, app, pipelines }" }]);
+    if (JSON.stringify(parsed.data).length > MAX_DEFINITION_CHARS) return refuse([{ path: "", message: "the proposal is too large" }]);
+    const appResult = AppDefinitionSchema.safeParse(parsed.data.app);
+    if (!appResult.success) {
+      return refuse(appResult.error.issues.map((issue) => ({ path: `app.${issue.path.map(String).join(".")}`, message: issue.message })));
+    }
+    const app = appResult.data;
+    const errors: CompileIssue[] = [];
+    const pipelines: Compiled[] = [];
+    parsed.data.pipelines.forEach((pipeline, i) => {
+      if (pipeline.app !== app.name) {
+        errors.push({ path: `pipelines[${i}].app`, message: `must be "${app.name}"` });
+        return;
+      }
+      const result = this.compiler.compile(pipeline, { app });
+      if (result.ok) pipelines.push(result);
+      else errors.push(...result.errors.map((e) => ({ path: `pipelines[${i}].${e.path}`, message: e.message })));
+    });
+    const proposed = new Set(pipelines.map((p) => p.definition.name));
+    for (const existing of request.appPipelines ?? []) {
+      if (proposed.has(existing.name)) continue;
+      const again = this.compiler.compile(definitionAsAuthored(existing), { app });
+      if (!again.ok) errors.push(...again.errors.map((e) => ({ path: `"${existing.name}" (as it is).${e.path}`, message: e.message })));
+    }
+    if (errors.length > 0) return refuse(errors);
+    const current = request.apps.find((a) => a.name === app.name);
+    const lines = [
+      "Compiled. I see the App and its pipelines as one proposal with Save all.",
+      current ? `Changes to "${app.name}":\n${diffApps(current, app).join("\n") || "none"}` : `A new App "${app.name}".`,
+      ...pipelines.map((p) => {
+        const before = request.appPipelines?.find((e) => e.name === p.definition.name);
+        return before ? `"${p.definition.name}":\n${diffDefinitions(before, p.definition).summary || "no changes"}` : `"${p.definition.name}": new.`;
+      }),
+    ];
+    const source = stringify(parsed.data.app, { lineWidth: 0 });
+    return { ok: true, proposal: { summary: parsed.data.summary.trim().slice(0, 300), app, source, pipelines }, message: lines.join("\n") };
   }
 
   private async runTool(name: string, input: unknown, runs: BuilderRuns | null): Promise<{ content: string; isError: boolean }> {
@@ -304,7 +418,34 @@ Pipeline definition (JSON; I see it as YAML):
   @lastSeen are the row's own. A page button runs a manual or scheduled pipeline; a row button runs one triggered by
   { "on": "view.action" }, which reads the row as {{trigger.item.<field>}} (never a target).
 
+Apps (M30–M34): when what I describe is about keeping and acting on things (jobs, bills, products, people, books),
+not only telling me once, propose an App with propose_app: its types, their pages, and the pipelines that fill them.
+<apps> in my messages lists the Apps I have; change one by proposing it whole with its name kept, and only the
+pipelines that change. An App definition (JSON): { "name", "description"?, "icon"?, "types": { "<Type>": { "key":
+"<field>", "title"?: "<field>", "mine"?: true (I write it on its form; pipelines only read it), "stages"?: { "field":
+"status", "initial", "states": [...], "moves": [{ "from": "<state>" | [...], "to": [...], "by"?: ["me", "pipeline"] }] },
+"fields": { "<name>": { "type": text|longtext|number|money|date|datetime|url|email|yesno|enum|list, "required"?,
+"mine"? (mine to set, never a pipeline's), "values"? (enum), "currency"? (money: the field with its code), "label"? } } } },
+"pages"?: [{ "list": "<Type>", "menu"?, "columns"?, "filters"?, "sort"?, "group"?: { "by", "period"?, "totals"? },
+"moves"?: true, "actions"?: [{ "label", "run" }] }, { "view": "<Type>", "sections"?, "history"?, "actions"?:
+[{ "label", "run", "when"? }] }, { "form": "<Type>", "fields"? }] }. Its pipelines say "app": "<name>" and write with
+data.save { "type": "<Type>", "items", "stage"? }, read with data.read, start on { "on": "entity.changed", "type",
+"stage"? } or an entity's button { "on": "entity.action", "type" }. An entity a pipeline wrote is never a target; one
+of a type of mine may be.
+- A type: start from the schema.org type that means the same (JobPosting, Product, Offer, Event, Place, Person,
+  Book, Invoice) and keep only the fields this App needs; a cold alert needs three of an API's forty. Name fields as I
+  would, each of its kind; my own (status, comments, a rating) are mine or a stage.
+- Fill it from what the source really gives: after a dry run, draft_type (a run id from list_runs, the step) shows
+  the fields and kinds the items have; map them with data.map or the extraction to the type's names, and the compiler
+  checks one against the other.
+- Without a run yet, say what you assumed about the source, and that a dry run will show it.
+
 Step catalog (the only steps that exist):
 
 ${catalog}`;
+}
+
+/** A saved version as a definition to compile again: the gates it got are inserted again. */
+function definitionAsAuthored(definition: CompiledDefinition): Record<string, unknown> {
+  return { ...definition, steps: definition.steps.filter((s) => !s.autoInserted).map(({ autoInserted: _, ...step }) => step) };
 }

@@ -2,6 +2,7 @@
 # and Insight count them, an interview or a rejection cancels the follow-up reminder (follow-up-later.yaml), and a
 # message tells me. Only forward: what I set by hand on the Jobs page stays unless an email moves it further.
 name: Application replies
+app: Job Search
 description: Replies about my applications update their status, and tell me.
 trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
 steps:

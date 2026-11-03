@@ -8,6 +8,7 @@ import { type CompiledDefinition } from "./pipeline";
 export function definitionToSource(definition: CompiledDefinition): string {
   const authored: Record<string, unknown> = { name: definition.name };
   if (definition.description) authored.description = definition.description;
+  if (definition.app) authored.app = definition.app;
   if (definition.trigger !== "manual") authored.trigger = definition.trigger;
   if (Object.keys(definition.limits).length > 0) authored.limits = definition.limits;
   const { allowedDomains, allowedRecipients } = definition.policy;
@@ -27,5 +28,6 @@ export function definitionToSource(definition: CompiledDefinition): string {
       ...(step.retries !== undefined ? { retries: step.retries } : {}),
       with: step.with,
     }));
+  if (definition.view) authored.view = definition.view;
   return stringify(authored, { lineWidth: 0 });
 }

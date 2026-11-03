@@ -14,7 +14,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 
 | Area | What it can do | Steps |
 | --- | --- | --- |
-| Lists of data | Deduplicate, filter, save and compare with last time, track a number over time, reshape an API's JSON, tell once when a number crosses a line | `data.dedupe`, `data.filter`, `data.save`, `data.history`, `data.map`, `data.alert` |
+| Lists of data | Deduplicate, filter, save and compare with last time, read back an App's entities, track a number over time, reshape an API's JSON, tell once when a number crosses a line | `data.dedupe`, `data.filter`, `data.save`, `data.read`, `data.history`, `data.map`, `data.alert` |
 | Databases | Read your own PostgreSQL database with one query, read-only | `db.query` |
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
@@ -97,6 +97,9 @@ pipeline can be saved.
 
 ### 2.4 A page for the pipeline (`view`)
 
+> M33: an App's pages (§2.5) do all of this and more; Release watch and Table growth are now in the Releases and
+> Tables Apps ([pipelines/apps/](../pipelines/apps/)). `view` still works, until it goes with the old pages.
+
 A pipeline that saves a collection (`data.save` with `collection:`) can show it as a page in the menu, with columns,
 marks (e.g. *Done*, which hides a row) and buttons that start a pipeline for a row:
 
@@ -126,6 +129,113 @@ view:
   chart: { history: table-rows, label: Rows }
 ```
 
+### 2.5 Apps and data types
+
+An **App** (the Apps page) groups what belongs together, Job Search or Bills, and declares the shape of its data as
+**types**. A pipeline joins an App with `app:`; its `data.save { type }` writes entities of a type, `data.read`
+reads them back and `{ on: entity.changed }` starts it when one changes. The compiler checks every field they name
+against the App, so `{{item.salery}}` is refused when the pipeline is saved, not found out on a page.
+
+```yaml
+name: Job Search
+icon: briefcase
+types:
+  Job:
+    key: url                     # one entity per url
+    title: title
+    fields:
+      url: { type: url, required: true }
+      title: { type: text, required: true }
+      salary: { type: money, currency: currency }
+      currency: { type: text }
+      status: { type: enum, values: [new, applied, rejected] }
+      favorite: { type: yesno, mine: true }     # set by me; pipelines never write it
+```
+
+- **Kinds:** `text`, `longtext`, `number`, `money` (with `currency`: the field holding its code), `date`,
+  `datetime`, `url` (http(s) only), `email`, `yesno`, `enum` (with `values`), `list`. A field may be nested by a
+  dotted name (`company.name`).
+- **Writing:** each field is read as its kind (`"4 500"` → 4500, an ISO date and time → its date); a wrong one is
+  left out and said in `invalid`; an item without a required field, or without its key, isn't saved. What the type
+  doesn't name is kept with the entity as it came.
+- **`mine: true`:** a field I set; no pipeline can write it, and every save keeps it.
+- **Versions:** each save of an App is a new version, with what changed. A version that would break one of its
+  pipelines (a type, field or name they use gone) is refused, naming each pipeline and why.
+- **A type from a source:** on the App's editor, *Try the source* dry-runs a pipeline and drafts a type from a
+  step's items: each field's kind from its values, without the LLM. A draft to rename and trim before saving.
+
+**Pages.** Every type gets a list in the menu (under *Pages*) and a page per entity, by default from its fields: the
+title, the required fields and the others that fit a row; enum and yes/no fields as filters; text fields searched;
+newest first. A field's kind sets its format (money with its currency, an enum as a badge, a url as a link). `pages`
+changes them:
+
+```yaml
+pages:
+  - list: Bill
+    menu: { label: Bills, icon: receipt }    # or menu: false
+    columns: [payee, amount, due, status]
+    filters: [status, paid]                  # enum and yes/no fields
+    sort: -due
+    group: { by: due, period: month, totals: [amount] }   # a group per month, its amounts summed per currency
+    removed: true                            # a Removed tab
+  - view: Bill
+    sections:
+      - { title: Payment, fields: [amount, due, status] }
+    history: { collection: bill-amounts }    # a data.history collection, by the entity's key, as a chart
+```
+
+**Stages, forms and buttons (M32).** A type may have a stage: where an entity is (new, favorite, applied…), moved
+only as its `moves` allow and by whom: me on its page (the default), or a pipeline's `data.save` (`by: [me,
+pipeline]`). A move a pipeline may not make is said in `invalid` and the stage stays, so an email re-read never moves
+a job back. The date each state was first reached is kept. My fields (`mine: true`) are edited on the entity's form;
+a whole type can be mine (`mine: true` on the type: I add, edit and delete its entities, pipelines only read it).
+Buttons start pipelines: a list's (a manual or scheduled one), an entity's (one triggered by `{ on: entity.action }`,
+with the entity), shown only while its `when` holds.
+
+```yaml
+types:
+  Job:
+    key: url
+    stages:
+      field: status
+      initial: new
+      states: [new, favorite, applied, interview, rejected]
+      moves:
+        - { from: new, to: [favorite, applied, rejected] }
+        - { from: [applied, interview], to: [interview, rejected], by: [me, pipeline] }
+    fields:
+      url: { type: url, required: true }
+      comments: { type: longtext, mine: true }
+  Company:
+    mine: true                               # I write it; its email may be a side effect's target
+    key: name
+    fields: { name: { type: text, required: true }, email: { type: email } }
+pages:
+  - form: Job
+    fields: [comments]
+  - view: Job
+    actions:
+      - { label: Apply, run: Job submit, when: { status: favorite }, confirm: "Apply to this job?" }
+  - list: Job
+    actions: [{ label: Check now, run: Job Search collect }]
+```
+
+A target (an address to send to) never comes from a type pipelines write; from a type of mine it may.
+
+A list can also draw a `data.history` collection keyed by its entities above it (`chart: { history, label?, stepped? }`,
+the five with the highest latest value), and *Move them here* on an App's page brings a pipeline's collection (a
+`view:` page's) into one of its types: a mark on a row becomes the yes/no field of mine of its name.
+
+**From a sentence (M34).** The pipeline builder proposes a whole App ("I'm looking for a job", "keep my bills") with
+its pipelines, as one proposal to review and save together; *Describe a change* on an App's page asks it to change
+one ("add a rating to jobs"), shown as what changes in the App and in each pipeline. It starts a type from the
+schema.org type that means the same and, after a dry run, drafts it from what the source really gave. **In the data,
+not in the types** on an App's page lists the fields its entities have that their type doesn't name, with *Add to the
+type*.
+
+Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables. A ready-made App: [pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml), with its first pipeline
+[job-search-collect.yaml](../pipelines/job-search-collect.yaml). Save the App before its pipelines.
+
 ---
 
 ## 3. Triggers: what starts a pipeline
@@ -140,10 +250,12 @@ view:
 | `{ on: email.classified, label: [interview] }` | An `email.classify` step labels an email | `label`, `reason`, `message` (the email) |
 | `{ on: flow.later }` | Another pipeline's `flow.later` fires | `data`, `key`, `scheduledAt`, `scheduledByRunId` |
 | `{ on: view.action, collection: releases }` | A row's button on a pipeline's page | `collection`, `key`, `item` (the row), `action` |
+| `{ on: entity.changed, type: Job, field: salary, stage: interview }` | An entity of the pipeline's App is added or changed, by another pipeline or by me (`field`: only changes of it; `stage`: only a move into it) | `app`, `type`, `key`, `item`, `before` (null when added), `changed` (field names), `by`, `stage` (`from`, `to`, or null) |
+| `{ on: entity.action, type: Job }` | An entity's button on its page | `app`, `type`, `key`, `item`, `action` |
 | `{ webhook: hmac-sha256 }` or `{ webhook: token }` | An HTTP call from the internet (GitHub-style signature, or a bearer token) | `body`, `event`, `receivedAt` |
 
 Only an email's own addresses (`email.classified`) and a posting's own URL (`application.status`) may be used as
-targets of a side effect. Webhook bodies, `flow.later` data and view rows are never trusted as targets.
+targets of a side effect. Webhook bodies, `flow.later` data, view rows and entities pipelines write are never trusted as targets; an entity of a type of mine is.
 
 ---
 
@@ -158,9 +270,10 @@ Each step lists what it does, its main inputs (defaults in brackets) and its out
 ### 4.1 Data
 
 #### `data.dedupe`
-Removes items whose `key` repeats, keeping the first. With `against: JobPosting` it also drops jobs saved before, so
-each posting comes through once.
-- In: `from` (list), `key`, `against` (optional).
+Removes items whose `key` repeats, keeping the first. With `againstType: Job` (a type of the pipeline's App, M33) it
+also drops the items already kept as entities of it, so each posting comes through once (`against: JobPosting` does
+the same with what the old Jobs page kept).
+- In: `from` (list), `key`, `againstType` or `against` (optional).
 - Out: `items`, `duplicates` (how many were removed).
 
 ```yaml
@@ -191,7 +304,11 @@ Saves items and says what changed since the last save.
   A posting saved again keeps its first-seen date, and its status only moves forward.
 - **With `collection`**: a named list of your own, one item per `key`. `changed` compares `fields` (default: all).
   `complete: true` means the items are the whole list, so saved items missing from it go to `removed`.
-- Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`.
+- **With `type`** (a type of the pipeline's App, §2.5): as entities, by the type's key; each field as its kind, my
+  fields never written. `fields` and `complete` as with a collection; `key` and `collection` aren't taken. `stage`
+(M33) moves every item to that stage, as the type's moves allow a pipeline (`stage: skipped` for the agencies).
+- Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`, `invalid` (with
+  `type`: `key`, `saved`, `problems`).
 
 ```yaml
 # Only new releases continue to the LLM and to me
@@ -202,6 +319,19 @@ Saves items and says what changed since the last save.
   type: llm.summarize
   when: "{{seen.added}}"
   with: { content: "{{seen.added}}" }
+```
+
+#### `data.read`
+Reads entities of a type of the pipeline's App (§2.5) as items, my fields included.
+- In: `type`, `where` (as `data.filter`, on the type's fields), `sort` (`"-salary"`, `"@firstSeen"`), `limit` [100],
+  `removed` [false: the removed ones instead].
+- Out: `items` (typed by the type: `{{item.salary}}` is checked), `count` (matching, before `limit`).
+
+```yaml
+# Every Monday: my favourite jobs, the best paid first
+- id: favourites
+  type: data.read
+  with: { type: Job, where: [{ field: favorite, op: eq, value: true }], sort: -salary, limit: 10 }
 ```
 
 #### `data.history`
@@ -380,9 +510,13 @@ steps:
 ```
 
 #### `price.watch` 🧠
-Checks the products on the **Prices page** (every shop of each), keeps each shop's price, and reports only news: a
-shop at or under your target price (once, when it crosses), the lowest in `lowestDays`, back in stock. `text` names the
-cheapest shop for each, and is empty when there is nothing new. The Prices page addresses need no `allowedDomains`.
+Checks my watched **Products** in the pipeline's App (M33: save [pipelines/apps/prices.yaml](../pipelines/apps/prices.yaml)
+and say `app: Prices`): a type of mine, each with its `shops`, a line each (`https://shop/p/7 | size: M, color: Black`
+for a variant). Each shop's page is read like `shop.product` and kept as an **Offer** with its price history (the
+Offer's page charts it; a line I remove takes its Offer off). It reports only news: a shop at or under your target
+price (once, when it crosses), the lowest in `lowestDays`, back in stock. `text` names the cheapest shop for each, and
+is empty when there is nothing new. The addresses are mine, so they need no `allowedDomains`. *Move them here* on the
+App's page brings the products, shops and price history the old Prices page kept.
 - In: `product` (only this one; default: all enabled), `lowestDays` [90].
 - Out: `products`, `news`, `text`, `problems`, `report`.
 
@@ -576,6 +710,9 @@ Drafts a short, polite follow-up to my own unanswered email, in its language, wi
 Reads what an email says about one of my submitted applications, matches it to the application (by the sender's
 domain or the company's name, and the role) and moves it on: `RESPONDED`, `INTERVIEW` or `REJECTED`. Only forward.
 It emits `application.status`, which can cancel a scheduled follow-up. An automatic "we received it" isn't an answer.
+In the Job Search App (M33, `app: Job Search`) it works on the Jobs I applied to, moving each as its stages allow a
+pipeline, the email noted in its comments; `browser.mapForm` and `browser.fillAndSubmit` move a Job to prepared and
+applied, and `llm.score` calibrates on the Jobs' outcomes, all still emitting `application.status`.
 - In: `message`.
 - Out: `matched`, `applicationId`, `job`, `status`, `changed`, `reason`.
 
@@ -600,9 +737,13 @@ reads issuer, amount, currency, due date, period and reference. Emails that aren
 - Out: `bills`, `notBills`.
 
 #### `bill.save`
-Keeps bills on the **Bills page** (the same bill again updates its row) and returns what to do next: `remind` (new
+Keeps bills as **Bill entities of the pipeline's App** (M33: save [pipelines/apps/bills.yaml](../pipelines/apps/bills.yaml)
+and say `app: Bills`; the compiler checks the App has a Bill type it can write). The same bill again updates it and
+keeps whether I paid it; a new one is `due`. It returns what to do next: `remind` (new
 bills with a due date, each with `remindAt`, `remindDaysBefore` days before at 09:00) and `jumps` (new bills more than
-`jumpPercent` above the issuer's usual amount), with `jumpText` describing them.
+`jumpPercent` above the issuer's usual amount), with `jumpText` describing them. The Bills App's list shows them by month
+with the total and what is unpaid, a badge on what is due soon, and Mark paid on each row; the morning brief tells me
+the unpaid ones due within three days. *Move them here* on the App's page brings the bills the old Bills page kept.
 - In: `bills`, `remindDaysBefore` [3], `jumpPercent` [30].
 - Out: `added`, `updated`, `remind`, `jumps`, `jumpText`.
 

@@ -40,6 +40,29 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     /** The button's label. */
     action: z.string(),
   }),
+  "entity.changed": z.object({
+    app: z.string(),
+    type: z.string(),
+    key: z.string(),
+    /** The entity now: what a pipeline read from pages, feeds or emails, so never a target. Typed by the App's type. */
+    item: z.record(z.string(), z.unknown()),
+    /** Before the change; null when it was just added. */
+    before: z.record(z.string(), z.unknown()).nullable(),
+    /** The fields that changed (all of them when it was added). */
+    changed: z.array(z.string()),
+    by: z.enum(["pipeline", "me"]),
+    /** Its stage's move in this change (M32); null when it didn't move. */
+    stage: z.object({ from: z.string().nullable(), to: z.string() }).nullable(),
+  }),
+  "entity.action": z.object({
+    app: z.string(),
+    type: z.string(),
+    key: z.string(),
+    /** The entity, my fields over what pipelines wrote. A target only when its type is mine (M32). */
+    item: z.record(z.string(), z.unknown()),
+    /** The button's label. */
+    action: z.string(),
+  }),
 };
 
 export const WEBHOOK_DATA = z.object({
@@ -68,6 +91,9 @@ export function triggerTargetIssue(trigger: Trigger, source: string): string | n
     if (trigger.on === "application.status" && source === "trigger.job.url") return null;
     if (trigger.on === "flow.later") return `{{${source}}} can't be a target: a flow.later's data is written by a pipeline, maybe from LLM text`;
     if (trigger.on === "view.action") return `{{${source}}} can't be a target: a row holds what a pipeline read from pages, feeds or emails`;
+    if (trigger.on === "entity.changed" || trigger.on === "entity.action") {
+      return `{{${source}}} can't be a target: an entity holds what a pipeline read from pages, feeds or emails (only a type of mine can be)`;
+    }
     return `{{${source}}} can't be a target: only an email's own addresses (email.classified) or a posting's URL (application.status) can`;
   }
   if (isWebhookTrigger(trigger)) return `{{${source}}} can't be a target: a webhook's body is written by whoever calls it`;
@@ -136,5 +162,18 @@ export function exampleTriggerData(trigger: Trigger): Record<string, unknown> | 
         item: { id: "example", title: "An example row (dry run)", url: "https://example.com/example" },
         action: "Example",
       };
+    case "entity.changed":
+      return {
+        app: "Example",
+        type: trigger.type,
+        key: "example",
+        item: {},
+        before: null,
+        changed: trigger.field ? [trigger.field] : [],
+        by: "pipeline",
+        stage: trigger.stage ? { from: null, to: trigger.stage } : null,
+      };
+    case "entity.action":
+      return { app: "Example", type: trigger.type ?? "Example", key: "example", item: {}, action: "Example" };
   }
 }

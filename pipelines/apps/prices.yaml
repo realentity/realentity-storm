@@ -1,0 +1,46 @@
+# M33: the Prices App. I add the Products to watch, each with its shops (a line each, the variant after "|");
+# price.watch (pipelines/prices.yaml) keeps what each shop's page says as an Offer, with its price history, and tells
+# me only what is new. Save it on the Apps page before pipelines/prices.yaml, then press "Move them here" on its page to
+# bring the products, shops and prices the old Prices page kept.
+name: Prices
+description: Products I watch, and what each shop asks for them
+icon: tag
+types:
+  Product:
+    mine: true                     # mine: added and edited on its page; pipelines only read it
+    key: name
+    fields:
+      name: { type: text, required: true }
+      targetPrice: { type: money, currency: currency, label: Target }
+      currency: { type: text }     # the target's; a shop in another currency is never compared with it
+      enabled: { type: yesno, label: Watched }
+      shops: { type: list }        # https://shop/p/7 | size: M, color: Black
+  Offer:
+    key: offer                     # product | address | variant
+    title: shop
+    fields:
+      offer: { type: text, required: true }
+      product: { type: text, required: true }
+      shop: { type: text, required: true }
+      url: { type: url, required: true }
+      variant: { type: text }
+      price: { type: money, currency: currency }
+      currency: { type: text }
+      inStock: { type: yesno, label: In stock }
+      title: { type: text }
+      problem: { type: text }
+      checkedAt: { type: datetime, label: Checked }
+pages:
+  - list: Offer
+    menu: { label: Prices, icon: tag }
+    columns: [shop, variant, price, inStock, problem, checkedAt]
+    sort: price
+    group: { by: product }
+    removed: true
+  - view: Offer
+    sections:
+      - { title: Offer, fields: [product, shop, variant, price, inStock, title, problem, checkedAt, url] }
+    history: { collection: price-watch, label: Price, stepped: true }
+  - list: Product
+    menu: { label: Watched products, icon: tag }
+    columns: [name, targetPrice, enabled]

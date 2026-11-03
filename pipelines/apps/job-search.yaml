@@ -1,0 +1,50 @@
+# M30–M33: the Job Search App. Its pipelines say `app: Job Search`: dev-bg-jobs.yaml and job-search-collect.yaml keep
+# the jobs they find as Jobs, the form steps move a job to prepared and applied, application-replies.yaml moves it on
+# from the employer's emails. Insight counts what came of them. Save it on the Apps page before its pipelines, then
+# press "Move them here" on its page to bring the jobs and applications the old Jobs page kept.
+name: Job Search
+description: Jobs I find, and where I am with each
+icon: briefcase
+types:
+  Job:
+    key: url                     # one Job per posting's address
+    title: title
+    stages:                      # where I am with each job; pipelines move it forward only, I move it as I like
+      field: status
+      initial: new
+      states: [new, shortlisted, skipped, prepared, applied, responded, interview, offer, rejected]
+      moves:
+        - { from: new, to: [shortlisted, skipped], by: [me, pipeline] }
+        - { from: [shortlisted, skipped], to: [new, shortlisted, skipped] }
+        - { from: [new, shortlisted, skipped], to: [prepared, applied], by: [me, pipeline] }
+        - { from: prepared, to: [applied], by: [me, pipeline] }
+        - { from: prepared, to: [shortlisted, skipped] }
+        - { from: applied, to: [responded, interview, rejected], by: [me, pipeline] }
+        - { from: responded, to: [interview, rejected], by: [me, pipeline] }
+        - { from: interview, to: [offer, rejected], by: [me, pipeline] }
+        - { from: [applied, responded, interview, offer, rejected], to: [applied, responded, interview, offer, rejected] }   # a mistake undone
+    fields:
+      url: { type: url, required: true }
+      title: { type: text, required: true }
+      company: { type: text }
+      location: { type: text }
+      posted: { type: text }       # dev.bg shows "3 ноември": text until a recipe gives a date
+      description: { type: longtext }
+      score: { type: number }
+      scoreReason: { type: longtext, label: Why }
+      source: { type: text }
+      externalId: { type: text }
+      comments: { type: longtext, mine: true }    # mine: set on its page, never by a pipeline
+pages:
+  - list: Job
+    menu: { label: Job Search }
+    columns: [title, company, location, score, status, "@firstSeen"]
+    filters: [status]
+    sort: -score
+    group: { by: status }
+    moves: true
+  - view: Job
+    sections:
+      - { title: Job, fields: [title, company, location, posted, url, source] }
+      - { title: Score, fields: [score, scoreReason] }
+      - { title: Description, fields: [description] }

@@ -3,15 +3,18 @@ import {
   IconBell,
   IconBook,
   IconBookmark,
+  IconBriefcase,
   IconCalendar,
   IconCar,
   IconChartLine,
+  IconCloud,
   IconCpu,
   IconHeart,
   IconHome,
   IconList,
   IconNews,
   IconPackage,
+  IconReceipt,
   IconRss,
   IconStar,
   IconTag,
@@ -36,6 +39,9 @@ export const VIEW_ICON: Record<ViewIcon, Icon> = {
   book: IconBook,
   cpu: IconCpu,
   heart: IconHeart,
+  briefcase: IconBriefcase,
+  receipt: IconReceipt,
+  cloud: IconCloud,
 };
 
 /** A row's name: its title field, else its first column, else its key. */

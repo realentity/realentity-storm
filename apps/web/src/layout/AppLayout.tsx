@@ -1,7 +1,5 @@
 import {
-  IconBriefcase,
-  IconReceipt,
-  IconTag,
+  IconApps,
   IconBulb,
   IconChartBar,
   IconCoin,
@@ -17,7 +15,7 @@ import {
   IconSettings,
   type Icon as TablerIcon,
 } from "@tabler/icons-react";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { KillSwitchButton } from "../components/KillSwitchButton";
 import { useSession } from "../context/use-session";
@@ -30,6 +28,7 @@ import { VIEW_ICON } from "../lib/view";
 const NAVIGATION = [
   { to: "/inbox", label: "Inbox", icon: IconInbox },
   { to: "/pipelines", label: "Pipelines", icon: IconRoute },
+  { to: "/apps", label: "Apps", icon: IconApps },
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/rules", label: "Rules", icon: IconBulb },
   { to: "/recipes", label: "Recipes", icon: IconListSearch },
@@ -42,10 +41,7 @@ const NAVIGATION = [
 
 /** What pipelines produce, where I act on it: these hand-built pages, then the pipelines' own (M27, `view`). */
 const PAGES = [
-  { to: "/jobs", label: "Jobs", icon: IconBriefcase },
   { to: "/insight", label: "Insight", icon: IconChartBar },
-  { to: "/bills", label: "Bills", icon: IconReceipt },
-  { to: "/prices", label: "Prices", icon: IconTag },
 ];
 
 /** Signed-in area: sidebar, top bar (kill switch always visible), page. */
@@ -56,6 +52,8 @@ export function AppLayout() {
   const { pathname } = useLocation();
   // Pipelines' pages (M27): saving a pipeline changes them, so the menu is read again on every page change.
   const pages = useLoad(() => api.views.menu(), [pathname]);
+  // Apps' lists (M31): saving an App changes them too.
+  const appPages = useLoad(() => api.apps.menu(), [pathname]);
   const pending = useLoad(
     () => api.proposals.list(),
     [],
@@ -91,6 +89,24 @@ export function AppLayout() {
               </li>
               {PAGES.map((item) => (
                 <MenuLink key={item.to} to={item.to} label={item.label} icon={item.icon} onClick={() => setMenuOpen(false)} />
+              ))}
+              {appPages.data?.map((page, i, all) => (
+                <Fragment key={`${page.appId}:${page.type}`}>
+                  {/* An App with more than one list: its name above them. */}
+                  {all.filter((p) => p.appId === page.appId).length > 1 && all[i - 1]?.appId !== page.appId && (
+                    <li className="nav-item">
+                      <div className="nav-link small text-secondary py-1">{page.appName}</div>
+                    </li>
+                  )}
+                  <MenuLink
+                    to={`/a/${page.appId}/${encodeURIComponent(page.type)}`}
+                    label={page.label}
+                    icon={VIEW_ICON[page.icon] ?? VIEW_ICON.list}
+                    title={page.appName}
+                    testId="app-menu-item"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                </Fragment>
               ))}
               {pages.data?.map((page) => (
                 <MenuLink
