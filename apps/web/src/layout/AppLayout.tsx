@@ -15,8 +15,9 @@ import {
   IconMenu2,
   IconRoute,
   IconSettings,
+  type Icon as TablerIcon,
 } from "@tabler/icons-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { KillSwitchButton } from "../components/KillSwitchButton";
 import { useSession } from "../context/use-session";
@@ -25,13 +26,10 @@ import { useConnectionState } from "../lib/events";
 import { useLoad } from "../lib/use-load";
 import { VIEW_ICON } from "../lib/view";
 
+/** AI ME itself. */
 const NAVIGATION = [
   { to: "/inbox", label: "Inbox", icon: IconInbox },
   { to: "/pipelines", label: "Pipelines", icon: IconRoute },
-  { to: "/jobs", label: "Jobs", icon: IconBriefcase },
-  { to: "/insight", label: "Insight", icon: IconChartBar },
-  { to: "/bills", label: "Bills", icon: IconReceipt },
-  { to: "/prices", label: "Prices", icon: IconTag },
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/rules", label: "Rules", icon: IconBulb },
   { to: "/recipes", label: "Recipes", icon: IconListSearch },
@@ -40,6 +38,14 @@ const NAVIGATION = [
   { to: "/costs", label: "Costs", icon: IconCoin },
   { to: "/health", label: "Health", icon: IconHeartbeat },
   { to: "/settings", label: "Settings", icon: IconSettings },
+];
+
+/** What pipelines produce, where I act on it: these hand-built pages, then the pipelines' own (M27, `view`). */
+const PAGES = [
+  { to: "/jobs", label: "Jobs", icon: IconBriefcase },
+  { to: "/insight", label: "Insight", icon: IconChartBar },
+  { to: "/bills", label: "Bills", icon: IconReceipt },
+  { to: "/prices", label: "Prices", icon: IconTag },
 ];
 
 /** Signed-in area: sidebar, top bar (kill switch always visible), page. */
@@ -72,47 +78,31 @@ export function AppLayout() {
           <div className={`collapse navbar-collapse ${menuOpen ? "show" : ""}`}>
             <ul className="navbar-nav pt-lg-3">
               {NAVIGATION.map((item) => (
-                <li key={item.to} className="nav-item">
-                  <NavLink
-                    to={item.to}
-                    className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    <span className="nav-link-icon">
-                      <item.icon size={20} />
+                <MenuLink key={item.to} to={item.to} label={item.label} icon={item.icon} onClick={() => setMenuOpen(false)}>
+                  {item.to === "/inbox" && (pending.data?.length ?? 0) > 0 && (
+                    <span className="badge bg-yellow text-yellow-fg ms-auto" data-testid="inbox-count">
+                      {pending.data?.length}
                     </span>
-                    <span className="nav-link-title">{item.label}</span>
-                    {item.to === "/inbox" && (pending.data?.length ?? 0) > 0 && (
-                      <span className="badge bg-yellow text-yellow-fg ms-auto" data-testid="inbox-count">
-                        {pending.data?.length}
-                      </span>
-                    )}
-                  </NavLink>
-                </li>
+                  )}
+                </MenuLink>
               ))}
-              {(pages.data?.length ?? 0) > 0 && (
-                <li className="nav-item mt-3">
-                  <div className="nav-link text-uppercase small text-secondary py-1">Pages</div>
-                </li>
-              )}
-              {pages.data?.map((page) => {
-                const Icon = VIEW_ICON[page.icon] ?? VIEW_ICON.list;
-                return (
-                  <li key={page.pipelineId} className="nav-item" data-testid="view-menu-item">
-                    <NavLink
-                      to={`/v/${page.pipelineId}`}
-                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-                      title={page.pipelineName}
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      <span className="nav-link-icon">
-                        <Icon size={20} />
-                      </span>
-                      <span className="nav-link-title">{page.label}</span>
-                    </NavLink>
-                  </li>
-                );
-              })}
+              <li className="nav-item mt-3">
+                <div className="nav-link text-uppercase small text-secondary py-1">Pages</div>
+              </li>
+              {PAGES.map((item) => (
+                <MenuLink key={item.to} to={item.to} label={item.label} icon={item.icon} onClick={() => setMenuOpen(false)} />
+              ))}
+              {pages.data?.map((page) => (
+                <MenuLink
+                  key={page.pipelineId}
+                  to={`/v/${page.pipelineId}`}
+                  label={page.label}
+                  icon={VIEW_ICON[page.icon] ?? VIEW_ICON.list}
+                  title={page.pipelineName}
+                  testId="view-menu-item"
+                  onClick={() => setMenuOpen(false)}
+                />
+              ))}
             </ul>
           </div>
         </div>
@@ -141,5 +131,35 @@ export function AppLayout() {
         </div>
       </div>
     </div>
+  );
+}
+
+function MenuLink({
+  to,
+  label,
+  icon: Icon,
+  title,
+  testId,
+  onClick,
+  children,
+}: {
+  to: string;
+  label: string;
+  icon: TablerIcon;
+  title?: string;
+  testId?: string;
+  onClick: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="nav-item" data-testid={testId}>
+      <NavLink to={to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} title={title} onClick={onClick}>
+        <span className="nav-link-icon">
+          <Icon size={20} />
+        </span>
+        <span className="nav-link-title">{label}</span>
+        {children}
+      </NavLink>
+    </li>
   );
 }
