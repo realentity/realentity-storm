@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module";
 import { BillsModule } from "./bills/bills.module";
 import { BuilderModule } from "./builder/builder.module";
+import { BundlesModule } from "./bundles/bundles.module";
 import { serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { ControlsModule } from "./controls/controls.module";
 import { CredentialsModule } from "./credentials/credentials.module";
@@ -48,6 +49,7 @@ export class CoreModule {}
     ControlsModule,
     LearningModule,
     BuilderModule,
+    BundlesModule,
     LiveModule,
     JobsModule,
     DocumentsModule,

@@ -6,6 +6,7 @@ test.describe("pipelines", () => {
   test("paste YAML → review → dry run → save v1 → enable", async ({ page }) => {
     const name = unique("E1 replies");
     await page.goto("/pipelines/new");
+    await page.getByTestId("pipeline-tab-yaml").click();
     await page.getByTestId("pipeline-source").fill(REPLIES(name, '{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }'));
 
     await page.getByTestId("check").click();
@@ -51,6 +52,7 @@ test.describe("pipelines", () => {
     await startRun(page, pipeline.pipelineId);
 
     await page.goto(`/pipelines/${pipeline.pipelineId}/edit`);
+    await page.getByTestId("pipeline-tab-yaml").click();
     const source = page.getByTestId("pipeline-source");
     await expect(source).toHaveValue(/query: dotnet/);
     await source.fill((await source.inputValue()).replace("query: dotnet", "query: golang"));

@@ -1,25 +1,42 @@
-import { definitionToSource, type DraftTypeView, type RunDetailView } from "@ai-me/shared";
-import { IconDeviceFloppy, IconFlask } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { tabOf, type AppCheckView, type AppDesignerTab, type AppIssue } from "@ai-me/shared";
+import { IconAlertTriangle, IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconFile, IconLoader2 } from "@tabler/icons-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
-import { ErrorAlert, Loading, PageHeader, StatusBadge } from "../components/ui";
+import { parseDocument } from "yaml";
+import { Issues } from "../components/AppIssues";
+import { DraftTypeCard } from "../components/DraftTypeCard";
+import { StagesDesigner } from "../components/StagesDesigner";
+import { AppProperties, TypesDesigner, type DesignerEdit } from "../components/TypesDesigner";
+import { ErrorAlert, Loading, PageHeader } from "../components/ui";
+import { APP_TEMPLATES, EMPTY_APP } from "../lib/apps";
 import { api } from "../lib/endpoints";
-import { hasItems, NEW_APP_TEMPLATE, withType } from "../lib/apps";
+import { asObject, loose, text, type LooseApp } from "../lib/loose-app";
 import { useAction, useLoad } from "../lib/use-load";
 
-/** The finished statuses of a run: its steps' outputs are all there. */
-const FINISHED = ["DONE", "FAILED", "WAITING_FOR_USER", "ABORTED"];
+type Tab = Exclude<AppDesignerTab, "app"> | "yaml";
+const TABS: { tab: Tab; label: string }[] = [
+  { tab: "types", label: "Types" },
+  { tab: "stages", label: "Stages" },
+  { tab: "pages", label: "Pages" },
+  { tab: "yaml", label: "YAML" },
+];
 
 /**
- * M30: an App's definition as YAML: saved as its next version. A save that would break one of its pipelines is
- * refused, with what each one uses. Beside it, a type drafted from what a pipeline's source really gives (M30-T7).
+ * M35: the App designer. An App's YAML is what is saved; the tabs show it as types, stages and pages, and every change
+ * made on them is an edit of the YAML (my comments and order kept). It is checked as I go: its problems on their tab
+ * and line, the pipelines it would break, what it changes.
  */
 export function AppEditorPage() {
   const { appId } = useParams();
   const navigate = useNavigate();
   const existing = useLoad(() => (appId ? api.apps.get(appId) : Promise.resolve(null)), [appId]);
-  const [source, setSource] = useState<string | null>(appId ? null : NEW_APP_TEMPLATE);
+  const [source, setSource] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("types");
+  const [line, setLine] = useState<number | null>(null);
+  /** What the YAML was before each of the designer's edits, for Undo (typing on the YAML tab is its own). */
+  const [undo, setUndo] = useState<string[]>([]);
+  const check = useCheck(source, appId);
   const action = useAction();
 
   useEffect(() => {
@@ -27,10 +44,33 @@ export function AppEditorPage() {
   }, [existing.data, source]);
 
   if (appId && source === null) return existing.error ? <ErrorAlert error={existing.error} /> : <Loading />;
-  const text = source ?? "";
+  if (source === null) return <StartFrom onStart={setSource} />;
+
+  const app = loose(source);
+  const errors = check.result?.errors ?? [];
+  const onTab = (t: Tab) => (t === "yaml" ? errors.filter((e) => e.line !== undefined) : errors.filter((e) => tabOf(e.path) === t));
+  const general = errors.filter((e) => tabOf(e.path) === "app");
+  const showLine = (n: number) => {
+    setTab("yaml");
+    setLine(n);
+  };
+
+  const editable = parseDocument(source).errors.length === 0;
+  const edit = (change: DesignerEdit, note?: string) => {
+    try {
+      const next = change(source);
+      if (next === source) return;
+      setUndo((u) => [...u.slice(-49), source]);
+      setSource(next);
+      if (note) toast.info(note);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const entities = Object.fromEntries((existing.data?.types ?? []).map((t) => [t.name, t.entities]));
 
   const save = async () => {
-    const saved = await action.run(() => (appId ? api.apps.save(appId, text) : api.apps.create(text)));
+    const saved = await action.run(() => (appId ? api.apps.save(appId, source) : api.apps.create(source)));
     if (!saved) return;
     toast.success(`Saved as v${saved.version}`);
     void navigate(`/apps/${saved.appId}`);
@@ -40,162 +80,302 @@ export function AppEditorPage() {
     <>
       <PageHeader
         pretitle={existing.data ? <Link to={`/apps/${existing.data.appId}`}>{existing.data.name}</Link> : <Link to="/apps">Apps</Link>}
-        title={existing.data ? `Edit: next is v${(existing.data.version ?? 0) + 1}` : "New App"}
+        title={existing.data ? `Design: next is v${(existing.data.version ?? 0) + 1}` : `New App: ${app.name ?? "…"}`}
+        actions={
+          <div className="btn-list">
+            <button
+              type="button"
+              className="btn"
+              disabled={undo.length === 0}
+              onClick={() => {
+                setSource(undo.at(-1)!);
+                setUndo((u) => u.slice(0, -1));
+              }}
+              data-testid="undo"
+            >
+              <IconArrowBackUp size={18} className="me-1" />
+              Undo
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={action.busy || !source.trim()}
+              onClick={() => void save()}
+              data-testid="save-app"
+            >
+              <IconDeviceFloppy size={18} className="me-1" />
+              Save
+            </button>
+          </div>
+        }
       />
       <div className="row g-3">
-        <div className="col-xl-7">
+        <div className="col-xl-8">
+          <ErrorAlert error={action.error} />
+          <Issues issues={general} onLine={showLine} testId="app-issues" />
           <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Definition (YAML)</h3>
-            </div>
-            <textarea
-              className="form-control border-0 font-monospace source-editor"
-              rows={26}
-              spellCheck={false}
-              value={text}
-              onChange={(e) => setSource(e.target.value)}
-              aria-label="App definition"
-              data-testid="app-source"
+            <AppProperties
+              app={app}
+              icon={text(asObject(rootOf(source)).icon) || "list"}
+              description={text(asObject(rootOf(source)).description)}
+              onEdit={edit}
+              editable={editable}
             />
-            <div className="card-footer d-flex">
-              <button
-                type="button"
-                className="btn btn-primary ms-auto"
-                disabled={action.busy || !text.trim()}
-                onClick={() => void save()}
-                data-testid="save-app"
-              >
-                <IconDeviceFloppy size={18} className="me-1" />
-                Save
-              </button>
+            <div className="card-header">
+              <ul className="nav nav-tabs card-header-tabs" role="tablist">
+                {TABS.map(({ tab: t, label }) => {
+                  const count = onTab(t).length;
+                  return (
+                    <li key={t} className="nav-item">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={t === tab}
+                        className={`nav-link ${t === tab ? "active" : ""}`}
+                        onClick={() => setTab(t)}
+                        data-testid={`tab-${t}`}
+                      >
+                        {label}
+                        {count > 0 && <span className="badge bg-red-lt ms-2">{count}</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-          </div>
-          <div className="mt-3">
-            <ErrorAlert error={action.error} />
+            {tab === "types" && (
+              <TypesDesigner app={app} issues={onTab("types")} onLine={showLine} onEdit={edit} editable={editable} entities={entities} />
+            )}
+            {tab === "stages" && <StagesDesigner app={app} issues={onTab("stages")} onLine={showLine} onEdit={edit} editable={editable} />}
+            {tab === "pages" && <PagesTab app={app} issues={onTab("pages")} onLine={showLine} />}
+            {tab === "yaml" && <YamlTab source={source} onChange={setSource} issues={onTab("yaml")} line={line} onLine={setLine} />}
           </div>
         </div>
-        <div className="col-xl-5">
-          <DraftType onAdd={(name, draft) => setSource(withType(text, name, draft))} />
+        <div className="col-xl-4 d-flex flex-column gap-3">
+          <CheckCard check={check} isNew={!appId} />
+          {/* Kept while on the other tabs: a pasted sample or a dry run is still there on return. */}
+          <div className={tab === "types" ? undefined : "d-none"}>
+            <DraftTypeCard types={app.types.map(([name]) => name)} onEdit={edit} />
+          </div>
         </div>
       </div>
     </>
   );
 }
 
-/**
- * "Try the source": a dry run of a pipeline, then a type drafted from a step's items, without an LLM: the kinds come
- * from the values. Added to the definition to edit before saving.
- */
-function DraftType({ onAdd }: { onAdd: (name: string, draft: DraftTypeView) => void }) {
-  const pipelines = useLoad(() => api.pipelines.list(), []);
-  const [pipelineId, setPipelineId] = useState("");
-  const [runId, setRunId] = useState<string | null>(null);
-  const [stepKey, setStepKey] = useState("");
-  const [name, setName] = useState("Item");
-  const [draft, setDraft] = useState<DraftTypeView | null>(null);
-  const action = useAction();
-  const run = useLoad<RunDetailView | null>(
-    () => (runId ? api.runs.get(runId) : Promise.resolve(null)),
-    [runId],
-    (signal) => (signal.type === "run" || signal.type === "step") && signal.runId === runId,
-  );
-  const finished = run.data && FINISHED.includes(run.data.status);
-  const lists = [
-    ...new Set(
-      (run.data?.steps ?? []).filter((s) => s.status === "DONE" && (hasItems(s.output) || hasItems(s.input))).map((s) => s.stepKey),
-    ),
-  ];
+/** The draft checked a moment after I stop typing; the last answer kept while the next one comes. */
+function useCheck(source: string | null, appId: string | undefined) {
+  const [result, setResult] = useState<{ source: string; view: AppCheckView } | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const latest = useRef(0);
+  useEffect(() => {
+    if (source === null) return;
+    const ticket = ++latest.current;
+    const timer = setTimeout(() => {
+      api.apps
+        .check(source, appId)
+        .then((view) => {
+          if (ticket !== latest.current) return;
+          setResult({ source, view });
+          setError(null);
+        })
+        .catch((e: unknown) => ticket === latest.current && setError(e));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [source, appId]);
+  return { result: result?.view ?? null, checking: result?.source !== source && !error, error };
+}
 
-  const tryIt = async () => {
-    const started = await action.run(async () => {
-      const pipeline = await api.pipelines.get(pipelineId);
-      const from = pipeline.draft ?? pipeline.current;
-      if (!from) throw new Error("This pipeline has no version to try");
-      return api.pipelines.dryRun(definitionToSource(from.definition), pipelineId);
-    });
-    if (!started) return;
-    setDraft(null);
-    setStepKey("");
-    setRunId(started.run.runId);
-  };
-
-  const makeDraft = async (key: string) => {
-    setStepKey(key);
-    const made = await action.run(() => api.apps.draftType({ runId: runId!, stepKey: key }));
-    if (made) setDraft(made);
-  };
-
+/** A new App: from nothing, or from one of the ready-made ones. */
+function StartFrom({ onStart }: { onStart: (source: string) => void }) {
   return (
-    <div className="card" data-testid="draft-type">
-      <div className="card-header">
-        <h3 className="card-title">A type from a source</h3>
-      </div>
-      <div className="card-body d-flex flex-column gap-2">
-        <div className="text-secondary small">
-          Dry-runs a pipeline (nothing is sent or saved), then drafts a type from what one of its steps gave: each field&apos;s kind from
-          its values. A draft to edit: rename fields, drop what doesn&apos;t matter, mark yours as <code>mine</code>.
-        </div>
-        <div className="d-flex gap-2">
-          <select className="form-select" value={pipelineId} onChange={(e) => setPipelineId(e.target.value)} aria-label="Pipeline to try">
-            <option value="">A pipeline…</option>
-            {pipelines.data?.map((p) => (
-              <option key={p.pipelineId} value={p.pipelineId}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="btn" disabled={!pipelineId || action.busy} onClick={() => void tryIt()} data-testid="try-source">
-            <IconFlask size={18} className="me-1" />
-            Try the source
+    <>
+      <PageHeader pretitle={<Link to="/apps">Apps</Link>} title="New App" />
+      <div className="row row-cards" data-testid="start-from">
+        <div className="col-md-6 col-xl-4">
+          <button
+            type="button"
+            className="card card-link text-start w-100 h-100"
+            onClick={() => onStart(EMPTY_APP)}
+            data-testid="start-empty"
+          >
+            <div className="card-body">
+              <h3 className="card-title mb-1">
+                <IconFile size={18} className="me-1" />
+                Empty
+              </h3>
+              <div className="text-secondary">One type with a name, to grow from</div>
+            </div>
           </button>
         </div>
-        {run.data && (
-          <div className="d-flex align-items-center gap-2 small">
-            Dry run <StatusBadge status={run.data.status} />
-            <Link to={`/runs/${run.data.runId}`} className="ms-auto">
-              Open the run
-            </Link>
+        {APP_TEMPLATES.map((t) => (
+          <div key={t.name} className="col-md-6 col-xl-4">
+            <button
+              type="button"
+              className="card card-link text-start w-100 h-100"
+              onClick={() => onStart(t.source)}
+              data-testid="start-template"
+            >
+              <div className="card-body">
+                <h3 className="card-title mb-1">{t.name}</h3>
+                <div className="text-secondary">{t.description}</div>
+              </div>
+            </button>
           </div>
-        )}
-        {finished && lists.length === 0 && <div className="text-secondary small">No step gave a list of items to draft from.</div>}
-        {lists.length > 0 && (
-          <div className="d-flex gap-2 flex-wrap align-items-center">
-            <span className="small">From the items of</span>
-            {lists.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={`btn btn-sm ${key === stepKey ? "btn-primary" : ""}`}
-                disabled={action.busy}
-                onClick={() => void makeDraft(key)}
-              >
-                {key}
-              </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function CheckCard({ check, isNew }: { check: ReturnType<typeof useCheck>; isNew: boolean }) {
+  const view = check.result;
+  const problems = (view?.errors.length ?? 0) + (view?.pipelines.length ?? 0);
+  return (
+    <div className="card" data-testid="app-check">
+      <div className="card-header">
+        <h3 className="card-title d-flex align-items-center gap-2">
+          {check.checking || !view ? (
+            <IconLoader2 size={18} className="text-secondary" />
+          ) : problems > 0 ? (
+            <IconAlertTriangle size={18} className="text-red" />
+          ) : (
+            <IconCircleCheck size={18} className="text-green" />
+          )}
+          {check.checking || !view ? "Checking…" : problems > 0 ? `${problems} problem${problems === 1 ? "" : "s"}` : "No problems"}
+        </h3>
+      </div>
+      <div className={`card-body d-flex flex-column gap-3 ${!check.error && !(view && (problems > 0 || !isNew)) ? "d-none" : ""}`}>
+        <ErrorAlert error={check.error} />
+        {view && view.errors.length > 0 && <div className="text-secondary small">Each is on its tab, and on the YAML tab at its line.</div>}
+        {view && view.pipelines.length > 0 && (
+          <div data-testid="broken-pipelines">
+            <div className="fw-bold mb-1">It would break</div>
+            {view.pipelines.map((p) => (
+              <div key={p.pipelineId} className="mb-2">
+                <Link to={`/pipelines/${p.pipelineId}`}>{p.name}</Link>
+                <ul className="small mb-0 ps-3">
+                  {p.errors.map((e, i) => (
+                    <li key={i}>
+                      {e.path && <code className="me-1">{e.path}</code>}
+                      {e.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
           </div>
         )}
-        <ErrorAlert error={action.error} />
-        {draft && (
-          <>
-            <div className="small text-secondary">Drafted from {draft.samples} item(s):</div>
-            <pre className="json-block mb-0" data-testid="draft-source">
-              {draft.source}
-            </pre>
-            <div className="d-flex gap-2">
-              <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} aria-label="Type name" />
-              <button
-                type="button"
-                className="btn btn-primary text-nowrap"
-                disabled={!/^[A-Z][A-Za-z0-9]{0,39}$/.test(name)}
-                onClick={() => onAdd(name, draft)}
-                data-testid="add-type"
-              >
-                Add to the App
-              </button>
-            </div>
-          </>
+        {!isNew && view && view.errors.length === 0 && (
+          <div data-testid="app-changes">
+            <div className="fw-bold mb-1">What changes</div>
+            {view.changes.length === 0 ? (
+              <div className="text-secondary small">Nothing yet</div>
+            ) : (
+              <ul className="small mb-0 ps-3">
+                {view.changes.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+function PagesTab({ app, issues, onLine }: { app: LooseApp; issues: AppIssue[]; onLine: (line: number) => void }) {
+  const kindOf = (page: Record<string, unknown>) =>
+    page.list !== undefined ? "list" : page.view !== undefined ? "view" : page.form !== undefined ? "form" : "?";
+  const withPage = new Set(app.pages.map((p) => text(p.list ?? p.view)));
+  return (
+    <div className="card-body d-flex flex-column gap-3" data-testid="pages-tab">
+      <Issues issues={issues.filter((i) => !/^pages\.\d+/.test(i.path))} onLine={onLine} />
+      {app.pages.map((page, index) => {
+        const kind = kindOf(page);
+        const menu = asObject(page.menu);
+        return (
+          <div key={index}>
+            <h3 className="mb-1">
+              <span className="badge bg-secondary-lt me-2">{kind}</span>
+              {text(page[kind])}
+              {kind === "list" && page.menu !== false && (
+                <span className="text-secondary fw-normal ms-2">in the menu as {text(menu.label) || text(page.list)}</span>
+              )}
+            </h3>
+            <Issues issues={issues.filter((i) => i.path === `pages.${index}` || i.path.startsWith(`pages.${index}.`))} onLine={onLine} />
+            <div className="text-secondary small">
+              {Array.isArray(page.columns) && <>Columns: {page.columns.map((c) => text(asObject(c).field ?? c)).join(", ")}. </>}
+              {Array.isArray(page.fields) && <>Fields: {page.fields.map(text).join(", ")}. </>}
+              {Array.isArray(page.sections) && <>Sections: {page.sections.map((s) => text(asObject(s).title)).join(", ")}. </>}
+              {page.sort !== undefined && <>Sorted by {text(page.sort)}. </>}
+            </div>
+          </div>
+        );
+      })}
+      {app.types
+        .filter(([name]) => !withPage.has(name))
+        .map(([name]) => (
+          <div key={name} className="text-secondary">
+            {name}: list and view pages from its fields.
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function YamlTab({
+  source,
+  onChange,
+  issues,
+  line,
+  onLine,
+}: {
+  source: string;
+  onChange: (source: string) => void;
+  issues: AppIssue[];
+  line: number | null;
+  onLine: (line: number | null) => void;
+}) {
+  const area = useRef<HTMLTextAreaElement>(null);
+  const sorted = useMemo(() => [...issues].sort((a, b) => (a.line ?? 0) - (b.line ?? 0)), [issues]);
+  useEffect(() => {
+    const element = area.current;
+    if (!element || line === null) return;
+    const lines = source.split("\n");
+    const start = lines.slice(0, line - 1).reduce((n, l) => n + l.length + 1, 0);
+    element.focus();
+    element.setSelectionRange(start, start + (lines[line - 1]?.length ?? 0));
+    element.scrollTop = Math.max(0, (line - 5) * 20);
+    onLine(null);
+  }, [line, source, onLine]);
+  return (
+    <>
+      {sorted.length > 0 && (
+        <div className="card-body border-bottom">
+          <Issues issues={sorted} onLine={onLine} testId="yaml-issues" />
+        </div>
+      )}
+      <textarea
+        ref={area}
+        className="form-control border-0 font-monospace source-editor"
+        rows={28}
+        spellCheck={false}
+        value={source}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label="App definition"
+        data-testid="app-source"
+      />
+    </>
+  );
+}
+
+/** The YAML's top level, read loosely (nothing when it doesn't parse). */
+function rootOf(source: string): unknown {
+  try {
+    return parseDocument(source).toJS() as unknown;
+  } catch {
+    return null;
+  }
 }

@@ -2,6 +2,7 @@ import { type PipelineDetailView } from "@ai-me/shared";
 import { IconEye, IconLayoutList, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ExportYaml } from "../components/ImportYaml";
 import { toast } from "react-toastify";
 import { PipelineChat } from "../components/PipelineChat";
 import { PlanView, StepGraphView } from "../components/PlanView";
@@ -69,6 +70,7 @@ export function PipelinePage() {
                 {p.current.definition.view.menu.label}
               </Link>
             )}
+            {p.current && <ExportYaml what="pipeline" id={pipelineId} />}
             <Link to={`/pipelines/${pipelineId}/edit`} className="btn" data-testid="edit-pipeline">
               <IconPencil size={18} className="me-1" />
               {p.hasDraft ? "Continue the draft" : "Edit"}
@@ -125,7 +127,11 @@ export function PipelinePage() {
           </div>
         </div>
         <div className="col-lg-4 d-flex flex-column gap-3">
-          <Switches pipeline={p} busy={action.busy} onChange={(body) => (body.enabled && p.cost.perMonthUsd !== null ? setConfirming(true) : void update(body))} />
+          <Switches
+            pipeline={p}
+            busy={action.busy}
+            onChange={(body) => (body.enabled && p.cost.perMonthUsd !== null ? setConfirming(true) : void update(body))}
+          />
           {confirming && (
             <Modal
               title="Enable the schedule?"
@@ -158,9 +164,10 @@ export function PipelinePage() {
           {p.current && typeof p.current.definition.trigger === "object" && "webhook" in p.current.definition.trigger && (
             <WebhookCard pipelineId={pipelineId} auth={p.current.definition.trigger.webhook} />
           )}
-          {p.current && typeof p.current.definition.trigger === "object" && "on" in p.current.definition.trigger && p.current.definition.trigger.on === "flow.later" && (
-            <ScheduledStartsCard pipelineId={pipelineId} />
-          )}
+          {p.current &&
+            typeof p.current.definition.trigger === "object" &&
+            "on" in p.current.definition.trigger &&
+            p.current.definition.trigger.on === "flow.later" && <ScheduledStartsCard pipelineId={pipelineId} />}
           {p.current?.definition.steps.some((s) => s.type.startsWith("calendar.")) && <CalendarNotice />}
           <div className="card">
             <div className="card-header">
@@ -241,8 +248,8 @@ function CalendarNotice() {
   if (!g || g.status === "CONNECTED") return null;
   return (
     <div className="alert alert-warning mb-0" data-testid="calendar-notice">
-      This pipeline uses Google Calendar, which {g.connected ? "needs reconnecting" : "isn't connected"}: <Link to="/settings#google">connect it in Settings</Link>,
-      or its runs wait for it.
+      This pipeline uses Google Calendar, which {g.connected ? "needs reconnecting" : "isn't connected"}:{" "}
+      <Link to="/settings#google">connect it in Settings</Link>, or its runs wait for it.
     </div>
   );
 }

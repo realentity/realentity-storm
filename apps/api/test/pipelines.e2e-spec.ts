@@ -115,8 +115,25 @@ describe("pipelines", () => {
 
   it("lists the step catalog for the review screen", async () => {
     const steps = (await agent.get("/api/steps").expect(200)).body as StepTypeView[];
-    expect(steps).toContainEqual({ type: "gate.act", description: expect.any(String) as string, sideEffect: false, headed: false });
+    expect(steps).toContainEqual(
+      expect.objectContaining({
+        type: "gate.act",
+        description: expect.any(String) as string,
+        sideEffect: false,
+        headed: false,
+        category: "gate",
+      }),
+    );
     expect(steps.map((s) => s.type)).toContain("notify.telegram");
+    // M36-T1: inputs and outputs as JSON Schema, for the step builder's forms and data picker
+    const save = steps.find((s) => s.type === "data.save")!;
+    expect(save.input.required).toEqual(["items"]);
+    expect(save.input.properties?.complete).toMatchObject({ type: "boolean", default: false });
+    expect(save.output.properties?.added).toMatchObject({ type: "array" });
+    const send = steps.find((s) => s.type === "email.send")!;
+    expect(send).toMatchObject({ category: "email", sideEffect: true });
+    expect(steps.find((s) => s.type === "http.fetch")!.credentials).toEqual(expect.arrayContaining(["headers"]));
+    expect(steps.find((s) => s.type === "llm.generate")!.llmOutput).toBe(true);
   });
 
   // M3-T4, M3-E1 (api part): dry run before saving (README §2.1)

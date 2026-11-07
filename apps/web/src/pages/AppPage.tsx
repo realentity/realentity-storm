@@ -2,6 +2,7 @@ import { entityValueAt, type DataType, type EntityView } from "@ai-me/shared";
 import { IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ExportYaml } from "../components/ImportYaml";
 import { toast } from "react-toastify";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
@@ -57,6 +58,7 @@ export function AppPage() {
               <IconMessage size={18} className="me-1" />
               Describe a change
             </button>
+            <ExportYaml what="app" id={appId} />
             <Link to={`/apps/${appId}/edit`} className="btn" data-testid="edit-app">
               <IconPencil size={18} className="me-1" />
               Edit

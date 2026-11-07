@@ -1,16 +1,21 @@
 import {
   AddFieldRequestSchema,
+  AppCheckRequestSchema,
   AppImportRequestSchema,
   DraftTypeRequestSchema,
+  DraftTypeSampleRequestSchema,
   EntityQuerySchema,
   SaveAppRequestSchema,
   type AddFieldRequest,
+  type AppCheckRequest,
+  type AppCheckView,
   type AppDetailView,
   type AppDriftView,
   type AppImportRequest,
   type AppImportResult,
   type AppSummaryView,
   type DraftTypeRequest,
+  type DraftTypeSampleRequest,
   type DraftTypeView,
   type EntityListView,
   type EntityQuery,
@@ -53,12 +58,27 @@ export class AppsController {
     return this.apps.create(user.userId, body.source);
   }
 
+  /** M35-T1: a draft App checked as I edit it; nothing is saved. */
+  @Post("check")
+  check(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodBodyPipe(AppCheckRequestSchema)) body: AppCheckRequest,
+  ): Promise<AppCheckView> {
+    return this.apps.check(user.userId, body);
+  }
+
   @Post("draft-type")
   draftType(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodBodyPipe(DraftTypeRequestSchema)) body: DraftTypeRequest,
   ): Promise<DraftTypeView> {
     return this.apps.draftType(user.userId, body);
+  }
+
+  /** M35-T4: a type drafted from a sample I paste. */
+  @Post("draft-type/sample")
+  draftTypeFromSample(@Body(new ZodBodyPipe(DraftTypeSampleRequestSchema)) body: DraftTypeSampleRequest): DraftTypeView {
+    return this.apps.draftTypeFromSample(body.sample);
   }
 
   @Get(":appId")

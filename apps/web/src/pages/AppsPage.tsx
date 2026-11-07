@@ -1,5 +1,6 @@
 import { IconPlus } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
+import { ImportYaml } from "../components/ImportYaml";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
@@ -13,10 +14,13 @@ export function AppsPage() {
       <PageHeader
         title="Apps"
         actions={
-          <Link to="/apps/new" className="btn btn-primary">
-            <IconPlus size={18} className="me-1" />
-            New App
-          </Link>
+          <div className="btn-list">
+            <ImportYaml onImported={apps.reload} />
+            <Link to="/apps/new" className="btn btn-primary">
+              <IconPlus size={18} className="me-1" />
+              New App
+            </Link>
+          </div>
         }
       />
       <ErrorAlert error={apps.error} />

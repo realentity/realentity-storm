@@ -67,12 +67,51 @@ export interface CompilePipelineResponse {
   diff?: DefinitionDiff;
 }
 
-/** A step type of the catalog, as the review screen describes it. */
+/** A JSON Schema (draft 2020-12) of a step's input or output, as `z.toJSONSchema` gives it. */
+export interface JsonSchema {
+  type?: string | string[];
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  enum?: unknown[];
+  const?: unknown;
+  default?: unknown;
+  anyOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+  additionalProperties?: JsonSchema | boolean;
+  pattern?: string;
+  format?: string;
+  minimum?: number;
+  maximum?: number;
+  [key: string]: unknown;
+}
+
+/** A step type of the catalog, as the review screen and the step builder (M36) describe it. */
 export interface StepTypeView {
   type: string;
   description: string;
   sideEffect: boolean;
   headed: boolean;
+  /** M36: the part of its type before the dot (email, data, notify…), how the builder groups steps. */
+  category: string;
+  /** M36: its `with`, and what it gives its later steps, as JSON Schema. */
+  input: JsonSchema;
+  output: JsonSchema;
+  /** Its output may hold an LLM's text: never a side effect's target. */
+  llmOutput: boolean;
+  /** Input fields that name an outside target (side effects), and of what kind. */
+  targets: Record<string, string>;
+  /** Input fields that may hold {{cred:name}}: all of them (true), these, or none. */
+  credentials: boolean | string[];
+  /** Output fields of an LLM step that come from the page, not the LLM (a form's address): they may be targets. */
+  pageFields: string[];
+}
+
+/** M36-T4: what {{trigger}} holds, by event, and for a webhook: for the step builder's data picker. */
+export interface TriggerDataView {
+  events: Record<string, JsonSchema>;
+  webhook: JsonSchema;
 }
 
 export interface PipelineSummaryView {

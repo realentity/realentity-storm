@@ -1,9 +1,12 @@
 import { Prisma } from "@ai-me/db";
 import {
-  AppDefinitionSchema,
+  checkAppSource,
   definitionToSource,
+  entityValueAt,
   readAppSource,
   type AddFieldRequest,
+  type AppCheckRequest,
+  type AppCheckView,
   type AppDefinition,
   type AppDetailView,
   type AppDriftView,
@@ -52,13 +55,20 @@ export class AppsService {
    */
   async drift(userId: string, appId: string): Promise<AppDriftView[]> {
     const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
-    const version = app?.currentVersionId ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } }) : null;
+    const version = app?.currentVersionId
+      ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
+      : null;
     if (!app || !version) throw new NotFoundException();
     const definition = readAppSource(version.source);
     const drift: AppDriftView[] = [];
     for (const [typeName, type] of Object.entries(definition.types)) {
       if (type.mine) continue;
-      const rows = await this.prisma.client.dataEntity.findMany({ where: { appId, type: typeName, removedAt: null }, select: { value: true }, orderBy: { lastSeenAt: "desc" }, take: 1000 });
+      const rows = await this.prisma.client.dataEntity.findMany({
+        where: { appId, type: typeName, removedAt: null },
+        select: { value: true },
+        orderBy: { lastSeenAt: "desc" },
+        take: 1000,
+      });
       const fields = new Map<string, unknown[]>();
       for (const row of rows) {
         for (const [name, values] of leafValues(row.value as Item)) {
@@ -69,7 +79,9 @@ export class AppsService {
       for (const [field, values] of fields) {
         const suggested = draftField(values);
         if (!suggested || values.length < 2) continue;
-        const examples = [...new Set(values.map((v) => (typeof v === "string" ? v : JSON.stringify(v))))].slice(0, 3).map((v) => v.slice(0, 80));
+        const examples = [...new Set(values.map((v) => (typeof v === "string" ? v : JSON.stringify(v))))]
+          .slice(0, 3)
+          .map((v) => v.slice(0, 80));
         drift.push({ type: typeName, field, count: values.length, suggested, examples });
       }
     }
@@ -91,17 +103,23 @@ export class AppsService {
   /** M34: my Apps as they are, for the builder. */
   async definitions(userId: string): Promise<AppDefinition[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
-    const versions = await this.prisma.client.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
+    const versions = await this.prisma.client.appVersion.findMany({
+      where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } },
+    });
     return versions.map((v) => readAppSource(v.source));
   }
 
   /** M34: an App's id, name, current YAML and its pipelines' current definitions, for a chat about it. */
   async forBuilder(userId: string, appId: string): Promise<{ name: string; source: string; pipelines: CompiledDefinition[] }> {
     const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
-    const version = app?.currentVersionId ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } }) : null;
+    const version = app?.currentVersionId
+      ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
+      : null;
     if (!app || !version) throw new NotFoundException();
     const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } } });
-    const versions = await this.prisma.client.pipelineVersion.findMany({ where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } } });
+    const versions = await this.prisma.client.pipelineVersion.findMany({
+      where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
+    });
     const definitions = versions.map((v) => v.definition as unknown as CompiledDefinition).filter((d) => d.app === app.name);
     return { name: app.name, source: version.source, pipelines: definitions };
   }
@@ -224,6 +242,23 @@ export class AppsService {
     return this.get(userId, appId);
   }
 
+  /**
+   * M35-T1: a draft checked as I edit it, nothing saved: its problems with their lines; of an App's draft, also its
+   * pipelines compiled against it (what Save would refuse) and what it changes.
+   */
+  async check(userId: string, { source, appId }: AppCheckRequest): Promise<AppCheckView> {
+    const app = appId ? await this.prisma.client.app.findFirst({ where: { appId, userId } }) : null;
+    if (appId && !app) throw new NotFoundException();
+    const { definition, errors } = checkAppSource(source);
+    if (!definition) return { ok: false, errors, pipelines: [], changes: [] };
+    const current = app?.currentVersionId
+      ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
+      : null;
+    const pipelines = await this.brokenPipelines(userId, app?.name ?? definition.name, definition);
+    const changes = current ? diffApps(readAppSource(current.source), definition) : [];
+    return { ok: pipelines.length === 0, errors: [], pipelines, changes };
+  }
+
   async entities(userId: string, appId: string, typeName: string, query: EntityQuery): Promise<EntityListView> {
     const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
     const version = app?.currentVersionId
@@ -271,9 +306,22 @@ export class AppsService {
     const outputs = objects(steps.map((s) => s.output as unknown));
     const fromOutput = listOf(outputs);
     const items = fromOutput.length > 0 ? fromOutput : listOf(objects(steps.map((s) => s.input as unknown)));
-    const type = draftType(items.length > 0 ? items : outputs);
-    if (!type) throw new UnprocessableEntityException("Nothing to draft from: no list of items, or no field that tells them apart");
-    return { type, samples: items.length, source: stringify({ Item: authoredType(type) }, { lineWidth: 0 }) };
+    return drafted(items.length > 0 ? items : outputs);
+  }
+
+  /** M35-T4: a type drafted from a sample I paste: its list of items (the first one in it), or the one item it is. */
+  draftTypeFromSample(sample: unknown): DraftTypeView {
+    const items = Array.isArray(sample)
+      ? sample.filter((o): o is Item => !!o && typeof o === "object" && !Array.isArray(o))
+      : sample && typeof sample === "object"
+        ? (Object.values(sample).find(isObjectList) ?? [sample as Item])
+        : [];
+    return drafted(items);
+  }
+
+  /** M35-T5: the pipelines naming the App (by its name now) that wouldn't compile against this definition, but these. */
+  async brokenBy(userId: string, name: string, definition: AppDefinition, except: string[] = []) {
+    return (await this.brokenPipelines(userId, name, definition)).filter((p) => !except.includes(p.name));
   }
 
   private async brokenPipelines(userId: string, name: string, definition: AppDefinition) {
@@ -336,25 +384,24 @@ export class AppsService {
 }
 
 function parseApp(source: string): AppDefinition {
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(source);
-  } catch (error) {
-    const refusal: AppSaveRefusal = {
-      message: "The App isn't valid YAML",
-      errors: [{ path: "", message: error instanceof Error ? error.message : String(error) }],
-    };
-    throw new BadRequestException(refusal);
+  const { definition, errors } = checkAppSource(source);
+  if (definition) return definition;
+  const refusal: AppSaveRefusal = { message: errors.some((e) => !e.path) ? "The App isn't valid YAML" : "The App isn't valid", errors };
+  throw new BadRequestException(refusal);
+}
+
+/** The draft from items, with a few of each field's values. */
+function drafted(items: Item[]): DraftTypeView {
+  const type = draftType(items);
+  if (!type) throw new UnprocessableEntityException("Nothing to draft from: no list of items, or no field that tells them apart");
+  const examples: Record<string, string[]> = {};
+  for (const name of Object.keys(type.fields)) {
+    const values = items.map((item) => entityValueAt(item, name)).filter((v) => v !== undefined && v !== null && v !== "");
+    examples[name] = [...new Set(values.map((v) => (typeof v === "string" ? v : JSON.stringify(v))))]
+      .slice(0, 3)
+      .map((v) => v.slice(0, 80));
   }
-  const result = AppDefinitionSchema.safeParse(parsed);
-  if (!result.success) {
-    const refusal: AppSaveRefusal = {
-      message: "The App isn't valid",
-      errors: result.error.issues.map((issue) => ({ path: issue.path.map(String).join("."), message: issue.message })),
-    };
-    throw new BadRequestException(refusal);
-  }
-  return result.data;
+  return { type, samples: items.length, source: stringify({ Item: authoredType(type) }, { lineWidth: 0 }), examples };
 }
 
 /** A type as I'd write it: without the defaults (required: false, mine: false). */

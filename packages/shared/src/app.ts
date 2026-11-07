@@ -317,7 +317,10 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
     const at = ["pages", i];
     const type = Object.hasOwn(app.types, typeName) ? app.types[typeName] : undefined;
     if (!type) return issue([...at, kind], `there is no type "${typeName}"`);
-    const kindOf = (field: string) => (field.startsWith("@") ? "datetime" : type.fields[field]?.type);
+    // The stage's field is added to the fields once the type is valid; until then (a problem elsewhere in it) it is
+    // still an enum here, so a page using it isn't one more problem.
+    const kindOf = (field: string) =>
+      field.startsWith("@") ? "datetime" : field === type.stages?.field ? (type.fields[field]?.type ?? "enum") : type.fields[field]?.type;
     const field = (name: string, path: (string | number)[], kinds?: readonly FieldKind[], what?: string) => {
       const kind = kindOf(name);
       if (!kind) issue(path, `${typeName} has no field "${name}"`);
@@ -603,6 +606,8 @@ export type SaveAppRequest = z.infer<typeof SaveAppRequestSchema>;
 export interface AppIssue {
   path: string;
   message: string;
+  /** M35: its line in the App's YAML, when it is in it. */
+  line?: number;
 }
 
 /** A save that would break one of its pipelines: refused, naming each one and why. */
@@ -670,4 +675,13 @@ export interface DraftTypeView {
   type: DataType;
   /** How many items it was drafted from. */
   samples: number;
+  /** M35-T4: a few of each field's values, as they came. */
+  examples?: Record<string, string[]>;
 }
+
+/**
+ * M35-T4: a type drafted from a sample I paste: a list of items, an object holding one (an API's `{ results: [...] }`),
+ * or a single item.
+ */
+export const DraftTypeSampleRequestSchema = z.object({ sample: z.unknown() }).strict();
+export type DraftTypeSampleRequest = z.infer<typeof DraftTypeSampleRequestSchema>;

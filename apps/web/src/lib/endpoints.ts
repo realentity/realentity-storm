@@ -8,6 +8,9 @@ import {
   type AppListView,
   type AppMenuItem,
   type AppSummaryView,
+  type AppCheckView,
+  type BundleCheckView,
+  type BundleExportView,
   type DraftTypeRequest,
   type DraftTypeView,
   type EntityListView,
@@ -62,6 +65,7 @@ import {
   type SettingsView,
   type SpendingView,
   type StepTypeView,
+  type TriggerDataView,
   type SuggestionStatusName,
   type TeachRecipeRequest,
   type TeachStartedView,
@@ -86,6 +90,7 @@ export const api = {
   },
   steps: {
     list: () => request<StepTypeView[]>("GET", "/steps"),
+    triggers: () => request<TriggerDataView>("GET", "/steps/triggers"),
   },
   pipelines: {
     list: () => request<PipelineSummaryView[]>("GET", "/pipelines"),
@@ -185,9 +190,14 @@ export const api = {
     get: (appId: string) => request<AppDetailView>("GET", `/apps/${appId}`),
     create: (source: string) => request<AppDetailView>("POST", "/apps", { source }),
     save: (appId: string, source: string) => request<AppDetailView>("PUT", `/apps/${appId}`, { source }),
+    check: (source: string, appId?: string) => request<AppCheckView>("POST", "/apps/check", appId ? { source, appId } : { source }),
     entities: (appId: string, type: string, q: Partial<EntityQuery> = {}) =>
-      request<EntityListView>("GET", `/apps/${appId}/types/${encodeURIComponent(type)}/entities${query({ ...q, removed: q.removed ? "true" : undefined })}`),
+      request<EntityListView>(
+        "GET",
+        `/apps/${appId}/types/${encodeURIComponent(type)}/entities${query({ ...q, removed: q.removed ? "true" : undefined })}`,
+      ),
     draftType: (body: DraftTypeRequest) => request<DraftTypeView>("POST", "/apps/draft-type", body),
+    draftTypeFromSample: (sample: unknown) => request<DraftTypeView>("POST", "/apps/draft-type/sample", { sample }),
     drift: (appId: string) => request<AppDriftView[]>("GET", `/apps/${appId}/drift`),
     addField: (appId: string, type: string, field: string) => request<AppDetailView>("POST", `/apps/${appId}/drift`, { type, field }),
     importFrom: (appId: string, from: ImportSource, into?: { collection: string; type: string }) =>
@@ -207,6 +217,12 @@ export const api = {
       request<void>("DELETE", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}`),
     act: (appId: string, type: string, index: number, key?: string) =>
       request<RunDetailView>("POST", `/apps/${appId}/actions/${encodeURIComponent(type)}/${index}`, key === undefined ? {} : { key }),
+  },
+  bundles: {
+    check: (text: string) => request<BundleCheckView>("POST", "/bundles/check", { text }),
+    save: (text: string) => request<BundleCheckView>("POST", "/bundles", { text }),
+    exportApp: (appId: string) => request<BundleExportView>("GET", `/bundles/apps/${appId}`),
+    exportPipeline: (pipelineId: string) => request<BundleExportView>("GET", `/bundles/pipelines/${pipelineId}`),
   },
   bills: {
     list: () => request<BillsView>("GET", "/bills"),
@@ -266,6 +282,7 @@ export const api = {
     save: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save`),
     dryRun: (chatId: string, messageId: string) =>
       request<BuilderDryRunResponse>("POST", `/builder/chats/${chatId}/messages/${messageId}/dry-run`),
-    saveApp: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save-app`),
+    saveApp: (chatId: string, messageId: string) =>
+      request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save-app`),
   },
 };

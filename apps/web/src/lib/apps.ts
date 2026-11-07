@@ -1,21 +1,25 @@
-import { type DraftTypeView } from "@ai-me/shared";
+import { parse } from "yaml";
 
-/** A new App's starting point (M30). */
-export const NEW_APP_TEMPLATE = `name: Job Search
-description: Jobs I find, and where I am with each
-icon: briefcase
+/** A new App from nothing (M35): one type with one field, to grow in the designer. */
+export const EMPTY_APP = `name: My App
+description: What it keeps, in a sentence
+icon: list
 types:
-  Job:
-    key: url                     # one entity per url
-    title: position
+  Item:
+    key: name                    # one entity per name
     fields:
-      url: { type: url, required: true }
-      position: { type: text, required: true }
-      company: { type: text }
-      salary: { type: money, currency: currency }
-      currency: { type: text }
-      favorite: { type: yesno, mine: true }     # set by me; pipelines never write it
+      name: { type: text, required: true }
 `;
+
+/** The ready-made Apps in pipelines/apps, as written there (comments and all), by their name. */
+export const APP_TEMPLATES: { name: string; description: string; source: string }[] = Object.values(
+  import.meta.glob<string>("../../../../pipelines/apps/*.yaml", { query: "?raw", import: "default", eager: true }),
+)
+  .map((source) => {
+    const parsed = parse(source) as { name?: string; description?: string };
+    return { name: parsed.name ?? "App", description: parsed.description ?? "", source };
+  })
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 /** A step output with a list of objects to draft a type from. */
 export function hasItems(output: unknown): boolean {
@@ -23,16 +27,4 @@ export function hasItems(output: unknown): boolean {
   return Object.values(output).some(
     (v) => Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && !Array.isArray(x)),
   );
-}
-
-/** The draft as one more type under `types:`, at the end of the definition (my comments stay as they are). */
-export function withType(source: string, name: string, draft: DraftTypeView): string {
-  const body = draft.source
-    .replace(/^Item:/, `${name}:`)
-    .trimEnd()
-    .split("\n")
-    .map((line) => `  ${line}`)
-    .join("\n");
-  const base = source.trimEnd();
-  return /^types:\s*$/m.test(base) ? `${base}\n${body}\n` : `${base}\ntypes:\n${body}\n`;
 }

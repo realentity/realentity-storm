@@ -27,13 +27,22 @@ const POLICY: CompiledPolicy = {
   provenance: [{ stepId: "apply", field: "url", kind: "domain", source: "item.applyUrl" }],
 };
 
-const CATALOG: StepTypeView[] = [
-  { type: "test.search", description: "", sideEffect: false, headed: false },
-  { type: "llm.generate", description: "", sideEffect: false, headed: false },
-  { type: "gate.act", description: "", sideEffect: false, headed: false },
-  { type: "test.submit", description: "", sideEffect: true, headed: true },
-  { type: "notify.telegram", description: "", sideEffect: false, headed: false },
-];
+/** A catalog entry with only what the plan reads. */
+const step = (type: string, sideEffect = false, headed = false): StepTypeView => ({
+  type,
+  description: "",
+  sideEffect,
+  headed,
+  category: type.split(".")[0],
+  input: {},
+  output: {},
+  llmOutput: false,
+  targets: {},
+  credentials: false,
+  pageFields: [],
+});
+
+const CATALOG: StepTypeView[] = [step("test.search"), step("llm.generate"), step("gate.act"), step("test.submit", true, true), step("notify.telegram")];
 
 describe("plan", () => {
   it("finds the steps a step reads from, ignoring item, cred and unknown names", () => {

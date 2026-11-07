@@ -1,9 +1,15 @@
 import { type CompilePipelineResponse, type PipelineDetailView, type RunDetailView } from "@ai-me/shared";
-import { IconChecks, IconDeviceFloppy, IconEye, IconTrash, IconUpload } from "@tabler/icons-react";
+import { IconArrowBackUp, IconChecks, IconDeviceFloppy, IconEye, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { parseDocument } from "yaml";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { CompileErrors, DiffList, PlanView, StepGraphView } from "../components/PlanView";
+import { StepCards } from "../components/StepCards";
+import { DataPicker } from "../components/DataPicker";
+import { offersFor } from "../lib/data-picker";
+import { loosePipeline, useTriggerTypes } from "../lib/step-cards";
+import { type DesignerEdit } from "../components/TypesDesigner";
 import { ErrorAlert, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
@@ -31,6 +37,38 @@ export function PipelineEditorPage() {
   const [pipeline, setPipeline] = useState<PipelineDetailView | null>(null);
   const action = useAction();
   const fileInput = useRef<HTMLInputElement>(null);
+  // M36: the cards (each change an edit of the YAML, with Undo) or the YAML itself.
+  const [tab, setTab] = useState<"cards" | "yaml">("cards");
+  const [undo, setUndo] = useState<string[]>([]);
+  const apps = useLoad(() => api.apps.list(), []);
+  const pipelines = useLoad(() => api.pipelines.list(), []);
+  const credentials = useLoad(() => api.credentials.list().catch(() => []), []);
+  const appName = (() => {
+    try {
+      const parsed = parseDocument(source ?? "").toJS() as { app?: unknown } | null;
+      return typeof parsed?.app === "string" ? parsed.app : "";
+    } catch {
+      return "";
+    }
+  })();
+  const appId = apps.data?.find((a) => a.name === appName)?.appId;
+  const app = useLoad(() => (appId ? api.apps.get(appId) : Promise.resolve(null)), [appId]);
+  const types = useTriggerTypes(app.data?.definition ?? null);
+  const triggerData = useLoad(() => api.steps.triggers(), []);
+
+  // Checked a moment after each change, so the cards show their problems as I go.
+  const latestCheck = useRef(0);
+  useEffect(() => {
+    if (source === null || !source.trim()) return;
+    const ticket = ++latestCheck.current;
+    const timer = setTimeout(() => {
+      api.pipelines
+        .compile(source, pipelineId)
+        .then((response) => ticket === latestCheck.current && setChecked({ source, response }))
+        .catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [source, pipelineId]);
 
   // Editing: start from the draft if there is one, else the current version.
   useEffect(() => {
@@ -48,6 +86,20 @@ export function PipelineEditorPage() {
   const upToDate = checked?.source === text;
   const result = upToDate ? checked.response.result : null;
   const nextVersion = (pipeline?.currentVersion ?? 0) + 1;
+
+  const editable = parseDocument(text).errors.length === 0;
+  const edit = (change: DesignerEdit) => {
+    try {
+      const next = change(text);
+      if (next === text) return;
+      setUndo((u) => [...u.slice(-49), text]);
+      setSource(next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+  // The last check's problems, while the next one comes.
+  const shownIssues = checked && !checked.response.result.ok ? checked.response.result.errors : [];
 
   const check = async () => {
     const response = await action.run(() => api.pipelines.compile(text, pipelineId));
@@ -103,11 +155,45 @@ export function PipelineEditorPage() {
         }
       />
       <div className="row g-3">
-        <div className="col-xl-5">
+        <div className="col-xl-7">
           <div className="card">
             <div className="card-header">
-              <h3 className="card-title">Definition (YAML or JSON)</h3>
-              <div className="card-actions">
+              <ul className="nav nav-tabs card-header-tabs" role="tablist">
+                {(
+                  [
+                    ["cards", "Cards"],
+                    ["yaml", "YAML"],
+                  ] as const
+                ).map(([t, label]) => (
+                  <li key={t} className="nav-item">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === t}
+                      className={`nav-link ${tab === t ? "active" : ""}`}
+                      onClick={() => setTab(t)}
+                      data-testid={`pipeline-tab-${t}`}
+                    >
+                      {label}
+                      {t === "cards" && shownIssues.length > 0 && <span className="badge bg-red-lt ms-2">{shownIssues.length}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="card-actions btn-list">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={undo.length === 0}
+                  onClick={() => {
+                    setSource(undo.at(-1)!);
+                    setUndo((u) => u.slice(0, -1));
+                  }}
+                  data-testid="pipeline-undo"
+                >
+                  <IconArrowBackUp size={16} className="me-1" />
+                  Undo
+                </button>
                 <input
                   ref={fileInput}
                   type="file"
@@ -121,15 +207,39 @@ export function PipelineEditorPage() {
                 </button>
               </div>
             </div>
-            <textarea
-              className="form-control border-0 font-monospace source-editor"
-              rows={24}
-              spellCheck={false}
-              value={text}
-              onChange={(e) => setSource(e.target.value)}
-              aria-label="Pipeline definition"
-              data-testid="pipeline-source"
-            />
+            {tab === "cards" ? (
+              <StepCards
+                source={text}
+                onEdit={edit}
+                editable={editable}
+                catalog={catalog}
+                issues={shownIssues}
+                apps={(apps.data ?? []).map((a) => a.name)}
+                types={types}
+                pipelines={(pipelines.data ?? []).map((p) => p.name).filter((n) => n !== pipeline?.name)}
+                credentials={credentials.data ?? []}
+                picker={(stepIndex, input, kind, onPick) => {
+                  const loose = loosePipeline(text);
+                  if (!loose) return null;
+                  const offers = offersFor(
+                    { pipeline: loose, catalog, triggers: triggerData.data ?? null, app: app.data?.definition ?? null },
+                    stepIndex,
+                    input,
+                  );
+                  return <DataPicker offers={offers} insert={kind === "insert"} onPick={onPick} label={input} />;
+                }}
+              />
+            ) : (
+              <textarea
+                className="form-control border-0 font-monospace source-editor"
+                rows={24}
+                spellCheck={false}
+                value={text}
+                onChange={(e) => setSource(e.target.value)}
+                aria-label="Pipeline definition"
+                data-testid="pipeline-source"
+              />
+            )}
             <div className="card-footer d-flex gap-2 flex-wrap">
               <button type="button" className="btn" disabled={action.busy || !text.trim()} onClick={() => void check()} data-testid="check">
                 <IconChecks size={18} className="me-1" />
@@ -159,7 +269,7 @@ export function PipelineEditorPage() {
           </div>
         </div>
 
-        <div className="col-xl-7 d-flex flex-column gap-3">
+        <div className="col-xl-5 d-flex flex-column gap-3">
           <ErrorAlert error={action.error} />
           {!checked && <div className="text-secondary">Check the definition to see its plan, what it may do and what changed.</div>}
           {checked && !upToDate && <div className="alert alert-warning">The definition changed since the last check. Check it again.</div>}

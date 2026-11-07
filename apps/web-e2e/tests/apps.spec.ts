@@ -18,6 +18,8 @@ types:
       wanted: { type: yesno, mine: true }
 `;
   await page.goto("/apps/new");
+  await page.getByTestId("start-empty").click();
+  await page.getByTestId("tab-yaml").click();
   await page.getByTestId("app-source").fill(app);
   await page.getByTestId("save-app").click();
   await expect(page.getByRole("heading", { name })).toBeVisible();
@@ -53,26 +55,64 @@ steps:
   await expect(page.getByTestId("describe-change")).toBeVisible();
 
   // Dropping a field the pipeline doesn't name is fine; renaming its type isn't.
+  // M35-T1: the designer says so as I type, before Save.
   await page.getByTestId("edit-app").click();
+  await page.getByTestId("tab-yaml").click();
   await page.getByTestId("app-source").fill(app.replace("  Disk:", "  Drive:"));
+  await expect(page.getByTestId("broken-pipelines")).toContainText(pipeline.name);
   await page.getByTestId("save-app").click();
   await expect(page.getByRole("alert")).toContainText(`It would break "${pipeline.name}"`);
   await expect(page.getByRole("alert")).toContainText('has no type "Disk"');
 
   // A type from what the source really gives.
+  await page.getByTestId("tab-types").click();
+  await page.getByTestId("draft-from-run").click();
   await page.getByLabel("Pipeline to try").selectOption({ label: pipeline.name });
   await page.getByTestId("try-source").click();
   await page.getByTestId("draft-type").getByRole("button", { name: "save" }).click({ timeout: 20_000 });
-  await expect(page.getByTestId("draft-source")).toContainText("key: id");
-  await expect(page.getByTestId("draft-source")).toContainText("type: url");
+  const draftRow = (field: string) => page.getByTestId("draft-row").filter({ has: page.locator(`input[value="${field}"]`) });
+  await expect(page.getByTestId("draft-key")).toHaveValue("id");
+  await expect(draftRow("url").getByTestId("draft-kind")).toContainText("url");
   // "399" and 419.5 next to a currency: money, its currency the code.
-  await expect(page.getByTestId("draft-source")).toContainText(/type: money\s+required: true\s+currency: currency/);
+  await expect(draftRow("price").getByTestId("draft-kind")).toContainText("money · always · in currency");
   await page.getByLabel("Type name").fill("Offer");
   await page.getByTestId("add-type").click();
+  await expect(page.getByTestId("type-name").last()).toHaveValue("Offer");
+  await page.getByTestId("tab-yaml").click();
   await expect(page.getByTestId("app-source")).toHaveValue(/\n {2}Offer:\n {4}key: id\n/);
   await page
     .getByTestId("app-source")
     .fill(app.replace("wanted: { type: yesno, mine: true }", "wanted: { type: yesno, mine: true }\n      url: { type: url }"));
   await page.getByTestId("save-app").click();
   await expect(page.getByText("Disk.url added (url)")).toBeVisible();
+});
+
+// M35-T1: the designer: an App from a template, shown as types, stages and pages; a problem on its tab and at its line
+test("the designer shows an App by its tabs and a problem where it is", async ({ page }) => {
+  await page.goto("/apps/new");
+  await page.getByTestId("start-template").filter({ hasText: "Bills" }).click();
+  await expect(page.getByTestId("type-name")).toHaveValue("Bill");
+  await expect(page.locator(`[data-testid="field-name"][value="amount"]`)).toBeVisible();
+  await expect(page.getByTestId("app-check")).toContainText("No problems");
+
+  await page.getByTestId("tab-stages").click();
+  await expect(page.getByTestId("stages-tab")).toContainText("due");
+  await expect(page.getByTestId("stages-tab")).toContainText("paid");
+  await page.getByTestId("tab-pages").click();
+  await expect(page.getByTestId("pages-tab")).toContainText("list");
+
+  // A money field whose currency is no field: on the Types tab, and at its line in the YAML.
+  await page.getByTestId("tab-yaml").click();
+  const source = await page.getByTestId("app-source").inputValue();
+  await page.getByTestId("app-source").fill(source.replace(/currency: currency/, "currency: nowhere"));
+  await expect(page.getByTestId("app-check")).toContainText("1 problem");
+  await expect(page.getByTestId("tab-types")).toContainText("1");
+  await expect(page.getByTestId("yaml-issues")).toContainText(/line \d+/);
+  await page.getByTestId("tab-types").click();
+  await expect(page.getByTestId("types-tab")).toContainText('"nowhere" is not a text field of this type');
+  await page
+    .getByTestId("types-tab")
+    .getByRole("button", { name: /^line / })
+    .click();
+  await expect(page.getByTestId("app-source")).toBeFocused();
 });

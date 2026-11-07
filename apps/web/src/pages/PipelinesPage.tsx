@@ -1,5 +1,6 @@
 import { IconMessage, IconPlus } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
+import { ImportYaml } from "../components/ImportYaml";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
@@ -13,6 +14,7 @@ export function PipelinesPage() {
         title="Pipelines"
         actions={
           <>
+            <ImportYaml onImported={pipelines.reload} />
             <Link to="/pipelines/new" className="btn" data-testid="new-pipeline">
               <IconPlus size={18} className="me-1" />
               From YAML
