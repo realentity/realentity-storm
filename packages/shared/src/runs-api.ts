@@ -196,6 +196,8 @@ export interface RunDetailView extends RunSummaryView {
   artifacts: ArtifactView[];
   /** {{trigger}}: the event or webhook call that started it; in a dry run, an example of one. Null: none. */
   triggerData: unknown;
+  /** M37-T3: a dry run tried up to this step; null: the whole pipeline. */
+  stopAfter: string | null;
   /** A question the run waits for me to answer (M15-T3). */
   question: QuestionView | null;
   /** A failed run: whether Retry can go on from the failed steps. Null for other runs. */

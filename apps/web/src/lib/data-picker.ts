@@ -1,4 +1,4 @@
-import { type AppDefinition, type JsonSchema, type StepTypeView, type TriggerDataView } from "@ai-me/shared";
+import { type AppDefinition, type JsonSchema, type RunDetailView, type StepTypeView, type TriggerDataView } from "@ai-me/shared";
 import { resolve } from "./schema-form";
 import { type LoosePipeline } from "./step-cards";
 
@@ -26,6 +26,8 @@ export interface PickerContext {
   triggers: TriggerDataView | null;
   /** The App the pipeline names, for entity triggers and data.read's items. */
   app: AppDefinition | null;
+  /** M37-T3: what the steps gave when last tried, by step id (a forEach step's: a list, an output per item). */
+  outputs?: Record<string, unknown>;
 }
 
 /** A schema's kind. */
@@ -135,6 +137,10 @@ function sources(ctx: PickerContext, stepIndex: number): Source[] {
     if (item && schema.properties?.items) {
       schema = { ...schema, properties: { ...schema.properties, items: { type: "array", items: { type: "object", properties: item } } } };
     }
+    // What the step really gave fills in what its schema leaves out (bill.save's remind: "a list of objects").
+    const real = ctx.outputs?.[step.id];
+    if (real !== undefined)
+      schema = withValue(schema, step.forEach ? (Array.isArray(real) ? real.find((v) => v != null) : undefined) : real);
     const wrote = item && app?.types[type as string]?.mine !== true;
     list.push({
       root: step.id,
@@ -144,6 +150,30 @@ function sources(ctx: PickerContext, stepIndex: number): Source[] {
     });
   }
   return list;
+}
+
+/**
+ * M37-T3: a schema with what a real value shows: the fields of an object the schema doesn't name, a list's items from
+ * its first one, a kind where it has none. What the schema says stays.
+ */
+export function withValue(schema: JsonSchema, value: unknown, depth = 3): JsonSchema {
+  const s = resolve(schema);
+  if (depth < 0 || value === undefined || value === null) return s;
+  const kind = kindOf(s);
+  if (Array.isArray(value)) {
+    if (kind !== "list" && kind !== "any") return s;
+    const first: unknown = value.find((v) => v !== undefined && v !== null);
+    return { ...s, type: s.type ?? "array", ...(first === undefined ? {} : { items: withValue(s.items ?? {}, first, depth - 1) }) };
+  }
+  if (typeof value === "object") {
+    if (kind !== "object" && kind !== "any") return s;
+    const properties: Record<string, JsonSchema> = { ...s.properties };
+    for (const [name, v] of Object.entries(value)) properties[name] = withValue(properties[name] ?? {}, v, depth - 1);
+    return { ...s, type: s.type ?? "object", properties };
+  }
+  if (s.type) return s;
+  if (typeof value === "number") return { ...s, type: "number" };
+  return { ...s, type: typeof value === "boolean" ? "boolean" : "string" };
 }
 
 /** A source's references: its fields, and theirs one level down (trigger.message.from), with their kinds. */
@@ -203,4 +233,15 @@ export function offersFor(ctx: PickerContext, stepIndex: number, input: string):
     if (items) for (const r of walk("item", items, 1)) add(r.path, r.kind, "Each item", allowed, r.description);
   }
   return offers;
+}
+
+/** M37-T3: what each step gave in a try, by step id: a forEach step's as a list, an output per item. */
+export function outputsOf(run: RunDetailView | null | undefined): Record<string, unknown> {
+  const outputs: Record<string, unknown> = {};
+  for (const step of run?.steps ?? []) {
+    if (step.status !== "DONE") continue;
+    if (step.itemIndex === null) outputs[step.stepKey] = step.output;
+    else ((outputs[step.stepKey] ??= []) as unknown[])[step.itemIndex] = step.output;
+  }
+  return outputs;
 }

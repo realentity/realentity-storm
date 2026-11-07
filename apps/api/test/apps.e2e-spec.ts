@@ -1,6 +1,7 @@
 import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
 import {
   type AppCheckView,
+  type AppPreviewView,
   type AppDetailView,
   type AppSaveRefusal,
   type AppSummaryView,
@@ -204,6 +205,62 @@ describe("apps", () => {
     await agent.post("/api/apps/check").send({ source: APP, appId: "00000000-0000-4000-8000-000000000000" }).expect(404);
   });
 
+  // M37-T2: a draft's page with the App's entities, or a sample without them; nothing saved
+  it("previews a draft App's page with its entities, or with a sample", async () => {
+    const app = await createApp();
+    await db.client.dataEntity.createMany({
+      data: [
+        {
+          appId: app.appId,
+          type: "Job",
+          key: "https://jobs.example.com/1",
+          value: { url: "https://jobs.example.com/1", position: "Dev", salary: 10 },
+        },
+        {
+          appId: app.appId,
+          type: "Job",
+          key: "https://jobs.example.com/2",
+          value: { url: "https://jobs.example.com/2", position: "QA", salary: 30 },
+        },
+        {
+          appId: app.appId,
+          type: "Job",
+          key: "https://jobs.example.com/3",
+          value: { url: "https://jobs.example.com/3", position: "Old" },
+          removedAt: new Date(),
+        },
+      ],
+    });
+    const preview = async (source: string, appId?: string, type = "Job") =>
+      (
+        await agent
+          .post("/api/apps/preview")
+          .send({ source, type, ...(appId ? { appId } : {}) })
+          .expect(200)
+      ).body as AppPreviewView;
+
+    // The draft's page, not the saved one: sorted by salary, the columns it names; the removed one left out.
+    const draft = `${APP}pages:\n  - list: Job\n    columns: [position, salary]\n    sort: -salary\n`;
+    const shown = await preview(draft, app.appId);
+    expect(shown.sample).toBe(false);
+    expect(shown.list.page.columns.map((c) => c.field)).toEqual(["position", "salary"]);
+    expect(shown.list.rows.map((r) => r.value.position)).toEqual(["QA", "Dev"]);
+    expect(shown.view).toMatchObject({ row: { key: "https://jobs.example.com/2" } });
+    expect(shown.list.version).toBe(2);
+
+    // A new App, or a type with no entities: made-up rows of each field's kind.
+    const sample = await preview(draft.replace("Job Search", "Job Hunt"));
+    expect(sample.sample).toBe(true);
+    expect(sample.list.rows.length).toBeGreaterThan(1);
+    expect(typeof sample.list.rows[0].value.salary).toBe("number");
+    expect(sample.list.rows[0].value.currency).toBe("EUR");
+
+    await agent.post("/api/apps/preview").send({ source: draft, type: "Nope" }).expect(404);
+    await agent.post("/api/apps/preview").send({ source: "name: x\n", type: "Job" }).expect(400);
+    await agent.post("/api/apps/preview").send({ source: draft, type: "Job", appId: "00000000-0000-4000-8000-000000000000" }).expect(404);
+    expect(await db.client.appVersion.count({ where: { appId: app.appId } })).toBe(1);
+  });
+
   it("lists a type's entities, the removed ones apart", async () => {
     const app = await createApp();
     await db.client.dataEntity.createMany({
@@ -289,7 +346,8 @@ describe("apps", () => {
       { id: "a", name: "WD Purple 8TB", price: "399", currency: "BGN", url: "https://shop.example.org/a" },
       { id: "b", name: "Seagate SkyHawk 8TB", price: 419.5, currency: "BGN", url: "https://shop.example.org/b" },
     ];
-    const draft = async (sample: unknown) => (await agent.post("/api/apps/draft-type/sample").send({ sample }).expect(201)).body as DraftTypeView;
+    const draft = async (sample: unknown) =>
+      (await agent.post("/api/apps/draft-type/sample").send({ sample }).expect(201)).body as DraftTypeView;
 
     const fromList = await draft(items);
     expect(fromList.samples).toBe(2);

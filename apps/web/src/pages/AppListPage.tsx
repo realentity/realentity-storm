@@ -1,20 +1,15 @@
-import { actionApplies, entityValueAt, fieldOf, groupValue, type EntityGroup, type ViewRow } from "@ai-me/shared";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Empty, ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
 import { EntityButtons } from "../components/EntityButtons";
 import { EntityForm } from "../components/EntityForm";
-import { EntityLink } from "../components/EntityLink";
+import { ListTable } from "../components/ListTable";
 import { SeriesChart } from "../components/SeriesChart";
-import { ViewValue } from "../components/ViewParts";
 import { api } from "../lib/endpoints";
 import { useAction, useLoad } from "../lib/use-load";
-import { asText } from "../lib/view";
 
 const PAGE = 50;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const NUMBER = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
 
 /** M31: a type's list, as its App's page says: tabs, filters, search, groups with totals, and its entities. */
 export function AppListPage() {
@@ -81,9 +76,11 @@ export function AppListPage() {
             label="Add"
             testId="add-form"
             submit={(values) =>
-              void adder.run(() => api.apps.add(appId, type, values)).then((added) => {
-                if (added) void navigate(`/a/${appId}/${encodeURIComponent(type)}/${encodeURIComponent(added.row.key)}`);
-              })
+              void adder
+                .run(() => api.apps.add(appId, type, values))
+                .then((added) => {
+                  if (added) void navigate(`/a/${appId}/${encodeURIComponent(type)}/${encodeURIComponent(added.row.key)}`);
+                })
             }
           />
         </Modal>
@@ -92,7 +89,11 @@ export function AppListPage() {
         <div className="card mb-3" data-testid="app-chart">
           <div className="card-header">
             <h3 className="card-title">{page.chart.label}</h3>
-            {list.data.chart.more > 0 && <span className="card-subtitle ms-2">the top {list.data.chart.series.length}; {list.data.chart.more} more</span>}
+            {list.data.chart.more > 0 && (
+              <span className="card-subtitle ms-2">
+                the top {list.data.chart.series.length}; {list.data.chart.more} more
+              </span>
+            )}
           </div>
           <div className="card-body">
             <SeriesChart
@@ -162,71 +163,23 @@ export function AppListPage() {
         {rows.length === 0 ? (
           <Empty>{q || Object.keys(filter).length ? "Nothing matches." : `No ${page.label.toLowerCase()} yet.`}</Empty>
         ) : (
-          <div className="table-responsive">
-            <table className="table table-vcenter card-table">
-              <thead>
-                <tr>
-                  {page.columns.map((c) => (
-                    <th key={c.field}>{c.label}</th>
-                  ))}
-                  <th className="w-1" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => {
-                  const group = groups && page.group ? groupOf(groups, row, page.group.by.field, page.group.period) : null;
-                  const first = group && (i === 0 || groupOf(groups!, rows[i - 1], page.group!.by.field, page.group!.period) !== group);
-                  return (
-                    <Fragment key={row.key}>
-                      {first && (
-                        <tr className="bg-secondary-lt" data-testid="entity-group">
-                          <td colSpan={page.columns.length + 1}>
-                            <strong>{group.label}</strong>
-                            <span className="text-secondary ms-2">{group.count}</span>
-                            {group.totals.map((t, j) => (
-                              <span key={j} className="ms-3 text-secondary" data-testid="group-total">
-                                {page.group!.totals[j]?.label}: <strong className="text-reset">{sums(t.sums, page.group!.totals[j]?.as === "money")}</strong>
-                              </span>
-                            ))}
-                          </td>
-                        </tr>
-                      )}
-                      <tr data-testid="entity-row">
-                        {page.columns.map((c) => (
-                          <td key={c.field}>
-                            {c.field === page.title ? (
-                              <Link to={`/a/${appId}/${encodeURIComponent(type)}/${encodeURIComponent(row.key)}`}>
-                                <ViewValue row={row} column={{ ...c, as: c.as === "link" ? "text" : c.as }} />
-                              </Link>
-                            ) : (
-                              <ViewValue row={row} column={c} />
-                            )}
-                            {c.due && <DueBadge row={row} field={c.field} due={c.due} />}
-                          </td>
-                        ))}
-                        <td className="text-end text-nowrap">
-                          {page.moves &&
-                            (page.moves.to[asText(fieldOf(row, page.moves.field))] ?? []).map((to) => (
-                              <button
-                                key={to}
-                                type="button"
-                                className="btn btn-sm me-1"
-                                disabled={mover.busy}
-                                onClick={() => void mover.run(() => api.apps.move(appId, type, row.key, to)).then((moved) => moved && list.reload())}
-                                data-testid="row-move"
-                              >
-                                {to}
-                              </button>
-                            ))}
-                          <EntityLink row={row} field={page.link} />
-                        </td>
-                      </tr>
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ListTable
+            page={page}
+            rows={rows}
+            groups={groups}
+            rowLink={(row) => `/a/${appId}/${encodeURIComponent(type)}/${encodeURIComponent(row.key)}`}
+            moves={(row, to) => (
+              <button
+                type="button"
+                className="btn btn-sm me-1"
+                disabled={mover.busy}
+                onClick={() => void mover.run(() => api.apps.move(appId, type, row.key, to)).then((moved) => moved && list.reload())}
+                data-testid="row-move"
+              >
+                {to}
+              </button>
+            )}
+          />
         )}
         {total > PAGE && (
           <div className="card-footer d-flex gap-2 align-items-center">
@@ -244,29 +197,4 @@ export function AppListPage() {
       </div>
     </>
   );
-}
-
-function groupOf(groups: EntityGroup[], row: ViewRow, field: string, period: "month" | "year" | null): EntityGroup | null {
-  const value = groupValue(fieldOf(row, field), period);
-  return groups.find((g) => g.value === value) ?? null;
-}
-
-/** "1250.00 BGN · 300.00 EUR": money as the rows show it. */
-/** A date that is near, as a badge (M33): overdue, today, in N days; nothing when the entity is as `unless` says. */
-function DueBadge({ row, field, due }: { row: ViewRow; field: string; due: { days: number; unless?: Record<string, string | boolean | string[]> } }) {
-  const value = fieldOf(row, field);
-  if (typeof value !== "string" || (due.unless && actionApplies({ when: due.unless }, row.value, entityValueAt))) return null;
-  // Whole calendar days from today (here) to the date: yesterday is -1, whatever the hour.
-  const now = new Date();
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((Date.parse(`${value.slice(0, 10)}T00:00:00Z`) - today) / DAY_MS);
-  if (days < 0) return <span className="badge bg-red-lt ms-2" data-testid="due-badge">overdue</span>;
-  if (days <= due.days) return <span className="badge bg-yellow-lt ms-2" data-testid="due-badge">{days === 0 ? "today" : `in ${days} d`}</span>;
-  return null;
-}
-
-function sums(byCurrency: Record<string, number>, money: boolean): string {
-  const entries = Object.entries(byCurrency);
-  if (entries.length === 0) return "—";
-  return entries.map(([currency, sum]) => `${money ? sum.toFixed(2) : NUMBER.format(sum)}${currency ? ` ${currency}` : ""}`).join(" · ");
 }

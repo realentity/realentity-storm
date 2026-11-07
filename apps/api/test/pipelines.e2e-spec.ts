@@ -232,6 +232,17 @@ steps:
       await agent.post("/api/pipelines/dry-run").send({ source: "name: x\nsteps: []" }).expect(400);
       expect(await db.client.pipeline.count()).toBe(0);
     });
+
+    // M37-T3: try up to a step: a dry run that names one of its steps
+    it("a dry run tried up to a step keeps the step; a step it doesn't have is refused", async () => {
+      await agent.post("/api/pipelines/dry-run").send({ source: V1, stopAfter: "nowhere" }).expect(400);
+      expect(await db.client.pipeline.count()).toBe(0);
+      const first = (await agent.post("/api/pipelines/dry-run").send({ source: V1, stopAfter: "summary" }).expect(202))
+        .body as DryRunPipelineResponse;
+      expect(first.run).toMatchObject({ dryRun: true, stopAfter: "summary" });
+      const whole = await dryRun(V1, first.pipeline.pipelineId);
+      expect(whole.run.stopAfter).toBeNull();
+    });
   });
 
   it("does not show or change another user's pipeline", async () => {

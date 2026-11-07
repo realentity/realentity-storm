@@ -1,6 +1,6 @@
-import { AppDefinitionSchema, type JsonSchema, type StepTypeView } from "@ai-me/shared";
+import { AppDefinitionSchema, type JsonSchema, type RunDetailView, type StepTypeView } from "@ai-me/shared";
 import { describe, expect, it } from "vitest";
-import { fits, offersFor, type PickerContext } from "./data-picker";
+import { fits, offersFor, outputsOf, withValue, type PickerContext } from "./data-picker";
 import { loosePipeline } from "./step-cards";
 
 const step = (type: string, input: JsonSchema, output: JsonSchema, more: Partial<StepTypeView> = {}): StepTypeView => ({
@@ -144,5 +144,40 @@ describe("the data picker (M36-T4)", () => {
     expect(refs(hook, 3, "to").filter((r) => r.startsWith("{{trigger."))).toEqual([]);
     // Not a target: anything that fits.
     expect(refs(ctx, 3, "body")).toContain("{{write.text}}");
+  });
+});
+
+// M37-I1: the cards after a try pick from what it really gave
+describe("the picker after a try (M37-T3)", () => {
+  const SOURCE = PIPELINE.replace("{ type: Lead }", "{ type: Other }").replace(
+    'forEach: "{{fetch.messages}}"',
+    'forEach: "{{leads.items}}"',
+  );
+
+  it("offers the fields of a list the catalog leaves undescribed, from its real items", () => {
+    const before = refs(context(SOURCE), 3, "body");
+    expect(before.filter((r) => r.startsWith("{{item."))).toEqual([]);
+    const tried = {
+      ...context(SOURCE),
+      outputs: { leads: { items: [null, { name: "Ana", score: 3, tags: ["a"] }] }, fetch: { count: "7" } },
+    };
+    expect(refs(tried, 3, "body")).toEqual(expect.arrayContaining(["{{item.name}}", "{{item.score}}"]));
+    expect(refs(tried, 3, "cc")).toContain("{{item.tags}}");
+    // What the schema says stays: count is a number, whatever it gave.
+    expect(offersFor(tried, 4, "text").find((o) => o.reference === "{{fetch.count}}")?.kind).toBe("number");
+  });
+
+  it("reads a try's steps as outputs, a forEach step's as a list", () => {
+    const step = (stepKey: string, itemIndex: number | null, status: string, output: unknown) => ({ stepKey, itemIndex, status, output });
+    const run = {
+      steps: [
+        step("fetch", null, "DONE", { count: 1 }),
+        step("send", 1, "DONE", { sent: true }),
+        step("send", 0, "SKIPPED", null),
+        step("tell", null, "FAILED", null),
+      ],
+    } as unknown as RunDetailView;
+    expect(outputsOf(run)).toEqual({ fetch: { count: 1 }, send: [undefined, { sent: true }] });
+    expect(withValue({}, [{ a: 1 }])).toEqual({ type: "array", items: { type: "object", properties: { a: { type: "number" } } } });
   });
 });

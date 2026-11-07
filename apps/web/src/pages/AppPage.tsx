@@ -2,6 +2,7 @@ import { entityValueAt, type DataType, type EntityView } from "@ai-me/shared";
 import { IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { AppMap } from "../components/AppMap";
 import { ExportYaml } from "../components/ImportYaml";
 import { toast } from "react-toastify";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
@@ -23,6 +24,7 @@ export function AppPage() {
   const mover = useAction();
   const navigate = useNavigate();
   const drift = useLoad(() => api.apps.drift(appId), [appId]);
+  const map = useLoad(() => api.apps.map(appId), [appId]);
   const [into, setInto] = useState<Record<string, string>>({});
   if (!app.data) return app.error ? <ErrorAlert error={app.error} /> : <Loading />;
   const { data } = app;
@@ -110,6 +112,17 @@ export function AppPage() {
         </div>
       ))}
       <ErrorAlert error={mover.error} />
+      {map.data && (
+        <div className="card mb-3">
+          <div className="card-header">
+            <h3 className="card-title">How it connects</h3>
+            <span className="card-subtitle ms-2">its pipelines, what starts them, what they write and read, and its pages</span>
+          </div>
+          <div className="card-body">
+            <AppMap appId={appId} map={map.data} />
+          </div>
+        </div>
+      )}
       {drift.data && drift.data.length > 0 && (
         <div className="card mb-3" data-testid="app-drift">
           <div className="card-header">

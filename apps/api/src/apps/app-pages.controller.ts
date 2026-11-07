@@ -1,5 +1,6 @@
 import {
   AppListQuerySchema,
+  AppPreviewRequestSchema,
   EntityValuesRequestSchema,
   MoveStageRequestSchema,
   PageActionRequestSchema,
@@ -7,6 +8,8 @@ import {
   type AppListQueryParsed,
   type AppListView,
   type AppMenuItem,
+  type AppPreviewRequest,
+  type AppPreviewView,
   type EntityValuesRequest,
   type MoveStageRequest,
   type PageActionRequest,
@@ -29,6 +32,16 @@ export class AppPagesController {
   @Get("menu")
   menu(@CurrentUser() user: AuthenticatedUser): Promise<AppMenuItem[]> {
     return this.pages.menu(user.userId);
+  }
+
+  /** M37-T2: a page of a draft App, with the App's entities or a sample; nothing is saved. */
+  @Post("preview")
+  @HttpCode(200)
+  preview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodBodyPipe(AppPreviewRequestSchema)) body: AppPreviewRequest,
+  ): Promise<AppPreviewView> {
+    return this.pages.preview(user.userId, body);
   }
 
   @Get(":appId/pages/:type")

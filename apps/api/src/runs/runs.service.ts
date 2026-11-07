@@ -58,6 +58,8 @@ export class RunsService {
     dryRun: boolean,
     trigger: "manual" | "telegram" | "view" = "manual",
     triggerData?: Record<string, unknown>,
+    /** M37-T3: a dry run stops after this step. */
+    stopAfter?: string,
   ): Promise<RunDetailView> {
     await this.controls.assertNotPaused(userId);
     const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
@@ -70,8 +72,11 @@ export class RunsService {
         pipelineVersionId: version.pipelineVersionId,
         trigger: dryRun ? "dry-run" : trigger,
         dryRun,
+        ...(dryRun && stopAfter ? { stopAfter } : {}),
         // A pipeline started by an event or a webhook gets an example of one in a dry run, so {{trigger.*}} has values.
-        ...(dryRun && exampleTriggerData(definition.trigger) ? { triggerData: exampleTriggerData(definition.trigger) as Prisma.InputJsonValue } : {}),
+        ...(dryRun && exampleTriggerData(definition.trigger)
+          ? { triggerData: exampleTriggerData(definition.trigger) as Prisma.InputJsonValue }
+          : {}),
         ...(triggerData && !dryRun ? { triggerData: triggerData as Prisma.InputJsonValue } : {}),
         headed: this.catalog.needsHeaded(definition.steps),
         status: "QUEUED",
@@ -105,7 +110,10 @@ export class RunsService {
       orderBy: [{ startedAt: "desc" }, { runId: "desc" }],
       take: filter.limit,
     });
-    const costs = await runCosts(this.prisma, runs.map((r) => r.runId));
+    const costs = await runCosts(
+      this.prisma,
+      runs.map((r) => r.runId),
+    );
     return runs.map((run) => runSummary(run, costs.get(run.runId) ?? 0));
   }
 
@@ -178,7 +186,10 @@ export class RunsService {
     // A side effect failed, or left running: it may have gone out.
     const sideEffect = steps.find((s) => (s.status === "FAILED" || s.status === "RUNNING") && this.catalog.get(s.type)?.sideEffect);
     if (sideEffect) {
-      return { possible: false, reason: `${sideEffect.stepKey} (${sideEffect.type}) failed and may have gone out: check, then start a new run` };
+      return {
+        possible: false,
+        reason: `${sideEffect.stepKey} (${sideEffect.type}) failed and may have gone out: check, then start a new run`,
+      };
     }
     if (failed.length === 0) return { possible: false, reason: "No failed step to go on from: start a new run" };
     return { possible: true, reason: null };
@@ -206,6 +217,7 @@ export class RunsService {
       retry: this.retryCheck(run.status, run.steps),
       headed: run.headed,
       triggerData: run.triggerData ?? null,
+      stopAfter: run.stopAfter,
       question: run.questions[0] ? questionView(run.questions[0]) : null,
       takeover: takeover ? takeoverView(takeover, this.env.TAKEOVER_TIMEOUT_MINUTES) : null,
       artifacts: run.artifacts.map((a) => ({

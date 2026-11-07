@@ -9,6 +9,8 @@ import {
   type AppMenuItem,
   type AppSummaryView,
   type AppCheckView,
+  type AppMapView,
+  type AppPreviewView,
   type BundleCheckView,
   type BundleExportView,
   type DraftTypeRequest,
@@ -98,7 +100,8 @@ export const api = {
     version: (pipelineId: string, version: number) => request<PipelineVersionView>("GET", `/pipelines/${pipelineId}/versions/${version}`),
     compile: (source: string, pipelineId?: string) =>
       request<CompilePipelineResponse>("POST", "/pipelines/compile", { source, pipelineId }),
-    dryRun: (source: string, pipelineId?: string) => request<DryRunPipelineResponse>("POST", "/pipelines/dry-run", { source, pipelineId }),
+    dryRun: (source: string, pipelineId?: string, stopAfter?: string) =>
+      request<DryRunPipelineResponse>("POST", "/pipelines/dry-run", { source, pipelineId, ...(stopAfter ? { stopAfter } : {}) }),
     create: (source: string) => request<PipelineDetailView>("POST", "/pipelines", { source }),
     addVersion: (pipelineId: string, source: string) =>
       request<PipelineDetailView>("POST", `/pipelines/${pipelineId}/versions`, { source }),
@@ -191,6 +194,8 @@ export const api = {
     create: (source: string) => request<AppDetailView>("POST", "/apps", { source }),
     save: (appId: string, source: string) => request<AppDetailView>("PUT", `/apps/${appId}`, { source }),
     check: (source: string, appId?: string) => request<AppCheckView>("POST", "/apps/check", appId ? { source, appId } : { source }),
+    preview: (source: string, type: string, appId?: string) =>
+      request<AppPreviewView>("POST", "/apps/preview", appId ? { source, type, appId } : { source, type }),
     entities: (appId: string, type: string, q: Partial<EntityQuery> = {}) =>
       request<EntityListView>(
         "GET",
@@ -199,6 +204,7 @@ export const api = {
     draftType: (body: DraftTypeRequest) => request<DraftTypeView>("POST", "/apps/draft-type", body),
     draftTypeFromSample: (sample: unknown) => request<DraftTypeView>("POST", "/apps/draft-type/sample", { sample }),
     drift: (appId: string) => request<AppDriftView[]>("GET", `/apps/${appId}/drift`),
+    map: (appId: string) => request<AppMapView>("GET", `/apps/${appId}/map`),
     addField: (appId: string, type: string, field: string) => request<AppDetailView>("POST", `/apps/${appId}/drift`, { type, field }),
     importFrom: (appId: string, from: ImportSource, into?: { collection: string; type: string }) =>
       request<AppImportResult>("POST", `/apps/${appId}/import`, { from, ...into }),

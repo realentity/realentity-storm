@@ -2,6 +2,9 @@ import { type DataEntity } from "@ai-me/db";
 import {
   actionApplies,
   CHART_SERIES,
+  checkAppSource,
+  PREVIEW_ROWS,
+  sampleRows,
   entityItem,
   entityValueAt,
   movesFrom,
@@ -16,6 +19,8 @@ import {
   type AppListView,
   type AppMenuItem,
   type AppPageHeader,
+  type AppPreviewRequest,
+  type AppPreviewView,
   type DataType,
   type EntityGroup,
   type ResolvedListPage,
@@ -55,50 +60,55 @@ export class AppPagesService {
 
   async list(userId: string, appId: string, type: string, query: AppListQueryParsed): Promise<AppListView> {
     const { header, definition } = await this.header(userId, appId, type);
-    const page = listPageOf(definition, type);
+    const rows = await this.rows(appId, definition, type);
+    const listed = listOf(definition, type, rows, query);
+    const chart = listed.page.chart ? await this.chart(userId, listed.page.chart.history, rows, listed.page.title) : null;
+    return { ...header, ...listed, chart };
+  }
+
+  /**
+   * M37-T2: a page of a draft App with the App's entities of the type (when the draft still has it by that name), else
+   * with a few made up from its fields; and the first row's own page. Nothing is saved; a chart isn't drawn.
+   */
+  async preview(userId: string, request: AppPreviewRequest): Promise<AppPreviewView> {
+    const { definition, errors } = checkAppSource(request.source);
+    if (!definition) throw new BadRequestException(errors[0]?.message ?? "The App has problems");
+    if (!Object.hasOwn(definition.types, request.type)) throw new NotFoundException(`"${definition.name}" has no type "${request.type}"`);
+    let rows: ViewRow[] = [];
+    let version = 0;
+    if (request.appId) {
+      const app = await this.prisma.client.app.findFirst({ where: { appId: request.appId, userId } });
+      if (!app) throw new NotFoundException();
+      rows = (await this.rows(app.appId, definition, request.type)).filter((r) => !r.removedAt);
+      version = (await this.prisma.client.appVersion.count({ where: { appId: app.appId } })) + 1;
+    }
+    const sample = rows.length === 0;
+    if (sample) rows = sampleRows(request.type, definition.types[request.type]);
+    const listed = listOf(definition, request.type, rows, { tab: "current", filter: {}, offset: 0, limit: PREVIEW_ROWS });
+    const first = listed.rows[0];
+    return {
+      list: { appId: request.appId ?? "", app: definition.name, version, type: request.type, ...listed, chart: null },
+      view: first ? { page: viewPageOf(definition, request.type), row: first } : null,
+      sample,
+    };
+  }
+
+  private async rows(appId: string, definition: AppDefinition, type: string): Promise<ViewRow[]> {
     const entities = await this.prisma.client.dataEntity.findMany({
       where: { appId, type },
       orderBy: { firstSeenAt: "desc" },
       take: MAX_ROWS,
     });
-    const dataType = definition.types[type];
-    const rows = entities.map((e) => rowOf(e, dataType));
-    const counts = { current: rows.filter((r) => !r.removedAt).length, removed: rows.filter((r) => r.removedAt).length };
-
-    for (const field of Object.keys(query.filter)) {
-      if (!page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
-    }
-    const q = query.q?.toLowerCase();
-    const matching = rows.filter(
-      (row) =>
-        (query.tab === "removed") === (row.removedAt !== null) &&
-        Object.entries(query.filter).every(([field, value]) => text(fieldOf(row, field)) === value) &&
-        (!q || row.key.toLowerCase().includes(q) || page.search.some((f) => text(fieldOf(row, f))?.toLowerCase().includes(q))),
-    );
-    matching.sort((a, b) => compare(fieldOf(a, page.sort.by), fieldOf(b, page.sort.by), page.sort.desc));
-
-    let groups: EntityGroup[] | null = null;
-    if (page.group) {
-      const { by, period } = page.group;
-      const valueOf = (row: ViewRow) => groupValue(fieldOf(row, by.field), period);
-      const order = groupOrder(definition, page, matching.map(valueOf));
-      groups = order.map((value) =>
-        groupOf(
-          page,
-          value,
-          matching.filter((row) => valueOf(row) === value),
-        ),
-      );
-      // Rows by group, each group in the page's sort (a stable sort keeps it).
-      matching.sort((a, b) => order.indexOf(valueOf(a)) - order.indexOf(valueOf(b)));
-    }
-    const chart = page.chart ? await this.chart(userId, page.chart.history, rows, page.title) : null;
-    return { ...header, page, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, groups, chart };
+    return entities.map((e) => rowOf(e, definition.types[type]));
   }
 
   /** M33 (M29-T8's, for an App): every key's values, the CHART_SERIES with the highest latest value, named by their entity. */
   private async chart(userId: string, collection: string, rows: ViewRow[], title: string): Promise<ViewChart> {
-    const points = await this.prisma.client.dataPoint.findMany({ where: { userId, collection }, orderBy: { at: "asc" }, select: { key: true, at: true, value: true } });
+    const points = await this.prisma.client.dataPoint.findMany({
+      where: { userId, collection },
+      orderBy: { at: "asc" },
+      select: { key: true, at: true, value: true },
+    });
     const byKey = new Map<string, { at: string; value: number }[]>();
     for (const p of points) byKey.set(p.key, [...(byKey.get(p.key) ?? []), { at: p.at.toISOString(), value: p.value }]);
     const titles = new Map(rows.map((r) => [r.key, fieldOf(r, title)]));
@@ -136,7 +146,9 @@ export class AppPagesService {
       page,
       row,
       history,
-      stage: stages ? { value: current, moves: movesFrom(stages, current!, "me"), dates: entity.stageDates as Record<string, string> } : null,
+      stage: stages
+        ? { value: current, moves: movesFrom(stages, current!, "me"), dates: entity.stageDates as Record<string, string> }
+        : null,
       mine: (entity.mine ?? {}) as Record<string, unknown>,
       actions: page.actions.flatMap((action, i) => (actionApplies(action, row.value, entityValueAt) ? [i] : [])),
     };
@@ -154,11 +166,54 @@ export class AppPagesService {
   }
 }
 
+/** A type's rows as its list page shows them: the tab's, filtered, searched, sorted, in groups with totals, then paged. */
+function listOf(
+  definition: AppDefinition,
+  type: string,
+  rows: ViewRow[],
+  query: AppListQueryParsed,
+): Omit<AppListView, keyof AppPageHeader | "chart"> {
+  const page = listPageOf(definition, type);
+  const counts = { current: rows.filter((r) => !r.removedAt).length, removed: rows.filter((r) => r.removedAt).length };
+  for (const field of Object.keys(query.filter)) {
+    if (!page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
+  }
+  const q = query.q?.toLowerCase();
+  const matching = rows.filter(
+    (row) =>
+      (query.tab === "removed") === (row.removedAt !== null) &&
+      Object.entries(query.filter).every(([field, value]) => text(fieldOf(row, field)) === value) &&
+      (!q || row.key.toLowerCase().includes(q) || page.search.some((f) => text(fieldOf(row, f))?.toLowerCase().includes(q))),
+  );
+  matching.sort((a, b) => compare(fieldOf(a, page.sort.by), fieldOf(b, page.sort.by), page.sort.desc));
+
+  let groups: EntityGroup[] | null = null;
+  if (page.group) {
+    const { by, period } = page.group;
+    const valueOf = (row: ViewRow) => groupValue(fieldOf(row, by.field), period);
+    const order = groupOrder(definition, page, matching.map(valueOf));
+    groups = order.map((value) =>
+      groupOf(
+        page,
+        value,
+        matching.filter((row) => valueOf(row) === value),
+      ),
+    );
+    // Rows by group, each group in the page's sort (a stable sort keeps it).
+    matching.sort((a, b) => order.indexOf(valueOf(a)) - order.indexOf(valueOf(b)));
+  }
+  return { page, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, groups };
+}
+
 /** An entity as a row: what pipelines wrote, with my fields over it, and its stage. */
 function rowOf(entity: DataEntity, type: DataType): ViewRow {
   return {
     key: entity.key,
-    value: entityItem(entity.value, entity.mine, type.stages ? { field: type.stages.field, value: entity.stage ?? type.stages.initial } : undefined),
+    value: entityItem(
+      entity.value,
+      entity.mine,
+      type.stages ? { field: type.stages.field, value: entity.stage ?? type.stages.initial } : undefined,
+    ),
     marks: {},
     firstSeenAt: entity.firstSeenAt.toISOString(),
     lastSeenAt: entity.lastSeenAt.toISOString(),

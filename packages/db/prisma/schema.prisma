@@ -467,6 +467,8 @@ model Run {
   /// The run whose event started this one.
   triggeredByRunId  String?         @db.Uuid
   dryRun            Boolean         @default(false)
+  /// M37-T3: a dry run that stops after this step: the steps after it don't run.
+  stopAfter         String?
   status            RunStatus       @default(QUEUED)
   headed            Boolean         @default(false)
   startedAt         DateTime        @default(now())

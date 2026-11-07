@@ -1,5 +1,7 @@
 import { Prisma } from "@ai-me/db";
 import {
+  appMap,
+  type AppMapView,
   checkAppSource,
   definitionToSource,
   entityValueAt,
@@ -20,7 +22,7 @@ import {
   type EntityListView,
   type EntityQuery,
 } from "@ai-me/shared";
-import { diffApps, draftField, draftType, leafValues, PipelineCompiler, type CompileContext } from "@ai-me/steps";
+import { diffApps, draftField, draftType, leafValues, PipelineCompiler, StepCatalog, type CompileContext } from "@ai-me/steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";
@@ -39,6 +41,7 @@ export class AppsService {
     private readonly prisma: PrismaService,
     private readonly compiler: PipelineCompiler,
     private readonly imports: AppImportsService,
+    private readonly catalog: StepCatalog,
   ) {}
 
   /** The App a pipeline names (`app:`), for the compiler; nothing for a pipeline outside any App. */
@@ -193,6 +196,28 @@ export class AppsService {
       source: current.source,
       versions: app.versions.map((v) => ({ version: v.version, changeSummary: v.changeSummary, dateCreated: v.dateCreated.toISOString() })),
     };
+  }
+
+  /** M37-T4: the App's map: what starts its pipelines, what they write and read, its pages and their buttons. */
+  async map(userId: string, appId: string): Promise<AppMapView> {
+    const detail = await this.get(userId, appId);
+    const ids = detail.pipelines.map((p) => p.pipelineId);
+    const pipelines = await this.prisma.client.pipeline.findMany({ where: { pipelineId: { in: ids } } });
+    const versions = await this.prisma.client.pipelineVersion.findMany({
+      where: { pipelineVersionId: { in: pipelines.flatMap((p) => (p.currentVersionId ? [p.currentVersionId] : [])) } },
+      select: { pipelineVersionId: true, definition: true },
+    });
+    const entities = Object.fromEntries(detail.types.map((t) => [t.name, t.entities]));
+    return appMap(
+      detail.definition,
+      detail.pipelines.flatMap((p) => {
+        const current = pipelines.find((x) => x.pipelineId === p.pipelineId)?.currentVersionId;
+        const version = versions.find((v) => v.pipelineVersionId === current);
+        return version ? [{ ...p, definition: version.definition as unknown as CompiledDefinition }] : [];
+      }),
+      entities,
+      (type) => this.catalog.get(type)?.entities ?? [],
+    );
   }
 
   async create(userId: string, source: string): Promise<AppDetailView> {

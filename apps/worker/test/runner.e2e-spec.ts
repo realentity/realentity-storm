@@ -308,6 +308,23 @@ steps:
     expect(applySteps.every((s) => s.status === "SKIPPED")).toBe(true);
   });
 
+  // M37-I1: try up to a step: no side effect, nothing after it runs, its output kept
+  it("a dry run tried up to a step stops after it", async () => {
+    const runId = await runner.start(await version(APPLY), { trigger: "dry-run", dryRun: true, stopAfter: "letter" });
+    await expect(runner.advance(runId)).resolves.toBe("DONE");
+    expect(submit.calls).toHaveLength(0);
+    const steps = await db.client.step.findMany({ where: { runId }, orderBy: [{ stepKey: "asc" }, { itemIndex: "asc" }] });
+    expect([...new Set(steps.map((s) => s.stepKey))]).toEqual(["letter", "search"]);
+    expect(steps.find((s) => s.stepKey === "letter")?.output).toEqual({ text: "note: Dear ana@acme.test, about Senior .NET" });
+    await expect(proposals(runId)).resolves.toEqual([]);
+    const run = await db.client.run.findUniqueOrThrow({ where: { runId } });
+    expect(run.summary).toBe("Tried up to letter: apply didn't run.");
+
+    // Only a dry run stops early: a real run goes on.
+    const real = await runner.start(await version(APPLY), { trigger: "manual", stopAfter: "letter" });
+    await expect(runner.advance(real)).resolves.toBe("WAITING_FOR_USER");
+  });
+
   describe("security", () => {
     const SEND = `
 name: Reply
@@ -579,7 +596,16 @@ steps:
     // M19-I1
     it("budget: every step that calls the LLM stops a non-essential run (agent, mapForm), and the extract fallback is told", async () => {
       const url = "https://careers.example.test/jobs/1";
-      const agentOutput = { url, outcome: "done", answer: "nothing to apply to", actions: [], files: [], submit: null, pageUrl: url, notes: "" };
+      const agentOutput = {
+        url,
+        outcome: "done",
+        answer: "nothing to apply to",
+        actions: [],
+        files: [],
+        submit: null,
+        pageUrl: url,
+        notes: "",
+      };
       const agent = new Counting("browser.agent", () => agentOutput);
       const mapForm = new Counting("browser.mapForm", () => ({}));
       const budgetStops: (boolean | undefined)[] = [];
@@ -645,7 +671,9 @@ steps:
       };
       runner = new PipelineRunner(db.client, catalog, new ExecutorRegistry([search, summarize]), controls);
       await expect(runner.advance(await runner.start(await version(SUMMARY), { trigger: "manual" }))).resolves.toBe("DONE");
-      expect(texts()).toEqual(["AI ME: $8.20 of the $10.00 monthly LLM budget is spent (82%). When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes."]);
+      expect(texts()).toEqual([
+        "AI ME: $8.20 of the $10.00 monthly LLM budget is spent (82%). When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes.",
+      ]);
       expect(sent[0]?.buttons).toEqual([[{ text: "Open Settings", url: "https://aime.test/settings" }]]);
 
       await controls.tellBudget(userId);
@@ -654,7 +682,9 @@ steps:
       await spend(2, "More");
       await Promise.all([controls.tellBudget(userId), controls.tellBudget(userId)]);
       expect(sent).toHaveLength(2);
-      expect(texts()[1]).toMatch(/^AI ME: the monthly LLM budget \(\$10\.00\) is reached: \$10\.20 spent\. Non-essential pipelines stop before their LLM steps until 1 \w+; essential ones go on\./);
+      expect(texts()[1]).toMatch(
+        /^AI ME: the monthly LLM budget \(\$10\.00\) is reached: \$10\.20 spent\. Non-essential pipelines stop before their LLM steps until 1 \w+; essential ones go on\./,
+      );
       await controls.tellBudget(userId);
       expect(sent).toHaveLength(2);
 

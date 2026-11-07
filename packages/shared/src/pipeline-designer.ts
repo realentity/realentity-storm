@@ -1,5 +1,5 @@
 import { isMap, isScalar, isSeq, visit, type Document, type YAMLMap, type YAMLSeq } from "yaml";
-import { editAppSource } from "./app-source";
+import { editAppSource, keepComment } from "./app-source";
 import { RESERVED_STEP_IDS, STEP_ID } from "./pipeline";
 
 /**
@@ -156,11 +156,6 @@ export function setPipelineProperty(source: string, property: "name" | "descript
 }
 
 /** My comment on the value a change replaces, on the new one. */
-function keepComment(old: unknown, node: unknown): void {
-  const from = old as { comment?: string | null } | null | undefined;
-  if (from?.comment && node && typeof node === "object") (node as { comment?: string | null }).comment = from.comment;
-}
-
 /** Every {{from}} and {{from.…}} in the pipeline's text, as {{to…}}. */
 function renameReferences(document: Document, from: string, to: string): void {
   const pattern = new RegExp(`\\{\\{(\\s*)${escapeRegExp(from)}(?=\\s*(?:\\.|\\[|\\}\\}))`, "g");

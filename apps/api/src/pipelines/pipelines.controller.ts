@@ -39,7 +39,7 @@ export class PipelinesController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodBodyPipe(DryRunPipelineSchema)) body: DryRunPipelineRequest,
   ): Promise<DryRunPipelineResponse> {
-    return this.pipelines.dryRun(user.userId, body.source, body.pipelineId);
+    return this.pipelines.dryRun(user.userId, body.source, body.pipelineId, body.stopAfter);
   }
 
   @Get()

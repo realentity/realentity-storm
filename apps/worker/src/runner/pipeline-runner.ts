@@ -29,6 +29,8 @@ export type TriggerEvents = (event: EventJob) => Promise<void>;
 export interface StartOptions {
   trigger: "schedule" | "manual" | "event" | "webhook" | "telegram" | "dry-run";
   dryRun?: boolean;
+  /** M37-T3: a dry run stops after this step. */
+  stopAfter?: string;
   /** {{trigger.*}} (M12). */
   triggerData?: Record<string, unknown>;
   /** Started by an event of this run, at this depth of the chain. */
@@ -57,6 +59,8 @@ interface RunState {
   runId: string;
   userId: string;
   dryRun: boolean;
+  /** M37-T3: a dry run tried up to this step; the steps after it don't run. */
+  stopAfter: string | null;
   chainDepth: number;
   controlled: ControlledRun;
   definition: CompiledDefinition;
@@ -115,6 +119,7 @@ export class PipelineRunner {
         pipelineVersionId,
         trigger: options.trigger,
         dryRun: options.dryRun ?? false,
+        ...(options.dryRun && options.stopAfter ? { stopAfter: options.stopAfter } : {}),
         ...(options.triggerData ? { triggerData: options.triggerData as Prisma.InputJsonValue } : {}),
         chainDepth: options.chainDepth ?? 0,
         triggeredByRunId: options.triggeredByRunId ?? null,
@@ -259,6 +264,7 @@ export class PipelineRunner {
       runId,
       userId: run.userId,
       dryRun: run.dryRun,
+      stopAfter: run.dryRun ? run.stopAfter : null,
       chainDepth: run.chainDepth,
       controlled: {
         userId: run.userId,
@@ -280,7 +286,9 @@ export class PipelineRunner {
   }
 
   private async execute(state: RunState): Promise<Outcome> {
-    for (const step of state.definition.steps) {
+    const last = state.stopAfter ? state.definition.steps.findIndex((s) => s.id === state.stopAfter) : -1;
+    for (const [index, step] of state.definition.steps.entries()) {
+      if (last >= 0 && index > last) break;
       const definition = this.catalog.get(step.type);
       if (!definition) throw new Error(`Step type ${step.type} is not in the catalog`);
 
@@ -340,6 +348,14 @@ export class PipelineRunner {
       state.values.set(step, outputs);
     }
     if ([...state.blocked.values()].some((items) => items.size > 0)) return { status: "WAITING_FOR_USER" };
+    if (last >= 0 && last < state.definition.steps.length - 1) {
+      // The steps I wrote: not the gates the compiler put before side effects.
+      const after = state.definition.steps
+        .slice(last + 1)
+        .filter((s) => !s.type.startsWith("gate."))
+        .map((s) => s.id);
+      return { status: "DONE", summary: `Tried up to ${state.stopAfter}: ${after.join(", ")} didn't run.` };
+    }
     return { status: "DONE", ...(state.emptyWhens.size ? { summary: this.quietSummary(state) } : {}) };
   }
 
@@ -357,7 +373,7 @@ export class PipelineRunner {
     );
     const reports = state.definition.steps.flatMap((step) => {
       const field = this.catalog.get(step.type)?.reports;
-      const value = field && !step.forEach ? (state.values.lookup(`${step.id}.${field}`)) : undefined;
+      const value = field && !step.forEach ? state.values.lookup(`${step.id}.${field}`) : undefined;
       return typeof value === "string" && value.trim() ? [value.trim()] : [];
     });
     return (
@@ -380,7 +396,9 @@ export class PipelineRunner {
   }
 
   private usesSkipped(state: RunState, step: CompiledStep): string | null {
-    const roots = [step.with, step.forEach ?? "", step.when ?? ""].flatMap((value) => referencesIn(value)).map((path) => path.split(".")[0] ?? "");
+    const roots = [step.with, step.forEach ?? "", step.when ?? ""]
+      .flatMap((value) => referencesIn(value))
+      .map((path) => path.split(".")[0] ?? "");
     const skipped = roots.find((root) => state.skippedSteps.has(root));
     return skipped ? `Skipped: it uses ${skipped}, which was skipped` : null;
   }

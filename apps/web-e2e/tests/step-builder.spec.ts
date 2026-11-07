@@ -183,3 +183,40 @@ test("every step in the catalog gets a form with each of its inputs", async ({ p
     }
   }
 });
+
+// M37-T3, M37-I1: try up to a step: it stops there, shows what the step gave, and the cards after it pick from that
+test("try up to a step: its output on its card, nothing after it, its fields in the picker", async ({ page }) => {
+  await page.goto("/pipelines/new");
+  await page.getByTestId("pipeline-tab-yaml").click();
+  await page.getByTestId("pipeline-source").fill(`name: ${unique("Try")}
+steps:
+  - id: shape
+    type: data.map
+    with:
+      from: [{ name: Ana, score: 3 }, { name: Bo, score: 5 }]
+      expression: "$"
+  - id: tell
+    type: notify.telegram
+    forEach: "{{shape.items}}"
+    with: { text: "hello" }
+`);
+  await page.getByTestId("pipeline-tab-cards").click();
+
+  // Before a try, shape's items are "a list of items": no fields to pick for each one.
+  const picker = async () => {
+    await card(page, "tell").getByRole("button", { name: "Data for text" }).click();
+    const offered = await page.getByTestId("data-offer").evaluateAll((els) => els.map((el) => el.getAttribute("data-reference")));
+    await card(page, "tell").getByRole("button", { name: "Data for text" }).click();
+    return offered;
+  };
+  expect(await picker()).not.toContain("{{item.name}}");
+
+  await card(page, "shape").getByTestId("try-here").click();
+  await expect(card(page, "shape").getByTestId("step-output")).toContainText('"name": "Ana"', { timeout: 20_000 });
+  await expect(page.getByTestId("dry-run-summary")).toHaveText("Tried up to shape: tell didn't run.");
+  await expect(card(page, "tell").getByTestId("try-here-box")).toContainText("didn't reach it");
+  await expect(card(page, "tell").getByTestId("step-output")).toHaveCount(0);
+
+  // Now each item's fields, from what it really gave.
+  expect(await picker()).toEqual(expect.arrayContaining(["{{item.name}}", "{{item.score}}"]));
+});

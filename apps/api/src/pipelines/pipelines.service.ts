@@ -123,10 +123,14 @@ export class PipelinesService {
 
   /**
    * Stores the source as the pipeline's draft (replacing an older draft and its dry runs) and starts a dry run of
-   * it. Without a pipeline, creates one that has only this draft until it is saved.
+   * it. Without a pipeline, creates one that has only this draft until it is saved. M37-T3: with `stopAfter`, the run
+   * stops after that step (try up to here).
    */
-  async dryRun(userId: string, source: string, pipelineId?: string): Promise<DryRunPipelineResponse> {
+  async dryRun(userId: string, source: string, pipelineId?: string, stopAfter?: string): Promise<DryRunPipelineResponse> {
     const compiled = await this.compileOrThrow(userId, source);
+    if (stopAfter !== undefined && !compiled.definition.steps.some((s) => s.id === stopAfter)) {
+      throw new BadRequestException(`The pipeline has no step "${stopAfter}"`);
+    }
     await this.controls.assertNotPaused(userId);
     const draft = await this.guardConcurrentSave(() =>
       this.prisma.client.$transaction(async (tx) => {
@@ -152,7 +156,7 @@ export class PipelinesService {
         });
       }),
     );
-    const run = await this.runs.startVersion(userId, draft.pipelineVersionId, true);
+    const run = await this.runs.startVersion(userId, draft.pipelineVersionId, true, "manual", undefined, stopAfter);
     return { pipeline: await this.get(userId, draft.pipelineId), run };
   }
 
@@ -230,7 +234,7 @@ export class PipelinesService {
     return [{ path: `steps[${index}]`, message: `Google Calendar ${state}: connect it in Settings, or the run waits for it there` }];
   }
 
-    private async currentVersion(userId: string, pipelineId: string): Promise<PipelineVersion | null> {
+  private async currentVersion(userId: string, pipelineId: string): Promise<PipelineVersion | null> {
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId }, select: { currentVersionId: true } });
     if (!pipeline?.currentVersionId) return null;
     return this.prisma.client.pipelineVersion.findUnique({ where: { pipelineVersionId: pipeline.currentVersionId } });

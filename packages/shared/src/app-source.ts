@@ -182,3 +182,9 @@ export interface AppCheckView {
   /** What the draft changes against the current version; empty for a new App. */
   changes: string[];
 }
+
+/** A replaced node keeps the comment on its line. */
+export function keepComment(old: unknown, node: unknown): void {
+  const from = old as { comment?: string | null } | null | undefined;
+  if (from?.comment && node && typeof node === "object") (node as { comment?: string | null }).comment = from.comment;
+}

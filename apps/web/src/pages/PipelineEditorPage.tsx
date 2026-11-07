@@ -6,8 +6,9 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { CompileErrors, DiffList, PlanView, StepGraphView } from "../components/PlanView";
 import { StepCards } from "../components/StepCards";
+import { TryHere } from "../components/TryHere";
 import { DataPicker } from "../components/DataPicker";
-import { offersFor } from "../lib/data-picker";
+import { offersFor, outputsOf } from "../lib/data-picker";
 import { loosePipeline, useTriggerTypes } from "../lib/step-cards";
 import { type DesignerEdit } from "../components/TypesDesigner";
 import { ErrorAlert, Loading, PageHeader, StatusBadge } from "../components/ui";
@@ -55,6 +56,13 @@ export function PipelineEditorPage() {
   const app = useLoad(() => (appId ? api.apps.get(appId) : Promise.resolve(null)), [appId]);
   const types = useTriggerTypes(app.data?.definition ?? null);
   const triggerData = useLoad(() => api.steps.triggers(), []);
+  // M37-T3: the last "try up to here": its run, kept while I edit, so the cards after it pick from what it gave.
+  const [tried, setTried] = useState<{ runId: string; stopAfter: string } | null>(null);
+  const triedRun = useLoad(
+    () => (tried ? api.runs.get(tried.runId) : Promise.resolve(null)),
+    [tried?.runId],
+    (signal) => tried !== null && (signal.type === "run" || signal.type === "step") && signal.runId === tried.runId,
+  );
 
   // Checked a moment after each change, so the cards show their problems as I go.
   const latestCheck = useRef(0);
@@ -112,6 +120,15 @@ export function PipelineEditorPage() {
     setPipelineId(response.pipeline.pipelineId);
     setPipeline(response.pipeline);
     setDryRunId(response.run.runId);
+  };
+
+  const tryUpTo = async (stopAfter: string) => {
+    const response = await action.run(() => api.pipelines.dryRun(text, pipelineId, stopAfter));
+    if (!response) return;
+    setPipelineId(response.pipeline.pipelineId);
+    setPipeline(response.pipeline);
+    setDryRunId(response.run.runId);
+    setTried({ runId: response.run.runId, stopAfter });
   };
 
   const save = async () => {
@@ -222,12 +239,27 @@ export function PipelineEditorPage() {
                   const loose = loosePipeline(text);
                   if (!loose) return null;
                   const offers = offersFor(
-                    { pipeline: loose, catalog, triggers: triggerData.data ?? null, app: app.data?.definition ?? null },
+                    {
+                      pipeline: loose,
+                      catalog,
+                      triggers: triggerData.data ?? null,
+                      app: app.data?.definition ?? null,
+                      outputs: outputsOf(triedRun.data),
+                    },
                     stepIndex,
                     input,
                   );
                   return <DataPicker offers={offers} insert={kind === "insert"} onPick={onPick} label={input} />;
                 }}
+                tryHere={(step) => (
+                  <TryHere
+                    stepId={step.id}
+                    run={tried && triedRun.data?.runId === tried.runId ? triedRun.data : null}
+                    stopAfter={tried?.stopAfter ?? null}
+                    onTry={() => void tryUpTo(step.id)}
+                    busy={action.busy}
+                  />
+                )}
               />
             ) : (
               <textarea
@@ -334,6 +366,11 @@ function DryRunStatus({ runId }: { runId: string }) {
           No side effects: each would-be action is a preview, and its step is skipped.
           {run.data.steps.length > 0 && ` ${run.data.steps.filter((s) => s.status === "DONE").length} step(s) done.`}
         </div>
+        {run.data.summary && (
+          <div className="small mt-1" data-testid="dry-run-summary">
+            {run.data.summary}
+          </div>
+        )}
         {previews.length > 0 && (
           <ul className="mt-2 mb-0">
             {previews.map((p) => (

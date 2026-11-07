@@ -45,6 +45,7 @@ export function StepCards({
   pipelines,
   credentials,
   picker,
+  tryHere,
 }: Readonly<{
   source: string;
   onEdit: (edit: DesignerEdit) => void;
@@ -59,6 +60,8 @@ export function StepCards({
   credentials: CredentialView[];
   /** M36-T4: the data picker for a step's input: what goes beside it. */
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
+  /** M37-T3: under a card, trying the pipeline up to it and what it gave. */
+  tryHere?: (step: LooseStep) => ReactNode;
 }>) {
   const pipeline = loosePipeline(source);
   const [adding, setAdding] = useState<number | null>(null);
@@ -135,6 +138,7 @@ export function StepCards({
             editable={editable}
             credentials={credentials}
             picker={picker}
+            tryHere={tryHere}
           />
         </div>
       ))}
@@ -233,6 +237,7 @@ function StepCard({
   editable,
   credentials,
   picker,
+  tryHere,
 }: Readonly<{
   step: LooseStep;
   index: number;
@@ -243,6 +248,7 @@ function StepCard({
   editable: boolean;
   credentials: CredentialView[];
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
+  tryHere?: (step: LooseStep) => ReactNode;
 }>) {
   const [more, setMore] = useState(false);
   const properties = definition?.input.properties ?? {};
@@ -387,6 +393,7 @@ function StepCard({
           </>
         )}
       </div>
+      {tryHere && step.id && <div className="card-footer py-2">{tryHere(step)}</div>}
     </div>
   );
 }

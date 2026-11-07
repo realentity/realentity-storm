@@ -1,4 +1,5 @@
 import {
+  type AppMapView,
   AddFieldRequestSchema,
   AppCheckRequestSchema,
   AppImportRequestSchema,
@@ -79,6 +80,12 @@ export class AppsController {
   @Post("draft-type/sample")
   draftTypeFromSample(@Body(new ZodBodyPipe(DraftTypeSampleRequestSchema)) body: DraftTypeSampleRequest): DraftTypeView {
     return this.apps.draftTypeFromSample(body.sample);
+  }
+
+  /** M37-T4: how the App and its pipelines connect. */
+  @Get(":appId/map")
+  map(@CurrentUser() user: AuthenticatedUser, @Param("appId", ParseUUIDPipe) appId: string): Promise<AppMapView> {
+    return this.apps.map(user.userId, appId);
   }
 
   @Get(":appId")

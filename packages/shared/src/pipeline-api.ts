@@ -16,8 +16,11 @@ export type CompilePipelineRequest = z.infer<typeof CompilePipelineSchema>;
  * Dry run before saving (README §2.1): the source becomes the pipeline's draft (a new pipeline without one), and a
  * dry run of the draft starts. Saving the same source later turns the draft into the next version.
  */
-export const DryRunPipelineSchema = CompilePipelineSchema;
-export type DryRunPipelineRequest = CompilePipelineRequest;
+export const DryRunPipelineSchema = CompilePipelineSchema.extend({
+  /** M37-T3: try up to this step: the run stops after it. */
+  stopAfter: z.string().min(1).max(64).optional(),
+});
+export type DryRunPipelineRequest = z.infer<typeof DryRunPipelineSchema>;
 
 export interface DryRunPipelineResponse {
   pipeline: PipelineDetailView;

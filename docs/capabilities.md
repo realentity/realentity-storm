@@ -94,6 +94,8 @@ pipeline can be saved.
   *essential*.
 - **One headed browser.** Runs that use the watchable (headed) browser run one at a time.
 - **Dry run.** Every pipeline can be dry-run first: it reads for real, but sends, saves and schedules nothing.
+  On the editor's cards, *Try up to here* dry-runs it up to one step: the steps after it don't run, the step shows what
+  it gave, and the cards after it pick from that.
 
 ### 2.4 A page for the pipeline (`view`)
 

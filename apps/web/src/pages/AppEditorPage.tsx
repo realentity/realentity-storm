@@ -1,4 +1,4 @@
-import { tabOf, type AppCheckView, type AppDesignerTab, type AppIssue } from "@ai-me/shared";
+import { checkAppSource, tabOf, type AppCheckView, type AppDesignerTab, type AppIssue } from "@ai-me/shared";
 import { IconAlertTriangle, IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconFile, IconLoader2 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -6,12 +6,13 @@ import { toast } from "react-toastify";
 import { parseDocument } from "yaml";
 import { Issues } from "../components/AppIssues";
 import { DraftTypeCard } from "../components/DraftTypeCard";
+import { PagesDesigner } from "../components/PagesDesigner";
 import { StagesDesigner } from "../components/StagesDesigner";
 import { AppProperties, TypesDesigner, type DesignerEdit } from "../components/TypesDesigner";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { APP_TEMPLATES, EMPTY_APP } from "../lib/apps";
 import { api } from "../lib/endpoints";
-import { asObject, loose, text, type LooseApp } from "../lib/loose-app";
+import { asObject, loose, text } from "../lib/loose-app";
 import { useAction, useLoad } from "../lib/use-load";
 
 type Tab = Exclude<AppDesignerTab, "app"> | "yaml";
@@ -147,7 +148,18 @@ export function AppEditorPage() {
               <TypesDesigner app={app} issues={onTab("types")} onLine={showLine} onEdit={edit} editable={editable} entities={entities} />
             )}
             {tab === "stages" && <StagesDesigner app={app} issues={onTab("stages")} onLine={showLine} onEdit={edit} editable={editable} />}
-            {tab === "pages" && <PagesTab app={app} issues={onTab("pages")} onLine={showLine} />}
+            {tab === "pages" && (
+              <PagesDesigner
+                source={source}
+                appId={appId}
+                app={app}
+                definition={checkAppSource(source).definition}
+                issues={onTab("pages")}
+                onLine={showLine}
+                onEdit={edit}
+                editable={editable}
+              />
+            )}
             {tab === "yaml" && <YamlTab source={source} onChange={setSource} issues={onTab("yaml")} line={line} onLine={setLine} />}
           </div>
         </div>
@@ -281,46 +293,6 @@ function CheckCard({ check, isNew }: { check: ReturnType<typeof useCheck>; isNew
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function PagesTab({ app, issues, onLine }: { app: LooseApp; issues: AppIssue[]; onLine: (line: number) => void }) {
-  const kindOf = (page: Record<string, unknown>) =>
-    page.list !== undefined ? "list" : page.view !== undefined ? "view" : page.form !== undefined ? "form" : "?";
-  const withPage = new Set(app.pages.map((p) => text(p.list ?? p.view)));
-  return (
-    <div className="card-body d-flex flex-column gap-3" data-testid="pages-tab">
-      <Issues issues={issues.filter((i) => !/^pages\.\d+/.test(i.path))} onLine={onLine} />
-      {app.pages.map((page, index) => {
-        const kind = kindOf(page);
-        const menu = asObject(page.menu);
-        return (
-          <div key={index}>
-            <h3 className="mb-1">
-              <span className="badge bg-secondary-lt me-2">{kind}</span>
-              {text(page[kind])}
-              {kind === "list" && page.menu !== false && (
-                <span className="text-secondary fw-normal ms-2">in the menu as {text(menu.label) || text(page.list)}</span>
-              )}
-            </h3>
-            <Issues issues={issues.filter((i) => i.path === `pages.${index}` || i.path.startsWith(`pages.${index}.`))} onLine={onLine} />
-            <div className="text-secondary small">
-              {Array.isArray(page.columns) && <>Columns: {page.columns.map((c) => text(asObject(c).field ?? c)).join(", ")}. </>}
-              {Array.isArray(page.fields) && <>Fields: {page.fields.map(text).join(", ")}. </>}
-              {Array.isArray(page.sections) && <>Sections: {page.sections.map((s) => text(asObject(s).title)).join(", ")}. </>}
-              {page.sort !== undefined && <>Sorted by {text(page.sort)}. </>}
-            </div>
-          </div>
-        );
-      })}
-      {app.types
-        .filter(([name]) => !withPage.has(name))
-        .map(([name]) => (
-          <div key={name} className="text-secondary">
-            {name}: list and view pages from its fields.
-          </div>
-        ))}
     </div>
   );
 }
