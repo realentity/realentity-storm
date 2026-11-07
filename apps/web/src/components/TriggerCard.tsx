@@ -2,6 +2,7 @@ import { APPLICATION_STATUSES, setTrigger, TRIGGER_EVENTS, type CompileIssue } f
 import { IconBolt } from "@tabler/icons-react";
 import { readCron, WEEKDAYS, writeCron } from "../lib/cron";
 import { type TriggerTypes } from "../lib/step-cards";
+import { HELP } from "../lib/help";
 import { CommitInput, type DesignerEdit } from "./TypesDesigner";
 
 type Kind = "manual" | "schedule" | "event" | "webhook";
@@ -84,6 +85,7 @@ export function TriggerCard({
                 className={`btn btn-sm ${kind === k ? "btn-primary" : ""}`}
                 disabled={!editable}
                 onClick={() => choose(k)}
+                title={HELP.triggerKind}
                 data-testid={`trigger-${k}`}
               >
                 {label}
@@ -101,6 +103,7 @@ export function TriggerCard({
               value={String(value.webhook)}
               disabled={!editable}
               onChange={(e) => change("webhook", e.target.value)}
+              title={HELP.webhookCheck}
               aria-label="How a call is checked"
             >
               <option value="token">a bearer token</option>
@@ -159,6 +162,7 @@ function Schedule({
               onCommit={(v) => onChange("schedule", writeCron({ ...simple, times: v.split(",").map((t) => t.trim().padStart(5, "0")) }))}
               disabled={disabled}
               ariaLabel="Times"
+              help={HELP.scheduleTimes}
               testId="schedule-times"
             />
             <span className="text-secondary">(the same minute for each: a cron has one)</span>
@@ -175,6 +179,7 @@ function Schedule({
           onCommit={(v) => onChange("schedule", v)}
           disabled={disabled}
           ariaLabel="Cron"
+          help={HELP.scheduleCron}
           testId="schedule-cron"
         />
         <span>in</span>
@@ -183,6 +188,7 @@ function Schedule({
           className="form-control form-control-sm w-auto"
           onCommit={(v) => onChange("tz", v)}
           disabled={disabled}
+          help={HELP.scheduleTz}
           ariaLabel="Time zone"
         />
       </div>
@@ -215,6 +221,7 @@ function Event({
       disabled={disabled}
       onChange={(e) => onChange(key, e.target.value || undefined)}
       aria-label={label}
+      title={HELP.eventOption}
       data-testid={`event-${key}`}
     >
       {empty !== undefined && <option value="">{empty}</option>}
@@ -257,6 +264,7 @@ function Event({
           else onSet({ on: next });
         }}
         aria-label="Which event"
+        title={HELP.eventOn}
         data-testid="event-on"
       >
         {!(TRIGGER_EVENTS as readonly string[]).includes(on) && <option value={on}>{on}</option>}
@@ -299,6 +307,7 @@ function Event({
               )
             }
             disabled={disabled}
+            help={HELP.eventLabels}
             ariaLabel="Labels"
           />
         </div>
@@ -312,6 +321,7 @@ function Event({
             placeholder="any site"
             onCommit={(v) => onChange("site", v)}
             disabled={disabled}
+            help={HELP.eventSite}
             ariaLabel="Site"
           />
         </div>

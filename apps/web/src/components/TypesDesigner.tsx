@@ -14,11 +14,15 @@ import {
   TYPE_NAME,
   VIEW_ICONS,
   type AppIssue,
+  type ViewIcon,
 } from "@ai-me/shared";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { text, type LooseApp, type LooseType } from "../lib/loose-app";
+import { HELP } from "../lib/help";
+import { VIEW_ICON } from "../lib/view";
 import { Issues } from "./AppIssues";
+import { Help } from "./Help";
 
 /** A change to the App's YAML, made by one of the designer's edits. */
 export type DesignerEdit = (source: string) => string;
@@ -36,6 +40,7 @@ export function TypesDesigner({
   onEdit,
   editable,
   entities,
+  marked,
 }: Readonly<{
   app: LooseApp;
   issues: AppIssue[];
@@ -45,6 +50,8 @@ export function TypesDesigner({
   editable: boolean;
   /** Entities already kept, by type: a rename leaves them as they are. */
   entities: Record<string, number>;
+  /** M38-T5: what the builder's proposal changed: type names and "Type.field". */
+  marked?: Set<string>;
 }>) {
   const [newType, setNewType] = useState("");
   const renamedNote = (type: string) =>
@@ -54,7 +61,22 @@ export function TypesDesigner({
   return (
     <div className="card-body d-flex flex-column gap-4" data-testid="types-tab">
       {!editable && <div className="alert alert-warning mb-0">The YAML has errors: fix them on the YAML tab to change the types here.</div>}
-      {app.types.length === 0 && <div className="text-secondary">No types yet.</div>}
+      {app.types.length === 0 && (
+        <div className="text-center text-secondary py-3" data-testid="no-types">
+          <p className="mb-2">No types yet. A type is one kind of thing the App keeps (a Job, a Bill), with its fields.</p>
+          {editable && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => onEdit((s) => addType(s, "Item"))}
+              data-testid="add-first-type"
+            >
+              <IconPlus size={16} className="me-1" />
+              Add a type
+            </button>
+          )}
+        </div>
+      )}
       {app.types.map(([name, type]) => (
         <TypeTable
           key={name}
@@ -65,6 +87,7 @@ export function TypesDesigner({
           onEdit={onEdit}
           editable={editable}
           renamedNote={renamedNote(name)}
+          marked={marked}
         />
       ))}
       {editable && (
@@ -82,6 +105,7 @@ export function TypesDesigner({
             value={newType}
             onChange={(e) => setNewType(e.target.value)}
             aria-label="New type's name"
+            title={HELP.newType}
             data-testid="new-type-name"
           />
           <button type="submit" className="btn" disabled={!TYPE_NAME.test(newType)} data-testid="add-type-row">
@@ -103,6 +127,7 @@ function TypeTable({
   onEdit,
   editable,
   renamedNote,
+  marked,
 }: Readonly<{
   name: string;
   type: LooseType;
@@ -111,6 +136,7 @@ function TypeTable({
   onEdit: (edit: DesignerEdit, note?: string) => void;
   editable: boolean;
   renamedNote?: string;
+  marked?: Set<string>;
 }>) {
   const fieldNames = type.fields.map(([f]) => f);
   const textFields = type.fields.filter(([, def]) => def.type === "text").map(([f]) => f);
@@ -120,7 +146,12 @@ function TypeTable({
     issues.filter((i) => i.path === `types.${name}.fields.${field}` || i.path.startsWith(`types.${name}.fields.${field}.`));
   const typeIssues = issues.filter((i) => !i.path.startsWith(`types.${name}.fields.`));
   return (
-    <div data-testid="designer-type">
+    <div data-testid="designer-type" data-type-name={name}>
+      {marked?.has(name) && (
+        <div className="badge bg-azure-lt text-azure mb-2" data-testid="builder-mark">
+          {name} changed by the builder
+        </div>
+      )}
       <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <CommitInput
           value={name}
@@ -129,26 +160,33 @@ function TypeTable({
           onCommit={(to) => onEdit((s) => renameType(s, name, to), renamedNote)}
           disabled={!editable}
           ariaLabel={`${name}'s name`}
+          help={HELP.typeName}
           testId="type-name"
         />
-        <label className="form-check form-switch mb-0 ms-2" title="Mine: added and changed by me on its pages; pipelines only read it">
+        <label className="form-check form-switch mb-0 ms-2">
           <input
             type="checkbox"
             className="form-check-input"
             checked={type.mine === true}
             disabled={!editable}
             onChange={(e) => onEdit((s) => setTypeProperty(s, name, "mine", e.target.checked))}
+            title={HELP.typeMine}
             data-testid="type-mine"
           />
-          <span className="form-check-label">Mine</span>
+          <span className="form-check-label">
+            Mine <Help text={HELP.typeMine} />
+          </span>
         </label>
-        <span className="text-secondary small ms-3">Key</span>
+        <span className="text-secondary small ms-3">
+          Key <Help text={HELP.typeKey} />
+        </span>
         <select
           className="form-select form-select-sm w-auto"
           value={text(type.key)}
           disabled={!editable}
           onChange={(e) => onEdit((s) => setTypeProperty(s, name, "key", e.target.value))}
           aria-label={`${name}'s key`}
+          title={HELP.typeKey}
           data-testid="type-key"
         >
           {!fieldNames.includes(text(type.key)) && <option value={text(type.key)}>{text(type.key) || "…"}</option>}
@@ -160,13 +198,16 @@ function TypeTable({
               </option>
             ))}
         </select>
-        <span className="text-secondary small">Title</span>
+        <span className="text-secondary small">
+          Title <Help text={HELP.typeTitle} />
+        </span>
         <select
           className="form-select form-select-sm w-auto"
           value={text(type.title)}
           disabled={!editable}
           onChange={(e) => onEdit((s) => setTypeProperty(s, name, "title", e.target.value || undefined))}
           aria-label={`${name}'s title`}
+          title={HELP.typeTitle}
           data-testid="type-title"
         >
           <option value="">the key</option>
@@ -194,6 +235,7 @@ function TypeTable({
         placeholder="What it is, in a sentence"
         onCommit={(v) => onEdit((s) => setTypeProperty(s, name, "description", v || undefined))}
         disabled={!editable}
+        help={HELP.typeDescription}
         ariaLabel={`${name}'s description`}
       />
       <Issues issues={typeIssues} onLine={onLine} />
@@ -201,11 +243,21 @@ function TypeTable({
         <table className="table table-sm table-vcenter mb-0">
           <thead>
             <tr>
-              <th>Field</th>
-              <th>Kind</th>
-              <th>Label</th>
-              <th title="A pipeline must give it">Required</th>
-              <th title="Set by me on its page; a pipeline never writes it">Mine</th>
+              <th>
+                Field <Help text={HELP.fieldName} />
+              </th>
+              <th>
+                Kind <Help text={HELP.fieldKind} />
+              </th>
+              <th>
+                Label <Help text={HELP.fieldLabel} />
+              </th>
+              <th>
+                Required <Help text={HELP.fieldRequired} />
+              </th>
+              <th>
+                Mine <Help text={HELP.fieldMine} />
+              </th>
               <th />
               <th />
             </tr>
@@ -214,7 +266,14 @@ function TypeTable({
             {type.fields.map(([field, def]) => {
               const own = fieldIssues(field);
               return (
-                <tr key={field} data-testid="field-row" className={own.length > 0 ? "table-danger" : undefined}>
+                <tr
+                  key={field}
+                  data-testid="field-row"
+                  data-field-name={field}
+                  data-marked={marked?.has(`${name}.${field}`) || undefined}
+                  className={own.length > 0 ? "table-danger" : marked?.has(`${name}.${field}`) ? "table-info" : undefined}
+                  title={marked?.has(`${name}.${field}`) ? "Changed by the builder" : undefined}
+                >
                   <td>
                     <CommitInput
                       value={field}
@@ -223,6 +282,7 @@ function TypeTable({
                       onCommit={(to) => onEdit((s) => renameField(s, name, field, to), renamedNote)}
                       disabled={!editable}
                       ariaLabel={`${name}.${field}'s name`}
+                      help={HELP.fieldName}
                       testId="field-name"
                     />
                     {own.map((i) => (
@@ -243,6 +303,7 @@ function TypeTable({
                       disabled={!editable}
                       onChange={(e) => onEdit((s) => setField(s, name, field, { type: e.target.value }))}
                       aria-label={`${name}.${field}'s kind`}
+                      title={HELP.fieldKind}
                       data-testid="field-kind"
                     >
                       {!(FIELD_KINDS as readonly string[]).includes(text(def.type)) && (
@@ -262,6 +323,7 @@ function TypeTable({
                       placeholder={field}
                       onCommit={(v) => onEdit((s) => setField(s, name, field, { label: v || undefined }))}
                       disabled={!editable}
+                      help={HELP.fieldLabel}
                       ariaLabel={`${name}.${field}'s label`}
                     />
                   </td>
@@ -273,6 +335,7 @@ function TypeTable({
                       disabled={!editable}
                       onChange={(e) => onEdit((s) => setField(s, name, field, { required: e.target.checked }))}
                       aria-label={`${name}.${field} required`}
+                      title={HELP.fieldRequired}
                       data-testid="field-required"
                     />
                   </td>
@@ -284,6 +347,7 @@ function TypeTable({
                       disabled={!editable || type.mine === true}
                       onChange={(e) => onEdit((s) => setField(s, name, field, { mine: e.target.checked }))}
                       aria-label={`${name}.${field} mine`}
+                      title={HELP.fieldMine}
                       data-testid="field-mine"
                     />
                   </td>
@@ -305,6 +369,7 @@ function TypeTable({
                         }
                         disabled={!editable}
                         ariaLabel={`${name}.${field}'s values`}
+                        help={HELP.fieldValues}
                         testId="field-values"
                       />
                     )}
@@ -315,6 +380,7 @@ function TypeTable({
                         disabled={!editable}
                         onChange={(e) => onEdit((s) => setField(s, name, field, { currency: e.target.value || undefined }))}
                         aria-label={`${name}.${field}'s currency`}
+                        title={HELP.fieldCurrency}
                         data-testid="field-currency"
                       >
                         <option value="">no currency field</option>
@@ -369,6 +435,7 @@ function TypeTable({
                       }
                     }}
                     aria-label={`New field of ${name}`}
+                    title={HELP.newField}
                     data-testid="new-field-name"
                   />
                 </td>
@@ -378,6 +445,7 @@ function TypeTable({
                     value={newKind}
                     onChange={(e) => setNewKind(e.target.value)}
                     aria-label="New field's kind"
+                    title={HELP.newFieldKind}
                     data-testid="new-field-kind"
                   >
                     {FIELD_KINDS.map((k) => (
@@ -411,7 +479,7 @@ function TypeTable({
   );
 }
 
-/** The App's name, icon and description, above the tabs. */
+/** The App's name, icon and description, above the tabs; each labelled, with what it is for (M38-T3). */
 export function AppProperties({
   app,
   icon,
@@ -420,41 +488,105 @@ export function AppProperties({
   editable,
 }: Readonly<{ app: LooseApp; icon: string; description: string; onEdit: (edit: DesignerEdit) => void; editable: boolean }>) {
   return (
-    <div className="card-body border-bottom d-flex gap-2 flex-wrap align-items-center" data-testid="app-properties">
-      <CommitInput
-        value={app.name ?? ""}
-        className="form-control fw-bold w-auto"
-        valid={(v) => APP_NAME.test(v)}
-        onCommit={(v) => onEdit((s) => setAppProperty(s, "name", v))}
-        disabled={!editable}
-        ariaLabel="The App's name"
-        testId="app-name"
-      />
-      <select
-        className="form-select w-auto"
-        value={icon}
-        disabled={!editable}
-        onChange={(e) => onEdit((s) => setAppProperty(s, "icon", e.target.value))}
-        aria-label="The App's icon"
+    <div className="card-body border-bottom" data-testid="app-properties">
+      <div className="row g-2 align-items-end">
+        <div className="col-auto">
+          <label className="form-label small text-secondary mb-1">
+            Name <Help text={HELP.appName} />
+          </label>
+          <CommitInput
+            value={app.name ?? ""}
+            className="form-control fw-bold"
+            valid={(v) => APP_NAME.test(v)}
+            onCommit={(v) => onEdit((s) => setAppProperty(s, "name", v))}
+            disabled={!editable}
+            ariaLabel="The App's name"
+            help={HELP.appName}
+            testId="app-name"
+          />
+        </div>
+        <div className="col-auto">
+          <label className="form-label small text-secondary mb-1">
+            Icon <Help text={HELP.appIcon} />
+          </label>
+          <IconPicker value={icon} onPick={(i) => onEdit((s) => setAppProperty(s, "icon", i))} disabled={!editable} />
+        </div>
+        <div className="col">
+          <label className="form-label small text-secondary mb-1">
+            Description <Help text={HELP.appDescription} />
+          </label>
+          <CommitInput
+            value={description}
+            placeholder="What it keeps, in a sentence"
+            onCommit={(v) => onEdit((s) => setAppProperty(s, "description", v))}
+            disabled={!editable}
+            ariaLabel="The App's description"
+            help={HELP.appDescription}
+            testId="app-description"
+          />
+        </div>
+      </div>
+      <div className="small text-secondary mt-1">
+        The description is shown on the App&apos;s page, and the builder reads it when it proposes changes.
+      </div>
+    </div>
+  );
+}
+
+/** M38-T3: the App's icon picked by how it looks, from a grid. */
+function IconPicker({ value, onPick, disabled }: Readonly<{ value: string; onPick: (icon: string) => void; disabled: boolean }>) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const Current = VIEW_ICON[value as ViewIcon] ?? VIEW_ICON.list;
+  return (
+    <div className="position-relative" ref={box}>
+      <button
+        type="button"
+        className="btn d-flex align-items-center gap-2"
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+        title={HELP.appIcon}
+        aria-label={`The App's icon: ${value}`}
+        aria-expanded={open}
         data-testid="app-icon"
       >
-        {!(VIEW_ICONS as readonly string[]).includes(icon) && <option value={icon}>{icon}</option>}
-        {VIEW_ICONS.map((i) => (
-          <option key={i} value={i}>
-            {i}
-          </option>
-        ))}
-      </select>
-      <div className="flex-fill">
-        <CommitInput
-          value={description}
-          placeholder="What it keeps, in a sentence"
-          onCommit={(v) => onEdit((s) => setAppProperty(s, "description", v))}
-          disabled={!editable}
-          ariaLabel="The App's description"
-          testId="app-description"
-        />
-      </div>
+        <Current size={20} />
+        <span className="small text-secondary">{value}</span>
+      </button>
+      {open && (
+        <div className="card shadow position-absolute mt-1 p-2" style={{ zIndex: 20, width: 292 }} data-testid="icon-grid">
+          <div className="d-flex flex-wrap gap-1">
+            {VIEW_ICONS.map((name) => {
+              const Icon = VIEW_ICON[name];
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className={`btn btn-icon ${name === value ? "btn-primary" : "btn-ghost-secondary"}`}
+                  title={name}
+                  aria-label={name}
+                  onClick={() => {
+                    onPick(name);
+                    setOpen(false);
+                  }}
+                  data-testid="icon-option"
+                  data-icon={name}
+                >
+                  <Icon size={20} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -472,6 +604,7 @@ export function CommitInput({
   disabled,
   ariaLabel,
   testId,
+  help,
 }: Readonly<{
   value: string;
   onCommit: (value: string) => void;
@@ -481,6 +614,8 @@ export function CommitInput({
   disabled?: boolean;
   ariaLabel: string;
   testId?: string;
+  /** M38-T3: what it is for, as its tooltip. */
+  help?: string;
 }>) {
   const [draft, setDraft] = useState(value);
   const cancelled = useRef(false);
@@ -517,6 +652,7 @@ export function CommitInput({
       onBlur={commit}
       onKeyDown={keys}
       aria-label={ariaLabel}
+      title={help}
       data-testid={testId}
     />
   );

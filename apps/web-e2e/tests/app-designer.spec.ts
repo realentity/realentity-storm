@@ -24,7 +24,8 @@ test("the designer builds a type in its table: fields, kinds, key, renames and U
   await page.goto("/apps/new");
   await page.getByTestId("start-empty").click();
   await commit(page, "app-name", name);
-  await page.getByTestId("app-icon").selectOption("cpu");
+  await page.getByTestId("app-icon").click();
+  await page.locator('[data-testid="icon-option"][data-icon="cpu"]').click();
 
   // The empty App's Item becomes Disk; its name field becomes id.
   await commit(page, "type-name", "Disk");
@@ -172,7 +173,8 @@ test("the Bills App made in the designer, as pipelines/apps/bills.yaml has it", 
   await page.goto("/apps/new");
   await page.getByTestId("start-empty").click();
   await commit(page, "app-name", name);
-  await page.getByTestId("app-icon").selectOption("receipt");
+  await page.getByTestId("app-icon").click();
+  await page.locator('[data-testid="icon-option"][data-icon="receipt"]').click();
   await commit(page, "app-description", "Bills from email, by month, paid or not");
   await commit(page, "type-name", "Bill");
   await commit(page, "field-name", "billKey");
@@ -450,4 +452,121 @@ test("the App's map: what starts its pipelines, what they write, its pages' butt
   // A box opens what it is.
   await node(pipelineName).click();
   await expect(page).toHaveURL(/\/pipelines\/[0-9a-f-]{36}$/);
+});
+
+// M38-E1: the Bills and Job Search stage diagrams: every state readable, none on another; a move picked in its own card
+for (const template of ["Bills", "Job Search"]) {
+  test(`the ${template} stage diagram: no state on another, every label in its box, a picked move in a card`, async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto("/apps/new");
+    await page.getByTestId("start-template").filter({ hasText: template }).first().click();
+    await page.getByTestId("tab-stages").click();
+    const diagram = page.getByTestId("stages-diagram").first();
+    const area = (await diagram.boundingBox())!;
+    const boxes = await diagram.getByTestId("stage-box").evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.querySelector("rect")!.getBoundingClientRect();
+        const t = el.querySelector("text")!.getBoundingClientRect();
+        return { state: el.getAttribute("data-state"), x: r.x, y: r.y, w: r.width, h: r.height, tw: t.width, th: t.height };
+      }),
+    );
+    expect(boxes.length).toBeGreaterThan(1);
+    for (const [i, a] of boxes.entries()) {
+      // Readable: no smaller than 85% of its size, its name inside it.
+      expect(a.h).toBeGreaterThan(40 * 0.85 - 1);
+      expect(a.tw).toBeLessThan(a.w);
+      for (const b of boxes.slice(i + 1)) {
+        const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+        expect(apart, `${a.state} and ${b.state} overlap`).toBe(true);
+      }
+    }
+    // Every arrow ends inside the drawing.
+    const ends = await diagram
+      .getByTestId("stage-move")
+      .evaluateAll((els) => els.map((el) => el.querySelector("path")!.getBoundingClientRect()));
+    for (const r of ends) expect(r.bottom).toBeLessThanOrEqual(area.y + area.height + 1);
+
+    // A move picked: highlighted, in a card titled by it, which closes.
+    const first = diagram.getByTestId("stage-move").first();
+    const [from, to] = [await first.getAttribute("data-from"), await first.getAttribute("data-to")];
+    await page.getByTestId("move-from").first().selectOption(from);
+    await page.getByTestId("move-to").first().selectOption(to);
+    await page.getByTestId("add-move").first().click();
+    await expect(page.getByTestId("selected-move")).toContainText(`Move: ${from} → ${to}`);
+    await page.getByTestId("picked-close").click();
+    await expect(page.getByTestId("selected-move")).toHaveCount(0);
+    // A state clicked: its own card.
+    await diagram.locator(`[data-testid="stage-box"][data-state="${from}"]`).click();
+    await expect(page.getByTestId("selected-state")).toContainText(`State: ${from}`);
+  });
+}
+
+/** The controls in `scope` that say nothing of what they are for: no tooltip, no labelled row with an info icon. */
+async function unexplained(scope: Locator): Promise<string[]> {
+  return scope.locator("input, select, textarea").evaluateAll((els) =>
+    els
+      .filter((el) => (el as HTMLElement).offsetParent !== null)
+      .filter((el) => !el.getAttribute("title")?.trim() && !el.closest("[data-help]"))
+      .map((el) => el.getAttribute("aria-label") ?? el.getAttribute("data-testid") ?? el.outerHTML.slice(0, 80)),
+  );
+}
+
+// M38-E2: every control of the designer and the cards says what it is for
+test("every control of the App designer and the step cards has its help", async ({ page }) => {
+  await page.goto("/apps/new");
+  await page.getByTestId("start-template").filter({ hasText: "Bills" }).click();
+  expect(await unexplained(page.getByTestId("app-properties"))).toEqual([]);
+  for (const tab of ["types", "stages", "pages"]) {
+    await page.getByTestId(`tab-${tab}`).click();
+    expect(await unexplained(page.getByTestId(`${tab}-tab`)), tab).toEqual([]);
+  }
+  // Mine says what it does, by the switch and in the table's heading.
+  await page.getByTestId("tab-types").click();
+  await expect(page.getByTestId("type-mine")).toHaveAttribute("title", /pipelines only read/);
+  await expect(page.getByTestId("types-tab").locator("th").filter({ hasText: "Mine" }).getByTestId("help")).toHaveAttribute("title", /never write/);
+  // The icon is picked by how it looks.
+  await page.getByTestId("app-icon").click();
+  await expect(page.getByTestId("icon-option")).not.toHaveCount(0);
+  await page.locator('[data-testid="icon-option"][data-icon="chart"]').click();
+  await expect(page.getByTestId("app-icon")).toContainText("chart");
+
+  await page.goto("/pipelines/new");
+  await page.getByTestId("pipeline-tab-yaml").click();
+  await page.getByTestId("pipeline-source").fill(
+    readFileSync(resolve(__dirname, "../../../pipelines/table-growth.yaml"), "utf8").replace(/^app: .*\n/m, ""),
+  );
+  await page.getByTestId("pipeline-tab-cards").click();
+  for (const more of await page.getByTestId("more-inputs").all()) await more.click();
+  expect(await unexplained(page.getByTestId("step-cards"))).toEqual([]);
+});
+
+// M38-T4: a start for the first time: what an App is, what each tab holds, what to do on an empty one
+test("a first App and pipeline say where to start and what each tab holds", async ({ page }) => {
+  await page.goto("/apps/new");
+  await expect(page.getByTestId("start-intro")).toContainText("Types");
+  await page.getByTestId("start-empty").click();
+  for (const [tab, holds] of [
+    ["types", "What the App keeps"],
+    ["stages", "Where each entity is"],
+    ["pages", "How the entities are shown"],
+    ["yaml", "as it is saved"],
+  ] as const) {
+    await page.getByTestId(`tab-${tab}`).click();
+    await expect(page.getByTestId("tab-intro")).toContainText(holds);
+    await expect(page.getByTestId("tab-intro")).toContainText("The tabs and the YAML are the same App");
+  }
+  // No types left: one button for the first.
+  await page.getByTestId("tab-types").click();
+  page.once("dialog", (d) => void d.accept());
+  await page.getByTestId("remove-type").click();
+  await expect(page.getByTestId("no-types")).toBeVisible();
+  await page.getByTestId("add-first-type").click();
+  await expect(page.getByTestId("type-name")).toHaveValue("Item");
+
+  await page.goto("/pipelines/new");
+  await page.getByTestId("pipeline-tab-yaml").click();
+  await page.getByTestId("pipeline-source").fill("name: Empty\nsteps: []\n");
+  await page.getByTestId("pipeline-tab-cards").click();
+  await expect(page.getByTestId("no-steps")).toContainText("No steps yet");
+  await expect(page.getByTestId("tab-intro")).toContainText("same pipeline");
 });

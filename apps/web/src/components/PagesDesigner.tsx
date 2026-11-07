@@ -23,7 +23,9 @@ import {
 } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
 import { asObject, text, type LooseApp } from "../lib/loose-app";
+import { HELP } from "../lib/help";
 import { Issues } from "./AppIssues";
+import { Help } from "./Help";
 import { type TableDesign } from "./ListTable";
 import { PagePreview } from "./PagePreview";
 import { CommitInput, type DesignerEdit } from "./TypesDesigner";
@@ -251,7 +253,7 @@ function TypePages({
             editable={editable}
           />
           <Issues issues={pageIssues(listPage)} onLine={onLine} />
-          <Row label="In the menu">
+          <Row label="In the menu" help={HELP.pageMenu}>
             <div className="d-flex gap-2 align-items-center flex-wrap">
               <label className="form-check form-switch mb-0">
                 <input
@@ -291,7 +293,7 @@ function TypePages({
               )}
             </div>
           </Row>
-          <Row label="Columns">
+          <Row label="Columns" help={HELP.pageColumns}>
             <FieldChips
               value={list.columns.map((c) => c.field)}
               options={[...all, ...seen]}
@@ -302,7 +304,7 @@ function TypePages({
             />
           </Row>
           {dates.length > 0 && (
-            <Row label="Due badge">
+            <Row label="Due badge" help={HELP.pageDue}>
               <DueBadge
                 dates={dates}
                 columns={rawColumns}
@@ -312,7 +314,7 @@ function TypePages({
               />
             </Row>
           )}
-          <Row label="Filters">
+          <Row label="Filters" help={HELP.pageFilters}>
             <Checks
               options={of("enum", "yesno")}
               value={list.filters.map((f) => f.field)}
@@ -322,7 +324,7 @@ function TypePages({
               testId="page-filters"
             />
           </Row>
-          <Row label="Search in">
+          <Row label="Search in" help={HELP.pageSearch}>
             <Checks
               options={of("text", "longtext", "enum", "email", "url")}
               value={list.search}
@@ -332,7 +334,7 @@ function TypePages({
               testId="page-search"
             />
           </Row>
-          <Row label="Sorted by">
+          <Row label="Sorted by" help={HELP.pageSort}>
             <div className="d-flex gap-2">
               <select
                 className="form-select form-select-sm w-auto"
@@ -361,7 +363,7 @@ function TypePages({
               </select>
             </div>
           </Row>
-          <Row label="In groups by">
+          <Row label="In groups by" help={HELP.pageGroup}>
             <div className="d-flex flex-column gap-2">
               <div className="d-flex gap-2">
                 <select
@@ -424,7 +426,7 @@ function TypePages({
             </div>
           </Row>
           {def.stages && (
-            <Row label="Stage buttons">
+            <Row label="Stage buttons" help={HELP.pageMoves}>
               <label className="form-check mb-0">
                 <input
                   type="checkbox"
@@ -438,7 +440,7 @@ function TypePages({
               </label>
             </Row>
           )}
-          <Row label="Removed tab">
+          <Row label="Removed tab" help={HELP.pageRemoved}>
             <label className="form-check mb-0">
               <input
                 type="checkbox"
@@ -463,7 +465,7 @@ function TypePages({
           {sections ? (
             <>
               {sections.map((section, i) => (
-                <div key={i} className="mb-3" data-testid="page-section">
+                <div key={i} className="mb-3" data-testid="page-section" data-help={HELP.pageSection}>
                   <div className="d-flex gap-2 mb-1">
                     <CommitInput
                       value={text(section.title)}
@@ -527,7 +529,7 @@ function TypePages({
             </>
           ) : (
             <>
-              <Row label="Fields">
+              <Row label="Fields" help={HELP.pageViewFields}>
                 <FieldChips
                   value={view.sections[0]?.fields.map((f) => f.field) ?? []}
                   options={[...all, ...seen]}
@@ -561,7 +563,7 @@ function TypePages({
                 editable={editable}
               />
               <Issues issues={pageIssues(formPage)} onLine={onLine} />
-              <Row label="Fields I fill in">
+              <Row label="Fields I fill in" help={HELP.pageFormFields}>
                 <FieldChips
                   value={view.form.map((f) => f.field)}
                   options={mineFields}
@@ -625,10 +627,13 @@ function PageHead({
   );
 }
 
-function Row({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+/** A labelled row of a page's controls; its info icon says what they set (M38-T3). */
+function Row({ label, help, children }: Readonly<{ label: string; help: string; children: ReactNode }>) {
   return (
-    <div className="row mb-2 align-items-baseline">
-      <div className="col-4 col-xl-3 text-secondary small">{label}</div>
+    <div className="row mb-2 align-items-baseline" data-help={help}>
+      <div className="col-4 col-xl-3 text-secondary small">
+        {label} <Help text={help} />
+      </div>
       <div className="col">{children}</div>
     </div>
   );
@@ -792,6 +797,7 @@ function DueBadge({
               disabled={!editable}
               onCommit={(v) => write(fieldOf(current), { days: Number(v) })}
               ariaLabel="Days before"
+              help={HELP.pageDueDays}
               testId="page-due-days"
             />
           </div>

@@ -138,6 +138,31 @@ describe("builder chat", () => {
     await agent.post(`/api/builder/chats/${chat.chatId}/messages/${proposal.messageId}/save`).expect(409);
   });
 
+  // M38-T5: from an editor, the builder sees what it has open and what I am on there
+  it("a message from an editor carries its draft (once while unchanged) and what I am on", async () => {
+    const pipeline = await createPipeline(replies());
+    const chat = await newChat(pipeline.pipelineId);
+    const draft = "name: Recruiter replies\nsteps:\n  - id: fetch\n    type: email.fetch\n    with: { mailbox: Drafts }\n";
+    const editor = (focus: string) => ({ source: draft, focus });
+    llm.answer(say("Which one?"));
+    await agent
+      .post(`/api/builder/chats/${chat.chatId}/messages`)
+      .send({ text: "Change this", editor: editor("step fetch, input mailbox") })
+      .expect(200);
+    expect(userText(llm.requests[0])).toContain(`<editor_draft>\n${draft}</editor_draft>`);
+    expect(userText(llm.requests[0])).toContain("<editor_focus>step fetch, input mailbox</editor_focus>");
+
+    llm.answer(say("Ok."));
+    await agent
+      .post(`/api/builder/chats/${chat.chatId}/messages`)
+      .send({ text: "And here?", editor: editor("step fetch") })
+      .expect(200);
+    expect(userText(llm.requests[1])).not.toContain("<editor_draft>");
+    expect(userText(llm.requests[1])).toContain("<editor_focus>step fetch</editor_focus>");
+    // The chats of an App are listed by it.
+    await agent.get("/api/builder/chats?appId=00000000-0000-4000-8000-000000000000").expect(200);
+  });
+
   it("M7-T3: in a pipeline's chat the builder sees the current version once; its edit is a diff, saved as the next version", async () => {
     const pipeline = await createPipeline(replies());
     const chat = await newChat(pipeline.pipelineId);
@@ -291,7 +316,9 @@ describe("builder chat", () => {
     const chat = await newChat();
     llm.answer(say("Which site?"));
     await send(chat.chatId, "Find .NET jobs on dev.bg every morning");
-    expect(userText(llm.last)).toBe("<apps>\nnone yet\n</apps>\n\n<saved_recipes>\nnone yet\n</saved_recipes>\n\nFind .NET jobs on dev.bg every morning");
+    expect(userText(llm.last)).toBe(
+      "<apps>\nnone yet\n</apps>\n\n<saved_recipes>\nnone yet\n</saved_recipes>\n\nFind .NET jobs on dev.bg every morning",
+    );
     const started = llm.last.system;
     expect((await db.client.builderChat.findUniqueOrThrow({ where: { builderChatId: chat.chatId } })).system).toBe(started);
 
@@ -312,7 +339,9 @@ describe("builder chat", () => {
     try {
       llm.answer(say("Proposing"));
       await send(chat.chatId, "dev.bg");
-      expect(userText(llm.last)).toBe("<saved_recipes>\n- dev.bg/search v1: params category (a dev.bg category)\n</saved_recipes>\n\ndev.bg");
+      expect(userText(llm.last)).toBe(
+        "<saved_recipes>\n- dev.bg/search v1: params category (a dev.bg category)\n</saved_recipes>\n\ndev.bg",
+      );
       llm.answer(say("Done"));
       await send(chat.chatId, "Thanks");
       expect(userText(llm.last)).toBe("Thanks");

@@ -2,6 +2,7 @@ import { type JsonSchema } from "@ai-me/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parse, stringify } from "yaml";
 import { fieldKind, resolve } from "../lib/schema-form";
+import { HELP } from "../lib/help";
 import { CommitInput } from "./TypesDesigner";
 
 /**
@@ -37,6 +38,7 @@ export function SchemaField({
 }>) {
   const s = resolve(schema);
   const kind = fieldKind(name, schema);
+  const help = s.description ?? HELP.stepInput;
   const id = `field-${name}`;
   const shown = value === undefined && s.default !== undefined ? `default ${JSON.stringify(s.default)}` : undefined;
   const label = (
@@ -59,6 +61,7 @@ export function SchemaField({
         className="form-control form-control-sm"
         onCommit={(v) => onChange(v === "" ? undefined : v)}
         disabled={disabled}
+        help={help}
         ariaLabel={name}
         testId={testId}
       />
@@ -71,6 +74,7 @@ export function SchemaField({
         value={typeof value === "string" ? value : ""}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
+        title={help}
         aria-label={name}
         data-testid={testId}
       >
@@ -90,6 +94,7 @@ export function SchemaField({
         value={value === true ? "yes" : value === false ? "no" : ""}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "yes")}
+        title={help}
         aria-label={name}
         data-testid={testId}
       >
@@ -107,6 +112,7 @@ export function SchemaField({
         valid={(v) => v === "" || Number.isFinite(Number(v))}
         onCommit={(v) => onChange(v === "" ? undefined : Number(v))}
         disabled={disabled}
+        help={help}
         ariaLabel={name}
         testId={testId}
       />
@@ -127,6 +133,7 @@ export function SchemaField({
           onChange(lines.length ? lines : undefined);
         }}
         disabled={disabled}
+        help={help}
         ariaLabel={name}
         testId={testId}
       />
@@ -140,12 +147,13 @@ export function SchemaField({
         mono={kind === "code"}
         onCommit={(v) => onChange(v === "" ? undefined : v)}
         disabled={disabled}
+        help={help}
         ariaLabel={name}
         testId={testId}
       />
     );
   } else {
-    field = <YamlField value={value} placeholder={shown} onChange={onChange} disabled={disabled} name={name} testId={testId} />;
+    field = <YamlField value={value} placeholder={shown} onChange={onChange} disabled={disabled} name={name} testId={testId} help={help} />;
   }
   return (
     <div className="mb-2" data-testid="step-input" data-input={name}>
@@ -163,6 +171,7 @@ function YamlField({
   placeholder,
   name,
   testId,
+  help,
 }: Readonly<{
   value: unknown;
   onChange: (value: unknown) => void;
@@ -170,6 +179,7 @@ function YamlField({
   placeholder?: string;
   name: string;
   testId?: string;
+  help?: string;
 }>) {
   const text = value === undefined ? "" : typeof value === "string" ? value : stringify(value, { lineWidth: 0 }).trimEnd();
   const [error, setError] = useState<string | null>(null);
@@ -201,6 +211,7 @@ function YamlField({
           }
         }}
         disabled={disabled}
+        help={help}
         ariaLabel={name}
         testId={testId}
       />
@@ -220,6 +231,7 @@ export function CommitArea({
   disabled,
   ariaLabel,
   testId,
+  help,
 }: Readonly<{
   value: string;
   onCommit: (value: string) => void;
@@ -230,6 +242,8 @@ export function CommitArea({
   disabled?: boolean;
   ariaLabel: string;
   testId?: string;
+  /** M38-T3: what it is for, as its tooltip. */
+  help?: string;
 }>) {
   const [draft, setDraft] = useState(value);
   const cancelled = useRef(false);
@@ -258,6 +272,7 @@ export function CommitArea({
         }
       }}
       aria-label={ariaLabel}
+      title={help}
       data-testid={testId}
     />
   );

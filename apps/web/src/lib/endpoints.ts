@@ -280,11 +280,13 @@ export const api = {
   },
   builder: {
     /** Without a pipeline: chats about new pipelines, not saved yet. */
-    list: (pipelineId?: string) => request<BuilderChatSummaryView[]>("GET", `/builder/chats${query({ pipelineId })}`),
+    list: (pipelineId?: string, appId?: string) =>
+      request<BuilderChatSummaryView[]>("GET", `/builder/chats${query({ pipelineId, appId })}`),
     create: (pipelineId?: string, appId?: string) => request<BuilderChatView>("POST", "/builder/chats", { pipelineId, appId }),
     get: (chatId: string) => request<BuilderChatView>("GET", `/builder/chats/${chatId}`),
-    send: (chatId: string, text: string, suggestionId?: string) =>
-      request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages`, { text, suggestionId }),
+    /** M38-T5: from an editor, with what it has open and what I am on there. */
+    send: (chatId: string, text: string, suggestionId?: string, editor?: { source: string; focus?: string }) =>
+      request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages`, { text, suggestionId, ...(editor ? { editor } : {}) }),
     save: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save`),
     dryRun: (chatId: string, messageId: string) =>
       request<BuilderDryRunResponse>("POST", `/builder/chats/${chatId}/messages/${messageId}/dry-run`),

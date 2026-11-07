@@ -6,7 +6,10 @@ import { toast } from "react-toastify";
 import { parseDocument } from "yaml";
 import { Issues } from "../components/AppIssues";
 import { DraftTypeCard } from "../components/DraftTypeCard";
+import { BuilderMarksBanner, EditorChat } from "../components/EditorChat";
 import { PagesDesigner } from "../components/PagesDesigner";
+import { appMarks, type BuilderMarks } from "../lib/builder-marks";
+import { focusOf } from "../lib/focus";
 import { StagesDesigner } from "../components/StagesDesigner";
 import { AppProperties, TypesDesigner, type DesignerEdit } from "../components/TypesDesigner";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
@@ -16,11 +19,15 @@ import { asObject, loose, text } from "../lib/loose-app";
 import { useAction, useLoad } from "../lib/use-load";
 
 type Tab = Exclude<AppDesignerTab, "app"> | "yaml";
-const TABS: { tab: Tab; label: string }[] = [
-  { tab: "types", label: "Types" },
-  { tab: "stages", label: "Stages" },
-  { tab: "pages", label: "Pages" },
-  { tab: "yaml", label: "YAML" },
+const TABS: { tab: Tab; label: string; intro: string }[] = [
+  { tab: "types", label: "Types", intro: "What the App keeps: a table per type, a row per field. Pipelines save entities of these types." },
+  {
+    tab: "stages",
+    label: "Stages",
+    intro: "Where each entity is (new, applied, paid…) and the moves between the states, by me or a pipeline.",
+  },
+  { tab: "pages", label: "Pages", intro: "How the entities are shown: each type's list in the menu, and a page for each entity." },
+  { tab: "yaml", label: "YAML", intro: "The App as it is saved, with its comments: everything the other tabs show, written out." },
 ];
 
 /**
@@ -38,6 +45,9 @@ export function AppEditorPage() {
   /** What the YAML was before each of the designer's edits, for Undo (typing on the YAML tab is its own). */
   const [undo, setUndo] = useState<string[]>([]);
   const check = useCheck(source, appId);
+  // M38-T5: what I am on (sent to the builder), and what its proposal changed once used here.
+  const [focus, setFocus] = useState<string | undefined>(undefined);
+  const [marks, setMarks] = useState<BuilderMarks | null>(null);
   const action = useAction();
 
   useEffect(() => {
@@ -57,6 +67,7 @@ export function AppEditorPage() {
   };
 
   const editable = parseDocument(source).errors.length === 0;
+  const wide = tab === "stages" || tab === "pages";
   const edit = (change: DesignerEdit, note?: string) => {
     try {
       const next = change(source);
@@ -91,6 +102,7 @@ export function AppEditorPage() {
               onClick={() => {
                 setSource(undo.at(-1)!);
                 setUndo((u) => u.slice(0, -1));
+                setMarks(null);
               }}
               data-testid="undo"
             >
@@ -111,7 +123,8 @@ export function AppEditorPage() {
         }
       />
       <div className="row g-3">
-        <div className="col-xl-8">
+        {/* M38-T1: the diagram and the pages take the page's width; the check goes under them. */}
+        <div className={wide ? "col-12" : "col-xl-8"}>
           <ErrorAlert error={action.error} />
           <Issues issues={general} onLine={showLine} testId="app-issues" />
           <div className="card">
@@ -144,8 +157,27 @@ export function AppEditorPage() {
                 })}
               </ul>
             </div>
+            <div className="card-body py-2 border-bottom small text-secondary" data-testid="tab-intro">
+              {TABS.find((t) => t.tab === tab)?.intro} The tabs and the YAML are the same App: a change on one is on the other, and Undo
+              takes back the tabs' changes.
+            </div>
+            {marks && (
+              <div className="card-body pb-0">
+                <BuilderMarksBanner marks={marks} onClear={() => setMarks(null)} />
+              </div>
+            )}
             {tab === "types" && (
-              <TypesDesigner app={app} issues={onTab("types")} onLine={showLine} onEdit={edit} editable={editable} entities={entities} />
+              <div onFocusCapture={(e) => setFocus(`the Types tab, ${focusOf(e.target) ?? ""}`)}>
+                <TypesDesigner
+                  app={app}
+                  issues={onTab("types")}
+                  onLine={showLine}
+                  onEdit={edit}
+                  editable={editable}
+                  entities={entities}
+                  marked={marks?.marked}
+                />
+              </div>
             )}
             {tab === "stages" && <StagesDesigner app={app} issues={onTab("stages")} onLine={showLine} onEdit={edit} editable={editable} />}
             {tab === "pages" && (
@@ -163,8 +195,23 @@ export function AppEditorPage() {
             {tab === "yaml" && <YamlTab source={source} onChange={setSource} issues={onTab("yaml")} line={line} onLine={setLine} />}
           </div>
         </div>
-        <div className="col-xl-4 d-flex flex-column gap-3">
+        <div className={`${wide ? "col-12" : "col-xl-4"} d-flex flex-column gap-3`}>
           <CheckCard check={check} isNew={!appId} />
+          <EditorChat
+            appId={appId}
+            editor={() => ({ source, ...(focus ? { focus } : {}) })}
+            onUse={({ kind, source: proposed }) => {
+              if (kind !== "app") {
+                toast.info("That is a pipeline: open it from the chat on the Pipelines page.");
+                return;
+              }
+              const changed = appMarks(source, proposed);
+              edit(() => proposed);
+              setMarks(changed);
+              setTab("types");
+            }}
+            placeholder='What to change, e.g. "Add a due date to Bill", or about the field you are on: "Should this be money?"'
+          />
           {/* Kept while on the other tabs: a pasted sample or a dry run is still there on return. */}
           <div className={tab === "types" ? undefined : "d-none"}>
             <DraftTypeCard types={app.types.map(([name]) => name)} onEdit={edit} />
@@ -203,6 +250,29 @@ function StartFrom({ onStart }: { onStart: (source: string) => void }) {
   return (
     <>
       <PageHeader pretitle={<Link to="/apps">Apps</Link>} title="New App" />
+      <div className="card mb-3" data-testid="start-intro">
+        <div className="card-body">
+          <p className="mb-2">
+            An App is what you keep about something (jobs, bills, products) and how you see it. You build it in three parts, each on its own
+            tab:
+          </p>
+          <ol className="mb-2">
+            <li>
+              <strong>Types</strong>: what one of them is: its fields (a title, an amount, a date…).
+            </li>
+            <li>
+              <strong>Stages</strong> (if it has any): where each one is (new, applied, paid) and how it moves on.
+            </li>
+            <li>
+              <strong>Pages</strong>: its list in the menu and a page for each one.
+            </li>
+          </ol>
+          <p className="mb-0 text-secondary">
+            Then pipelines fill it: a pipeline names the App with <code>app:</code> and saves its entities. Start from nothing, or from one
+            of these and change it.
+          </p>
+        </div>
+      </div>
       <div className="row row-cards" data-testid="start-from">
         <div className="col-md-6 col-xl-4">
           <button

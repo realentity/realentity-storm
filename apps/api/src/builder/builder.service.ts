@@ -84,7 +84,7 @@ export class BuilderService {
   /** Recent chats about one pipeline, or (without one) about new pipelines not saved yet. */
   async list(userId: string, filter: BuilderChatFilter): Promise<BuilderChatSummaryView[]> {
     const chats = await this.prisma.client.builderChat.findMany({
-      where: { userId, pipelineId: filter.pipelineId ?? null },
+      where: { userId, pipelineId: filter.pipelineId ?? null, ...(filter.appId ? { appId: filter.appId } : {}) },
       include: { messages: { where: { role: "user" }, orderBy: { dateCreated: "asc" }, take: 1 } },
       orderBy: { dateUpdated: "desc" },
       take: RECENT_CHATS,
@@ -265,6 +265,12 @@ export class BuilderService {
     }
     const recipes = await this.recipesBlock(userId);
     if (recipes !== lastShown(history, "saved_recipes")) parts.push(recipes);
+    // M38-T5: what the editor has open, when it changed since the builder last saw it, and what I am on there.
+    if (body.editor) {
+      const draft = `<editor_draft>\n${body.editor.source.replace(/\n*$/, "\n")}</editor_draft>`;
+      if (draft !== lastShown(history, "editor_draft")) parts.push(draft);
+      if (body.editor.focus) parts.push(`<editor_focus>${body.editor.focus}</editor_focus>`);
+    }
     if (suggestion) {
       parts.push(
         `<reflection_suggestion>\n${suggestion.text}${suggestion.rationale ? `\nWhy: ${suggestion.rationale}` : ""}\n</reflection_suggestion>`,

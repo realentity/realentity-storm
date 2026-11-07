@@ -7,6 +7,9 @@ import { toast } from "react-toastify";
 import { CompileErrors, DiffList, PlanView, StepGraphView } from "../components/PlanView";
 import { StepCards } from "../components/StepCards";
 import { TryHere } from "../components/TryHere";
+import { BuilderMarksBanner, EditorChat } from "../components/EditorChat";
+import { focusOf } from "../lib/focus";
+import { pipelineMarks, type BuilderMarks } from "../lib/builder-marks";
 import { DataPicker } from "../components/DataPicker";
 import { offersFor, outputsOf } from "../lib/data-picker";
 import { loosePipeline, useTriggerTypes } from "../lib/step-cards";
@@ -58,6 +61,9 @@ export function PipelineEditorPage() {
   const triggerData = useLoad(() => api.steps.triggers(), []);
   // M37-T3: the last "try up to here": its run, kept while I edit, so the cards after it pick from what it gave.
   const [tried, setTried] = useState<{ runId: string; stopAfter: string } | null>(null);
+  // M38-T5: what I am on (sent to the builder), and what its proposal changed once used here.
+  const [focus, setFocus] = useState<string | undefined>(undefined);
+  const [marks, setMarks] = useState<BuilderMarks | null>(null);
   const triedRun = useLoad(
     () => (tried ? api.runs.get(tried.runId) : Promise.resolve(null)),
     [tried?.runId],
@@ -205,6 +211,7 @@ export function PipelineEditorPage() {
                   onClick={() => {
                     setSource(undo.at(-1)!);
                     setUndo((u) => u.slice(0, -1));
+                    setMarks(null);
                   }}
                   data-testid="pipeline-undo"
                 >
@@ -224,43 +231,57 @@ export function PipelineEditorPage() {
                 </button>
               </div>
             </div>
+            <div className="card-body py-2 border-bottom small text-secondary" data-testid="tab-intro">
+              {tab === "cards"
+                ? "What starts the pipeline, then its steps in order: each does one thing with what the ones before it gave. "
+                : "The pipeline as YAML: what the cards show, written out. "}
+              The tabs and the YAML are the same pipeline: a change on one is on the other, and Undo takes back the tabs' changes.
+            </div>
+            {marks && tab === "cards" && (
+              <div className="card-body pb-0">
+                <BuilderMarksBanner marks={marks} onClear={() => setMarks(null)} />
+              </div>
+            )}
             {tab === "cards" ? (
-              <StepCards
-                source={text}
-                onEdit={edit}
-                editable={editable}
-                catalog={catalog}
-                issues={shownIssues}
-                apps={(apps.data ?? []).map((a) => a.name)}
-                types={types}
-                pipelines={(pipelines.data ?? []).map((p) => p.name).filter((n) => n !== pipeline?.name)}
-                credentials={credentials.data ?? []}
-                picker={(stepIndex, input, kind, onPick) => {
-                  const loose = loosePipeline(text);
-                  if (!loose) return null;
-                  const offers = offersFor(
-                    {
-                      pipeline: loose,
-                      catalog,
-                      triggers: triggerData.data ?? null,
-                      app: app.data?.definition ?? null,
-                      outputs: outputsOf(triedRun.data),
-                    },
-                    stepIndex,
-                    input,
-                  );
-                  return <DataPicker offers={offers} insert={kind === "insert"} onPick={onPick} label={input} />;
-                }}
-                tryHere={(step) => (
-                  <TryHere
-                    stepId={step.id}
-                    run={tried && triedRun.data?.runId === tried.runId ? triedRun.data : null}
-                    stopAfter={tried?.stopAfter ?? null}
-                    onTry={() => void tryUpTo(step.id)}
-                    busy={action.busy}
-                  />
-                )}
-              />
+              <div onFocusCapture={(e) => setFocus(focusOf(e.target))}>
+                <StepCards
+                  marked={marks?.marked}
+                  source={text}
+                  onEdit={edit}
+                  editable={editable}
+                  catalog={catalog}
+                  issues={shownIssues}
+                  apps={(apps.data ?? []).map((a) => a.name)}
+                  types={types}
+                  pipelines={(pipelines.data ?? []).map((p) => p.name).filter((n) => n !== pipeline?.name)}
+                  credentials={credentials.data ?? []}
+                  picker={(stepIndex, input, kind, onPick) => {
+                    const loose = loosePipeline(text);
+                    if (!loose) return null;
+                    const offers = offersFor(
+                      {
+                        pipeline: loose,
+                        catalog,
+                        triggers: triggerData.data ?? null,
+                        app: app.data?.definition ?? null,
+                        outputs: outputsOf(triedRun.data),
+                      },
+                      stepIndex,
+                      input,
+                    );
+                    return <DataPicker offers={offers} insert={kind === "insert"} onPick={onPick} label={input} />;
+                  }}
+                  tryHere={(step) => (
+                    <TryHere
+                      stepId={step.id}
+                      run={tried && triedRun.data?.runId === tried.runId ? triedRun.data : null}
+                      stopAfter={tried?.stopAfter ?? null}
+                      onTry={() => void tryUpTo(step.id)}
+                      busy={action.busy}
+                    />
+                  )}
+                />
+              </div>
             ) : (
               <textarea
                 className="form-control border-0 font-monospace source-editor"
@@ -302,6 +323,17 @@ export function PipelineEditorPage() {
         </div>
 
         <div className="col-xl-5 d-flex flex-column gap-3">
+          <EditorChat
+            pipelineId={pipeline?.currentVersion ? pipelineId : undefined}
+            editor={() => ({ source: text, ...(focus ? { focus } : {}) })}
+            onUse={({ source: proposed }) => {
+              const changed = pipelineMarks(text, proposed);
+              edit(() => proposed);
+              setMarks(changed);
+              setTab("cards");
+            }}
+            placeholder='What to change, e.g. "Also skip LinkedIn emails", or about the card you are on: "Why is this one empty?"'
+          />
           <ErrorAlert error={action.error} />
           {!checked && <div className="text-secondary">Check the definition to see its plan, what it may do and what changed.</div>}
           {checked && !upToDate && <div className="alert alert-warning">The definition changed since the last check. Check it again.</div>}

@@ -15,7 +15,7 @@ export const CreateBuilderChatSchema = z
   .refine((c) => !(c.pipelineId && c.appId), "a chat is about a pipeline or an App, not both");
 export type CreateBuilderChatRequest = z.infer<typeof CreateBuilderChatSchema>;
 
-export const BuilderChatFilterSchema = z.object({ pipelineId: z.uuid().optional() }).strict();
+export const BuilderChatFilterSchema = z.object({ pipelineId: z.uuid().optional(), appId: z.uuid().optional() }).strict();
 export type BuilderChatFilter = z.infer<typeof BuilderChatFilterSchema>;
 
 export const BuilderMessageSchema = z
@@ -23,6 +23,14 @@ export const BuilderMessageSchema = z
     text: z.string().trim().min(1).max(4000),
     /** A reflection suggestion to turn into a diff (README §2.5); saving the result marks it done. */
     suggestionId: z.uuid().optional(),
+    /**
+     * M38-T5: sent from an editor: what it has open (not saved yet) and what I am on there ("step fetch, input
+     * sinceDays"). The builder changes the draft, not the saved version.
+     */
+    editor: z
+      .object({ source: z.string().max(200_000), focus: z.string().max(300).optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 export type BuilderMessageRequest = z.infer<typeof BuilderMessageSchema>;

@@ -1,5 +1,5 @@
 import { type BuilderChatView, type BuilderMessageView } from "@ai-me/shared";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { IconDeviceFloppy, IconPencil } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { api } from "../lib/endpoints";
@@ -10,7 +10,18 @@ import { ErrorAlert } from "./ui";
  * M34: an App the builder proposed with its pipelines: what each is (new) or what changes in it, its YAML, and one
  * Save all: the App and every pipeline, checked against it once more first.
  */
-export function AppProposal({ chat, message, onChanged }: { chat: BuilderChatView; message: BuilderMessageView; onChanged: () => void }) {
+export function AppProposal({
+  chat,
+  message,
+  onChanged,
+  onUse,
+}: {
+  chat: BuilderChatView;
+  message: BuilderMessageView;
+  onChanged: () => void;
+  /** M38-T5: in the App designer: the proposed App goes into it, to look at and save there. */
+  onUse?: (source: string) => void;
+}) {
   const proposal = message.appProposal!;
   const action = useAction();
   const open = proposal.status === "open";
@@ -34,11 +45,17 @@ export function AppProposal({ chat, message, onChanged }: { chat: BuilderChatVie
                 : "An App with its pipelines, saved together"}
           </div>
         </div>
-        <div className="card-actions">
+        <div className="card-actions btn-list">
+          {open && onUse && (
+            <button type="button" className="btn btn-primary" onClick={() => onUse(proposal.app.source)} data-testid="builder-use-app">
+              <IconPencil size={18} className="me-1" />
+              Use in the designer
+            </button>
+          )}
           {open && (
             <button
               type="button"
-              className="btn btn-primary"
+              className={`btn ${onUse ? "" : "btn-primary"}`}
               disabled={action.busy}
               onClick={() => void save()}
               data-testid="save-app-proposal"

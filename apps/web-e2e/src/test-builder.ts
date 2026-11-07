@@ -3,7 +3,8 @@ import { parse } from "yaml";
 /**
  * The builder's model in the browser tests (the shape of @ai-me/llm's LlmChat): nothing goes to Claude. Asked to
  * "also include <place>", it adds the place to the search query of the pipeline it was shown and proposes that;
- * after a tool result it answers in one sentence; anything else gets a question back.
+ * after a tool result it answers in one sentence; anything else gets a question back. An editor's draft (M38-T5) wins
+ * over the saved version.
  */
 export const TEST_BUILDER_LLM = {
   send(request: { messages: { role: string; content: { type: string; [key: string]: unknown }[] }[] }) {
@@ -31,7 +32,11 @@ export const TEST_BUILDER_LLM = {
       .filter((m) => m.role === "user")
       .flatMap((m) => m.content.filter((b) => b.type === "text").map((b) => String(b.text)));
     const shown = texts
-      .map((t) => /<current_pipeline[^>]*>\n([\s\S]*?)<\/current_pipeline>/.exec(t)?.[1])
+      .map(
+        (t) =>
+          /<editor_draft>\n([\s\S]*?)<\/editor_draft>/.exec(t)?.[1] ??
+          /<current_pipeline[^>]*>\n([\s\S]*?)<\/current_pipeline>/.exec(t)?.[1],
+      )
       .filter(Boolean)
       .at(-1);
     const place = /also include (\w+)/i.exec(texts.at(-1) ?? "")?.[1];

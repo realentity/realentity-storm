@@ -22,6 +22,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
+import { HELP } from "../lib/help";
 import { issuePlace, loosePipeline, type LooseStep } from "../lib/step-cards";
 import { resolve } from "../lib/schema-form";
 import { SchemaField } from "./SchemaForm";
@@ -46,6 +47,7 @@ export function StepCards({
   credentials,
   picker,
   tryHere,
+  marked,
 }: Readonly<{
   source: string;
   onEdit: (edit: DesignerEdit) => void;
@@ -62,6 +64,8 @@ export function StepCards({
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
   /** M37-T3: under a card, trying the pipeline up to it and what it gave. */
   tryHere?: (step: LooseStep) => ReactNode;
+  /** M38-T5: what the builder's proposal changed: step ids and "trigger". */
+  marked?: Set<string>;
 }>) {
   const pipeline = loosePipeline(source);
   const [adding, setAdding] = useState<number | null>(null);
@@ -83,6 +87,7 @@ export function StepCards({
           onCommit={(v) => onEdit((s) => setPipelineProperty(s, "name", v))}
           disabled={!editable}
           ariaLabel="The pipeline's name"
+          help={HELP.pipelineName}
           testId="pipeline-name"
         />
         <select
@@ -91,6 +96,7 @@ export function StepCards({
           disabled={!editable}
           onChange={(e) => onEdit((s) => setPipelineProperty(s, "app", e.target.value))}
           aria-label="Its App"
+          title={HELP.pipelineApp}
           data-testid="pipeline-app"
         >
           <option value="">in no App</option>
@@ -107,6 +113,7 @@ export function StepCards({
             placeholder="What it does, in a sentence"
             onCommit={(v) => onEdit((s) => setPipelineProperty(s, "description", v))}
             disabled={!editable}
+            help={HELP.pipelineDescription}
             ariaLabel="The pipeline's description"
           />
         </div>
@@ -117,6 +124,7 @@ export function StepCards({
           {i.message}
         </div>
       ))}
+      {marked?.has("trigger") && <BuilderMark what="The trigger" />}
       <TriggerCard
         trigger={pipeline.trigger}
         onEdit={onEdit}
@@ -139,9 +147,15 @@ export function StepCards({
             credentials={credentials}
             picker={picker}
             tryHere={tryHere}
+            marked={marked?.has(step.id) ?? false}
           />
         </div>
       ))}
+      {pipeline.steps.length === 0 && (
+        <div className="text-center text-secondary" data-testid="no-steps">
+          No steps yet. A step does one thing (fetch email, ask the LLM, save to an App, send me a message); add the first from the catalog.
+        </div>
+      )}
       <AddHere onAdd={() => setAdding(pipeline.steps.length - 1)} disabled={!editable} last />
       {adding !== null && (
         <StepPicker
@@ -153,6 +167,15 @@ export function StepCards({
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** M38-T5: a mark on what the builder's proposal changed. */
+function BuilderMark({ what }: Readonly<{ what: string }>) {
+  return (
+    <div className="badge bg-azure-lt text-azure align-self-start m-2 mb-0" data-testid="builder-mark">
+      {what} changed by the builder
     </div>
   );
 }
@@ -191,6 +214,7 @@ function StepPicker({
           onChange={(e) => setQuery(e.target.value)}
           autoFocus
           aria-label="Find a step"
+          title={HELP.stepSearch}
           data-testid="step-search"
         />
       </div>
@@ -238,6 +262,7 @@ function StepCard({
   credentials,
   picker,
   tryHere,
+  marked,
 }: Readonly<{
   step: LooseStep;
   index: number;
@@ -249,6 +274,7 @@ function StepCard({
   credentials: CredentialView[];
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
   tryHere?: (step: LooseStep) => ReactNode;
+  marked: boolean;
 }>) {
   const [more, setMore] = useState(false);
   const properties = definition?.input.properties ?? {};
@@ -288,6 +314,7 @@ function StepCard({
                   className="form-select form-select-sm w-auto py-0"
                   value=""
                   onChange={(e) => e.target.value && set(name, `{{cred:${e.target.value}}}`)}
+                  title={HELP.stepCredential}
                   aria-label={`A credential for ${name}`}
                 >
                   <option value="">a credential…</option>
@@ -311,7 +338,14 @@ function StepCard({
   };
 
   return (
-    <div className={`card ${issues.length ? "border-danger" : ""}`} data-testid="step-card" data-step={step.id}>
+    <div
+      className={`card ${issues.length ? "border-danger" : marked ? "border-azure" : ""}`}
+      style={marked ? { borderWidth: 2 } : undefined}
+      data-testid="step-card"
+      data-step={step.id}
+      data-marked={marked || undefined}
+    >
+      {marked && <BuilderMark what="This step" />}
       <div className="card-header gap-2 flex-wrap">
         <span className="badge bg-secondary-lt">{index + 1}</span>
         <CommitInput
@@ -321,6 +355,7 @@ function StepCard({
           onCommit={(to) => onEdit((s) => renameStep(s, index, to))}
           disabled={!editable}
           ariaLabel={`Step ${step.id}'s id`}
+          help={HELP.stepId}
           testId="step-id"
         />
         <code className="text-secondary">{step.type}</code>
@@ -427,6 +462,7 @@ function StepOptions({
         onCommit={(v) => onEdit((s) => setStepOption(s, index, option, v || undefined))}
         disabled={!editable}
         ariaLabel={`${step.id}'s ${option}`}
+        help={option === "when" ? HELP.stepWhen : HELP.stepForEach}
         testId={`step-${option}`}
       />
       {editable && picker?.(index, `:${option}`, "whole", (r) => onEdit((s) => setStepOption(s, index, option, r)))}

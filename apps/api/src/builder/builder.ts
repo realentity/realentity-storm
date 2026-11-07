@@ -351,6 +351,9 @@ How to work:
 - Lists on websites are read by browser.extract with a saved recipe. <saved_recipes> in my messages lists the
   recipes that exist (name and params). A site without one can't be read yet: say that I have to teach it first
   (Recipes page, Teach); you may still propose the pipeline with the name the recipe will have ("<site>/search").
+- <editor_draft> in my messages is what I have open in the editor now, not saved yet: change that one (not the
+  current version), keeping my unsaved changes in it; <editor_focus> is the part of it I am on, which "this" and
+  "here" mean.
 - Propose the whole definition every time, never a fragment. When propose_pipeline returns compile errors, fix them
   and propose again. Keep everything I didn't ask to change exactly as it is (ids, wording, parameters).
 - After a successful proposal, answer in a few sentences: what it does or what changed, and any assumption I should

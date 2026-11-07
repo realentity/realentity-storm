@@ -17,6 +17,12 @@ interface BuilderChatProps {
   chatId: string | null;
   /** The pipeline the chat is about (README §2.5); none for a new pipeline (README §2.1). */
   pipelineId?: string;
+  /** M34: the App the chat is about. */
+  appId?: string;
+  /** M38-T5: in an editor: what it has open and what I am on, sent with each message. */
+  editor?: () => { source: string; focus?: string };
+  /** M38-T5: in an editor: a proposal goes into it (instead of opening the editor page). */
+  onUse?: (proposal: { kind: "pipeline" | "app"; source: string }) => void;
   onCreated: (chatId: string) => void;
   /** A proposal was saved as a version. */
   onSaved?: (chat: BuilderChatView) => void;
@@ -27,7 +33,7 @@ interface BuilderChatProps {
  * The builder chat: I describe or ask; the builder answers, asks back, or proposes a definition that compiled. A
  * proposal is saved (next version), dry-run or opened in the editor only when I press its button.
  */
-export function BuilderChat({ chatId, pipelineId, onCreated, onSaved, placeholder }: BuilderChatProps) {
+export function BuilderChat({ chatId, pipelineId, appId, editor, onUse, onCreated, onSaved, placeholder }: BuilderChatProps) {
   const chat = useLoad(
     () => (chatId ? api.builder.get(chatId) : Promise.resolve(null)),
     [chatId],
@@ -41,9 +47,9 @@ export function BuilderChat({ chatId, pipelineId, onCreated, onSaved, placeholde
     if (!message.trim()) return;
     setSending(message);
     const answered = await action.run(async () => {
-      const id = chatId ?? (await api.builder.create(pipelineId)).chatId;
+      const id = chatId ?? (await api.builder.create(pipelineId, appId)).chatId;
       if (!chatId) onCreated(id);
-      return api.builder.send(id, message.trim(), suggestionId);
+      return api.builder.send(id, message.trim(), suggestionId, editor?.());
     });
     setSending(null);
     if (!answered) return;
@@ -72,7 +78,7 @@ export function BuilderChat({ chatId, pipelineId, onCreated, onSaved, placeholde
         />
       )}
       {view?.messages.map((message) => (
-        <Message key={message.messageId} chat={view} message={message} onSaved={onSaved} onChanged={chat.reload} />
+        <Message key={message.messageId} chat={view} message={message} onSaved={onSaved} onChanged={chat.reload} onUse={onUse} />
       ))}
       {sending && (
         <>
@@ -130,11 +136,13 @@ function Message({
   message,
   onSaved,
   onChanged,
+  onUse,
 }: {
   chat: BuilderChatView;
   message: BuilderMessageView;
   onSaved?: (chat: BuilderChatView) => void;
   onChanged: () => void;
+  onUse?: BuilderChatProps["onUse"];
 }) {
   if (message.role === "user") return <UserBubble text={message.text} />;
   return (
@@ -142,8 +150,10 @@ function Message({
       {message.text && <div className="text-pre-line">{message.text}</div>}
       {message.error && <div className="alert alert-danger mb-0">{message.error}</div>}
       {message.compileErrors && <CompileErrors errors={message.compileErrors} title="The builder's last proposal doesn't compile" />}
-      {message.proposal && <Proposal chat={chat} message={message} onSaved={onSaved} onChanged={onChanged} />}
-      {message.appProposal && <AppProposal chat={chat} message={message} onChanged={onChanged} />}
+      {message.proposal && <Proposal chat={chat} message={message} onSaved={onSaved} onChanged={onChanged} onUse={onUse} />}
+      {message.appProposal && (
+        <AppProposal chat={chat} message={message} onChanged={onChanged} onUse={onUse && ((source) => onUse({ kind: "app", source }))} />
+      )}
     </div>
   );
 }
@@ -153,11 +163,13 @@ function Proposal({
   message,
   onSaved,
   onChanged,
+  onUse,
 }: {
   chat: BuilderChatView;
   message: BuilderMessageView;
   onSaved?: (chat: BuilderChatView) => void;
   onChanged: () => void;
+  onUse?: BuilderChatProps["onUse"];
 }) {
   const proposal = message.proposal!;
   const catalog = useCatalog();
@@ -220,17 +232,30 @@ function Proposal({
       </div>
       {open && (
         <div className="card-footer d-flex gap-2 flex-wrap">
-          <button type="button" className="btn" disabled={action.busy} onClick={edit}>
-            <IconPencil size={18} className="me-1" />
-            Open in the editor
-          </button>
+          {onUse ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={action.busy}
+              onClick={() => onUse({ kind: "pipeline", source: proposal.source })}
+              data-testid="builder-use"
+            >
+              <IconPencil size={18} className="me-1" />
+              Use in the editor
+            </button>
+          ) : (
+            <button type="button" className="btn" disabled={action.busy} onClick={edit}>
+              <IconPencil size={18} className="me-1" />
+              Open in the editor
+            </button>
+          )}
           <button type="button" className="btn" disabled={action.busy} onClick={() => void dryRun()}>
             <IconEye size={18} className="me-1" />
             Dry run
           </button>
           <button
             type="button"
-            className="btn btn-primary ms-auto"
+            className={`btn ms-auto ${onUse ? "" : "btn-primary"}`}
             disabled={action.busy}
             onClick={() => void save()}
             data-testid="builder-save"
