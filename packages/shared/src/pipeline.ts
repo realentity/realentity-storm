@@ -149,6 +149,30 @@ export interface CompiledStep extends PipelineStep {
 
 export interface CompiledDefinition extends Omit<PipelineDefinition, "steps"> {
   steps: CompiledStep[];
+  /** M39-T2: what it names, by id, as resolved when it was saved. Absent in versions saved before M39. */
+  refs?: DefinitionRefs;
+}
+
+/**
+ * M39-T2: the App and the pipelines a definition names (`app:`, run.finished's `pipeline`, flow.later's `pipeline`),
+ * by id: what runs it uses, so a rename breaks nothing. The names stay in the definition, as written.
+ */
+export interface DefinitionRefs {
+  appId?: string;
+  /** A pipeline's name as written → its id. A name with no pipeline yet isn't in it: looked up by name when it runs. */
+  pipelines: Record<string, string>;
+}
+
+/** M39-T2: the pipelines a definition names: run.finished's trigger, flow.later's steps (a written name, not a template). */
+export function namedPipelines(definition: Pick<PipelineDefinition, "trigger" | "steps">): string[] {
+  const names = new Set<string>();
+  const trigger = definition.trigger;
+  if (typeof trigger === "object" && "on" in trigger && trigger.on === "run.finished") names.add(trigger.pipeline);
+  for (const step of definition.steps) {
+    const target = step.type === "flow.later" ? step.with?.pipeline : undefined;
+    if (typeof target === "string" && !target.includes("{{")) names.add(target);
+  }
+  return [...names];
 }
 
 /** What side-effect steps may target, enforced at run time (README §2.2 "Policy"). */

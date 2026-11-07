@@ -14,6 +14,7 @@ import {
   readAppSource,
   viewPageOf,
   type AppDefinition,
+  type AppRefs,
   type CompiledDefinition,
   type DataType,
   type EntityActionDef,
@@ -64,7 +65,7 @@ export class EntityActionsService {
     const changed = Object.keys(checked).filter(
       (f) => canonicalJson(entityValueAt(before, f) ?? null) !== canonicalJson(entityValueAt(after, f) ?? null),
     );
-    if (changed.length > 0) await this.tell(userId, app, typeName, key, after, before, changed, null);
+    if (changed.length > 0) await this.tell(userId, appId, app, typeName, key, after, before, changed, null);
   }
 
   /** Moves its stage, as a move by: [me] allows; the date it first reached a state is kept. */
@@ -81,7 +82,7 @@ export class EntityActionsService {
     const before = this.item(type, entity);
     await this.prisma.client.dataEntity.update({ where: { dataEntityId: entity.dataEntityId }, data: { stage: to, stageDates } });
     const after = this.item(type, { ...entity, stage: to });
-    await this.tell(userId, app, typeName, key, after, before, [stages.field], { from, to });
+    await this.tell(userId, appId, app, typeName, key, after, before, [stages.field], { from, to });
     // A Job reaching an application's stage (M33): the pipelines on application.status hear it, as from the Jobs page.
     const status = STAGE_STATUS[to];
     if (typeName === JOB_ENTITY.type && status && contractProblems(type, JOB_ENTITY).length === 0) {
@@ -134,6 +135,7 @@ export class EntityActionsService {
     const item = this.item(type, created);
     await this.tell(
       userId,
+      appId,
       app,
       typeName,
       key,
@@ -158,12 +160,13 @@ export class EntityActionsService {
    * by { on: entity.action } of the same App, with the entity as {{trigger.item}}, while its `when` holds.
    */
   async act(userId: string, appId: string, typeName: string, index: number, key: string | undefined): Promise<RunDetailView> {
-    const { app, type } = await this.app(userId, appId, typeName);
+    const { app, type, refs } = await this.app(userId, appId, typeName);
     const action = key === undefined ? listPageOf(app, typeName).actions[index] : viewPageOf(app, typeName).actions[index];
     if (!action) throw new NotFoundException();
+    // M39-T3: the pipeline the App's version was saved with, by id (renamed since, it is still the one); else by name.
+    const id = refs?.pipelines[action.run];
     const target = await this.prisma.client.pipeline.findFirst({
-      where: { userId, name: action.run, currentVersionId: { not: null } },
-      orderBy: { dateUpdated: "desc" },
+      where: id ? { userId, pipelineId: id, currentVersionId: { not: null } } : { userId, name: action.run, currentVersionId: { not: null } },
     });
     if (!target?.currentVersionId) throw new NotFoundException(`No saved pipeline is called "${action.run}"`);
     const version = await this.prisma.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: target.currentVersionId } });
@@ -179,7 +182,8 @@ export class EntityActionsService {
     if (!isEventTrigger(trigger) || trigger.on !== "entity.action") {
       throw new ConflictException(`"${target.name}" isn't triggered by { on: entity.action }, so an entity's button can't start it`);
     }
-    if (definition.app !== app.name || (trigger.type && trigger.type !== typeName)) {
+    const ofThisApp = definition.refs?.appId ? definition.refs.appId === appId : definition.app === app.name;
+    if (!ofThisApp || (trigger.type && trigger.type !== typeName)) {
       throw new ConflictException(
         `"${target.name}" takes ${trigger.type ?? "entities"} of "${definition.app ?? "no App"}", not ${typeName} of "${app.name}"`,
       );
@@ -216,6 +220,7 @@ export class EntityActionsService {
   /** entity.changed, by me: the App's pipelines watching the type start (the api queues it for the worker). */
   private async tell(
     userId: string,
+    appId: string,
     app: AppDefinition,
     type: string,
     key: string,
@@ -227,12 +232,12 @@ export class EntityActionsService {
     await this.queue.enqueueEvent({
       userId,
       event: "entity.changed",
-      data: { app: app.name, type, key, item, before, changed, by: "me", stage },
+      data: { app: app.name, appId, type, key, item, before, changed, by: "me", stage },
       source: { depth: 0 },
     });
   }
 
-  private async app(userId: string, appId: string, typeName: string): Promise<{ app: AppDefinition; type: DataType }> {
+  private async app(userId: string, appId: string, typeName: string): Promise<{ app: AppDefinition; type: DataType; refs: AppRefs | null }> {
     const row = await this.prisma.client.app.findFirst({ where: { appId, userId } });
     const version = row?.currentVersionId
       ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: row.currentVersionId } })
@@ -241,7 +246,7 @@ export class EntityActionsService {
     const app = readAppSource(version.source);
     const type = Object.hasOwn(app.types, typeName) ? app.types[typeName] : undefined;
     if (!type) throw new NotFoundException(`"${app.name}" has no type "${typeName}"`);
-    return { app, type };
+    return { app, type, refs: version.refs as AppRefs | null };
   }
 
   private async entity(appId: string, type: string, key: string): Promise<DataEntity> {

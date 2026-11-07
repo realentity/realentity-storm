@@ -81,6 +81,7 @@ export async function moveJob(
   const item = jobItem(job, { ...entity, stage: to, mine: mine as Prisma.JsonObject });
   await context.emit?.("entity.changed", {
     app: job.app,
+    appId: job.appId,
     type: JOB_ENTITY.type,
     key: entity.key,
     item,

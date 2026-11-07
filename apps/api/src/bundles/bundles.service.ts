@@ -9,6 +9,7 @@ import {
   type BundleExportView,
   type BundleItemView,
   type CompiledDefinition,
+  withCurrentNames,
 } from "@ai-me/shared";
 import { diffApps, diffDefinitions } from "@ai-me/steps";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
@@ -64,7 +65,9 @@ export class BundlesService {
       ? await this.prisma.client.pipelineVersion.findUnique({ where: { pipelineVersionId: pipeline.currentVersionId } })
       : null;
     if (!pipeline || !version) throw new NotFoundException();
-    return { filename: `${fileName(pipeline.name)}.yaml`, text: definitionToSource(version.definition as unknown as CompiledDefinition) };
+    // M39-T4: with the names things have now.
+    const definition = withCurrentNames(version.definition as unknown as CompiledDefinition, await this.apps.currentNames(userId), pipeline.name);
+    return { filename: `${fileName(pipeline.name)}.yaml`, text: definitionToSource(definition) };
   }
 
   private async read(userId: string, text: string) {

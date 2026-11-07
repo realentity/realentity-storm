@@ -143,14 +143,15 @@ describe("apps", () => {
         ]) as unknown,
       },
     ]);
-    const renamed = await agent
-      .put(`/api/apps/${app.appId}`)
-      .send({ source: APP.replace("name: Job Search", "name: Jobs") })
-      .expect(409);
-    expect((renamed.body as AppSaveRefusal).pipelines?.[0]?.errors).toEqual([
-      { path: "app", message: 'there is no App named "Job Search"' },
-    ]);
     expect(((await agent.get(`/api/apps/${app.appId}`).expect(200)).body as AppDetailView).version).toBe(1);
+    // M39: a rename is no break: the pipeline keeps the App by id (it was refused before).
+    const renamed = (
+      await agent
+        .put(`/api/apps/${app.appId}`)
+        .send({ source: APP.replace("name: Job Search", "name: Jobs") })
+        .expect(200)
+    ).body as AppDetailView;
+    expect(renamed).toMatchObject({ name: "Jobs", version: 2, pipelines: [expect.objectContaining({ pipelineId: pipeline.pipelineId })] });
   });
 
   // M35-I1: a draft checked as I edit it, nothing saved

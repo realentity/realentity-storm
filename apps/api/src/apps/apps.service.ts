@@ -1,6 +1,12 @@
 import { Prisma } from "@ai-me/db";
 import {
   appMap,
+  withCurrentNames,
+  withCurrentRuns,
+  type CurrentNames,
+  namedPipelines,
+  type AppRefs,
+  type DefinitionRefs,
   type AppMapView,
   checkAppSource,
   definitionToSource,
@@ -123,8 +129,12 @@ export class AppsService {
     const versions = await this.prisma.client.pipelineVersion.findMany({
       where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
     });
-    const definitions = versions.map((v) => v.definition as unknown as CompiledDefinition).filter((d) => d.app === app.name);
-    return { name: app.name, source: version.source, pipelines: definitions };
+    const names = await this.currentNames(userId);
+    const definitions = versions
+      .map((v) => ({ v, definition: v.definition as unknown as CompiledDefinition }))
+      .filter(({ definition }) => belongsTo(definition, app.appId, app.name))
+      .map(({ v, definition }) => withCurrentNames(definition, names, pipelines.find((p) => p.pipelineId === v.pipelineId)?.name));
+    return { name: app.name, source: withCurrentRuns(version.source, version.refs as AppRefs | null, names), pipelines: definitions };
   }
 
   /** M34: the App of that name, with its id and current version's definition; null when there is none. */
@@ -148,7 +158,72 @@ export class AppsService {
     } catch {
       return this.compiler.compileText(source);
     }
-    return this.compiler.compile(parsed, await this.contextFor(userId, parsed));
+    const result = this.compiler.compile(parsed, await this.contextFor(userId, parsed));
+    if (result.ok) {
+      // M39-T2: what it names, by id; a pipeline it names that isn't there yet is a warning, found by name when it runs.
+      const { refs, missing } = await this.refsOf(userId, result.definition);
+      result.definition.refs = refs;
+      for (const name of missing) {
+        result.warnings.push({ path: "", message: `There is no pipeline named "${name}" yet: it is looked up by name when this runs` });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * M39-T5: what refers to a pipeline, by id: other pipelines (their run.finished trigger, a flow.later step) and Apps'
+   * buttons, as their current versions say.
+   */
+  async referrersOf(userId: string, pipelineId: string): Promise<string[]> {
+    const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null }, pipelineId: { not: pipelineId } } });
+    const versions = await this.prisma.client.pipelineVersion.findMany({ where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } } });
+    const followers: string[] = [];
+    for (const pipeline of pipelines) {
+      const definition = versions.find((v) => v.pipelineVersionId === pipeline.currentVersionId)?.definition as unknown as CompiledDefinition | undefined;
+      const names = Object.entries(definition?.refs?.pipelines ?? {}).filter(([, id]) => id === pipelineId).map(([name]) => name);
+      if (names.length === 0 || !definition) continue;
+      const how = namedPipelines({ trigger: definition.trigger, steps: [] }).some((n) => names.includes(n)) ? "its trigger" : "a flow.later step";
+      followers.push(`"${pipeline.name}" (${how})`);
+    }
+    const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } } });
+    const appVersions = await this.prisma.client.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
+    for (const app of apps) {
+      const refs = appVersions.find((v) => v.appVersionId === app.currentVersionId)?.refs as AppRefs | null | undefined;
+      if (Object.values(refs?.pipelines ?? {}).includes(pipelineId)) followers.push(`a button of "${app.name}"`);
+    }
+    return followers;
+  }
+
+  /** M39-T4: the names my Apps and saved pipelines have now, by id: what a definition is shown with. */
+  async currentNames(userId: string): Promise<CurrentNames> {
+    const [apps, pipelines] = await Promise.all([
+      this.prisma.client.app.findMany({ where: { userId }, select: { appId: true, name: true } }),
+      this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } }, select: { pipelineId: true, name: true } }),
+    ]);
+    return {
+      apps: Object.fromEntries(apps.map((a) => [a.appId, a.name])),
+      pipelines: Object.fromEntries(pipelines.map((p) => [p.pipelineId, p.name])),
+    };
+  }
+
+  /** M39-T2: the App and the saved pipelines a definition names, by id. */
+  async refsOf(userId: string, definition: CompiledDefinition): Promise<{ refs: DefinitionRefs; missing: string[] }> {
+    const app = definition.app ? await this.prisma.client.app.findUnique({ where: { userId_name: { userId, name: definition.app } } }) : null;
+    const names = namedPipelines(definition);
+    const found = names.length
+      ? await this.prisma.client.pipeline.findMany({ where: { userId, name: { in: names }, currentVersionId: { not: null } } })
+      : [];
+    const pipelines = Object.fromEntries(found.map((p) => [p.name, p.pipelineId]));
+    return { refs: { ...(app ? { appId: app.appId } : {}), pipelines }, missing: names.filter((n) => !(n in pipelines)) };
+  }
+
+  /** M39-T2: the pipelines an App's buttons run (its pages' actions), by id; those not saved yet are left to their name. */
+  async appRefsOf(userId: string, definition: AppDefinition): Promise<AppRefs> {
+    const names = [...new Set(definition.pages.flatMap((p) => ("actions" in p ? p.actions.map((a) => a.run) : [])))];
+    const found = names.length
+      ? await this.prisma.client.pipeline.findMany({ where: { userId, name: { in: names }, currentVersionId: { not: null } } })
+      : [];
+    return { pipelines: Object.fromEntries(found.map((p) => [p.name, p.pipelineId])) };
   }
 
   async list(userId: string): Promise<AppSummaryView[]> {
@@ -187,13 +262,15 @@ export class AppsService {
     if (!app) throw new NotFoundException();
     const current = app.versions.find((v) => v.appVersionId === app.currentVersionId);
     if (!current) throw new NotFoundException();
-    const definition = readAppSource(current.source);
+    // M39-T4: its buttons' pipelines under their names now.
+    const source = withCurrentRuns(current.source, current.refs as AppRefs | null, await this.currentNames(userId));
+    const definition = readAppSource(source);
     const summary = (await this.list(userId)).find((a) => a.appId === appId)!;
     return {
       ...summary,
       definition,
       imports: await this.imports.available(userId, definition),
-      source: current.source,
+      source,
       versions: app.versions.map((v) => ({ version: v.version, changeSummary: v.changeSummary, dateCreated: v.dateCreated.toISOString() })),
     };
   }
@@ -222,10 +299,11 @@ export class AppsService {
 
   async create(userId: string, source: string): Promise<AppDetailView> {
     const definition = parseApp(source);
+    const refs = toJson(await this.appRefsOf(userId, definition));
     const appId = await this.unique(() =>
       this.prisma.client.$transaction(async (tx) => {
         const app = await tx.app.create({ data: { userId, name: definition.name } });
-        const version = await tx.appVersion.create({ data: { appId: app.appId, version: 1, definition: toJson(definition), source } });
+        const version = await tx.appVersion.create({ data: { appId: app.appId, version: 1, definition: toJson(definition), source, refs } });
         await tx.app.update({ where: { appId: app.appId }, data: { currentVersionId: version.appVersionId } });
         return app.appId;
       }),
@@ -247,7 +325,7 @@ export class AppsService {
     const changes = diffApps(readAppSource(current.source), definition);
     if (changes.length === 0) throw new UnprocessableEntityException("No changes compared to the current version");
 
-    const broken = await this.brokenPipelines(userId, app.name, definition);
+    const broken = await this.brokenPipelines(userId, app.appId, app.name, definition);
     if (broken.length > 0) {
       const refusal: AppSaveRefusal = {
         message: `It would break ${broken.length === 1 ? `"${broken[0].name}"` : `${broken.length} pipelines`}: change ${broken.length === 1 ? "it" : "them"} first, or keep what they use`,
@@ -256,10 +334,11 @@ export class AppsService {
       };
       throw new ConflictException(refusal);
     }
+    const refs = toJson(await this.appRefsOf(userId, definition));
     await this.unique(() =>
       this.prisma.client.$transaction(async (tx) => {
         const version = await tx.appVersion.create({
-          data: { appId, version: current.version + 1, definition: toJson(definition), source, changeSummary: changes.join("\n") },
+          data: { appId, version: current.version + 1, definition: toJson(definition), source, changeSummary: changes.join("\n"), refs },
         });
         await tx.app.update({ where: { appId }, data: { currentVersionId: version.appVersionId, name: definition.name } });
       }),
@@ -279,9 +358,14 @@ export class AppsService {
     const current = app?.currentVersionId
       ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
       : null;
-    const pipelines = await this.brokenPipelines(userId, app?.name ?? definition.name, definition);
+    const pipelines = await this.brokenPipelines(userId, app?.appId ?? null, app?.name ?? definition.name, definition);
     const changes = current ? diffApps(readAppSource(current.source), definition) : [];
-    return { ok: pipelines.length === 0, errors: [], pipelines, changes };
+    // M39-T5: a rename says what follows it.
+    const renamed =
+      app && definition.name !== app.name
+        ? { from: app.name, to: definition.name, followers: (await this.forBuilder(userId, app.appId)).pipelines.map((p) => p.name).sort((a, b) => a.localeCompare(b)) }
+        : undefined;
+    return { ok: pipelines.length === 0, errors: [], pipelines, changes, ...(renamed ? { renamed } : {}) };
   }
 
   async entities(userId: string, appId: string, typeName: string, query: EntityQuery): Promise<EntityListView> {
@@ -346,10 +430,15 @@ export class AppsService {
 
   /** M35-T5: the pipelines naming the App (by its name now) that wouldn't compile against this definition, but these. */
   async brokenBy(userId: string, name: string, definition: AppDefinition, except: string[] = []) {
-    return (await this.brokenPipelines(userId, name, definition)).filter((p) => !except.includes(p.name));
+    const app = await this.prisma.client.app.findUnique({ where: { userId_name: { userId, name } } });
+    return (await this.brokenPipelines(userId, app?.appId ?? null, name, definition)).filter((p) => !except.includes(p.name));
   }
 
-  private async brokenPipelines(userId: string, name: string, definition: AppDefinition) {
+  /**
+   * The App's pipelines (M39-T3: by the id their version was saved with, else by name) compiled against a version of
+   * it; under its new name when it is renamed, as the pipelines will then show it (M39-T4).
+   */
+  private async brokenPipelines(userId: string, appId: string | null, name: string, definition: AppDefinition) {
     const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } } });
     const versions = await this.prisma.client.pipelineVersion.findMany({
       where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
@@ -357,8 +446,8 @@ export class AppsService {
     const broken: { pipelineId: string; name: string; errors: AppIssue[] }[] = [];
     for (const version of versions) {
       const compiled = version.definition as unknown as CompiledDefinition;
-      if (compiled.app !== name) continue;
-      const result = this.compiler.compileText(definitionToSource(compiled), { app: definition });
+      if (!belongsTo(compiled, appId, name)) continue;
+      const result = this.compiler.compileText(definitionToSource({ ...compiled, app: definition.name }), { app: definition });
       if (!result.ok) {
         const pipeline = pipelines.find((p) => p.pipelineId === version.pipelineId)!;
         broken.push({ pipelineId: pipeline.pipelineId, name: pipeline.name, errors: result.errors });
@@ -377,11 +466,14 @@ export class AppsService {
       where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
       select: { pipelineVersionId: true, definition: true },
     });
+    const appNames = new Map((await this.prisma.client.app.findMany({ where: { userId } })).map((a) => [a.appId, a.name]));
     const byApp = new Map<string, { pipelineId: string; name: string; enabled: boolean }[]>();
     for (const pipeline of pipelines) {
-      const app = (
-        versions.find((v) => v.pipelineVersionId === pipeline.currentVersionId)?.definition as unknown as CompiledDefinition | undefined
-      )?.app;
+      const compiled = versions.find((v) => v.pipelineVersionId === pipeline.currentVersionId)?.definition as unknown as
+        | CompiledDefinition
+        | undefined;
+      // M39-T3: the App its version was saved with, by id (renamed since, it is under its name now); else by name.
+      const app = compiled?.refs?.appId ? appNames.get(compiled.refs.appId) : compiled?.app;
       if (!app) continue;
       byApp.set(app, [...(byApp.get(app) ?? []), { pipelineId: pipeline.pipelineId, name: pipeline.name, enabled: pipeline.enabled }]);
     }
@@ -457,4 +549,9 @@ function isObjectList(value: unknown): value is Item[] {
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
+}
+
+/** M39-T3: is a saved pipeline one of the App's? By the id its version was saved with, else (before M39) by name. */
+function belongsTo(definition: CompiledDefinition, appId: string | null, name: string): boolean {
+  return definition.refs?.appId && appId ? definition.refs.appId === appId : definition.app === name;
 }

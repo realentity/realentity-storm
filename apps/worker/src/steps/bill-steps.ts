@@ -141,6 +141,7 @@ export class BillSaveStep implements StepExecutor {
       if (!existing) {
         await context.emit?.("entity.changed", {
           app: app.name,
+          appId,
           type: "Bill",
           key: billKey,
           item: { ...value, status: "due" },

@@ -14,7 +14,10 @@ export async function appType(
   typeName: string,
 ): Promise<{ appId: string; app: AppDefinition; type: DataType }> {
   if (!context.app) throw new Error(`${typeName} is an App's type, and this pipeline has no app:`);
-  const row = await prisma.app.findUnique({ where: { userId_name: { userId: context.userId, name: context.app } } });
+  // M39-T3: by the id its version was saved with, so a renamed App is still found; by name before M39.
+  const row = context.appId
+    ? await prisma.app.findFirst({ where: { appId: context.appId, userId: context.userId } })
+    : await prisma.app.findUnique({ where: { userId_name: { userId: context.userId, name: context.app } } });
   const version = row?.currentVersionId ? await prisma.appVersion.findUnique({ where: { appVersionId: row.currentVersionId } }) : null;
   if (!row || !version) throw new Error(`There is no App named "${context.app}"`);
   const app = readAppSource(version.source);
@@ -122,7 +125,7 @@ export async function saveEntities(
       prisma.dataEntity.updateMany({ where: { dataEntityId: { in: gone.map((e) => e.dataEntityId) } }, data: { removedAt: now } }),
     ]);
     for (const event of events) {
-      await context.emit?.("entity.changed", { app: app.name, type: typeName, ...event, by: "pipeline" });
+      await context.emit?.("entity.changed", { app: app.name, appId, type: typeName, ...event, by: "pipeline" });
       // A Job reaching an application's stage still tells application.status (M33): its pipelines start on it.
       const move = event.stage as { to: string } | null;
       const isJob = typeName === JOB_ENTITY.type && contractProblems(type, JOB_ENTITY).length === 0;

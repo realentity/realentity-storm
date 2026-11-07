@@ -28,6 +28,8 @@ export class LaterStarts {
   async schedule(request: {
     userId: string;
     pipeline: string;
+    /** M39-T3: the pipeline's id, when the version that names it resolved it; else it is found by name. */
+    pipelineId?: string;
     fireAt: Date;
     data: Record<string, unknown>;
     key?: string;
@@ -35,7 +37,9 @@ export class LaterStarts {
     scheduledByRunId: string;
   }): Promise<{ scheduledStartId: string; replaced: number }> {
     if (request.fireAt.getTime() - Date.now() > MAX_DELAY_MS) throw new Error("flow.later waits at most a year");
-    const target = await this.prisma.pipeline.findFirst({ where: { userId: request.userId, name: request.pipeline } });
+    const target = await this.prisma.pipeline.findFirst({
+      where: request.pipelineId ? { userId: request.userId, pipelineId: request.pipelineId } : { userId: request.userId, name: request.pipeline },
+    });
     if (!target) throw new Error(`There is no pipeline named "${request.pipeline}" to start later`);
     const version = target.currentVersionId
       ? await this.prisma.pipelineVersion.findUnique({ where: { pipelineVersionId: target.currentVersionId } })

@@ -200,6 +200,7 @@ model Pipeline {
   pipelineId       String   @id @default(uuid()) @db.Uuid
   userId           String   @db.Uuid
   user             User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// Unique per user among saved pipelines (M39-T1): a partial unique index in its migration, which Prisma can't express.
   name             String
   enabled          Boolean  @default(false) // runs on its schedule
   /// Keeps running when the monthly LLM budget is exhausted (README §5).
@@ -881,6 +882,8 @@ model AppVersion {
   /// The YAML as I wrote it: the fields' order and my comments. What the App is read from (readAppSource).
   source        String
   changeSummary String?
+  /// M39-T2: AppRefs: the pipelines its buttons run, by id, as resolved when it was saved. Null before M39.
+  refs          Json?
   dateCreated   DateTime @default(now())
 
   @@unique([appId, version])

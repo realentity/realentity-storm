@@ -450,5 +450,7 @@ ${catalog}`;
 
 /** A saved version as a definition to compile again: the gates it got are inserted again. */
 function definitionAsAuthored(definition: CompiledDefinition): Record<string, unknown> {
-  return { ...definition, steps: definition.steps.filter((s) => !s.autoInserted).map(({ autoInserted: _, ...step }) => step) };
+  // Its refs (M39-T2) are what saving resolved, not what was written.
+  const { refs: _refs, ...authored } = definition;
+  return { ...authored, steps: definition.steps.filter((s) => !s.autoInserted).map(({ autoInserted: _, ...step }) => step) };
 }

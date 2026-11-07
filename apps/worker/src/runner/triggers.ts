@@ -1,7 +1,7 @@
 import { open, type KeyRing } from "@ai-me/crypto";
 import { type PrismaClient } from "@ai-me/db";
 import { type EventJob, type JobQueue, type LaterJob, type WebhookJob } from "@ai-me/queue";
-import { isEventTrigger, isWebhookTrigger, type CompiledDefinition, type EventTrigger } from "@ai-me/shared";
+import { isEventTrigger, isWebhookTrigger, type CompiledDefinition, type DefinitionRefs, type EventTrigger } from "@ai-me/shared";
 import { Logger } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { type LaterStarts } from "./later";
@@ -37,8 +37,8 @@ export class Triggers {
     }
     if (await this.paused(job.userId)) return [];
     const started: string[] = [];
-    for (const { pipelineId, name, versionId, trigger, app } of await this.enabled(job.userId)) {
-      if (!isEventTrigger(trigger) || !matches(trigger, job, app)) continue;
+    for (const { pipelineId, name, versionId, trigger, app, refs } of await this.enabled(job.userId)) {
+      if (!isEventTrigger(trigger) || !matches(trigger, job, app, refs)) continue;
       if (pipelineId === job.source.pipelineId) {
         this.logger.warn(`"${name}" is triggered by its own ${job.event}: not started`);
         continue;
@@ -132,18 +132,25 @@ export class Triggers {
     return pipelines.flatMap((p) => {
       const version = byId.get(p.currentVersionId!);
       if (!version) return [];
-      const { trigger, app } = version.definition as unknown as CompiledDefinition;
-      return [{ pipelineId: p.pipelineId, name: p.name, versionId: version.pipelineVersionId, trigger, app }];
+      const { trigger, app, refs } = version.definition as unknown as CompiledDefinition;
+      return [{ pipelineId: p.pipelineId, name: p.name, versionId: version.pipelineVersionId, trigger, app, refs }];
     });
   }
 }
 
-function matches(trigger: EventTrigger, job: EventJob, app: string | undefined): boolean {
+/**
+ * M39-T3: what an event is about is matched by id where both sides have one (the finished pipeline, the changed
+ * entity's App), so a rename breaks nothing; by name for a version saved before M39 or a name that had no pipeline yet.
+ */
+function matches(trigger: EventTrigger, job: EventJob, app: string | undefined, refs: DefinitionRefs | undefined): boolean {
   if (trigger.on !== job.event) return false;
   const data = job.data;
   switch (trigger.on) {
-    case "run.finished":
-      return data.pipeline === trigger.pipeline && (trigger.status ?? ["DONE"]).includes(data.status as "DONE");
+    case "run.finished": {
+      const target = refs?.pipelines[trigger.pipeline];
+      const same = target && job.source.pipelineId ? target === job.source.pipelineId : data.pipeline === trigger.pipeline;
+      return same && (trigger.status ?? ["DONE"]).includes(data.status as "DONE");
+    }
     case "application.status":
       return !trigger.status || trigger.status.includes(data.status as (typeof trigger.status)[number]);
     case "recipe.broken":
@@ -159,7 +166,7 @@ function matches(trigger: EventTrigger, job: EventJob, app: string | undefined):
     case "entity.changed":
       // Only a pipeline of the same App watches its types (M30).
       return (
-        app === data.app &&
+        (refs?.appId && typeof data.appId === "string" ? refs.appId === data.appId : app === data.app) &&
         data.type === trigger.type &&
         (!trigger.field || (Array.isArray(data.changed) && data.changed.includes(trigger.field))) &&
         (!trigger.stage || (data.stage as { to?: string } | null)?.to === trigger.stage)

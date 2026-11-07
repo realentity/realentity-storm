@@ -8,6 +8,7 @@ import { CompileErrors, DiffList, PlanView, StepGraphView } from "../components/
 import { StepCards } from "../components/StepCards";
 import { TryHere } from "../components/TryHere";
 import { BuilderMarksBanner, EditorChat } from "../components/EditorChat";
+import { RenameNote } from "../components/RenameNote";
 import { focusOf } from "../lib/focus";
 import { pipelineMarks, type BuilderMarks } from "../lib/builder-marks";
 import { DataPicker } from "../components/DataPicker";
@@ -244,6 +245,11 @@ export function PipelineEditorPage() {
             )}
             {tab === "cards" ? (
               <div onFocusCapture={(e) => setFocus(focusOf(e.target))}>
+                {checked?.source === text && checked.response.renamed && (
+                  <div className="card-body pb-0">
+                    <RenameNote renamed={checked.response.renamed} what="reference" />
+                  </div>
+                )}
                 <StepCards
                   marked={marks?.marked}
                   source={text}

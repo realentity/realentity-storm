@@ -1,3 +1,4 @@
+import { type RenameView } from "./pipeline-api";
 import { isMap, isScalar, isSeq, LineCounter, parseDocument, type Document } from "yaml";
 import { z } from "zod";
 import { AppDefinitionSchema, type AppDefinition, type AppIssue } from "./app";
@@ -181,6 +182,8 @@ export interface AppCheckView {
   pipelines: { pipelineId: string; name: string; errors: AppIssue[] }[];
   /** What the draft changes against the current version; empty for a new App. */
   changes: string[];
+  /** M39-T5: the draft renames the App: its pipelines, which follow the new name. */
+  renamed?: RenameView;
 }
 
 /** A replaced node keeps the comment on its line. */

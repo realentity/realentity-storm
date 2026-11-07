@@ -27,6 +27,8 @@ export class FlowLaterStep implements StepExecutor {
     const { scheduledStartId, replaced } = await this.later.schedule({
       userId: context.userId,
       pipeline,
+      // M39-T3: the id its version was saved with, so a renamed pipeline is still the one started.
+      ...(context.pipelineIds?.[pipeline] ? { pipelineId: context.pipelineIds[pipeline] } : {}),
       fireAt,
       data,
       ...(key ? { key } : {}),

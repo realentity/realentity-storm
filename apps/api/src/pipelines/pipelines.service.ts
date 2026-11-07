@@ -9,6 +9,7 @@ import {
   type CompileIssue,
   type CompileResult,
   type DryRunPipelineResponse,
+  withCurrentNames,
   type PipelineDetailView,
   type PipelineSummaryView,
   type PipelineVersionSummaryView,
@@ -50,12 +51,19 @@ export class PipelinesService {
     if (!result.ok || !pipelineId) return { result };
     const current = await this.currentVersion(userId, pipelineId);
     if (!current) return { result };
-    return { result, diff: diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition) };
+    // M39-T5: a rename says what follows it.
+    const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
+    const renamed =
+      pipeline && result.definition.name !== pipeline.name
+        ? { from: pipeline.name, to: result.definition.name, followers: await this.apps.referrersOf(userId, pipelineId) }
+        : undefined;
+    return { result, diff: diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition), ...(renamed ? { renamed } : {}) };
   }
 
   /** `builderChatId`: the builder chat the source came from (README §2.1), kept with the version. */
   async create(userId: string, source: string, builderChatId?: string): Promise<PipelineDetailView> {
     const compiled = await this.compileOrThrow(userId, source);
+    await this.assertNameFree(userId, compiled.definition.name);
     const pipeline = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.pipeline.create({ data: { userId, name: compiled.definition.name } });
       const version = await tx.pipelineVersion.create({
@@ -81,6 +89,7 @@ export class PipelinesService {
     const compiled = await this.compileOrThrow(userId, source);
     const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
     if (!pipeline) throw new NotFoundException();
+    await this.assertNameFree(userId, compiled.definition.name, pipelineId);
     const current = await this.currentVersion(userId, pipelineId);
     const diff = current ? diffDefinitions(current.definition as unknown as CompiledDefinition, compiled.definition) : null;
     if (diff?.changes.length === 0) throw new UnprocessableEntityException("No changes compared to the current version");
@@ -201,10 +210,16 @@ export class PipelinesService {
     if (!pipeline) throw new NotFoundException();
     const current = pipeline.versions.find((v) => v.pipelineVersionId === pipeline.currentVersionId) ?? null;
     const draft = pipeline.versions.find((v) => !v.savedAt) ?? null;
+    // M39-T4: the current version and the draft with the names things have now (the editor opens them); history as saved.
+    const names = await this.apps.currentNames(userId);
+    const now = (v: PipelineVersion) => {
+      const view = versionView(v);
+      return { ...view, definition: withCurrentNames(view.definition, names, pipeline.currentVersionId ? pipeline.name : undefined) };
+    };
     return {
       ...summary(pipeline, current?.version ?? null, draft !== null),
-      current: current ? versionView(current) : null,
-      draft: draft ? versionView(draft) : null,
+      current: current ? now(current) : null,
+      draft: draft ? now(draft) : null,
       versions: pipeline.versions.filter((v) => v.savedAt).map(versionSummary),
       cost: await pipelineCost(this.prisma, pipelineId, (current?.definition as CompiledDefinition | undefined) ?? null),
     };
@@ -251,6 +266,17 @@ export class PipelinesService {
   }
 
   /** Two saves (or drafts) at once collide on the version number. */
+  /**
+   * M39-T1: a saved pipeline's name is its own (other pipelines, buttons and the builder name it). A draft that was
+   * never saved may share one: it gets it only when saved.
+   */
+  private async assertNameFree(userId: string, name: string, pipelineId?: string): Promise<void> {
+    const taken = await this.prisma.client.pipeline.findFirst({
+      where: { userId, name, currentVersionId: { not: null }, ...(pipelineId ? { pipelineId: { not: pipelineId } } : {}) },
+    });
+    if (taken) throw new ConflictException(`There is already a pipeline named "${name}": give this one another name`);
+  }
+
   private async guardConcurrentSave<T>(work: () => Promise<T>): Promise<T> {
     try {
       return await work();

@@ -8,6 +8,7 @@ import { Issues } from "../components/AppIssues";
 import { DraftTypeCard } from "../components/DraftTypeCard";
 import { BuilderMarksBanner, EditorChat } from "../components/EditorChat";
 import { PagesDesigner } from "../components/PagesDesigner";
+import { RenameNote } from "../components/RenameNote";
 import { appMarks, type BuilderMarks } from "../lib/builder-marks";
 import { focusOf } from "../lib/focus";
 import { StagesDesigner } from "../components/StagesDesigner";
@@ -348,6 +349,7 @@ function CheckCard({ check, isNew }: { check: ReturnType<typeof useCheck>; isNew
             ))}
           </div>
         )}
+        {view?.renamed && <RenameNote renamed={view.renamed} what="pipeline" />}
         {!isNew && view && view.errors.length === 0 && (
           <div data-testid="app-changes">
             <div className="fw-bold mb-1">What changes</div>

@@ -71,7 +71,12 @@ export class Counting implements StepExecutor {
 export async function createVersion(prisma: PrismaClient, userId: string, source: string, using = compiler, context: CompileContext = {}): Promise<string> {
   const result = using.compileText(source, context);
   if (!result.ok) throw new Error(result.errors.map((e) => `${e.path}: ${e.message}`).join("\n"));
-  const pipeline = await prisma.pipeline.create({ data: { userId, name: result.definition.name } });
+  // M39-T1: a saved pipeline's name is its own; a test's second one of a name gets " (2)", as the migration names them.
+  let name = result.definition.name;
+  for (let n = 2; await prisma.pipeline.findFirst({ where: { userId, name, currentVersionId: { not: null } } }); n++) {
+    name = `${result.definition.name} (${n})`;
+  }
+  const pipeline = await prisma.pipeline.create({ data: { userId, name } });
   const v = await prisma.pipelineVersion.create({
     data: {
       pipelineId: pipeline.pipelineId,

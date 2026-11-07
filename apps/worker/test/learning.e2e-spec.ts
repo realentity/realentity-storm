@@ -308,7 +308,8 @@ describe("learning from my decisions (M6)", () => {
       expect(prompt).toContain("My reason: Agency, not a direct client");
       expect(prompt).toContain("<proposed>\nI hope this finds you well.");
       expect(prompt).toContain("<approved>\nThank you for reaching out about the role. (0)");
-      expect(prompt).toContain("Approved without changes in this period: Recruiter and client replies: 1.");
+      // The pipeline is one of several of that name in this file: " (n)" since M39-T1.
+      expect(prompt).toMatch(/Approved without changes in this period: Recruiter and client replies( \(\d+\))?: 1\./);
       // One at a time: a second request while one is running starts nothing.
       await expect(reflector().submit(userId)).resolves.toBeNull();
     });

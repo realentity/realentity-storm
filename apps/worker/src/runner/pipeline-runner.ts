@@ -671,6 +671,8 @@ export class PipelineRunner {
       itemIndex: row.itemIndex,
       dryRun: state.dryRun,
       ...(state.definition.app ? { app: state.definition.app } : {}),
+      ...(state.definition.refs?.appId ? { appId: state.definition.refs.appId } : {}),
+      pipelineIds: state.definition.refs?.pipelines ?? {},
       recordUsage,
       budgetStops: () => this.controls.budgetStops(state.controlled),
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],

@@ -10,6 +10,7 @@ import { TelegramBot } from "../src/telegram/telegram-bot";
 import { TELEGRAM_CHAT_IDLE_MS } from "../src/telegram/telegram-builder";
 import { TELEGRAM_FETCH } from "../src/telegram/telegram-notices";
 import { propose, say, ScriptedChat } from "./support/scripted-chat";
+import { freeName } from "./support/names";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const TEST_STEPS: StepDefinition[] = [
@@ -121,7 +122,7 @@ describe("M12: the AI ME bot and webhooks", () => {
   };
 
   async function createPipeline(source: string, enabled = false): Promise<PipelineDetailView> {
-    const pipeline = (await agent.post("/api/pipelines").send({ source }).expect(201)).body as PipelineDetailView;
+    const pipeline = (await agent.post("/api/pipelines").send({ source: await freeName(db, source) }).expect(201)).body as PipelineDetailView;
     if (enabled) await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
     return pipeline;
   }

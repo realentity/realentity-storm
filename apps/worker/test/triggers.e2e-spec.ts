@@ -1,6 +1,7 @@
 import { KeyRing, seal } from "@ai-me/crypto";
 import { createPrismaConnection, type PrismaConnection, type RunStatus } from "@ai-me/db";
 import { JobQueue, QUEUES, type EventJob } from "@ai-me/queue";
+import { AppDefinitionSchema } from "@ai-me/shared";
 import { TestEnvironment } from "@ai-me/testing";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { JobHandlers } from "../src/jobs/job-handlers";
@@ -164,6 +165,43 @@ describe("M12: event and webhook triggers", () => {
     expect(await triggers.fire(event({ pipeline: "Search", status: "DONE", outputs: {} }))).toEqual([]);
     await db.client.userSetting.update({ where: { userId }, data: { paused: false } });
     expect(await triggers.fire(event({ pipeline: "Search", status: "DONE", outputs: {} }))).toHaveLength(1);
+  });
+
+  // M39-T3: what an event is about is matched by the ids the version was saved with, so a rename breaks nothing
+  it("matches the pipeline and the App by id: renamed, they still start it; another of the old name doesn't", async () => {
+    const searchId = "00000000-0000-4000-8000-0000000000a1";
+    const versionId = await enabled(AFTER_SEARCH);
+    // As the api saves it (M39-T2): the pipeline it names, by id.
+    await db.client.$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { pipelines: { Search: searchId } } })}::jsonb WHERE "pipelineVersionId" = ${versionId}::uuid`;
+    const finishedBy = (pipelineId: string, name: string): EventJob => ({
+      userId,
+      event: "run.finished",
+      data: { pipeline: name, status: "DONE", outputs: {} },
+      source: { runId: "00000000-0000-4000-8000-000000000001", pipelineId, depth: 0 },
+    });
+    expect(await triggers.fire(finishedBy(searchId, "Search renamed"))).toHaveLength(1);
+    expect(await triggers.fire(finishedBy("00000000-0000-4000-8000-0000000000b2", "Search"))).toEqual([]);
+
+    const appId = "00000000-0000-4000-8000-0000000000c3";
+    const shelf = AppDefinitionSchema.parse({ name: "Shelf", types: { Book: { key: "isbn", fields: { isbn: { type: "text", required: true } } } } });
+    const watcher = await createVersion(
+      db.client,
+      userId,
+      `name: Watch books\napp: Shelf\ntrigger: { on: entity.changed, type: Book }\nsteps:\n  - id: note\n    type: test.note\n    with: { text: "{{trigger.key}}" }\n`,
+      undefined,
+      { app: shelf },
+    );
+    const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: watcher } });
+    await db.client.pipeline.update({ where: { pipelineId }, data: { enabled: true } });
+    await db.client.$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { appId, pipelines: {} } })}::jsonb WHERE "pipelineVersionId" = ${watcher}::uuid`;
+    const changed = (app: string, id: string): EventJob => ({
+      userId,
+      event: "entity.changed",
+      data: { app, appId: id, type: "Book", key: "978-0", changed: ["title"] },
+      source: { depth: 0 },
+    });
+    expect(await triggers.fire(changed("Library", appId))).toHaveLength(1);
+    expect(await triggers.fire(changed("Shelf", "00000000-0000-4000-8000-0000000000d4"))).toEqual([]);
   });
 
   it("M12-S5: a pipeline never runs on its own event, and chains stop at depth 3", async () => {

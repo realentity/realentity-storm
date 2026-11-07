@@ -22,6 +22,7 @@ export * from "./pipeline";
 export * from "./pipeline-api";
 export * from "./pipeline-designer";
 export * from "./pipeline-source";
+export * from "./refs";
 export * from "./prices-api";
 export * from "./runs-api";
 export * from "./telegram";

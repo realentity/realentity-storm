@@ -12,6 +12,10 @@ export interface StepContext {
   dryRun: boolean;
   /** The pipeline's App (M30), by name: data.save { type } and data.read work on its entities. */
   app?: string;
+  /** M39-T3: its id, as resolved when the version was saved: what the App is found by (a rename breaks nothing). */
+  appId?: string;
+  /** M39-T3: the pipelines the version names (flow.later's), by name → id, as resolved when it was saved. */
+  pipelineIds?: Readonly<Record<string, string>>;
   /** LLM steps report each call's usage; it is saved on the step (Step.llmUsage), also when the step fails. */
   recordUsage(usage: LlmUsage): void;
   /**

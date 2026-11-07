@@ -68,6 +68,16 @@ export interface PipelineCostView {
 export interface CompilePipelineResponse {
   result: CompileResult;
   diff?: DefinitionDiff;
+  /** M39-T5: the draft renames the pipeline: what refers to it, which follows the new name. */
+  renamed?: RenameView;
+}
+
+/** M39-T5: a rename, and what refers to what is renamed (by id, so it follows the new name): said before Save. */
+export interface RenameView {
+  from: string;
+  to: string;
+  /** "Morning digest (its trigger)", "a button of Bills". */
+  followers: string[];
 }
 
 /** A JSON Schema (draft 2020-12) of a step's input or output, as `z.toJSONSchema` gives it. */

@@ -592,6 +592,11 @@ export interface AppImportResult {
   skipped: number;
 }
 
+/** M39-T2: the pipelines an App version's buttons run (`run:` of its pages' actions), by id, resolved when it was saved. */
+export interface AppRefs {
+  pipelines: Record<string, string>;
+}
+
 export interface AppDetailView extends AppSummaryView {
   definition: AppDefinition;
   imports: AppImportView[];

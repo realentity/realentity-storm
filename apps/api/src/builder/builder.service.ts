@@ -2,6 +2,7 @@ import { Prisma, type BuilderChat, type BuilderMessage } from "@ai-me/db";
 import { ModelRouter, type ChatMessage, type LlmChat, type LlmUsage } from "@ai-me/llm";
 import {
   definitionToSource,
+  withCurrentNames,
   EFFORTS,
   type BuilderChatFilter,
   type BuilderChatSummaryView,
@@ -245,13 +246,17 @@ export class BuilderService {
     });
     const history = earlier.flatMap((m) => (m.transcript as ChatMessage[] | null) ?? []);
     const current = await this.currentVersion(chat.pipelineId);
+    // M39-T4: the builder sees, and its proposals are compared with, the names things have now.
+    const pipelineRow = chat.pipelineId ? await this.prisma.client.pipeline.findUnique({ where: { pipelineId: chat.pipelineId } }) : null;
+    const currentDefinition = current
+      ? withCurrentNames(current.definition as unknown as CompiledDefinition, await this.apps.currentNames(userId), pipelineRow?.name)
+      : null;
 
     // What the builder sees: the current version when it hasn't seen it yet, a suggestion to apply, my message.
     const parts: string[] = [];
     if (current && !history.some((m) => m.role === "user" && JSON.stringify(m.content).includes(current.pipelineVersionId))) {
-      const definition = current.definition as unknown as CompiledDefinition;
       parts.push(
-        `<current_pipeline version="${current.version}" id="${current.pipelineVersionId}">\n${definitionToSource(definition)}</current_pipeline>`,
+        `<current_pipeline version="${current.version}" id="${current.pipelineVersionId}">\n${definitionToSource(currentDefinition!)}</current_pipeline>`,
       );
     }
     // M34: my Apps (names and their types' fields), and the App this chat is about, whole, with its pipelines.
@@ -283,7 +288,7 @@ export class BuilderService {
       choice: { model: chat.model, effort: (EFFORTS as readonly string[]).includes(chat.effort) ? (chat.effort as EffortName) : "high" },
       history,
       user,
-      current: (current?.definition as unknown as CompiledDefinition | undefined) ?? null,
+      current: currentDefinition,
       runs: chat.pipelineId ? this.runsOf(userId, chat.pipelineId) : null,
       system: chat.system ?? undefined,
       tokensLeft: this.env.BUILDER_CHAT_MAX_TOKENS - chat.tokensUsed,

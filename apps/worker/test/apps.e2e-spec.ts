@@ -126,6 +126,7 @@ describe("M30: entities", () => {
         event: "entity.changed",
         data: {
           app: "Job Search",
+          appId: expect.any(String) as unknown,
           type: "Job",
           key: "https://jobs.test/1",
           item: job(1, { salary: 5000 }),

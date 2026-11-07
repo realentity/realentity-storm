@@ -15,6 +15,7 @@ import { defaultCatalog, type StepDefinition } from "@ai-me/steps";
 import { TestEnvironment } from "@ai-me/testing";
 import request from "supertest";
 import { z } from "zod";
+import { freeName } from "./support/names";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 /** Stand-ins for later milestones' steps. */
@@ -93,7 +94,7 @@ describe("runs, proposals and controls", () => {
     db.client.$queryRaw<QueuedJob[]>`SELECT name, data FROM pgboss.job WHERE state = 'created' ORDER BY created_on`;
 
   async function createPipeline(source = REPLY): Promise<PipelineDetailView> {
-    return (await agent.post("/api/pipelines").send({ source }).expect(201)).body as PipelineDetailView;
+    return (await agent.post("/api/pipelines").send({ source: await freeName(db, source) }).expect(201)).body as PipelineDetailView;
   }
 
   /** What the worker leaves behind at a gate: a waiting run, the gate step, and its proposal. */

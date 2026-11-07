@@ -356,6 +356,23 @@ steps:
       return runId;
     };
 
+    // M39-I2's flow.later part: scheduled by the id its version was saved with, its target renamed since
+    it("starts the pipeline its version named, by id, after it was renamed", async () => {
+      const target = await db.client.pipeline.findFirstOrThrow({ where: { userId, enabled: true } });
+      const scheduler = await createVersion(db.client, userId, SCHEDULE(), compiler);
+      const named = (await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: scheduler } })).definition as {
+        steps: { with: { pipeline?: string } }[];
+      };
+      const name = named.steps.find((s) => s.with.pipeline)!.with.pipeline!;
+      await db.client.$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { pipelines: { [name]: target.pipelineId } } })}::jsonb WHERE "pipelineVersionId" = ${scheduler}::uuid`;
+      await db.client.pipeline.update({ where: { pipelineId: target.pipelineId }, data: { name: `${name} renamed` } });
+      const runId = await runner.start(scheduler, { trigger: "manual" });
+      expect(await runner.advance(runId)).toBe("DONE");
+      const row = await db.client.scheduledStart.findFirstOrThrow({ orderBy: { dateCreated: "desc" } });
+      expect(row.pipelineId).toBe(target.pipelineId);
+      expect(await fire(row.scheduledStartId)).toEqual(expect.any(String));
+    });
+
     it("starts the pipeline once, at its time, with the data", async () => {
       const row = await schedule();
       expect(row).toMatchObject({ status: "PENDING", key: "follow-up:app-1" });
