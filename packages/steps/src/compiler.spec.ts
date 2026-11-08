@@ -445,7 +445,8 @@ steps:
     // M4-T6: the hand-written pipelines in /pipelines stay valid.
     // M30: a pipeline of an App compiles against the App's definition in pipelines/apps.
     const apps = readdirSync(join(PIPELINES, "apps")).map((f) => readAppSource(readFileSync(join(PIPELINES, "apps", f), "utf8")));
-    it.each(readdirSync(PIPELINES).filter((f) => f.endsWith(".yaml")))("pipelines/%s compiles", (file) => {
+    // examples.yaml is the examples' manifest (M40), not a pipeline: its pipelines compile in apps/api's examples test.
+    it.each(readdirSync(PIPELINES).filter((f) => f.endsWith(".yaml") && f !== "examples.yaml"))("pipelines/%s compiles", (file) => {
       const text = readFileSync(join(PIPELINES, file), "utf8");
       const app = apps.find((a) => /^app: (.+)$/m.exec(text)?.[1]?.trim() === a.name);
       const result = ok(compiler.compileText(text, app ? { app } : {}));

@@ -49,7 +49,7 @@ export function AppsPage() {
           );
         })}
       </div>
-      <ExamplesGallery onInstalled={apps.reload} />
+      <ExamplesGallery apps={apps.data ?? []} onInstalled={apps.reload} />
     </>
   );
 }

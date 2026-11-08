@@ -46,7 +46,10 @@ export const ExamplesManifestSchema = z.object({ examples: z.array(ExampleSchema
 
 /** M40-T2: what is set up, for the examples' needs: the server's (email, Telegram, the LLM) and mine. */
 export interface SetupView {
+  /** Set up, and the last time mail was read it worked. */
   email: boolean;
+  /** Set up, but the last time mail was read it failed (a password Gmail no longer takes): why. */
+  emailProblem: string | null;
   googleCalendar: boolean;
   telegram: boolean;
   llm: boolean;

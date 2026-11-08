@@ -170,5 +170,55 @@ describe("email steps", () => {
     expect(sent[0]?.references).toEqual(["<a@acme.test>", "<b@acme.test>"]);
     await step.execute(input("email.send", { ...payload, references: ["<a@acme.test>", "<b@acme.test>"] }), context);
     expect(sent[1]?.references).toEqual(["<a@acme.test>", "<b@acme.test>"]);
+
+    // Never a reply to an address nobody reads; a new email to it (not a reply) is the pipeline's to send.
+    await expect(step.execute(input("email.send", { ...payload, to: "messaging-digest-noreply@linkedin.com" }), context)).rejects.toThrow(
+      "Not sent: messaging-digest-noreply@linkedin.com is a no-reply address",
+    );
+    expect(sent).toHaveLength(2);
+  });
+
+  it("email.classify for replies: a no-reply sender or mine to myself is never kept, and never asked about", async () => {
+    const messages = [
+      email(0),
+      email(1, { from: "messaging-digest-noreply@linkedin.com" }),
+      email(2, { from: "me@aime.test" }), // AI ME's own message, to me
+      email(3, { from: "no-reply@accounts.google.com" }),
+      email(4),
+    ];
+    const llm = new FakeLlm((request) => ({
+      // The first label offered: "reply", or "bill".
+      results: [...request.prompt.matchAll(/<email index="(\d+)">/g)].map((m) => ({
+        index: Number(m[1]),
+        label: /<labels>(\w+)/.exec(request.system)![1],
+        reason: "r",
+      })),
+    }));
+    const classify = (extra: Record<string, unknown> = {}) =>
+      new EmailClassifyStep(llm, router).execute(input("email.classify", { messages, instruction: "Recruiters", ...extra }), context);
+
+    const result = output("email.classify", await classify()) as {
+      kept: EmailMessage[];
+      results: { index: number; label: string; reason: string }[];
+    };
+    expect(result.kept.map((m) => m.uid)).toEqual([0, 4]);
+    expect(result.results.map((r) => [r.index, r.label])).toEqual([
+      [0, "reply"],
+      [1, "skip"],
+      [2, "skip"],
+      [3, "skip"],
+      [4, "reply"],
+    ]);
+    expect(result.results[1].reason).toBe("Can't be answered: messaging-digest-noreply@linkedin.com is a no-reply address");
+    expect(result.results[2].reason).toBe("Can't be answered: I sent it to myself");
+    expect(llm.requests[0]?.prompt).not.toContain("linkedin");
+    expect(llm.requests[0]?.prompt).toContain("Sender 4");
+
+    // Kept for something else than a reply (a bill from a no-reply sender): all of them are asked.
+    const bills = output("email.classify", await classify({ labels: ["bill", "other"], keep: ["bill"] })) as { kept: EmailMessage[] };
+    expect(bills.kept).toHaveLength(5);
+    // Said either way.
+    const off = output("email.classify", await classify({ answerable: false })) as { kept: EmailMessage[] };
+    expect(off.kept).toHaveLength(5);
   });
 });

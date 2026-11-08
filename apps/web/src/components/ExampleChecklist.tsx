@@ -38,12 +38,16 @@ export function ExampleChecklist({ appId }: Readonly<{ appId: string }>) {
           >
             {item.done ? <IconCircleCheck size={18} className="text-success" /> : <IconCircleDashed size={18} className="text-secondary" />}
             <span className={item.done ? "text-secondary text-decoration-line-through" : undefined}>{item.label}</span>
+            {!item.done && item.note && (
+              <span className={`ms-auto small ${item.link ? "text-danger" : "text-secondary"}`} data-testid="checklist-note">
+                {item.note}
+              </span>
+            )}
             {!item.done && item.link && (
-              <Link to={item.link} className="ms-auto small">
+              <Link to={item.link} className={`small ${item.note ? "" : "ms-auto"}`}>
                 Do it
               </Link>
             )}
-            {!item.done && !item.link && item.note && <span className="ms-auto small text-secondary">{item.note}</span>}
           </div>
         ))}
       </div>

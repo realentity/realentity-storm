@@ -1,6 +1,6 @@
 import { type PrismaClient } from "@ai-me/db";
 import { type LlmClient, type ModelRouter } from "@ai-me/llm";
-import { type EmailMessage } from "@ai-me/steps";
+import { isNoReplyAddress, unanswerable, type EmailMessage } from "@ai-me/steps";
 import { z } from "zod";
 import { type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
@@ -55,12 +55,18 @@ export class EmailClassifyStep extends LlmStep {
   readonly type = "email.classify";
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { messages, instruction, labels, keep } = input as {
+    const { messages, instruction, labels, keep, answerable } = input as {
       messages: EmailMessage[];
       instruction: string;
       labels: string[];
       keep: string[];
+      answerable?: boolean;
     };
+    // An email I can't answer (a no-reply sender, mine to myself) is never kept for a reply: dropped without the LLM.
+    const answerableOnly = answerable ?? keep.includes("reply");
+    const all = messages.map((message, index) => ({ index, message, why: answerableOnly ? unanswerable(message) : null }));
+    const asked = all.filter((m) => m.why === null);
+    const notKept = labels.find((l) => !keep.includes(l)) ?? "skip";
     const schema = z.object({
       results: z.array(z.object({ index: z.number().int(), label: z.enum(labels as [string, ...string[]]), reason: z.string() })),
     });
@@ -69,11 +75,17 @@ export class EmailClassifyStep extends LlmStep {
       "You triage emails for my personal automation pipeline. Give every email exactly one of the allowed labels and a " +
       `one-sentence reason, using the email's index. ${DATA_ONLY}\n` +
       `<instruction>${instruction}</instruction>\n<labels>${labels.join(", ")}</labels>`;
-    const results = await this.perItem(
-      messages.map((m, index) => ({ index, ...m })),
-      (chunk) => this.call(context, system, chunk, schema, true),
-      (index) => emailBlock(messages[index], TRIAGE_TEXT, index),
-    );
+    const answered = asked.length
+      ? await this.perItem(
+          asked.map(({ message }, index) => ({ index, ...message })),
+          (chunk) => this.call(context, system, chunk, schema, true),
+          (index) => emailBlock(asked[index].message, TRIAGE_TEXT, index),
+        )
+      : [];
+    const results = [
+      ...answered.map((r) => ({ ...r, index: asked[r.index].index })),
+      ...all.filter((m) => m.why !== null).map((m) => ({ index: m.index, label: notKept, reason: `Can't be answered: ${m.why}` })),
+    ].sort((a, b) => a.index - b.index);
     // email.classified (M12-T1): one event per labelled email, for the pipelines that act on a label.
     for (const r of results) {
       const message = messages[r.index];
@@ -155,6 +167,9 @@ export class EmailSendStep implements StepExecutor {
       inReplyTo?: string;
       references?: string[];
     };
+    // Never a reply to an address nobody reads, whatever the pipeline says (my own address: the connector refuses).
+    if (inReplyTo && isNoReplyAddress(to))
+      return Promise.reject(new Error(`Not sent: ${to} is a no-reply address, nobody reads replies to it`));
     // The thread is the original's references plus the message replied to (RFC 5322 §3.6.4).
     const thread = inReplyTo ? [...(references ?? []).filter((id) => id !== inReplyTo), inReplyTo] : references;
     return this.mail.send(context.userId, { to, subject, body, inReplyTo, references: thread });

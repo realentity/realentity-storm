@@ -126,6 +126,10 @@ export class ImapSmtpConnector implements MailConnector {
     const host = this.config.smtpHost;
     if (!host) throw new Error("Mail is not configured (SMTP_HOST)");
     const login = await this.login(userId, host);
+    // A reply to my own address answers mail I sent myself (AI ME's own messages): never sent.
+    if (mail.inReplyTo && mail.to.trim().toLowerCase() === login.user.trim().toLowerCase()) {
+      throw new Error("Not sent: a reply to my own address (mail I sent myself)");
+    }
     const transport = createTransport({
       host,
       port: this.config.smtpPort,

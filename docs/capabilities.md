@@ -632,8 +632,10 @@ email is read once. Text only: attachments are listed, not downloaded.
 
 #### `email.classify` 🧠
 Like `llm.classify`, for emails. Each labelled email also emits an `email.classified` event, which can start other
-pipelines.
-- In: `messages`, `instruction`, `labels` [`reply`, `skip`], `keep` [`reply`].
+pipelines. An email nobody can answer (a no-reply sender such as `messaging-digest-noreply@linkedin.com`, or mail I
+sent to myself, like AI ME's own messages) is never kept for a reply: it is labelled skip without asking the LLM. This
+is on when `keep` has `reply`; set `answerable` to choose.
+- In: `messages`, `instruction`, `labels` [`reply`, `skip`], `keep` [`reply`], `answerable`.
 - Out: `kept`, `dropped`, `results`.
 
 ```yaml
@@ -652,7 +654,8 @@ you make at the gate teach it your style.
 
 #### `email.send` ⚡
 Sends an email from my mailbox. With `inReplyTo` and `references` it is a reply in the same thread. `to` must come
-from real data (e.g. `{{item.from}}`), a literal, or `policy.allowedRecipients`.
+from real data (e.g. `{{item.from}}`), a literal, or `policy.allowedRecipients`. A reply is never sent to a no-reply
+address or to my own address: the step fails with why.
 - In: `to`, `subject`, `body`, `inReplyTo`, `references`.
 - Out: `messageId`, `accepted`.
 

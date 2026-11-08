@@ -27,14 +27,23 @@ export class ExamplesService {
   ) {}
 
   async setup(userId: string): Promise<SetupView> {
-    const [credentials, recipes, google] = await Promise.all([
+    const [credentials, recipes, google, lastRead] = await Promise.all([
       this.prisma.client.credential.findMany({ where: { userId }, select: { name: true } }),
       this.prisma.client.siteRecipe.findMany({ where: { userId }, select: { name: true }, distinct: ["name"] }),
       this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { status: true } }),
+      // The last time mail was read: a credential that is there but refused isn't set up.
+      this.prisma.client.step.findFirst({
+        where: { type: "email.fetch", status: { in: ["DONE", "FAILED"] }, run: { userId } },
+        orderBy: { finishedAt: "desc" },
+        select: { status: true, error: true },
+      }),
     ]);
     const names = credentials.map((c) => c.name);
+    const configured = Boolean(this.env.IMAP_HOST) && names.includes(this.env.MAIL_CREDENTIAL);
+    const emailProblem = configured && lastRead?.status === "FAILED" ? (lastRead.error ?? "reading mail failed") : null;
     return {
-      email: Boolean(this.env.IMAP_HOST) && names.includes(this.env.MAIL_CREDENTIAL),
+      email: configured && !emailProblem,
+      emailProblem,
       googleCalendar: google?.status === "CONNECTED",
       telegram: Boolean(this.env.TELEGRAM_BOT_TOKEN),
       llm: Boolean(this.env.ANTHROPIC_API_KEY),
@@ -54,7 +63,8 @@ export class ExamplesService {
     for (const need of example.needs) {
       const entities =
         need.kind === "entities" ? await this.prisma.client.dataEntity.count({ where: { appId, type: need.type!, removedAt: null } }) : 0;
-      items.push({ label: need.label, done: needMet(need, setup, entities), ...where(need, appId) });
+      const problem = need.kind === "email" && setup.emailProblem ? { note: `The last mail read failed: ${setup.emailProblem}` } : {};
+      items.push({ label: need.label, done: needMet(need, setup, entities), ...where(need, appId), ...problem });
     }
     const detail = await this.apps.get(userId, appId);
     for (const { pipelineId, name, enabled } of detail.pipelines) {

@@ -16,7 +16,7 @@ import { CredentialVault } from "../src/secrets/credential-vault";
 import { coreSteps } from "../src/steps/core-steps";
 import { EmailFetchStep } from "../src/steps/email-steps";
 import { EmailAwaitingStep } from "../src/steps/follow-up-steps";
-import { APP_PASSWORD, MAILBOX, startMailServer, type TestMailServer } from "./support/greenmail";
+import { APP_PASSWORD, MAILBOX, OTHER_MAILBOX, OTHER_PASSWORD, startMailServer, type TestMailServer } from "./support/greenmail";
 import { createVersion } from "./support/test-steps";
 
 /** Claude stand-in: keeps every email, and drafts whatever `draft` writes (it may "obey" an email). */
@@ -175,16 +175,40 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
   // M4-I2
   it("sends a reply in the thread: In-Reply-To and References set, the body exactly the approved one", async () => {
     const body = "Hi Ana,\n\nThanks. Tuesday works.\n\nBest";
-    const sent = await connector.send(userId, {
-      to: MAILBOX,
+    const outgoing = {
+      to: OTHER_MAILBOX,
       subject: "Re: Senior .NET role",
       body,
       inReplyTo: "<follow-up@acme.test>",
       references: ["<root@acme.test>", "<follow-up@acme.test>"],
-    });
-    expect(sent.accepted).toEqual([MAILBOX]);
+    };
+    const sent = await connector.send(userId, outgoing);
+    expect(sent.accepted).toEqual([OTHER_MAILBOX]);
+    // Never a reply to my own address: that answers mail I sent myself (AI ME's own messages).
+    await expect(connector.send(userId, { ...outgoing, to: MAILBOX.toUpperCase() })).rejects.toThrow(
+      "Not sent: a reply to my own address",
+    );
 
-    const all = await connector.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
+    // What Ana got, read from her mailbox.
+    const keys = KeyRing.fromEnv(process.env);
+    const credentialId = randomUUID();
+    await db.client.credential.create({
+      data: {
+        credentialId,
+        userId,
+        name: "ana",
+        kind: "PASSWORD",
+        username: OTHER_MAILBOX,
+        allowedHosts: [server.host],
+        ...seal(keys, credentialId, OTHER_PASSWORD),
+      },
+    });
+    const ana = new ImapSmtpConnector(
+      { imapHost: server.host, imapPort: server.imapPort, smtpHost: server.host, smtpPort: server.smtpPort, tls: false, credential: "ana" },
+      new CredentialVault(db.client, keys),
+    );
+    const all = await ana.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
+    await db.client.credential.delete({ where: { credentialId } });
     const reply = all.messages.find((m) => m.messageId === sent.messageId);
     expect(reply).toMatchObject({
       from: MAILBOX,

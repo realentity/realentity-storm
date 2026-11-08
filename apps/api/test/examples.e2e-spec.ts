@@ -13,6 +13,7 @@ import {
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type request from "supertest";
+import { TestEnvironment } from "@ai-me/testing";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const PIPELINES = join(__dirname, "../../../pipelines");
@@ -123,5 +124,66 @@ describe("examples", () => {
     await agent.post("/api/bundles").send({ text: again }).expect(201);
     expect(await db.client.app.count()).toBe(2);
     expect(await db.client.pipeline.count()).toBe(2);
+  });
+});
+
+// A mail password that is there but refused (Gmail no longer takes it) isn't set up: the gallery and checklist say why
+describe("examples: a refused mail password", () => {
+  let api: TestApp;
+  let agent: ReturnType<typeof request.agent>;
+  let db: PrismaConnection;
+
+  const imapHost = process.env.IMAP_HOST;
+
+  beforeAll(async () => {
+    db = createPrismaConnection();
+    // An email account on the server: read when the app starts.
+    process.env.IMAP_HOST = "imap.test";
+    api = await createTestApp();
+    agent = await api.signedIn();
+  });
+
+  afterAll(async () => {
+    if (imapHost === undefined) delete process.env.IMAP_HOST;
+    else process.env.IMAP_HOST = imapHost;
+    await db.client.run.deleteMany();
+    await db.client.pipeline.deleteMany();
+    await db.client.credential.deleteMany({ where: { name: "mail" } });
+    await db.close();
+    await api.close();
+  });
+
+  it("is set up until the last mail read fails, and again once one works", async () => {
+    await agent
+      .post("/api/credentials")
+      .send({ name: "mail", allowedHosts: ["imap.test"], username: "me@example.com", kind: "PASSWORD", secret: "app-password" })
+      .expect(201);
+    const setup = async () => (await agent.get("/api/examples/setup").expect(200)).body as SetupView;
+    expect(await setup()).toMatchObject({ email: true, emailProblem: null });
+
+    const { userId } = await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } });
+    const source = ["name: Mail", "steps:", "  - { id: tell, type: notify.telegram, with: { text: hi } }"].join("\n");
+    const pipeline = (await agent.post("/api/pipelines").send({ source }).expect(201)).body as { current: { pipelineVersionId: string } };
+    const read = async (status: "DONE" | "FAILED", at: string) => {
+      const run = await db.client.run.create({
+        data: { userId, pipelineVersionId: pipeline.current.pipelineVersionId, status, trigger: "schedule" },
+      });
+      await db.client.step.create({
+        data: {
+          runId: run.runId,
+          stepKey: "fetch",
+          type: "email.fetch",
+          status,
+          finishedAt: new Date(at),
+          ...(status === "FAILED" ? { error: "IMAP: Command failed (Invalid credentials (Failure))" } : {}),
+        },
+      });
+    };
+    await read("DONE", "2026-11-05T09:00:00Z");
+    await read("FAILED", "2026-11-05T09:15:00Z");
+    expect(await setup()).toMatchObject({ email: false, emailProblem: "IMAP: Command failed (Invalid credentials (Failure))" });
+
+    await read("DONE", "2026-11-08T10:00:00Z");
+    expect(await setup()).toMatchObject({ email: true, emailProblem: null });
   });
 });

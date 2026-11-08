@@ -555,6 +555,8 @@ export interface AppSummaryView {
   version: number | null;
   types: { name: string; entities: number }[];
   pipelines: { pipelineId: string; name: string; enabled: boolean }[];
+  /** M40: the example it was installed from, if any: the gallery says it is installed. */
+  example: string | null;
 }
 
 export interface AppVersionSummaryView {

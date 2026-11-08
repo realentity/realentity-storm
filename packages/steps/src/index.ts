@@ -5,6 +5,7 @@ export * from "./describe";
 export * from "./diff";
 export * from "./domain-entities";
 export * from "./draft-type";
+export * from "./email-addresses";
 export * from "./entity-types";
 export * from "./recipe";
 export * from "./type-info";

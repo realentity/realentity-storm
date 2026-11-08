@@ -1,7 +1,7 @@
-import { appMap, freeNames, joinBundle, needMet, splitBundle, type SetupView } from "@ai-me/shared";
+import { appMap, freeNames, joinBundle, needMet, splitBundle, type AppSummaryView, type SetupView } from "@ai-me/shared";
 import { IconCheck, IconDownload, IconMap, IconSparkles, IconX } from "@tabler/icons-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
@@ -14,7 +14,7 @@ import { ErrorAlert } from "./ui";
  * M40-T2: examples to start from: an App with the pipelines that fill it, what each needs set up (ticked when it is),
  * its map, and Install: imported as one file, its pipelines off; installed again, under names of its own.
  */
-export function ExamplesGallery({ onInstalled }: Readonly<{ onInstalled?: () => void }>) {
+export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSummaryView[]; onInstalled?: () => void }>) {
   const setup = useLoad(() => api.examples.setup(), []);
   const action = useAction();
   const navigate = useNavigate();
@@ -45,6 +45,7 @@ export function ExamplesGallery({ onInstalled }: Readonly<{ onInstalled?: () => 
             key={example.id}
             example={example}
             setup={setup.data ?? null}
+            installed={installedAs(example, apps)}
             busy={action.busy}
             onInstall={() => void install(example)}
           />
@@ -54,12 +55,18 @@ export function ExamplesGallery({ onInstalled }: Readonly<{ onInstalled?: () => 
   );
 }
 
+/** An App of mine installed from it, or of its App's name (made from the same template): installing it again copies it. */
+function installedAs(example: ExampleEntry, apps: AppSummaryView[]): AppSummaryView | undefined {
+  return apps.find((a) => a.example === example.id) ?? apps.find((a) => a.name === example.app?.name);
+}
+
 function ExampleCard({
   example,
   setup,
+  installed,
   busy,
   onInstall,
-}: Readonly<{ example: ExampleEntry; setup: SetupView | null; busy: boolean; onInstall: () => void }>) {
+}: Readonly<{ example: ExampleEntry; setup: SetupView | null; installed?: AppSummaryView; busy: boolean; onInstall: () => void }>) {
   const [showMap, setShowMap] = useState(false);
   const catalog = useCatalog();
   const map =
@@ -73,7 +80,12 @@ function ExampleCard({
           <div className="d-flex align-items-center gap-2 mb-1">
             {example.starter && <IconSparkles size={18} className="text-primary" />}
             <h3 className="card-title mb-0">{example.name}</h3>
-            {example.starter && <span className="badge bg-primary-lt">start here</span>}
+            {example.starter && !installed && <span className="badge bg-primary-lt">start here</span>}
+            {installed && (
+              <span className="badge bg-success-lt" data-testid="example-installed">
+                installed
+              </span>
+            )}
           </div>
           <div className="text-secondary mb-2">{example.description}</div>
           <div className="small mb-1 fw-bold">What it needs</div>
@@ -87,11 +99,22 @@ function ExampleCard({
               {example.needs.map((need) => {
                 // Entities are added after installing; the rest may be set up already.
                 const met = setup !== null && need.kind !== "entities" && needMet(need, setup);
+                // Set up, but refused the last time (a password Gmail no longer takes).
+                const failing = need.kind === "email" ? setup?.emailProblem : null;
                 return (
-                  <li key={need.label} className="d-flex align-items-center gap-1" data-met={met}>
-                    {met ? <IconCheck size={14} className="text-success" /> : <IconX size={14} className="text-secondary" />}
+                  <li key={need.label} className="d-flex align-items-center gap-1 flex-wrap" data-met={met}>
+                    {met ? (
+                      <IconCheck size={14} className="text-success" />
+                    ) : (
+                      <IconX size={14} className={failing ? "text-danger" : "text-secondary"} />
+                    )}
                     {need.label}
                     {met && <span className="text-success">(set up)</span>}
+                    {failing && (
+                      <span className="text-danger" data-testid="example-need-problem" title={failing}>
+                        (set up, but the last mail read failed: check the password on Credentials)
+                      </span>
+                    )}
                   </li>
                 );
               })}
@@ -112,15 +135,21 @@ function ExampleCard({
             <IconMap size={16} className="me-1" />
             {showMap ? "Hide its map" : "See its map"}
           </button>
+          {installed && (
+            <Link to={`/apps/${installed.appId}`} className="btn btn-primary btn-sm ms-auto" data-testid="example-open">
+              Open {installed.name}
+            </Link>
+          )}
           <button
             type="button"
-            className="btn btn-primary btn-sm ms-auto"
+            className={`btn btn-sm ${installed ? "" : "btn-primary ms-auto"}`}
             disabled={busy}
             onClick={onInstall}
+            title={installed ? `You have ${installed.name}: this installs a second one, under names of its own` : undefined}
             data-testid="example-install"
           >
             <IconDownload size={16} className="me-1" />
-            Install
+            {installed ? "Install a copy" : "Install"}
           </button>
         </div>
       </div>

@@ -250,6 +250,7 @@ export class AppsService {
           entities: counts.find((c) => c.appId === app.appId && c.type === name)?._count._all ?? 0,
         })),
         pipelines: pipelines.get(app.name) ?? [],
+        example: (app.example as { id?: string } | null)?.id ?? null,
       };
     });
   }
@@ -269,7 +270,7 @@ export class AppsService {
     return {
       ...summary,
       definition,
-      imports: await this.imports.available(userId, definition),
+      imports: await this.imports.available(userId, definition, appId),
       source,
       versions: app.versions.map((v) => ({ version: v.version, changeSummary: v.changeSummary, dateCreated: v.dateCreated.toISOString() })),
     };

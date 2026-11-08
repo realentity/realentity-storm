@@ -22,8 +22,13 @@ test("the examples gallery: the starter first, an example installed twice under 
   await tables.getByTestId("example-install").click();
   expect(await installed()).toMatch(expected);
 
+  // Installed: the card says so and opens it; installing again is a copy.
   await page.goto("/apps");
-  await page.locator('[data-testid="example-card"][data-example="tables"]').getByTestId("example-install").click();
+  const again = page.locator('[data-testid="example-card"][data-example="tables"]');
+  await expect(again.getByTestId("example-installed")).toBeVisible();
+  await expect(again.getByTestId("example-open")).toContainText("Open Tables");
+  await expect(again.getByTestId("example-install")).toHaveText("Install a copy");
+  await again.getByTestId("example-install").click();
   expect(await installed()).toMatch(/^Tables \d+$/);
   const pipelines = ((await (await page.request.get("/api/pipelines")).json()) as { name: string }[]).map((p) => p.name);
   expect(pipelines.filter((n) => n.startsWith("Table growth")).length).toBeGreaterThanOrEqual(2);

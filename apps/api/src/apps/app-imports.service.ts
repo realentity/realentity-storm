@@ -13,18 +13,27 @@ export class AppImportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** What this App can take: Bills when it has a Bill type bill.save writes; Prices when it has price.watch's types. */
-  async available(userId: string, app: AppDefinition): Promise<AppImportView[]> {
+  async available(userId: string, app: AppDefinition, appId?: string): Promise<AppImportView[]> {
     const imports: AppImportView[] = [];
+    // Only what isn't here yet: once all of it moved, it isn't offered again (a moved row is skipped by its key).
+    const left = async (type: string, keys: string[]) => {
+      if (!appId || keys.length === 0) return keys.length;
+      const here = await this.prisma.client.dataEntity.count({ where: { appId, type, key: { in: keys } } });
+      return new Set(keys).size - here;
+    };
     if (fits(app, BILL_ENTITY)) {
-      const count = await this.prisma.client.bill.count({ where: { userId } });
+      const bills = await this.prisma.client.bill.findMany({ where: { userId }, select: { billKey: true } });
+      const count = await left("Bill", bills.map((b) => b.billKey));
       if (count > 0) imports.push({ from: "bills", label: "the Bills page", count });
     }
     if (fits(app, JOB_ENTITY)) {
-      const count = await this.prisma.client.jobPosting.count({ where: { userId } });
+      const postings = await this.prisma.client.jobPosting.findMany({ where: { userId }, select: { url: true } });
+      const count = await left("Job", postings.map((p) => p.url));
       if (count > 0) imports.push({ from: "jobs", label: "the Jobs page", count });
     }
     if (fits(app, PRODUCT_ENTITY) && fits(app, OFFER_ENTITY)) {
-      const count = await this.prisma.client.watchedProduct.count({ where: { userId } });
+      const products = await this.prisma.client.watchedProduct.findMany({ where: { userId }, select: { name: true } });
+      const count = await left("Product", products.map((p) => p.name));
       if (count > 0) imports.push({ from: "prices", label: "the Prices page", count });
     }
     // M33-T5: a collection data.save kept (a page's `view:`), into a type pipelines write.

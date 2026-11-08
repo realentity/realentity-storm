@@ -4,6 +4,9 @@ import { GenericContainer, Wait, type StartedTestContainer } from "testcontainer
 export const MAILBOX = "me@aime.test";
 /** The app password of the test mailbox: the S3 test greps every persisted value for it. */
 export const APP_PASSWORD = "gm-app-password-7Qx9vL2p";
+/** Someone I write to: a second mailbox, to read what I sent her. */
+export const OTHER_MAILBOX = "ana@acme.test";
+export const OTHER_PASSWORD = "gm-ana-password-4Kd2";
 
 export interface TestMailServer {
   host: string;
@@ -22,7 +25,7 @@ export interface TestMailServer {
   stop(): Promise<void>;
 }
 
-/** GreenMail (IMAP + SMTP, plain text, local only) with one mailbox that logs in with its full address. */
+/** GreenMail (IMAP + SMTP, plain text, local only) with my mailbox and Ana's, each logging in with its full address. */
 export async function startMailServer(): Promise<TestMailServer> {
   const container: StartedTestContainer = await new GenericContainer("greenmail/standalone:2.1.3")
     .withEnvironment({
@@ -30,7 +33,12 @@ export async function startMailServer(): Promise<TestMailServer> {
         "-Dgreenmail.setup.test.smtp",
         "-Dgreenmail.setup.test.imap",
         "-Dgreenmail.hostname=0.0.0.0",
-        `-Dgreenmail.users=${MAILBOX.split("@")[0]}:${APP_PASSWORD}@${MAILBOX.split("@")[1]}`,
+        `-Dgreenmail.users=${[
+          [MAILBOX, APP_PASSWORD],
+          [OTHER_MAILBOX, OTHER_PASSWORD],
+        ]
+          .map(([address, password]) => `${address.split("@")[0]}:${password}@${address.split("@")[1]}`)
+          .join(",")}`,
         "-Dgreenmail.users.login=email",
       ].join(" "),
     })

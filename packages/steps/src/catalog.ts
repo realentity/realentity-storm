@@ -759,7 +759,9 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "email.classify",
-    description: "Labels each email with the LLM following `instruction`; emails with a `keep` label go to `kept`.",
+    description:
+      "Labels each email with the LLM following `instruction`; emails with a `keep` label go to `kept`. With `answerable` " +
+      "(on when `keep` has `reply`), an email that can't be answered (a no-reply sender, or mine to myself) is never kept.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -769,6 +771,8 @@ export const CORE_STEPS: StepDefinition[] = [
       instruction: z.string().min(1),
       labels: z.array(z.string().min(1)).min(2).default(["reply", "skip"]),
       keep: z.array(z.string().min(1)).min(1).default(["reply"]),
+      /** Only emails I can answer may be kept: the rest are dropped without the LLM. Default: on when `keep` has "reply". */
+      answerable: z.boolean().optional(),
     }),
     output: z.object({
       kept: Messages,

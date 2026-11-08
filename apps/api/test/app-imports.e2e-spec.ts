@@ -71,7 +71,11 @@ describe("moving into an App", () => {
       moved: 3,
       skipped: 0,
     });
+    // All of it here: no longer offered; a new one on the old page is, alone.
+    const detail = async () => ((await agent.get(`/api/apps/${app.appId}`).expect(200)).body as AppDetailView).imports;
+    expect(await detail()).toEqual([]);
     await oldBill("Gas", 40, "2026-11-25", "2026-11");
+    expect(await detail()).toEqual([{ from: "bills", label: "the Bills page", count: 1 }]);
     expect((await agent.post(`/api/apps/${app.appId}/import`).send({ from: "bills" }).expect(201)).body as AppImportResult).toEqual({
       moved: 1,
       skipped: 3,
