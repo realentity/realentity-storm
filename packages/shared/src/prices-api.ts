@@ -11,7 +11,7 @@ export const PRICES_PIPELINE = `# M24: every morning, the watched products at ea
 name: Prices
 app: Prices
 description: The watched products, told only when a price is worth knowing.
-trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 9 * * *" }
 steps:
   - id: watch
     type: price.watch

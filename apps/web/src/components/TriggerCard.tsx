@@ -1,4 +1,4 @@
-import { APPLICATION_STATUSES, setTrigger, TRIGGER_EVENTS, type CompileIssue } from "@realentity/storm-shared";
+import { APPLICATION_STATUSES, defaultTimeZone, setTrigger, TRIGGER_EVENTS, type CompileIssue } from "@realentity/storm-shared";
 import { IconBolt } from "@tabler/icons-react";
 import { readCron, WEEKDAYS, writeCron } from "../lib/cron";
 import { type TriggerTypes } from "../lib/step-cards";
@@ -59,7 +59,7 @@ export function TriggerCard({
   const choose = (k: Kind) => {
     if (k === kind) return;
     if (k === "manual") set("manual");
-    if (k === "schedule") set({ schedule: "0 8 * * *", tz: "Europe/Sofia" });
+    if (k === "schedule") set({ schedule: "0 8 * * *", tz: defaultTimeZone() });
     if (k === "event") set({ on: "run.finished", pipeline: pipelines[0] ?? "" });
     if (k === "webhook") set({ webhook: "token" });
   };
@@ -129,7 +129,7 @@ function Schedule({
 }: Readonly<{ value: Record<string, unknown>; onChange: (key: string, v: unknown) => void; disabled: boolean }>) {
   const cron = typeof value.schedule === "string" ? value.schedule : "";
   const simple = readCron(cron);
-  const tz = typeof value.tz === "string" ? value.tz : "Europe/Sofia";
+  const tz = typeof value.tz === "string" ? value.tz : defaultTimeZone();
   return (
     <div className="d-flex flex-column gap-2 small">
       {simple ? (

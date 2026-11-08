@@ -1,9 +1,8 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { type TelegramMessage } from "@realentity/storm-shared";
+import { defaultTimeZone, type TelegramMessage } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ZONE = "Europe/Sofia";
 /** Unpaid bills due this soon are in the brief (overdue ones too). */
 const BILLS_DAYS = 3;
 const MAX_FAILURES = 5;
@@ -46,7 +45,7 @@ export class MorningBrief {
   }
 
   async compose(userId: string, now = new Date()): Promise<string> {
-    const title = `Storm · ${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: ZONE })}`;
+    const title = `Storm · ${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: defaultTimeZone() })}`;
     const parts = [await this.calendar(userId, now), await this.waiting(userId), await this.failed(userId, now), await this.bills(userId, now)].filter(
       (part): part is string => part !== null,
     );
@@ -128,7 +127,7 @@ export class MorningBrief {
   }
 }
 
-/** Today in ZONE, as instants: from its midnight to the next. */
+/** Today in the server's time zone, as instants: from its midnight to the next. */
 function dayOf(now: Date): [Date, Date] {
   const day = dayString(now);
   const offset = offsetMinutes(new Date(`${day}T12:00:00Z`));
@@ -136,17 +135,17 @@ function dayOf(now: Date): [Date, Date] {
   return [from, new Date(from.getTime() + DAY_MS)];
 }
 
-/** The date in ZONE, YYYY-MM-DD. */
+/** The date in the server's time zone, YYYY-MM-DD. */
 function dayString(at: Date): string {
-  return at.toLocaleDateString("en-CA", { timeZone: ZONE });
+  return at.toLocaleDateString("en-CA", { timeZone: defaultTimeZone() });
 }
 
 function offsetMinutes(at: Date): number {
-  const local = new Date(at.toLocaleString("en-US", { timeZone: ZONE }));
+  const local = new Date(at.toLocaleString("en-US", { timeZone: defaultTimeZone() }));
   const utc = new Date(at.toLocaleString("en-US", { timeZone: "UTC" }));
   return Math.round((local.getTime() - utc.getTime()) / 60_000);
 }
 
 function time(at: Date): string {
-  return at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: ZONE });
+  return at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: defaultTimeZone() });
 }

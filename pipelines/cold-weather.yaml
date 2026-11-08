@@ -4,7 +4,7 @@
 # `place`. The email waits for your approval at its gate like every email Storm sends; set `to` to your address.
 name: Cold weather
 description: An email when the next 12 hours in Sofia drop below 10°, and when they are back over 12°.
-trigger: { schedule: "0 * * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 * * * *" }
 policy:
   allowedDomains: [api.open-meteo.com]
 steps:

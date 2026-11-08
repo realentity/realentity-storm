@@ -5,7 +5,7 @@
 # names for sizes and colors; a size that isn't offered is reported with what is (the second message).
 name: Product watch
 description: Your products, in your size and color, that got cheaper since yesterday.
-trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 9 * * *" }
 policy:
   allowedDomains: [www.bergfreunde.eu]
 steps:

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isTimeZone } from "./time-zone";
 
 /** Empty values in .env (KEY=) count as not set. */
 const optional = <T extends z.ZodType>(schema: T) => z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
@@ -13,6 +14,8 @@ const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
 export const ServerEnvSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    /** The server's time zone (Node follows TZ): the default for schedules, the morning brief and the weekly review. */
+    TZ: optional(z.string().refine(isTimeZone, "an IANA time zone, e.g. Europe/London")),
 
     DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, "must be a postgresql:// connection string"),
 

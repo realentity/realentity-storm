@@ -72,7 +72,8 @@ TZ=Europe/London
   it no credential opens, also not from a backup.
 - `APP_ORIGIN`: exactly the address you open in the browser, without a trailing `/`. The live updates accept only this
   origin.
-- `TZ`: the containers' time zone (empty: UTC). Schedules name their own time zone; this one is for logs and dates.
+- `TZ`: your time zone (empty: UTC). Schedules without a `tz` of their own, the morning brief, the weekly review and
+  the system jobs follow it.
 - The rest of `.env.example` can stay as it is: the containers set `API_HOST`, `API_PORT` and the file folders
   themselves, and the models have defaults (changeable in Settings).
 

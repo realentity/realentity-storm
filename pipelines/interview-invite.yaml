@@ -4,7 +4,7 @@
 # start) isn't created again. Needs the "mail" credential and Google Calendar connected (Settings).
 name: Interview invites
 description: Interview invitations by email become proposed calendar events with prep notes.
-trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+trigger: { schedule: "*/15 * * * *" }
 steps:
   - id: fetch
     type: email.fetch

@@ -4,7 +4,7 @@
 name: Read release feeds
 app: Releases to read
 description: Once a day, the newest releases of a few projects, kept to read.
-trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 9 * * *" }
 policy:
   allowedDomains: [github.com]
 steps:

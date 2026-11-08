@@ -4,7 +4,7 @@
 name: Application replies
 app: Job Search
 description: Replies about your applications update their status, and tell you.
-trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+trigger: { schedule: "*/15 * * * *" }
 steps:
   - id: fetch
     type: email.fetch

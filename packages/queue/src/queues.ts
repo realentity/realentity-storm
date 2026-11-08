@@ -1,4 +1,4 @@
-import { type TriggerEventName } from "@realentity/storm-shared";
+import { defaultTimeZone, type TriggerEventName } from "@realentity/storm-shared";
 import type PgBoss from "pg-boss";
 
 /** Queue names. The api sends to them; the worker consumes them. */
@@ -40,16 +40,16 @@ export interface TriggerJob {
 }
 
 /** The nightly reflection: after the server's 02:30 backup, before the day's first runs. */
-export const REFLECTION_SCHEDULE = { cron: "30 3 * * *", tz: "Europe/Sofia" } as const;
+export const REFLECTION_SCHEDULE = { cron: "30 3 * * *", get tz() { return defaultTimeZone(); } };
 
 /** Nightly housekeeping, after the reflection. */
-export const MAINTENANCE_SCHEDULE = { cron: "15 4 * * *", tz: "Europe/Sofia" } as const;
+export const MAINTENANCE_SCHEDULE = { cron: "15 4 * * *", get tz() { return defaultTimeZone(); } };
 
 /** The weekly review: Sunday evening, when there's time to act on it before the week starts. */
-export const WEEKLY_REVIEW_SCHEDULE = { cron: "0 19 * * 0", tz: "Europe/Sofia" } as const;
+export const WEEKLY_REVIEW_SCHEDULE = { cron: "0 19 * * 0", get tz() { return defaultTimeZone(); } };
 
 /** The morning brief: before the day starts, after the nightly jobs. */
-export const MORNING_BRIEF_SCHEDULE = { cron: "30 7 * * *", tz: "Europe/Sofia" } as const;
+export const MORNING_BRIEF_SCHEDULE = { cron: "30 7 * * *", get tz() { return defaultTimeZone(); } };
 
 export interface LearningJob {
   proposalId: string;

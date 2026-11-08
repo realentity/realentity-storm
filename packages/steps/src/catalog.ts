@@ -1,4 +1,4 @@
-import { TYPE_NAME, type FieldKind, type TargetKind } from "@realentity/storm-shared";
+import { defaultTimeZone, isTimeZone, TYPE_NAME, type FieldKind, type TargetKind } from "@realentity/storm-shared";
 import jsonata from "jsonata";
 import { z } from "zod";
 import { RecipeNameSchema } from "./recipe";
@@ -245,16 +245,9 @@ const DateTimeText = z
   .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/, "an ISO 8601 date and time, e.g. 2026-11-12T10:00:00+02:00");
 const TimeZone = z
   .string()
-  .default("Europe/Sofia")
-  .refine((zone) => {
-    try {
-      new Intl.DateTimeFormat("en", { timeZone: zone });
-      return true;
-    } catch {
-      return false;
-    }
-  }, "an IANA time zone, e.g. Europe/Sofia")
-  .describe("for times without an offset");
+  .default(defaultTimeZone)
+  .refine(isTimeZone, "an IANA time zone, e.g. Europe/London")
+  .describe("for times without an offset (default: the server's time zone)");
 /** A product variant by its attributes (shop.product), e.g. { size: "M", color: "Black" }. */
 const Select = z.record(z.string().min(1).max(40), z.string().min(1).max(100));
 

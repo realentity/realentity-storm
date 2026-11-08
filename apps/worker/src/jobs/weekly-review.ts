@@ -1,5 +1,5 @@
 import { llmCostSince, type PrismaClient } from "@realentity/storm-db";
-import { type TelegramMessage } from "@realentity/storm-shared";
+import { defaultTimeZone, type TelegramMessage } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { type RunControls } from "../runner/run-controls";
 import { DigestStep } from "../steps/digest-step";
@@ -42,7 +42,7 @@ export class WeeklyReview {
 
   async compose(userId: string, now = new Date()): Promise<string> {
     const since = new Date(now.getTime() - WEEK_MS);
-    const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/Sofia" });
+    const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: defaultTimeZone() });
     const lines = [await new DigestStep(this.prisma).compose(userId, 168, null, now, `Storm · weekly review, ${day(since)} – ${day(now)}`)];
 
     const [settings, month, costs] = await Promise.all([

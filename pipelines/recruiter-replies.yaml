@@ -3,7 +3,7 @@
 # Paste it on the Pipelines page, check, dry run, save, enable. Needs IMAP_HOST/SMTP_HOST and the "mail" credential.
 name: Recruiter and client replies
 description: Drafts replies to recruiters and clients; you review, edit and Act on each.
-trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
+trigger: { schedule: "*/15 * * * *" }
 steps:
   - id: fetch
     type: email.fetch

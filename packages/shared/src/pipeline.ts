@@ -1,3 +1,4 @@
+import { defaultTimeZone, isTimeZone } from "./time-zone";
 import { z } from "zod";
 import { APP_NAME, ENTITY_FIELD, TYPE_NAME } from "./app";
 import { HOST_PATTERN } from "./credentials";
@@ -22,14 +23,6 @@ export const WHOLE_REFERENCE = /^\{\{\s*([^{}]+?)\s*\}\}$/;
 /** Five-field cron: minute hour day-of-month month day-of-week. */
 const CRON = /^(\S+\s+){4}\S+$/;
 
-function isTimeZone(value: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: value });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** What happens in Storm that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
 export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later", "view.action", "entity.changed", "entity.action"] as const;
@@ -82,7 +75,8 @@ export type WebhookTrigger = z.infer<typeof WebhookTriggerSchema>;
 
 export const ScheduleTriggerSchema = z.object({
   schedule: z.string().trim().regex(CRON, 'a five-field cron expression, e.g. "0 8 * * 1-5"'),
-  tz: z.string().default("Europe/Sofia").refine(isTimeZone, "an IANA time zone, e.g. Europe/Sofia"),
+  /** Without one: the server's zone (TZ), see defaultTimeZone. */
+  tz: z.string().default(defaultTimeZone).refine(isTimeZone, "an IANA time zone, e.g. Europe/London"),
 });
 
 export const TriggerSchema = z.union([z.literal("manual"), ScheduleTriggerSchema, EventTriggerSchema, WebhookTriggerSchema]);

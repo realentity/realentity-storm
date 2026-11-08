@@ -10,7 +10,7 @@ import {
   type LlmUsage,
   type ModelChoice,
 } from "@realentity/storm-llm";
-import { AppDefinitionSchema, type AppDefinition, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
+import { AppDefinitionSchema, defaultTimeZone, type AppDefinition, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
 import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@realentity/storm-steps";
 import { stringify } from "yaml";
 import { z } from "zod";
@@ -366,7 +366,7 @@ How to work:
 
 Pipeline definition (JSON; the user sees it as YAML):
 - name (required), description (optional, one sentence).
-- trigger: "manual", or { "schedule": "<5-field cron>", "tz": "Europe/Sofia" } (the user's time zone unless they say otherwise),
+- trigger: "manual", or { "schedule": "<5-field cron>", "tz": "${defaultTimeZone()}" } (the user's time zone unless they say otherwise),
   or an event: { "on": "run.finished", "pipeline": "<name>", "status"?: ["DONE" | "FAILED"] },
   { "on": "application.status", "status"?: ["PREPARED" | "SUBMITTED" | "RESPONDED" | "REJECTED" | "INTERVIEW"] },
   { "on": "recipe.broken", "site"?: "<host>" }, { "on": "email.classified", "label"?: ["<label>"] },

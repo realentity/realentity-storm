@@ -4,7 +4,7 @@
 # shop.example/hdd with its name. Several shops: list their recipes in `recipes`.
 name: Price watch
 description: Products of a shop's list that got cheaper since yesterday, with old and new price.
-trigger: { schedule: "0 10 * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 10 * * *" }
 steps:
   - id: list
     type: browser.extract

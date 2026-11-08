@@ -8,7 +8,7 @@
 name: Release watch
 app: Releases
 description: New releases of your server's stack, summarized for upgrading; nothing on a quiet day.
-trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 9 * * *" }
 policy:
   allowedDomains: [github.com, www.postgresql.org]
 steps:

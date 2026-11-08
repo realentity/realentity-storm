@@ -7,7 +7,7 @@
 name: Table growth
 app: Tables
 description: Told when a table grows much faster than usual, and when it is back to normal.
-trigger: { schedule: "0 * * * *", tz: Europe/Sofia }
+trigger: { schedule: "0 * * * *" }
 steps:
   - id: counts
     type: db.query
