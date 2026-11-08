@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Before a push: the commits being pushed (their added lines and their messages) must not contain any pattern of a
-# private list, e.g. names of your own hosts, domains or addresses. The list is one Perl regex per line (# comments
-# and blank lines ignored), outside this repository: STORM_FORBIDDEN_FILE, or ../realentity-storm-private/forbidden.txt
-# next to this clone. Without a list nothing is checked. Lines matching a pattern of the list's "allow:" lines pass.
+# Before a push: the commits being pushed (their added lines, their messages, their author and committer) must not
+# contain any pattern of a private list, e.g. names of your own hosts, domains, addresses or your private email. The
+# list is one Perl regex per line (# comments and blank lines ignored), kept outside this repository:
+#   git config storm.forbiddenFile /path/to/forbidden.txt      (or STORM_FORBIDDEN_FILE in the environment)
+# Without a list nothing is checked. Lines matching a pattern of the list's "allow:" lines pass.
 set -euo pipefail
 
-root="$(git rev-parse --show-toplevel)"
-list="${STORM_FORBIDDEN_FILE:-$root/../realentity-storm-private/forbidden.txt}"
-[ -f "$list" ] || exit 0
+list="${STORM_FORBIDDEN_FILE:-$(git config --get storm.forbiddenFile || true)}"
+[ -n "$list" ] && [ -f "$list" ] || exit 0
 
 patterns=() allowed=()
 while IFS= read -r line || [ -n "$line" ]; do
@@ -22,7 +22,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue # a deleted branch
   if [ "$remote_sha" = "$zero" ]; then range=("$local_sha" --not --remotes); else range=("$remote_sha..$local_sha"); fi
   text="$(
-    git log --format='%B' "${range[@]}"
+    git log --format='%an <%ae>%n%cn <%ce>%n%B' "${range[@]}"
     git log -p --format= --no-color "${range[@]}" | grep '^+' | grep -v '^+++' || true
   )"
   for a in "${allowed[@]+"${allowed[@]}"}"; do text="$(printf '%s\n' "$text" | grep -vP -e "$a" || true)"; done
