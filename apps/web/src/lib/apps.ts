@@ -1,12 +1,14 @@
 import { parse } from "yaml";
 
-/** A new App from nothing (M35): one type with one field, to grow in the designer. */
+/**
+ * A new App from nothing (M35): one type with one field, to grow in the designer. No description (its box says what
+ * goes there), and no comment on the key: renamed in the designer, it would say the old name.
+ */
 export const EMPTY_APP = `name: My App
-description: What it keeps, in a sentence
 icon: list
 types:
   Item:
-    key: name                    # one entity per name
+    key: name
     fields:
       name: { type: text, required: true }
 `;

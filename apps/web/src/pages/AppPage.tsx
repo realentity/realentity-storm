@@ -3,6 +3,7 @@ import { IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppMap } from "../components/AppMap";
+import { DeleteButton } from "../components/DeleteButton";
 import { ExampleChecklist } from "../components/ExampleChecklist";
 import { ExportYaml } from "../components/ImportYaml";
 import { toast } from "react-toastify";
@@ -66,6 +67,17 @@ export function AppPage() {
               <IconPencil size={18} className="me-1" />
               Edit
             </Link>
+            <DeleteButton
+              what="App"
+              name={data.name}
+              consequences={
+                data.pipelines.length > 0
+                  ? `Its pipelines (${data.pipelines.map((p) => p.name).join(", ")}) belong to it: delete them, or move them to another App, first.`
+                  : `Its versions and the ${data.types.reduce((n, t) => n + t.entities, 0)} entities it keeps go with it.`
+              }
+              onDelete={() => api.apps.removeApp(appId)}
+              then="/apps"
+            />
           </>
         }
       />

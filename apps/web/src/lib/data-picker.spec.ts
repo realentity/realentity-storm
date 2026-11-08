@@ -15,6 +15,7 @@ const step = (type: string, input: JsonSchema, output: JsonSchema, more: Partial
   targets: {},
   credentials: false,
   pageFields: [],
+  primary: [],
   entities: [],
   ...more,
 });

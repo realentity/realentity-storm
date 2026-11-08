@@ -40,6 +40,7 @@ const step = (type: string, sideEffect = false, headed = false): StepTypeView =>
   targets: {},
   credentials: false,
   pageFields: [],
+  primary: [],
   entities: [],
 });
 

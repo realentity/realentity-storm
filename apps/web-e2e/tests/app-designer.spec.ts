@@ -60,11 +60,10 @@ test("the designer builds a type in its table: fields, kinds, key, renames and U
 
   await expect(page.getByTestId("app-check")).toContainText("No problems");
   expect(await yaml(page)).toBe(`name: ${name}
-description: What it keeps, in a sentence
 icon: cpu
 types:
   Disk:
-    key: id                      # one entity per name
+    key: id
     title: title
     fields:
       id: { type: text, required: true }

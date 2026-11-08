@@ -119,6 +119,8 @@ export interface StepTypeView {
   credentials: boolean | string[];
   /** Output fields of an LLM step that come from the page, not the LLM (a form's address): they may be targets. */
   pageFields: string[];
+  /** Inputs shown on its card though not required (http.fetch's url). */
+  primary: string[];
   /** M40-T2: the App types it writes (or reads, a type of mine) by its contracts: bill.save writes Bill. */
   entities: { type: string; mine: boolean }[];
 }

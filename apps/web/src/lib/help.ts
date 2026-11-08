@@ -56,6 +56,8 @@ export const HELP = {
   // Pipelines and their steps.
   pipelineName: "The pipeline's name: in the menu, on its runs, and how other pipelines and buttons start it.",
   pipelineApp: "The App whose types its steps save and read. Without one, it keeps nothing of an App.",
+  allowedSites:
+    "The sites its steps may read from (its policy's allowedDomains). A step reading another site asks to allow it on its card.",
   pipelineDescription: "What it does, in a sentence. The builder reads it when it changes the pipeline.",
   stepSearch: "Find a step by what it does or its type.",
   stepId: "The step's name. Later steps use what it gives as {{name.field}}; renaming it renames those too.",

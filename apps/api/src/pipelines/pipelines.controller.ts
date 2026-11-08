@@ -69,6 +69,13 @@ export class PipelinesController {
     return this.pipelines.update(user.userId, pipelineId, body);
   }
 
+  /** Deletes the pipeline with its versions and runs; 409 while a run of it is going or something starts it. */
+  @Delete(":pipelineId")
+  @HttpCode(204)
+  remove(@CurrentUser() user: AuthenticatedUser, @Param("pipelineId", ParseUUIDPipe) pipelineId: string): Promise<void> {
+    return this.pipelines.remove(user.userId, pipelineId);
+  }
+
   /** Discards the draft and its dry runs (and the pipeline, if it was never saved). */
   @Delete(":pipelineId/draft")
   @HttpCode(204)

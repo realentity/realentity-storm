@@ -63,7 +63,6 @@ test("a pipeline built on cards: trigger, steps, inputs, renames and problems wh
   await commit(page, card(page, "telegram").getByTestId("step-when"), "{{inbox.messages}}");
 
   expect(await yaml(page)).toBe(`name: ${name}
-description: What it does, in a sentence
 trigger: { schedule: "30 7 * * 1-5", tz: Europe/Sofia } # or { schedule: "0 8 * * 1-5", tz: Europe/Sofia }, { on: run.finished, pipeline: Jobs }, { webhook: hmac-sha256 }
 steps:
   - id: inbox

@@ -113,7 +113,7 @@ export function ListTable({
                     <td key={c.field}>
                       {c.field === page.title && link ? (
                         <Link to={link}>
-                          <ViewValue row={row} column={{ ...c, as: c.as === "link" ? "text" : c.as }} />
+                          <ViewValue row={row} column={{ ...c, as: c.as === "link" ? "text" : c.as }} inLink />
                         </Link>
                       ) : (
                         <ViewValue row={row} column={c} />

@@ -109,7 +109,7 @@ export function ViewPage() {
                       <td key={`${column.field}:${i}`} className={column.as === "number" || column.as === "money" ? "text-end" : ""}>
                         {i === 0 ? (
                           <Link to={`/v/${pipelineId}/rows/${encodeURIComponent(row.key)}`} title={rowTitle(view, row)}>
-                            <ViewValue row={row} column={{ ...column, as: column.as === "link" ? "text" : column.as }} />
+                            <ViewValue row={row} column={{ ...column, as: column.as === "link" ? "text" : column.as }} inLink />
                           </Link>
                         ) : (
                           <ViewValue row={row} column={column} />

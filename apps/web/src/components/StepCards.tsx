@@ -1,6 +1,9 @@
 import {
   addStep,
+  allowDomain,
+  allowedDomainsOf,
   moveStep,
+  notAllowedHost,
   removeStep,
   renameStep,
   setPipelineProperty,
@@ -18,6 +21,8 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconPlus,
+  IconWorld,
+  IconX,
   IconSearch,
   IconTrash,
 } from "@tabler/icons-react";
@@ -118,6 +123,7 @@ export function StepCards({
           />
         </div>
       </div>
+      <AllowedSites source={source} onEdit={onEdit} editable={editable} />
       {general.map((i) => (
         <div key={i.path + i.message} className="text-danger small" data-testid="card-issue">
           {i.path && <code className="me-1">{i.path}</code>}
@@ -148,6 +154,7 @@ export function StepCards({
             picker={picker}
             tryHere={tryHere}
             marked={marked?.has(step.id) ?? false}
+            inApp={Boolean(pipeline.app)}
           />
         </div>
       ))}
@@ -263,6 +270,7 @@ function StepCard({
   picker,
   tryHere,
   marked,
+  inApp,
 }: Readonly<{
   step: LooseStep;
   index: number;
@@ -275,14 +283,17 @@ function StepCard({
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
   tryHere?: (step: LooseStep) => ReactNode;
   marked: boolean;
+  /** The pipeline belongs to an App: a data step's `type` (one of its types) is shown up front. */
+  inApp: boolean;
 }>) {
   const [more, setMore] = useState(false);
   const properties = definition?.input.properties ?? {};
   const required = new Set(definition?.input.required ?? []);
   const names = Object.keys(properties);
   const set = (field: string, value: unknown) => onEdit((s) => setStepInput(s, index, field, value));
-  // Shown: what it needs and what is set; the rest under "More".
-  const main = names.filter((n) => required.has(n) || step.with[n] !== undefined);
+  // Shown: what it needs, what is nearly always given (http.fetch's url) and what is set; the rest under "More".
+  const primary = new Set([...(definition?.primary ?? []), ...(inApp && step.type.startsWith("data.") ? ["type"] : [])]);
+  const main = names.filter((n) => required.has(n) || primary.has(n) || step.with[n] !== undefined);
   const rest = names.filter((n) => !main.includes(n));
   const unknown = Object.keys(step.with).filter((n) => !(n in properties));
   const inputIssues = (field: string) => issues.filter((i) => issuePlace(i.path).input === field);
@@ -331,6 +342,7 @@ function StepCard({
         {inputIssues(name).map((i) => (
           <div key={i.path + i.message} className="text-danger small mt-n1 mb-2" data-testid="card-issue">
             {i.path.replace(/^steps\[\d+\]\.with\./, "")}: {i.message}
+            <AllowSite message={i.message} onEdit={onEdit} editable={editable} />
           </div>
         ))}
       </div>
@@ -401,6 +413,7 @@ function StepCard({
           <div key={i.path + i.message} className="text-danger small mb-2 d-flex gap-1" data-testid="card-issue">
             <IconAlertTriangle size={16} />
             {i.message}
+            <AllowSite message={i.message} onEdit={onEdit} editable={editable} />
           </div>
         ))}
         <StepOptions step={step} index={index} onEdit={onEdit} editable={editable} picker={picker} />
@@ -478,6 +491,53 @@ function StepOptions({
     <div className="border-bottom pb-1 mb-2">
       {row("when", "only when")}
       {row("forEach", "for each of")}
+    </div>
+  );
+}
+
+/** A site a step reads that the pipeline may not: allowed from the card, no YAML needed. */
+function AllowSite({ message, onEdit, editable }: Readonly<{ message: string; onEdit: (edit: DesignerEdit) => void; editable: boolean }>) {
+  const host = notAllowedHost(message);
+  if (!host || !editable) return null;
+  return (
+    <button
+      type="button"
+      className="btn btn-sm btn-outline-primary ms-2 py-0"
+      onClick={() => onEdit((s) => allowDomain(s, host))}
+      title={`Let this pipeline read from ${host} (its policy's allowedDomains)`}
+      data-testid="allow-site"
+    >
+      <IconWorld size={14} className="me-1" />
+      Allow {host}
+    </button>
+  );
+}
+
+/** The sites the pipeline may read (policy.allowedDomains), each removable. */
+function AllowedSites({ source, onEdit, editable }: Readonly<{ source: string; onEdit: (edit: DesignerEdit) => void; editable: boolean }>) {
+  const sites = allowedDomainsOf(source);
+  if (sites.length === 0) return null;
+  return (
+    <div className="d-flex flex-wrap align-items-center gap-1 small" data-testid="allowed-sites">
+      <span className="text-secondary me-1" title={HELP.allowedSites}>
+        <IconWorld size={14} className="me-1" />
+        Sites it may read:
+      </span>
+      {sites.map((site) => (
+        <span key={site} className="badge bg-secondary-lt d-inline-flex align-items-center gap-1" data-testid="allowed-site">
+          {site}
+          {editable && (
+            <button
+              type="button"
+              className="btn btn-link p-0 text-secondary"
+              aria-label={`Stop reading ${site}`}
+              onClick={() => onEdit((s) => allowDomain(s, site, false))}
+            >
+              <IconX size={12} />
+            </button>
+          )}
+        </span>
+      ))}
     </div>
   );
 }

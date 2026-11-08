@@ -3,6 +3,7 @@ import { IconEye, IconLayoutList, IconPencil, IconPlayerPlay } from "@tabler/ico
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ExportYaml } from "../components/ImportYaml";
+import { DeleteButton } from "../components/DeleteButton";
 import { toast } from "react-toastify";
 import { PipelineChat } from "../components/PipelineChat";
 import { PlanView, StepGraphView } from "../components/PlanView";
@@ -89,6 +90,13 @@ export function PipelinePage() {
               <IconPlayerPlay size={18} className="me-1" />
               Run now
             </button>
+            <DeleteButton
+              what="pipeline"
+              name={p.name}
+              consequences="Its versions and every run of it go with it: their steps, proposals and costs. Its schedule stops."
+              onDelete={() => api.pipelines.remove(pipelineId)}
+              then="/pipelines"
+            />
           </>
         }
       />

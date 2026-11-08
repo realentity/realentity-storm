@@ -14,7 +14,17 @@ const DATE = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" });
 const NUMBER = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
 
 /** One value as its format says. Always text (React escapes it); a link only when it is http(s). */
-export function ViewValue({ row, column, full }: { row: ViewRow; column: ViewColumn; full?: boolean }) {
+export function ViewValue({
+  row,
+  column,
+  full,
+  inLink,
+}: {
+  row: ViewRow;
+  column: ViewColumn;
+  full?: boolean;
+  /** Inside a link already (a row's title): no link of its own. */ inLink?: boolean;
+}) {
   const value = fieldOf(row, column.field);
   if (value === undefined || value === null || value === "") return <span className="text-secondary">—</span>;
   switch (column.as) {
@@ -39,30 +49,38 @@ export function ViewValue({ row, column, full }: { row: ViewRow; column: ViewCol
       return <>{value === true || value === "true" || value === 1 ? "yes" : "no"}</>;
     case "link": {
       const href = safeLink(value);
-      if (!href) return <>{asText(value)}</>;
-      const url = new URL(href);
-      return (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-truncate d-inline-block"
-          style={{ maxWidth: "18rem" }}
-          title={href}
-        >
-          {url.hostname}
-          {url.pathname === "/" ? "" : url.pathname}
-        </a>
-      );
+      return href ? <ShortLink href={href} /> : <>{asText(value)}</>;
     }
-    default:
+    default: {
       if (full) return <span style={{ whiteSpace: "pre-wrap" }}>{asText(value)}</span>;
+      // A text that is a web address (a feed's url kept as text) reads as one: short, not a wide column.
+      const href = !inLink && typeof value === "string" && /^https?:\/\/\S+$/i.test(value.trim()) ? safeLink(value.trim()) : null;
+      if (href) return <ShortLink href={href} />;
       return (
-        <span className="text-truncate d-inline-block align-bottom" style={{ maxWidth: "32rem" }} title={asText(value)}>
+        <span className="text-truncate d-inline-block align-bottom" style={{ maxWidth: "24rem" }} title={asText(value)}>
           {asText(value)}
         </span>
       );
+    }
   }
+}
+
+/** A link as its host and path, cut at the end to fit a column; the whole address on hover. */
+function ShortLink({ href }: Readonly<{ href: string }>) {
+  const url = new URL(href);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-truncate d-inline-block align-bottom"
+      style={{ maxWidth: "18rem" }}
+      title={href}
+    >
+      {url.hostname}
+      {url.pathname === "/" ? "" : url.pathname}
+    </a>
+  );
 }
 
 /** The view's link of a row, as an icon that opens it. */

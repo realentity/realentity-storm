@@ -266,9 +266,13 @@ describe("M13: inputs without a browser and change detection", () => {
       expect(third).toMatchObject({ added: [b], changed: [], removed: [] });
     });
 
-    it("saves nothing in a dry run", async () => {
-      await run([{ url: "https://shop.test/a", price: 1 }], {}, true);
+    it("saves nothing in a dry run, and says so before its counts", async () => {
+      const dry = (await run([{ url: "https://shop.test/a", price: 1 }], {}, true)) as unknown as Record<string, unknown>;
       expect(await db.client.dataRecord.count()).toBe(0);
+      expect(Object.keys(dry)[0]).toBe("preview");
+      expect(dry).toMatchObject({ preview: "A dry run: nothing was saved. A run would save 1, 1 of them new.", saved: 1, created: 1 });
+      // A real run has no preview.
+      expect(await run([{ url: "https://shop.test/a", price: 1 }])).not.toHaveProperty("preview");
     });
 
     it("leaves my marks (M27) as they are, through a change, a removal and a return", async () => {

@@ -100,6 +100,7 @@ export const api = {
   pipelines: {
     list: () => request<PipelineSummaryView[]>("GET", "/pipelines"),
     get: (pipelineId: string) => request<PipelineDetailView>("GET", `/pipelines/${pipelineId}`),
+    remove: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}`),
     version: (pipelineId: string, version: number) => request<PipelineVersionView>("GET", `/pipelines/${pipelineId}/versions/${version}`),
     compile: (source: string, pipelineId?: string) =>
       request<CompilePipelineResponse>("POST", "/pipelines/compile", { source, pipelineId }),
@@ -196,6 +197,8 @@ export const api = {
     get: (appId: string) => request<AppDetailView>("GET", `/apps/${appId}`),
     create: (source: string) => request<AppDetailView>("POST", "/apps", { source }),
     save: (appId: string, source: string) => request<AppDetailView>("PUT", `/apps/${appId}`, { source }),
+    /** The App itself (`remove` is an entity's). */
+    removeApp: (appId: string) => request<void>("DELETE", `/apps/${appId}`),
     check: (source: string, appId?: string) => request<AppCheckView>("POST", "/apps/check", appId ? { source, appId } : { source }),
     preview: (source: string, type: string, appId?: string) =>
       request<AppPreviewView>("POST", "/apps/preview", appId ? { source, type, appId } : { source, type }),

@@ -310,7 +310,8 @@ Saves items and says what changed since the last save.
   fields never written. `fields` and `complete` as with a collection; `key` and `collection` aren't taken. `stage`
 (M33) moves every item to that stage, as the type's moves allow a pipeline (`stage: skipped` for the agencies).
 - Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`, `invalid` (with
-  `type`: `key`, `saved`, `problems`).
+  `type`: `key`, `saved`, `problems`). In a dry run nothing is saved: `preview` says so first, and the counts are what
+  a run would save.
 
 ```yaml
 # Only new releases continue to the LLM and to me
@@ -409,7 +410,8 @@ that hasn't changed since the last read (ETag / Last-Modified) is not downloaded
 - In: `url` or `urls` (up to 25), `headers`, `query`, `itemsAt`, `maxItems` [100], `maxKb` [1024],
   `timeoutSeconds` [20].
 - Out: `items`, `json`, `text`, `documents` (status, title, … per address).
-- The host must be in `policy.allowedDomains`.
+- The host must be in `policy.allowedDomains`. On the step cards, a host that isn't has an **Allow** button, and the
+  sites a pipeline may read are listed above its steps.
 - **API keys**: put `{{cred:name}}` in `headers` or `query` (never in the url). Add the key on the Credentials page as
   kind *API key*, with the API's host as its allowed host. It is sent only there (a redirect to another host fails the
   step), the read isn't cached, and if the API echoes the key back it shows as `•••`.

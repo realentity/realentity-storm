@@ -46,6 +46,11 @@ export interface StepDefinition {
   /** Output fields of an llmOutput step that come from the page, not the LLM (a form's address): they may be targets. */
   pageFields?: string[];
   /**
+   * Inputs not required but nearly always given (http.fetch's `url`, one of `url` or `urls`): shown on its card with
+   * the required ones, not under More.
+   */
+  primary?: string[];
+  /**
    * The output field that is my text once I approve it (README §8): when a side-effect payload field is exactly
    * {{thisStep.<field>}}, its approved value becomes a few-shot example for this step type.
    */
@@ -381,6 +386,8 @@ export const CORE_STEPS: StepDefinition[] = [
       stage: z.string().trim().min(1).max(40).optional().describe("with type: move each item to this stage, as its type's moves allow a pipeline (M33)"),
     }),
     output: z.object({
+      /** A dry run: that nothing was saved, and what a run would save (the counts are that). */
+      preview: z.string().optional(),
       saved: z.number().int(),
       created: z.number().int(),
       skipped: z.number().int(),
@@ -495,6 +502,7 @@ export const CORE_STEPS: StepDefinition[] = [
     sideEffect: false,
     saasSafe: true,
     reads: ["url", "urls"],
+    primary: ["url"],
     acceptsCredentials: ["headers", "query"],
     input: z.object({
       url: z.string().url().optional(),

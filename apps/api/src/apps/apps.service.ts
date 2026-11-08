@@ -137,6 +137,21 @@ export class AppsService {
     return { name: app.name, source: withCurrentRuns(version.source, version.refs as AppRefs | null, names), pipelines: definitions };
   }
 
+  /**
+   * Deletes an App: its versions and the entities it keeps. Refused while pipelines belong to it (they would compile
+   * against nothing): delete them, or move them to another App, first.
+   */
+  async remove(userId: string, appId: string): Promise<void> {
+    const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
+    if (!app) throw new NotFoundException();
+    const pipelines = (await this.list(userId)).find((a) => a.appId === appId)?.pipelines ?? [];
+    if (pipelines.length > 0) {
+      const names = pipelines.map((p) => `"${p.name}"`).join(", ");
+      throw new ConflictException(`${names} ${pipelines.length === 1 ? "belongs" : "belong"} to "${app.name}": delete or move ${pipelines.length === 1 ? "it" : "them"} first`);
+    }
+    await this.prisma.client.app.delete({ where: { appId } });
+  }
+
   /** M34: the App of that name, with its id and current version's definition; null when there is none. */
   async byName(userId: string, name: string): Promise<{ appId: string; definition: AppDefinition } | null> {
     const app = await this.prisma.client.app.findUnique({ where: { userId_name: { userId, name } } });

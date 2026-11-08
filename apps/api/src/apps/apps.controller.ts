@@ -22,7 +22,7 @@ import {
   type EntityQuery,
   type SaveAppRequest,
 } from "@ai-me/shared";
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { AppImportsService } from "./app-imports.service";
@@ -86,6 +86,13 @@ export class AppsController {
   @Get(":appId/map")
   map(@CurrentUser() user: AuthenticatedUser, @Param("appId", ParseUUIDPipe) appId: string): Promise<AppMapView> {
     return this.apps.map(user.userId, appId);
+  }
+
+  /** Deletes the App with its versions and entities; 409 while pipelines belong to it. */
+  @Delete(":appId")
+  @HttpCode(204)
+  remove(@CurrentUser() user: AuthenticatedUser, @Param("appId", ParseUUIDPipe) appId: string): Promise<void> {
+    return this.apps.remove(user.userId, appId);
   }
 
   @Get(":appId")

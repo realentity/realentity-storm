@@ -82,7 +82,14 @@ export class SaveStep implements StepExecutor {
   constructor(private readonly prisma: PrismaClient) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const save = input as unknown as SaveInput;
+    const result = (await this.save(input as unknown as SaveInput, context)) as { saved: number; created: number };
+    if (!context.dryRun) return result;
+    // A dry run's counts are what a run would save: said first, so "saved 10" isn't read as done.
+    const preview = `A dry run: nothing was saved. A run would save ${result.saved}, ${result.created} of them new.`;
+    return { preview, ...result };
+  }
+
+  private async save(save: SaveInput, context: StepContext): Promise<unknown> {
     if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context);
     if (save.collection) return this.intoCollection(save, save.collection, context);
     const { items, status } = save;

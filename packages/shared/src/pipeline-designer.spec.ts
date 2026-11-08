@@ -1,6 +1,9 @@
 import {
   addStep,
+  allowDomain,
+  allowedDomainsOf,
   moveStep,
+  notAllowedHost,
   removeStep,
   renameStep,
   setPipelineProperty,
@@ -104,5 +107,24 @@ describe("the step builder's edits (M36-T2)", () => {
     expect(setPipelineProperty(SOURCE, "app", "Bills")).toContain("name: Bills\napp: Bills\ntrigger:");
     expect(setPipelineProperty(setPipelineProperty(SOURCE, "app", "Bills"), "app", "")).toBe(SOURCE);
     expect(setPipelineProperty(SOURCE, "description", "Bills, kept")).toContain("name: Bills\ndescription: Bills, kept\n");
+  });
+
+  // A site to read, allowed from its card: no YAML needed
+  it("allows a site the pipeline reads, the policy made before the steps when it has none", () => {
+    const allowed = allowDomain(SOURCE, "WWW.PostgreSQL.org");
+    expect(allowed).toContain(
+      'trigger: { schedule: "0 8 * * *", tz: Europe/Sofia }\npolicy:\n  allowedDomains: [www.postgresql.org]\nsteps:\n',
+    );
+    expect(allowedDomainsOf(allowed)).toEqual(["www.postgresql.org"]);
+    // Once; a second one after it; removed again, the rest as written.
+    expect(allowDomain(allowed, "www.postgresql.org")).toBe(allowed);
+    const two = allowDomain(allowed, "github.com");
+    expect(allowedDomainsOf(two)).toEqual(["www.postgresql.org", "github.com"]);
+    expect(allowDomain(two, "github.com", false)).toBe(allowed);
+    expect(allowDomain(SOURCE, "github.com", false)).toBe(SOURCE);
+    expect(allowedDomainsOf("not: [yaml")).toEqual([]);
+
+    expect(notAllowedHost("www.postgresql.org isn't in policy.allowedDomains: add it there to read from it")).toBe("www.postgresql.org");
+    expect(notAllowedHost("something else")).toBeNull();
   });
 });

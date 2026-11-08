@@ -180,6 +180,31 @@ export class PipelinesService {
     });
   }
 
+  /**
+   * Deletes a pipeline: its versions, runs (their steps, proposals and costs), schedule, webhook and the rules and
+   * examples only it used. Refused while a run of it is going, or while something starts it by its id (another
+   * pipeline's trigger or flow.later, an App's button): those would stop working.
+   */
+  async remove(userId: string, pipelineId: string): Promise<void> {
+    const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
+    if (!pipeline) throw new NotFoundException();
+    const going = await this.prisma.client.run.count({
+      where: { pipelineVersion: { pipelineId }, status: { in: ["QUEUED", "RUNNING", "WAITING_FOR_USER"] } },
+    });
+    if (going > 0) throw new ConflictException(`A run of "${pipeline.name}" is still going: stop it or let it finish first`);
+    const referrers = await this.apps.referrersOf(userId, pipelineId);
+    if (referrers.length > 0) {
+      throw new ConflictException(`${referrers.join(", ")} ${referrers.length === 1 ? "starts" : "start"} "${pipeline.name}": change ${referrers.length === 1 ? "it" : "them"} first`);
+    }
+    await this.prisma.client.$transaction([
+      this.prisma.client.run.deleteMany({ where: { pipelineVersion: { pipelineId } } }),
+      this.prisma.client.rule.deleteMany({ where: { userId, pipelineId } }),
+      this.prisma.client.example.deleteMany({ where: { userId, pipelineId } }),
+      this.prisma.client.pipeline.delete({ where: { pipelineId } }),
+    ]);
+    if (pipeline.enabled) await this.queue.requestScheduleSync();
+  }
+
   /** Enabling puts the pipeline on its schedule (the worker syncs pg-boss schedules); disabling takes it off. */
   async update(userId: string, pipelineId: string, body: UpdatePipelineRequest): Promise<PipelineDetailView> {
     if (body.enabled) {

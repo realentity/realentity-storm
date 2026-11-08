@@ -1,4 +1,4 @@
-import { isMap, isScalar, isSeq, visit, type Document, type YAMLMap, type YAMLSeq } from "yaml";
+import { isMap, isScalar, isSeq, parseDocument, visit, type Document, type YAMLMap, type YAMLSeq } from "yaml";
 import { editAppSource, keepComment } from "./app-source";
 import { RESERVED_STEP_IDS, STEP_ID } from "./pipeline";
 
@@ -153,6 +153,56 @@ export function setPipelineProperty(source: string, property: "name" | "descript
     const at = root.items.reduce((i, pair, n) => (isScalar(pair.key) && before.includes(String(pair.key.value)) ? n + 1 : i), 0);
     root.items.splice(at, 0, document.createPair(property, value));
   });
+}
+
+/**
+ * A site the pipeline may read (policy.allowedDomains), from its card: added once, the policy made before the steps
+ * when it has none. Removed with `allow: false`.
+ */
+export function allowDomain(source: string, host: string, allow = true): string {
+  const domain = host.trim().toLowerCase();
+  return editAppSource(source, (document) => {
+    const root = document.contents;
+    if (!isMap(root)) throw new Error("A pipeline is a map");
+    const found: unknown = root.get("policy", true);
+    let map: YAMLMap;
+    if (isMap(found)) map = found;
+    else {
+      if (!allow) return;
+      map = document.createNode({});
+      map.flow = false;
+      const at = root.items.findIndex((pair) => isScalar(pair.key) && pair.key.value === "steps");
+      root.items.splice(at < 0 ? root.items.length : at, 0, document.createPair("policy", map));
+    }
+    const listed: unknown = map.get("allowedDomains", true);
+    let list: YAMLSeq;
+    if (isSeq(listed)) list = listed;
+    else {
+      if (!allow) return;
+      list = document.createNode([]);
+      list.flow = true;
+      map.set("allowedDomains", list);
+    }
+    const at = list.items.findIndex((item) => isScalar(item) && String(item.value).toLowerCase() === domain);
+    if (allow && at < 0) list.items.push(document.createNode(domain));
+    if (!allow && at >= 0) list.items.splice(at, 1);
+  });
+}
+
+/** The sites a pipeline may read, as its policy lists them. */
+export function allowedDomainsOf(source: string): string[] {
+  try {
+    const parsed = parseDocument(source).toJS() as { policy?: { allowedDomains?: unknown } } | null;
+    const domains = parsed?.policy?.allowedDomains;
+    return Array.isArray(domains) ? domains.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The host a card's problem says isn't allowed ("www.example.org isn't in policy.allowedDomains"), to allow it. */
+export function notAllowedHost(message: string): string | null {
+  return /^(\S+) isn't in policy\.allowedDomains/.exec(message)?.[1] ?? null;
 }
 
 /** My comment on the value a change replaces, on the new one. */
