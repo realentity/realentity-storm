@@ -1,7 +1,7 @@
 /* Storm on top of Tabler: only what Tabler doesn't have. */
 
 /*
- * Brand colours, palette "Pressure front" (logo: public/logo.svg). Navy #0c2a4d to sea cyan #0e9fb5, spark #a5f3fc.
+ * Brand colours, palette "Pressure front" (logo: public/logo.svg, a flat tile in the primary cyan). Navy #0c2a4d, cyan #0b7a94.
  * Tabler's primary (buttons, active states, focus rings) and links follow it; the dark theme gets a lighter shade with
  * navy text on primary buttons. After tabler.css, so these win over its own values.
  */
