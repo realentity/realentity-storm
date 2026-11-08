@@ -76,6 +76,10 @@ jobs:
       - name: Unit tests
         run: pnpm test --env-mode=loose
 
+      # The worker's integration tests drive a real Chromium (browser steps, the agent, recipes, forms).
+      - name: Install Chromium for the worker
+        run: pnpm --filter @realentity/storm-worker exec playwright install --with-deps chromium
+
       - name: Integration tests
         run: pnpm test:e2e --env-mode=loose
 
