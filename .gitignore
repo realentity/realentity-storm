@@ -48,3 +48,6 @@ apps/*/evals/results/
 
 # Local secrets-manager config (Infisical project id): yours, not the project's
 .infisical.yaml
+
+# Private instructions for Claude Code (CLAUDE.md is the shared one)
+CLAUDE.local.md
