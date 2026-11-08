@@ -170,7 +170,7 @@ ${extra}`;
   const posted = () => sites.posts.filter((p) => p.host === "ats.localhost");
   const applyStep = (runId: string) => db.client.step.findFirstOrThrow({ where: { runId, stepKey: "apply" } });
 
-  it("M10-T2: maps the wizard behind Apply from my profile, attaches my CV, and types or sends nothing", async () => {
+  it("M10-T2: maps the wizard behind Apply from the profile, attaches the CV, and types or sends nothing", async () => {
     const { runId, proposal } = await toGate(APPLY());
     const payload = proposal.originalPayload as { url: string; fields: FormField[]; files: FormFile[] };
     expect(payload.url).toBe(sites.url("ats", "/apply/7"));
@@ -185,7 +185,7 @@ ${extra}`;
     expect(payload.files).toEqual([{ key: "#cv", document: "cv-main", documentId: cv.documentId, sha256: sha(CV), filename: "Ana Petrova CV.pdf" }]);
     expect((await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "map" } })).output).toMatchObject({ submit: "Send application" });
 
-    // The model saw my profile and the form's labels, as data.
+    // The model saw the profile and the form's labels, as data.
     expect(llm.prompts[0]).toContain(PROFILE);
     expect(llm.prompts[0]).toContain('"label":"Why Acme?"');
     // Read-only: nothing posted, nothing uploaded; the Application is prepared.
@@ -195,7 +195,7 @@ ${extra}`;
     expect(proposal.targets).toEqual([{ field: "url", kind: "domain", value: "ats.localhost", basis: "static", isNew: false }]);
   });
 
-  it("a form on the posting page, like dev.bg's: the person check is mine to answer, the honeypot stays empty, an AJAX send counts", async () => {
+  it("a form on the posting page, like dev.bg's: the person check is the user's to answer, the honeypot stays empty, an AJAX send counts", async () => {
     const source = APPLY().replace(`url: "${postingUrl()}"\n      cv`, `url: "${sites.url("ats", "/jobs/8")}"\n      cv`);
     const { runId, proposal } = await toGate(source);
     const payload = proposal.originalPayload as { url: string; fields: FormField[]; files: FormFile[] };
@@ -215,7 +215,7 @@ ${extra}`;
 
     await approve(proposal);
     const advancing = runner.advance(runId);
-    // The check changed with the reload: I answer the one the page asks now.
+    // The check changed with the reload: the user answers the one the page asks now.
     const takeover = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the person check");
     expect(takeover.reason).toBe('Answer "102-42=" in the form yourself, then Continue: it is sent then');
     expect(posted()).toEqual([]);
@@ -241,7 +241,7 @@ ${extra}`;
     expect(sites.hits.filter((h) => h.startsWith("ats.localhost /uploads"))).toEqual([]);
   });
 
-  it("M10-I1: Act fills exactly the approved values, my edit included, through every step of the wizard, and sends it", async () => {
+  it("M10-I1: Act fills exactly the approved values, the user's edit included, through every step of the wizard, and sends it", async () => {
     const { runId, proposal } = await toGate(APPLY());
     await approve(proposal, (p) => {
       const fields = p.fields as FormField[];
@@ -276,10 +276,10 @@ ${extra}`;
     sites.addRequiredField();
     const advancing = runner.advance(runId);
     const takeover = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the pause");
-    expect(takeover.reason).toBe('The form changed since I approved it ("Salary expectation" is new and required); nothing was sent');
+    expect(takeover.reason).toBe('The form changed since you approved it ("Salary expectation" is new and required); nothing was sent');
     expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).status).toBe("WAITING_FOR_USER");
 
-    // Continue on the same form: still not what I approved, so the step fails without sending.
+    // Continue on the same form: still not what the user approved, so the step fails without sending.
     await db.client.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { status: "CONTINUED", resolvedAt: new Date() } });
     expect(await advancing).toBe("FAILED");
     expect((await applyStep(runId)).error).toBe('Nothing was sent: "Salary expectation" is new and required');
@@ -287,7 +287,7 @@ ${extra}`;
     expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "PREPARED" });
   });
 
-  it("M10-I3: stopBeforeSubmit fills everything and leaves the final button to me", async () => {
+  it("M10-I3: stopBeforeSubmit fills everything and leaves the final button to the user", async () => {
     const { runId, proposal } = await toGate(APPLY("      stopBeforeSubmit: true\n"));
     await approve(proposal);
     const advancing = runner.advance(runId);
@@ -295,7 +295,7 @@ ${extra}`;
     expect(takeover.reason).toBe('Filled as approved: check it and press "Send application" yourself, then Continue');
     expect(posted()).toEqual([]);
 
-    // I didn't press it: Continue reports that nothing was sent.
+    // The user didn't press it: Continue reports that nothing was sent.
     await db.client.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { status: "CONTINUED", resolvedAt: new Date() } });
     expect(await advancing).toBe("DONE");
     expect((await applyStep(runId)).output).toMatchObject({ submitted: false });
@@ -314,7 +314,7 @@ ${extra}`;
     expect(posted()).toEqual([]);
   });
 
-  it("a CV replaced after approval is not the one I approved: nothing is sent", async () => {
+  it("a CV replaced after approval is not the one the user approved: nothing is sent", async () => {
     const { runId, proposal } = await toGate(APPLY());
     await approve(proposal);
     await document("cv-main", "Ana Petrova CV v2.pdf", Buffer.from("%PDF-1.4\n% newer\n%%EOF\n"));
@@ -323,7 +323,7 @@ ${extra}`;
     const old = await db.client.document.findUniqueOrThrow({ where: { documentId: approved.documentId } });
     await writeFile(join(documentsDir, old.path), "tampered");
     expect(await runner.advance(runId)).toBe("FAILED");
-    expect((await applyStep(runId)).error).toBe('The file of "cv-main" changed on disk since I approved it');
+    expect((await applyStep(runId)).error).toBe('The file of "cv-main" changed on disk since you approved it');
     expect(posted()).toEqual([]);
   });
 });

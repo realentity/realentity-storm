@@ -161,7 +161,7 @@ describe("M12: the Storm bot and webhooks", () => {
 
   const answer = () => sent("answerCallbackQuery").at(-1)?.body.text;
 
-  describe("M12-S2: only my private chat, with the bot's secret, and fresh commands", () => {
+  describe("M12-S2: only the user's private chat, with the bot's secret, and fresh commands", () => {
     it("answers a wrong or missing secret like an unknown path, and ignores everyone else", async () => {
       await telegram(message("/help"), "wrong-secret-".repeat(4)).expect(404);
       await telegram(message("/help"), null).expect(404);
@@ -344,7 +344,7 @@ describe("M12: the Storm bot and webhooks", () => {
       await db.client.fact.deleteMany();
     });
 
-    /** A run waiting for my answer, as the worker's Asker leaves it: the question (asked on Telegram) and the wait. */
+    /** A run waiting for the user's answer, as the worker's Asker leaves it: the question (asked on Telegram) and the wait. */
     async function asked(options: string[] = [], telegramMessageId = 777) {
       const pipeline = await createPipeline(REPLY);
       const run = await db.client.run.create({
@@ -376,7 +376,7 @@ describe("M12: the Storm bot and webhooks", () => {
       await telegram(reply("hello", 12345)).expect(200);
       await api.app.get(TelegramBot).settled();
       expect(sent().at(-1)?.body.text).toBe("What should the pipeline do?\n\n(/new starts over)");
-      // Only my chat answers.
+      // Only the user's chat answers.
       const other = await asked([], 778);
       await telegram({ ...reply("1 EUR", 778), message: { ...reply("1 EUR", 778).message, from: { id: 1 }, chat: { id: 1, type: "private" } } }).expect(200);
       expect(await db.client.question.findUniqueOrThrow({ where: { questionId: other.question.questionId } })).toMatchObject({ status: "OPEN" });
@@ -493,7 +493,7 @@ describe("M12: the Storm bot and webhooks", () => {
     });
 
     // M21-S1
-    it("only my private chat reaches the builder; a superseded or saved proposal's button changes nothing", async () => {
+    it("only the user's private chat reaches the builder; a superseded or saved proposal's button changes nothing", async () => {
       await telegram(message("Make me a pipeline", 999)).expect(200);
       await telegram(message("Make me a pipeline", ME, { id: -100, type: "group" })).expect(200);
       await bot().settled();

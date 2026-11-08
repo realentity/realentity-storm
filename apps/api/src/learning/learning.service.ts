@@ -20,8 +20,9 @@ const RECENT_REFLECTIONS = 5;
 type RuleRow = Prisma.RuleGetPayload<object>;
 
 /**
- * The Rules page (README §8): rules I write or approve, what reflection suggests, and asking for a reflection.
- * Suggested rules only become active through `update` (M6-U1); the worker reads active ones at every LLM call.
+ * The Rules page (docs/design.md §8): rules the user writes or approves, what reflection suggests, and asking for a
+ * reflection. Suggested rules only become active through `update` (M6-U1); the worker reads active ones at every LLM
+ * call.
  */
 @Injectable()
 export class LearningService {
@@ -74,7 +75,7 @@ export class LearningService {
     };
   }
 
-  /** A rule I write is active right away. */
+  /** A rule the user writes is active right away. */
   async createRule(userId: string, body: CreateRuleRequest): Promise<RuleView> {
     await this.assertPipeline(userId, body.pipelineId);
     const rule = await this.prisma.client.rule.create({

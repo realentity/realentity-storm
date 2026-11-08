@@ -15,11 +15,11 @@ export interface ExampleText {
   output: string;
 }
 
-/** What the LLM steps get from my decisions (README §8): active rules, and similar approved outputs. */
+/** What the LLM steps get from the user's decisions (docs/design.md §8): active rules, and similar approved outputs. */
 export interface StepLearning {
   /** ACTIVE rules for this step type (or every step) and this pipeline (or every pipeline). */
   rules(userId: string, stepType: string, pipelineId: string): Promise<string[]>;
-  /** My most similar approved outputs of this step type; empty without embeddings. */
+  /** The user's most similar approved outputs of this step type; empty without embeddings. */
   examples(userId: string, stepType: string, context: string, recordUsage: (usage: LlmUsage) => void): Promise<ExampleText[]>;
 }
 
@@ -51,7 +51,7 @@ export interface LearnedField {
   /** The payload field, e.g. "body". */
   field: string;
   context: string;
-  /** What the step wrote, and what I approved. */
+  /** What the step wrote, and what the user approved. */
   original: string;
   approved: string;
 }
@@ -100,7 +100,7 @@ export async function learnedFields(prisma: PrismaClient, catalog: StepCatalog, 
 }
 
 /**
- * Examples (README §8 "Few-shot retrieval"): what I approved becomes an example of its step type, matched by
+ * Examples (docs/design.md §8 "Few-shot retrieval"): what the user approved becomes an example of its step type, matched by
  * embedding the step's input. Without embeddings (no OPENAI_API_KEY, or OpenAI down) examples are kept without a
  * vector and embedded later (`backfill`).
  */
@@ -154,7 +154,7 @@ export class Learning implements StepLearning {
       include: { step: true, run: { include: { pipelineVersion: true } }, decision: true },
     });
     if (!proposal?.decision || proposal.decision.kind === "REJECTED" || proposal.run.dryRun) return 0;
-    // Form answers I filled in or changed become facts (M15-T1).
+    // Form answers the user filled in or changed become facts (M15-T1).
     await new Facts(this.prisma).fromProposal(proposal);
 
     let added = 0;

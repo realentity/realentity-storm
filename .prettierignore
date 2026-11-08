@@ -6,6 +6,7 @@ coverage
 **/public/assets
 pnpm-lock.yaml
 README.md
+docs/design.md
 .infisical.yaml
 apps/web-e2e/.auth
 apps/web-e2e/test-results

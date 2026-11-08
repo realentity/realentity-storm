@@ -1,4 +1,4 @@
-# M14: started by follow-up-later.yaml 7 days after I applied, if nothing moved since: a short follow-up I can send,
+# M14: started by follow-up-later.yaml 7 days after you applied, if nothing moved since: a short follow-up you can send,
 # on Telegram. It sends nothing itself.
 name: Follow-up reminder
 description: No answer 7 days after applying; a follow-up draft to send.

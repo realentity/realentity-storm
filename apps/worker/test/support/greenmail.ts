@@ -4,7 +4,7 @@ import { GenericContainer, Wait, type StartedTestContainer } from "testcontainer
 export const MAILBOX = "me@storm.test";
 /** The app password of the test mailbox: the S3 test greps every persisted value for it. */
 export const APP_PASSWORD = "gm-app-password-7Qx9vL2p";
-/** Someone I write to: a second mailbox, to read what I sent her. */
+/** Someone the user writes to: a second mailbox, to read what the user sent her. */
 export const OTHER_MAILBOX = "ana@acme.test";
 export const OTHER_PASSWORD = "gm-ana-password-4Kd2";
 
@@ -25,7 +25,7 @@ export interface TestMailServer {
   stop(): Promise<void>;
 }
 
-/** GreenMail (IMAP + SMTP, plain text, local only) with my mailbox and Ana's, each logging in with its full address. */
+/** GreenMail (IMAP + SMTP, plain text, local only) with the user's mailbox and Ana's, each logging in with its full address. */
 export async function startMailServer(): Promise<TestMailServer> {
   const container: StartedTestContainer = await new GenericContainer("greenmail/standalone:2.1.3")
     .withEnvironment({

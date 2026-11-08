@@ -2,7 +2,7 @@
 # and its hourly counts as the chart above the list; a table's own page charts its own.
 # Save it on the Apps page before table-growth.yaml, then on its page move the "tables" collection into Table.
 name: Tables
-description: My database's tables and how they grow
+description: A database's tables and how they grow
 icon: chart
 types:
   Table:

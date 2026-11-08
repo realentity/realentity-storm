@@ -12,8 +12,8 @@ import { changedFields, editableText, newTargets, readEdits } from "../lib/paylo
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * One proposal (README §3): the exact payload, its targets with new ones highlighted, and my decision. For gate.act,
- * Act approves the payload shown (edited or not) and the run executes exactly that; for gate.review I pick items.
+ * One proposal (docs/design.md §3): the exact payload, its targets with new ones highlighted, and the decision. For gate.act,
+ * Act approves the payload shown (edited or not) and the run executes exactly that; for gate.review the user picks items.
  */
 export function ProposalPage() {
   const { proposalId = "" } = useParams();
@@ -108,11 +108,11 @@ function Targets({ targets }: { targets: TargetView[] }) {
 function basisText(basis: TargetView["basis"]): string {
   if (basis === "static") return "in the pipeline's allowlist";
   if (basis === "provenance") return "comes from the run's own data";
-  if (basis === "approved") return "approved by me";
+  if (basis === "approved") return "approved by you";
   return "not allowed yet";
 }
 
-/** My decision; a rejection by mistake can be undone while the run still waits for me. */
+/** The decision; a rejection by mistake can be undone while the run still waits for the user. */
 function Decision({ proposal, onUndone }: { proposal: ProposalView; onUndone: () => void }) {
   const action = useAction();
   if (!proposal.decision) return null;

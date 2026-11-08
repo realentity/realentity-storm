@@ -2,7 +2,7 @@ import { type AppDetailView } from "@realentity/storm-shared";
 import { expect, test, type Page } from "@playwright/test";
 import { createPipeline, startRun, unique } from "./support";
 
-// Found on the server (2026-11-08): what the editors and pages lacked
+// Found in use (2026-11-08): what the editors and pages lacked
 
 const card = (page: Page, id: string) => page.locator(`[data-testid="step-card"][data-step="${id}"]`);
 

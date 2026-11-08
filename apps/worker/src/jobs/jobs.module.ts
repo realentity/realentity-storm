@@ -31,7 +31,7 @@ import { MorningBrief, type TodaysEvents } from "./morning-brief";
 import { WeeklyReview } from "./weekly-review";
 import { listEvents } from "../steps/calendar-steps";
 
-/** A message to me on the Storm bot: text, or text with buttons. */
+/** A message to the user on the Storm bot: text, or text with buttons. */
 function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promise<void> {
   const config = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
   return async (message) => {

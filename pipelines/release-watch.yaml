@@ -1,5 +1,5 @@
-# M13: once a day, the releases of what runs on the server, from their feeds (no browser, no recipe). Only releases not
-# seen before reach the LLM and me: data.save keeps what was read, and `when` skips the summary and the message on a
+# M13: once a day, the releases of what runs on your server, from their feeds (no browser, no recipe). Only releases
+# not seen before reach the LLM and you: data.save keeps what was read, and `when` skips the summary and the message on a
 # day with nothing new. The first run reports everything the feeds list at the moment, once.
 # Add or remove projects in `urls` (GitHub: https://github.com/<owner>/<repo>/releases.atom); a site other than
 # github.com needs its host in policy.allowedDomains too.
@@ -7,7 +7,7 @@
 # page newest first; Upgraded marks one, and Upgrade notes asks the Release notes pipeline (release-notes.yaml) about it.
 name: Release watch
 app: Releases
-description: New releases of the server's stack, summarized for upgrading; nothing on a quiet day.
+description: New releases of your server's stack, summarized for upgrading; nothing on a quiet day.
 trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
 policy:
   allowedDomains: [github.com, www.postgresql.org]
@@ -43,4 +43,4 @@ steps:
       maxWords: 300
   - id: tell
     type: notify.telegram
-    with: { text: "New releases on the server's stack:\n{{summary.summary}}" }
+    with: { text: "New releases on your server's stack:\n{{summary.summary}}" }

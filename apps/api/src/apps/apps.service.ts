@@ -97,7 +97,7 @@ export class AppsService {
     return drift.sort((a, b) => b.count - a.count || a.type.localeCompare(b.type) || a.field.localeCompare(b.field));
   }
 
-  /** M34-T4: one of them added to its type, as the next version (my comments in the YAML kept). */
+  /** M34-T4: one of them added to its type, as the next version (the comments in the YAML kept). */
   async addField(userId: string, appId: string, { type, field }: AddFieldRequest): Promise<AppDetailView> {
     const found = (await this.drift(userId, appId)).find((d) => d.type === type && d.field === field);
     if (!found) throw new NotFoundException(`${type} has no "${field}" to add`);
@@ -109,7 +109,7 @@ export class AppsService {
     return this.save(userId, appId, document.toString({ lineWidth: 0 }));
   }
 
-  /** M34: my Apps as they are, for the builder. */
+  /** M34: the user's Apps as they are, for the builder. */
   async definitions(userId: string): Promise<AppDefinition[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
     const versions = await this.prisma.client.appVersion.findMany({
@@ -209,7 +209,7 @@ export class AppsService {
     return followers;
   }
 
-  /** M39-T4: the names my Apps and saved pipelines have now, by id: what a definition is shown with. */
+  /** M39-T4: the names the user's Apps and saved pipelines have now, by id: what a definition is shown with. */
   async currentNames(userId: string): Promise<CurrentNames> {
     const [apps, pipelines] = await Promise.all([
       this.prisma.client.app.findMany({ where: { userId }, select: { appId: true, name: true } }),
@@ -363,7 +363,7 @@ export class AppsService {
   }
 
   /**
-   * M35-T1: a draft checked as I edit it, nothing saved: its problems with their lines; of an App's draft, also its
+   * M35-T1: a draft checked while it is edited, nothing saved: its problems with their lines; of an App's draft, also its
    * pipelines compiled against it (what Save would refuse) and what it changes.
    */
   async check(userId: string, { source, appId }: AppCheckRequest): Promise<AppCheckView> {
@@ -434,7 +434,7 @@ export class AppsService {
     return drafted(items.length > 0 ? items : outputs);
   }
 
-  /** M35-T4: a type drafted from a sample I paste: its list of items (the first one in it), or the one item it is. */
+  /** M35-T4: a type drafted from a pasted sample: its list of items (the first one in it), or the one item it is. */
   draftTypeFromSample(sample: unknown): DraftTypeView {
     const items = Array.isArray(sample)
       ? sample.filter((o): o is Item => !!o && typeof o === "object" && !Array.isArray(o))
@@ -537,7 +537,7 @@ function drafted(items: Item[]): DraftTypeView {
   return { type, samples: items.length, source: stringify({ Item: authoredType(type) }, { lineWidth: 0 }), examples };
 }
 
-/** A type as I'd write it: without the defaults (required: false, mine: false). */
+/** A type as one would write it: without the defaults (required: false, mine: false). */
 function authoredType(type: DataType): Item {
   return {
     ...(type.description ? { description: type.description } : {}),

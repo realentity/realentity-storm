@@ -15,11 +15,11 @@ import { AppProposal } from "./AppProposal";
 interface BuilderChatProps {
   /** null: no chat yet; one is created with the first message. */
   chatId: string | null;
-  /** The pipeline the chat is about (README §2.5); none for a new pipeline (README §2.1). */
+  /** The pipeline the chat is about (docs/design.md §2.5); none for a new pipeline (docs/design.md §2.1). */
   pipelineId?: string;
   /** M34: the App the chat is about. */
   appId?: string;
-  /** M38-T5: in an editor: what it has open and what I am on, sent with each message. */
+  /** M38-T5: in an editor: what it has open and what the user is on, sent with each message. */
   editor?: () => { source: string; focus?: string };
   /** M38-T5: in an editor: a proposal goes into it (instead of opening the editor page). */
   onUse?: (proposal: { kind: "pipeline" | "app"; source: string }) => void;
@@ -30,8 +30,8 @@ interface BuilderChatProps {
 }
 
 /**
- * The builder chat: I describe or ask; the builder answers, asks back, or proposes a definition that compiled. A
- * proposal is saved (next version), dry-run or opened in the editor only when I press its button.
+ * The builder chat: the user describes or asks; the builder answers, asks back, or proposes a definition that
+ * compiled. A proposal is saved (next version), dry-run or opened in the editor only when the user presses its button.
  */
 export function BuilderChat({ chatId, pipelineId, appId, editor, onUse, onCreated, onSaved, placeholder }: BuilderChatProps) {
   const chat = useLoad(

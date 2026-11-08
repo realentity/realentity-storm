@@ -18,8 +18,8 @@ const MAX_SUMMARY = 2_000;
 export const USER_AGENT = "RealEntity-Storm/1.0 (personal automation; reads feeds and pages it was told to)";
 
 /**
- * Where http.fetch never connects (M13-S1): this machine, private networks, Tailscale's 100.64.0.0/10 (the tailnet:
- * the server's apps), link-local (cloud metadata), multicast and reserved ranges, IPv4 and IPv6.
+ * Where http.fetch never connects (M13-S1): this machine, private networks, the CGNAT range 100.64.0.0/10 (Tailscale
+ * and similar private networks), link-local (cloud metadata), multicast and reserved ranges, IPv4 and IPv6.
  */
 export function privateAddresses(): BlockList {
   const list = new BlockList();
@@ -85,7 +85,7 @@ export class FetchRefused extends Error {}
 const CREDENTIAL = /\{\{\s*cred:([a-z0-9._-]+)\s*\}\}/g;
 
 /**
- * http.fetch (README §2.3, M13-T1): GET without a browser, cookies or credentials. Only hosts on the pipeline's
+ * http.fetch (docs/design.md §2.3, M13-T1): GET without a browser, cookies or credentials. Only hosts on the pipeline's
  * allowedDomains, and only public addresses: the name is resolved here and the connection goes to the address checked
  * (no second lookup to rebind); every redirect is checked again. Feeds become items, JSON stays data, HTML becomes text.
  * With an ETag or Last-Modified from the last read, an unchanged address (304) gives what was read then.
@@ -215,7 +215,7 @@ interface RequestInput {
 }
 
 /**
- * http.request (M29-T6): one POST, PUT, PATCH or DELETE to an API, after I approved its payload at the gate. Its host
+ * http.request (M29-T6): one POST, PUT, PATCH or DELETE to an API, after the user approved its payload at the gate. Its host
  * was checked by the policy (a domain target); here it must still be a public address, and a redirect isn't followed
  * (a 3xx comes back as an answer that didn't succeed). A body is sent as JSON. Keys as in http.fetch: opened for the
  * address's host, masked in the answer and in errors. An answer other than 2xx fails the step with its status.

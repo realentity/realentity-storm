@@ -12,9 +12,9 @@ import { useAction, useLoad } from "../lib/use-load";
 type Connection = "connecting" | "connected" | "disconnected" | "refused";
 
 /**
- * The headed browser, live (README §6): view-only while the worker acts (the server gives the view-only password,
- * x11vnc ignores input on it); interactive once the run waits for me or I press Take over. Continue goes on from the
- * page as I left it, Abort stops the run. The clipboard box gets Cyrillic and other text past VNC's keymap.
+ * The headed browser, live (docs/design.md §6): view-only while the worker acts (the server gives the view-only password,
+ * x11vnc ignores input on it); interactive once the run waits for the user or they press Take over. Continue goes on
+ * from the page as they left it, Abort stops the run. The clipboard box gets Cyrillic and other text past VNC's keymap.
  */
 export function LiveView({ run }: { run: RunDetailView }) {
   const live = useLoad(
@@ -32,7 +32,7 @@ export function LiveView({ run }: { run: RunDetailView }) {
   // The connection stays up while no window is open, so the browser shows as soon as one opens.
   const blank = Boolean(view?.active && password && !view.window.open);
 
-  // One connection per password: the view-only one, then the full one while I'm in control.
+  // One connection per password: the view-only one, then the full one while the user is in control.
   useEffect(() => {
     if (!password || !screen.current) return;
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${view?.path ?? "/vnc/"}`;
@@ -75,7 +75,7 @@ export function LiveView({ run }: { run: RunDetailView }) {
       <div className="card-header">
         <h3 className="card-title">Live browser</h3>
         <span className={`badge ms-2 ${connection === "connected" ? "bg-green-lt" : "bg-secondary-lt"}`}>
-          {view?.active ? (connection === "connected" ? (view.control ? "in my control" : "watching") : connection) : "not running"}
+          {view?.active ? (connection === "connected" ? (view.control ? "in your control" : "watching") : connection) : "not running"}
         </span>
         <div className="card-actions d-flex gap-2">
           {view?.active && !takeover && (
@@ -129,7 +129,7 @@ export function LiveView({ run }: { run: RunDetailView }) {
       )}
       {takeover && takeover.waitsFor !== "google" && takeover.waitsFor !== "answer" && (
         <div className="alert alert-warning m-3 mb-0" data-testid="takeover-banner">
-          <strong>{takeover.status === "OPEN" ? `It needs me: ${takeover.reason}` : "I took over"}</strong>
+          <strong>{takeover.status === "OPEN" ? `It needs you: ${takeover.reason}` : "You took over"}</strong>
           {takeover.url && <span className="text-secondary"> on {hostOf(takeover.url)}</span>}. Act in the browser below, then press
           Continue (or Abort). It gives up at {formatDateTime(takeover.expiresAt)}.
         </div>

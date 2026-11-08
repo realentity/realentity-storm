@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { createPipeline, startRun, unique } from "./support";
 
-// M27: a pipeline's page in the menu, its rows, my marks, a row's button
-test("a pipeline's page lists what it keeps, keeps my marks and starts a pipeline from a row", async ({ page }) => {
+// M27: a pipeline's page in the menu, its rows, the user's marks, a row's button
+test("a pipeline's page lists what it keeps, keeps the user's marks and starts a pipeline from a row", async ({ page }) => {
   const tag = unique("e2e");
   const collection = tag.replace(/\W+/g, "-").toLowerCase();
   const label = `Disks ${tag.split(" ")[1]}`;

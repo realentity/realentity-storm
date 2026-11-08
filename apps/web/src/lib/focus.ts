@@ -1,5 +1,5 @@
 /**
- * M38-T5: what I am on, from the control that has the focus: its step and input on the cards, its type and field in
+ * M38-T5: what the user is on, from the control that has the focus: its step and input on the cards, its type and field in
  * the designer, else what the control is called.
  */
 export function focusOf(target: EventTarget | null): string | undefined {

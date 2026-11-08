@@ -72,8 +72,8 @@ interface Change {
 
 /**
  * data.save into JobPosting (the Jobs page): one posting per URL. Saving one again refreshes what it says and when
- * it was last seen; the status moves forward only (a posting I applied to stays applied, NEW never undoes a
- * decision). With `collection` (M13), into a list of mine by `key`, saying what was added, what changed and, for a
+ * it was last seen; the status moves forward only (a posting the user applied to stays applied, NEW never undoes a
+ * decision). With `collection` (M13), into a list of the user's by `key`, saying what was added, what changed and, for a
  * complete list, what was removed since the last save. A dry run saves nothing and says what it would have.
  */
 export class SaveStep implements StepExecutor {

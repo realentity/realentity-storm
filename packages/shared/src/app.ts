@@ -25,7 +25,7 @@ export const EntityFieldSchema = z
     type: z.enum(FIELD_KINDS),
     label: z.string().trim().min(1).max(40).optional(),
     required: z.boolean().default(false),
-    /** Set by me (M32's forms); a pipeline never writes it. */
+    /** Set by the user (M32's forms); a pipeline never writes it. */
     mine: z.boolean().default(false),
     /** enum: the values it may take. */
     values: z.array(z.string().trim().min(1).max(60)).min(1).max(50).optional(),
@@ -40,8 +40,8 @@ export type StageActor = (typeof STAGE_ACTORS)[number];
 const STATE = z.string().trim().min(1).max(40);
 
 /**
- * An entity's stage (M32): where it is (new, applied, interview…), moved only as `moves` allow and by whom: me on its
- * page, or a pipeline's data.save. The date it first reached each state is kept.
+ * An entity's stage (M32): where it is (new, applied, interview…), moved only as `moves` allow and by whom:
+ * the user (`me`) on its page, or a pipeline's data.save. The date it first reached each state is kept.
  */
 export const StagesSchema = z
   .object({
@@ -56,7 +56,7 @@ export const StagesSchema = z
           .object({
             from: z.union([STATE, z.array(STATE).min(1)]),
             to: z.array(STATE).min(1),
-            /** Default: only me, on its page. */
+            /** Default: only the user (`me`), on its page. */
             by: z.array(z.enum(STAGE_ACTORS)).min(1).default(["me"]),
           })
           .strict(),
@@ -80,7 +80,7 @@ export function movesFrom(stages: Stages, from: string, by: StageActor): string[
 export const DataTypeSchema = z
   .object({
     description: z.string().max(500).optional(),
-    /** A type I write (M32), on its pages' forms: things to watch, people. Pipelines only read it. */
+    /** A type the user writes (M32), on its pages' forms: things to watch, people. Pipelines only read it. */
     mine: z.boolean().default(false),
     stages: StagesSchema.optional(),
     /** The field that identifies an entity: one per key, as data.save's key. */
@@ -275,7 +275,7 @@ export const ViewPageSchema = z
   .strict();
 export type ViewPage = z.output<typeof ViewPageSchema>;
 
-/** The form on an entity's page (M32): which of my fields, in what order; default all of them. */
+/** The form on an entity's page (M32): which fields of mine, in what order; default all of them. */
 export const FormPageSchema = z
   .object({
     form: z.string().regex(TYPE_NAME),
@@ -340,7 +340,7 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
     if ("form" in page) {
       for (const [j, name] of (page.fields ?? []).entries()) {
         field(name, [...at, "fields", j]);
-        if (type.fields[name] && !isMineField(type, name)) issue([...at, "fields", j], `${typeName}.${name} is written by pipelines: a form edits my fields`);
+        if (type.fields[name] && !isMineField(type, name)) issue([...at, "fields", j], `${typeName}.${name} is written by pipelines: a form edits fields of mine`);
       }
       return;
     }
@@ -372,13 +372,13 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
 
 /**
  * A saved App version's definition, from the YAML it was saved as: a version's JSON copy is jsonb, which reorders keys,
- * and the order of the fields is the order I wrote them in (columns, forms).
+ * and the order of the fields is the order they were written in (columns, forms).
  */
 export function readAppSource(source: string): AppDefinition {
   return AppDefinitionSchema.parse(parseYaml(source));
 }
 
-/** A field I set on a form: one marked mine, or any of a type of mine, never the stage (moved by its buttons). */
+/** A field set on a form: one marked mine, or any of a type of mine, never the stage (moved by its buttons). */
 export function isMineField(type: DataType, name: string): boolean {
   if (type.stages?.field === name) return false;
   return type.mine ? name in type.fields : type.fields[name]?.mine === true;
@@ -458,8 +458,8 @@ export function fieldValue(field: EntityField, value: unknown): { ok: true; valu
 const LINES = /\r?\n/;
 
 /**
- * What I typed on a form (M32), checked: only `allowed` fields, each as its kind; null or "" clears one, a required
- * one can't be cleared. Problems are said per field, and then nothing is saved.
+ * What the user typed on a form (M32), checked: only `allowed` fields, each as its kind; null or "" clears one, a
+ * required one can't be cleared. Problems are said per field, and then nothing is saved.
  */
 export function checkFormValues(
   type: DataType,
@@ -530,7 +530,7 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
   return { value, key: rejected ? null : key, problems, rejected: rejected || key === null };
 }
 
-/** An entity as pipelines and pages see it: what pipelines wrote, with my fields over it. */
+/** An entity as pipelines and pages see it: what pipelines wrote, with the fields of mine over it. */
 export function entityItem(value: unknown, mine: unknown, stage?: { field: string; value: string | null }): Record<string, unknown> {
   const item = structuredClone((value ?? {}) as Record<string, unknown>);
   if (stage) item[stage.field] = stage.value;
@@ -687,7 +687,7 @@ export interface DraftTypeView {
 }
 
 /**
- * M35-T4: a type drafted from a sample I paste: a list of items, an object holding one (an API's `{ results: [...] }`),
+ * M35-T4: a type drafted from a pasted sample: a list of items, an object holding one (an API's `{ results: [...] }`),
  * or a single item.
  */
 export const DraftTypeSampleRequestSchema = z.object({ sample: z.unknown() }).strict();

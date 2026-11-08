@@ -7,7 +7,7 @@ export const MASK = "••••••";
 const SECRET_FIELDS = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"]';
 
 /**
- * What a browser step must keep out of everything it produces (README §7): the credential values it filled, and the
+ * What a browser step must keep out of everything it produces (docs/design.md §7): the credential values it filled, and the
  * fields it filled them into. Text (page text, snapshots for the LLM, errors) is masked; screenshots cover the
  * fields; a trace that still contains a value is dropped rather than stored.
  */
@@ -45,7 +45,7 @@ export class PageSecrets {
   }
 
   /**
-   * The page as the LLM may see it (README §7; for browser.agent and form mapping): the accessibility snapshot with
+   * The page as the LLM may see it (docs/design.md §7; for browser.agent and form mapping): the accessibility snapshot with
    * secret values masked. Values of password fields never appear in it, and filled values are replaced.
    */
   async snapshot(page: Page): Promise<string> {

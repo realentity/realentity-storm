@@ -7,7 +7,7 @@ import { formatDateTime } from "../lib/format";
 import { useLoad } from "../lib/use-load";
 
 /**
- * A new pipeline from a description (README §2.1): the builder asks what it needs and proposes a definition; saving
+ * A new pipeline from a description (docs/design.md §2.1): the builder asks what it needs and proposes a definition; saving
  * it creates the pipeline, whose page then holds the chat.
  */
 export function BuilderPage() {

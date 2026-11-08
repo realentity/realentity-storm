@@ -94,7 +94,7 @@ describe("the step builder's edits (M36-T2)", () => {
       "trigger: { on: entity.changed, type: Bill, field: status }\n",
     );
     expect(setTrigger(SOURCE, "manual")).toContain("trigger: manual\n");
-    // My comment on the trigger's line stays with the new one.
+    // The comment on the trigger's line stays with the new one.
     const commented = SOURCE.replace('trigger: { schedule: "0 8 * * *", tz: Europe/Sofia }', "trigger: manual      # by hand for now");
     expect(setTrigger(commented, { webhook: "token" })).toContain("trigger: { webhook: token } # by hand for now\n");
     const none = SOURCE.replace(/^trigger: .*\n/m, "");

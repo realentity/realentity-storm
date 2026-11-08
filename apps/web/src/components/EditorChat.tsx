@@ -6,8 +6,8 @@ import { useLoad } from "../lib/use-load";
 import { BuilderChat } from "./BuilderChat";
 
 /**
- * M38-T5: the builder beside an editor. Each message carries what the editor has open (not saved yet) and what I am on
- * there; a proposal goes into the editor with Use, its changes marked, and is saved from the editor as any change.
+ * M38-T5: the builder beside an editor. Each message carries what the editor has open (not saved yet) and what the user
+ * is on there; a proposal goes into the editor with Use, its changes marked, and is saved from the editor as any change.
  * A saved pipeline or App continues its latest chat; a new one starts a chat of its own.
  */
 export function EditorChat({

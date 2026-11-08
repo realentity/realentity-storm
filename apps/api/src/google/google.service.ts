@@ -72,7 +72,7 @@ export class GoogleService {
 
   /**
    * Back from Google: the page to go to, with ?google=connected or ?google=<what went wrong>. The browser comes from
-   * accounts.google.com, so my SameSite=Strict session cookie isn't sent: the user is the one who started this sign-in,
+   * accounts.google.com, so the SameSite=Strict session cookie isn't sent: the user is the one who started this sign-in,
    * known by its state (random, used once, 10 minutes, and bound to the PKCE verifier Google checks).
    */
   async callback(origin: string, query: { code?: string; state?: string; error?: string }): Promise<string> {

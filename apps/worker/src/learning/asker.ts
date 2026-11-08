@@ -12,8 +12,8 @@ export interface Ask {
 }
 
 /**
- * Asking me what neither my profile nor my facts answer (M15-T3): on Telegram (a reply to the message answers it)
- * and on the run page. The run waits like for a takeover (the api continues it with my answer, which it also saves
+ * Asking the user what neither their profile nor their facts answer (M15-T3): on Telegram (a reply to the message answers it)
+ * and on the run page. The run waits like for a takeover (the api continues it with the user's answer, which it also saves
  * as a fact); nobody answering within the takeover timeout leaves the field empty for the gate.
  */
 export class Asker {
@@ -26,7 +26,7 @@ export class Asker {
     private readonly send: typeof fetch = fetch,
   ) {}
 
-  /** My answer and the fact it became, or null when I didn't answer in time (or continued without one). */
+  /** The user's answer and the fact it became, or null when they didn't answer in time (or continued without one). */
   async ask(context: StepContext, ask: Ask): Promise<{ answer: string; factId: string | null } | null> {
     const row = await this.prisma.question.create({
       data: {

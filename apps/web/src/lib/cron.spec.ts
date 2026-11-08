@@ -16,7 +16,7 @@ describe("a schedule as days and times (M36-T2)", () => {
     expect(readCron("0 8 * *")).toBeNull();
   });
 
-  it("writes them back as I would", () => {
+  it("writes them back as a person would", () => {
     expect(writeCron({ times: ["08:00", "18:00"], days: [0, 1, 2, 3, 4, 5, 6] })).toBe("0 8,18 * * *");
     expect(writeCron({ times: ["09:30"], days: [5, 1, 2, 3, 4] })).toBe("30 9 * * 1-5");
     expect(writeCron({ times: ["07:00"], days: [0, 6] })).toBe("0 7 * * 0,6");

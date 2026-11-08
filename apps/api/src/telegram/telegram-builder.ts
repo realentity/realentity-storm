@@ -5,7 +5,7 @@ import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 
-/** The Telegram chat goes on while I'm on it; after this long without a message, the next one starts a new chat. */
+/** The Telegram chat goes on while the user is on it; after this long without a message, the next one starts a new chat. */
 export const TELEGRAM_CHAT_IDLE_MS = 2 * 60 * 60 * 1000;
 
 /** A builder button: save or dry-run a proposal (its message id), turn a pipeline on (its id). */
@@ -21,9 +21,9 @@ export function parseBuilderCallback(data: string): BuilderCallback | null {
 }
 
 /**
- * The pipeline builder on the Storm bot (M21): a plain message is my next turn in the Telegram chat, the answer and
+ * The pipeline builder on the Storm bot (M21): a plain message is the user's next turn in the Telegram chat, the answer and
  * its proposal come back as a message with Save, Dry run and Open. Saving and dry runs go through BuilderService,
- * exactly as on the Builder page; a saved pipeline starts disabled until I press Turn on.
+ * exactly as on the Builder page; a saved pipeline starts disabled until the user presses Turn on.
  */
 @Injectable()
 export class TelegramBuilder {
@@ -34,7 +34,7 @@ export class TelegramBuilder {
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
   ) {}
 
-  /** My message to the builder: the answer as a Telegram message. Throws what the builder refused (busy, no key, cap). */
+  /** A message to the builder: the answer as a Telegram message. Throws what the builder refused (busy, no key, cap). */
   async talk(userId: string, text: string, now = new Date()): Promise<TelegramMessage> {
     const chatId = await this.chatFor(userId, now);
     const chat = await this.builder.send(userId, chatId, { text });
@@ -93,7 +93,7 @@ export class TelegramBuilder {
     };
   }
 
-  /** The Telegram chat if I'm still on it (and it has tokens left), else a new one. */
+  /** The Telegram chat if the user is still on it (and it has tokens left), else a new one. */
   private async chatFor(userId: string, now: Date): Promise<string> {
     const settings = await this.prisma.client.userSetting.findUnique({ where: { userId }, select: { telegramBuilderChatId: true } });
     const id = settings?.telegramBuilderChatId;
@@ -150,7 +150,7 @@ export class TelegramBuilder {
 /** A proposal in a few lines: what it does, when, its steps (gates marked), the compiler's warnings. */
 export function proposalText(summary: string, definition: CompiledDefinition, warnings: string[]): string {
   const steps = definition.steps.map((step, i) => {
-    const note = step.autoInserted ? " (added: waits for my approval)" : step.forEach ? " (for each item)" : "";
+    const note = step.autoInserted ? " (added: waits for your approval)" : step.forEach ? " (for each item)" : "";
     return `${i + 1}. ${step.id}: ${step.type}${note}`;
   });
   return [

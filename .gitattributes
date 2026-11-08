@@ -5,3 +5,6 @@ docker/** text eol=lf
 
 # Prisma checksums every migration.sql: the same bytes on every checkout
 packages/db/prisma/migrations/** text eol=lf
+
+# Git hooks run under sh/bash, also on Windows
+.githooks/* text eol=lf

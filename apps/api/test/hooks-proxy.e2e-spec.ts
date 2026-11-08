@@ -10,7 +10,7 @@ const CADDY_IMAGE = "caddy:2.10-alpine";
 const HOST = "host.testcontainers.internal";
 const SECRET = "h".repeat(40);
 
-// M12-S4 through the real hooks-only site: docker/Caddyfile's :8081, which the VPS's hooks-gateway reaches.
+// M12-S4 through the real hooks-only site: docker/Caddyfile's :8081, which a gateway in front, if any, reaches.
 describe("the hooks-only site", () => {
   let api: TestApp;
   let caddy: StartedTestContainer;

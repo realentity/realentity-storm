@@ -55,7 +55,7 @@ export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSumma
   );
 }
 
-/** An App of mine installed from it, or of its App's name (made from the same template): installing it again copies it. */
+/** An App already installed from it, or of its App's name (made from the same template): installing it again copies it. */
 function installedAs(example: ExampleEntry, apps: AppSummaryView[]): AppSummaryView | undefined {
   return apps.find((a) => a.example === example.id) ?? apps.find((a) => a.name === example.app?.name);
 }

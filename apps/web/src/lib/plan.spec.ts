@@ -61,7 +61,7 @@ describe("plan", () => {
 
   it("summarizes what the pipeline may do: side effects behind gates, targets, limits, headed browser", () => {
     expect(policySummary(APPLY, POLICY, CATALOG)).toEqual([
-      "apply (test.submit) acts outside Storm, once per item; it waits for my approval at applyGate.",
+      "apply (test.submit) acts outside Storm, once per item; it waits for your approval at applyGate.",
       "Allowed domains: jobs.example.org",
       "apply.url (domain) must come from {{item.applyUrl}}, never from LLM text.",
       "At most 5/day for test.submit",
@@ -74,7 +74,7 @@ describe("plan", () => {
   });
 
   it("describes triggers and changes in words", () => {
-    expect(describeTrigger("manual")).toBe("Manual: runs when I start it");
+    expect(describeTrigger("manual")).toBe("Manual: runs when you start it");
     expect(describeTrigger({ schedule: "0 8 * * 1-5", tz: "Europe/Sofia" })).toBe("On schedule 0 8 * * 1-5 (Europe/Sofia)");
     expect(describeTrigger({ on: "run.finished", pipeline: "Jobs" })).toBe('When "Jobs" finishes DONE');
     expect(describeTrigger({ on: "email.classified", label: ["recruiter"] })).toBe("When an email is labelled recruiter");

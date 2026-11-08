@@ -15,7 +15,7 @@ interface Def {
 const defOf = (schema: z.ZodType): Def => (schema as unknown as { def: Def }).def;
 
 /**
- * The step catalog as text for the builder's system prompt (README §2.3: the builder can only use these): each
+ * The step catalog as text for the builder's system prompt (docs/design.md §2.3: the builder can only use these): each
  * step's purpose, flags, parameters and output fields, compact enough to cache.
  */
 export function describeCatalog(catalog: StepCatalog): string {
@@ -25,7 +25,7 @@ export function describeCatalog(catalog: StepCatalog): string {
 
 export function describeStep(step: StepDefinition): string {
   const flags = [
-    step.sideEffect && "SIDE EFFECT (runs only after I press Act at its gate)",
+    step.sideEffect && "SIDE EFFECT (runs only after the user presses Act at its gate)",
     step.targets &&
       `targets: ${Object.entries(step.targets)
         .map(([field, kind]) => `${field} (${kind})`)

@@ -16,7 +16,6 @@
     "check:credentials": "tsx src/tools/check-credentials.ts",
     "eval:email": "tsx evals/email.eval.ts",
     "eval:learning": "tsx evals/learning.eval.ts",
-    "eval:jobs": "tsx evals/jobs.eval.ts",
     "eval:forms": "tsx evals/forms.eval.ts",
     "eval:agent": "tsx evals/agent.eval.ts"
   },

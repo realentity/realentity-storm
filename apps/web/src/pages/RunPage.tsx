@@ -11,7 +11,7 @@ import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * A run (README §12): the step timeline, grouped per step and per forEach item, each with its input, output, error
+ * A run (docs/design.md §12): the step timeline, grouped per step and per forEach item, each with its input, output, error
  * and LLM usage, plus the run's proposals. Live while it runs.
  */
 export function RunPage() {

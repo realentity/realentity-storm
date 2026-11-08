@@ -23,10 +23,10 @@ export interface StepContext {
    * (browser.extract's fallback). Steps flagged `llm` in the catalog never start then.
    */
   budgetStops?(): Promise<boolean>;
-  /** Headed steps: pausing for me in the live view (README §6). */
+  /** Headed steps: pausing for the user in the live view (docs/design.md §6). */
   attention: Attention;
   /**
-   * The pipeline's allowed domains (its policy), and on a side-effect step the new ones I approved at its gate:
+   * The pipeline's allowed domains (its policy), and on a side-effect step the new ones the user approved at its gate:
    * where browser.agent and browser.submit may go besides their start address's site.
    */
   allowedDomains?: readonly string[];
@@ -38,13 +38,13 @@ export interface StepContext {
 }
 
 /**
- * How a headed step hands the page to me and gets it back. Both wait with the page kept open, and throw RunStopped
- * when I abort (or the kill switch is on).
+ * How a headed step hands the page to the user and gets it back. Both wait with the page kept open, and throw
+ * RunStopped when the user aborts (or the kill switch is on).
  */
 export interface Attention {
-  /** At a safe point between actions: if I pressed Take over, waits until I continue. */
+  /** At a safe point between actions: if the user pressed Take over, waits until they continue. */
   checkpoint(url?: string): Promise<void>;
-  /** The page needs me (CAPTCHA, 2FA, a page it doesn't recognize): waits until I continue. */
+  /** The page needs the user (CAPTCHA, 2FA, a page it doesn't recognize): waits until they continue. */
   needMe(reason: string, url?: string, options?: NeedMeOptions): Promise<void>;
 }
 
@@ -61,15 +61,15 @@ export interface NeedMeOptions {
 /** The run is to stop (Abort in the live view, the kill switch): the runner aborts it instead of failing the step. */
 export class RunStopped extends Error {}
 
-/** Outside a run with a live view (headless, tests): nobody can take over, so needing me fails the step. */
+/** Outside a run with a live view (headless, tests): nobody can take over, so needing the user fails the step. */
 export const NO_ATTENTION: Attention = {
   checkpoint: () => Promise.resolve(),
   needMe: (reason, _url, options) =>
-    Promise.reject(new Error(options?.waitsFor ? reason : `${reason}: needs me, and this step has no live view (set headed: true to take over)`)),
+    Promise.reject(new Error(options?.waitsFor ? reason : `${reason}: needs you, and this step has no live view (set headed: true to take over)`)),
 };
 
 /**
- * The implementation of one catalog step type (README §2.3). Inputs arrive resolved and validated against the
+ * The implementation of one catalog step type (docs/design.md §2.3). Inputs arrive resolved and validated against the
  * step's input schema; the returned value is validated against its output schema.
  */
 export interface StepExecutor {

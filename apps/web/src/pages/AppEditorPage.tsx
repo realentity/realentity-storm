@@ -25,7 +25,7 @@ const TABS: { tab: Tab; label: string; intro: string }[] = [
   {
     tab: "stages",
     label: "Stages",
-    intro: "Where each entity is (new, applied, paid…) and the moves between the states, by me or a pipeline.",
+    intro: "Where each entity is (new, applied, paid…) and the moves between the states, by you or a pipeline.",
   },
   { tab: "pages", label: "Pages", intro: "How the entities are shown: each type's list in the menu, and a page for each entity." },
   { tab: "yaml", label: "YAML", intro: "The App as it is saved, with its comments: everything the other tabs show, written out." },
@@ -33,7 +33,7 @@ const TABS: { tab: Tab; label: string; intro: string }[] = [
 
 /**
  * M35: the App designer. An App's YAML is what is saved; the tabs show it as types, stages and pages, and every change
- * made on them is an edit of the YAML (my comments and order kept). It is checked as I go: its problems on their tab
+ * made on them is an edit of the YAML (its comments and order kept). It is checked while editing: its problems on their tab
  * and line, the pipelines it would break, what it changes.
  */
 export function AppEditorPage() {
@@ -46,7 +46,7 @@ export function AppEditorPage() {
   /** What the YAML was before each of the designer's edits, for Undo (typing on the YAML tab is its own). */
   const [undo, setUndo] = useState<string[]>([]);
   const check = useCheck(source, appId);
-  // M38-T5: what I am on (sent to the builder), and what its proposal changed once used here.
+  // M38-T5: what the user is on (sent to the builder), and what its proposal changed once used here.
   const [focus, setFocus] = useState<string | undefined>(undefined);
   const [marks, setMarks] = useState<BuilderMarks | null>(null);
   const action = useAction();
@@ -223,7 +223,7 @@ export function AppEditorPage() {
   );
 }
 
-/** The draft checked a moment after I stop typing; the last answer kept while the next one comes. */
+/** The draft checked a moment after typing stops; the last answer kept while the next one comes. */
 function useCheck(source: string | null, appId: string | undefined) {
   const [result, setResult] = useState<{ source: string; view: AppCheckView } | null>(null);
   const [error, setError] = useState<unknown>(null);

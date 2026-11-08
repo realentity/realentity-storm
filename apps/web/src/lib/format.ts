@@ -49,9 +49,9 @@ export function statusTone(status: string): Tone {
   return (TONES as Record<string, Tone | undefined>)[status] ?? "secondary";
 }
 
-/** "WAITING_FOR_USER" → "waiting for me". */
+/** "WAITING_FOR_USER" → "waiting for you". */
 export function statusLabel(status: string): string {
-  if (status === "WAITING_FOR_USER") return "waiting for me";
-  if (status === "PENDING_REVIEW") return "waiting for me";
+  if (status === "WAITING_FOR_USER") return "waiting for you";
+  if (status === "PENDING_REVIEW") return "waiting for you";
   return status.toLowerCase().replace(/_/g, " ");
 }

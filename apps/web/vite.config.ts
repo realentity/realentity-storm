@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   const host = process.env.API_HOST || rootEnv.API_HOST || "127.0.0.1";
   const api = `http://${host}:${process.env.API_PORT || rootEnv.API_PORT || 3000}`;
 
-  // The live view's websockify (README §6), when one runs locally; in production Caddy serves /vnc.
+  // The live view's websockify (docs/design.md §6), when one runs locally; in production Caddy serves /vnc.
   const vnc = `ws://127.0.0.1:${process.env.VNC_WS_PORT || rootEnv.VNC_WS_PORT || 6080}`;
 
   return {

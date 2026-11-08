@@ -132,7 +132,7 @@ describe("runs, proposals and controls", () => {
 
   describe("proposals", () => {
     // M2-T10
-    it("lists what waits for me, with its pipeline and targets", async () => {
+    it("lists what waits for the user, with its pipeline and targets", async () => {
       const { proposalId, runId } = await waitingAt("act");
       const list = (await agent.get("/api/proposals").expect(200)).body as ProposalView[];
       expect(list).toEqual([
@@ -161,7 +161,7 @@ describe("runs, proposals and controls", () => {
       expect(view.decision).toMatchObject({ kind: "APPROVED", reason: null });
       const row = await db.client.proposal.findUniqueOrThrow({ where: { proposalId } });
       expect(row.payloadHash).toBe(payloadHash({ to: "ana@acme.test", body: "Thanks for Senior .NET" }));
-      // M6-T3: what I approve to be sent is learned from (the worker makes it an example).
+      // M6-T3: what the user approves to be sent is learned from (the worker makes it an example).
       const jobs = await queued();
       expect(jobs).toHaveLength(2);
       expect(jobs).toEqual(
@@ -183,7 +183,7 @@ describe("runs, proposals and controls", () => {
       expect((await db.client.proposal.findUniqueOrThrow({ where: { proposalId } })).payloadHash).toBe(payloadHash(payload));
     });
 
-    it("approve with an edit: the new targets I list are kept (lowercase) for the policy check", async () => {
+    it("approve with an edit: the new targets the user lists are kept (lowercase) for the policy check", async () => {
       const { proposalId } = await waitingAt("act");
       await agent
         .post(`/api/proposals/${proposalId}/approve`)
@@ -219,7 +219,7 @@ describe("runs, proposals and controls", () => {
       expect(view.decision?.kind).toBe("EDITED");
     });
 
-    it("reject: records my reason and queues the run (its later steps for that item are skipped)", async () => {
+    it("reject: records the user's reason and queues the run (its later steps for that item are skipped)", async () => {
       const { proposalId, runId } = await waitingAt("act");
       const view = (await agent.post(`/api/proposals/${proposalId}/reject`).send({ reason: "Not this one" }).expect(200))
         .body as ProposalView;
@@ -263,7 +263,7 @@ describe("runs, proposals and controls", () => {
       expect((await queued()).map((job) => job.name).sort()).toEqual([QUEUES.learning, QUEUES.runs]);
     });
 
-    it("undo reject: not once the run went on, or no longer waits for me", async () => {
+    it("undo reject: not once the run went on, or no longer waits for the user", async () => {
       const went = await rejected();
       await db.client.step.create({
         data: { runId: went.runId, stepKey: "after", type: "test.search", status: "DONE", startedAt: new Date(), finishedAt: new Date() },
@@ -493,7 +493,7 @@ describe("runs, proposals and controls", () => {
     });
 
     // M3-T9
-    it("a model per LLM task: my choice, or the default and where it comes from", async () => {
+    it("a model per LLM task: the user's choice, or the default and where it comes from", async () => {
       const initial = (await agent.get("/api/settings").expect(200)).body as SettingsView;
       expect(initial.models).toEqual({
         "email.classify": { model: "claude-haiku-5-5", effort: "low", source: "default" },

@@ -2,7 +2,7 @@
 # Release; Upgraded (mine) hides one from the list, Upgrade notes asks Release notes (release-notes.yaml) about it.
 # Save it on the Apps page before both pipelines, then on its page move the "releases" collection into Release.
 name: Releases
-description: Releases of what runs on the server
+description: Releases of what runs on your server
 icon: package
 types:
   Release:

@@ -46,7 +46,7 @@ export function withCurrentNames(definition: CompiledDefinition, names: CurrentN
   };
 }
 
-/** M39-T4: an App's YAML with its buttons' pipelines (`run:`) under their names now; my comments and the rest as written. */
+/** M39-T4: an App's YAML with its buttons' pipelines (`run:`) under their names now; the rest as written. */
 export function withCurrentRuns(
   source: string,
   refs: { pipelines: Record<string, string> } | null | undefined,

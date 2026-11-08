@@ -1,5 +1,5 @@
 # M40: the starter example's pipeline. Once a day, the newest releases of a few projects from their feeds (no browser,
-# no recipe, no LLM), kept as Releases to read: a release seen before is left as it is, so its stage stays mine.
+# no recipe, no LLM), kept as Releases to read: a release seen before is left as it is, so the stage you gave it stays.
 # Add or remove projects in `urls` (GitHub: https://github.com/<owner>/<repo>/releases.atom).
 name: Read release feeds
 app: Releases to read

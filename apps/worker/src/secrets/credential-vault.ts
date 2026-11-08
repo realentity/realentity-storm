@@ -21,7 +21,7 @@ export interface RevealedCredential {
 }
 
 /**
- * The only place a credential is decrypted (README §7), at the moment of use and only for a host in its
+ * The only place a credential is decrypted (docs/design.md §7), at the moment of use and only for a host in its
  * `allowedHosts`. Callers must not log, persist or send the returned value to the LLM.
  */
 export class CredentialVault {

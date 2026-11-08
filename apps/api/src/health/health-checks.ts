@@ -9,7 +9,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const CHECK_MS = 10 * 60_000;
 
 /**
- * the server's own jobs, watched (M26, README §13): each reports its result (POST /hooks/health); a failed report, or a
+ * The host's jobs, watched (M26, docs/design.md §13): each reports its result (POST /hooks/health); a failed report, or a
  * job that stops reporting, is told on Telegram once, and once again when it is fine. The worker has its watchdog.
  */
 @Injectable()

@@ -22,7 +22,7 @@ interface Client {
 }
 
 /**
- * Live updates for the web app (README §4: REST + WebSocket). The worker and the api publish with pg_notify; this
+ * Live updates for the web app (docs/design.md §4: REST + WebSocket). The worker and the api publish with pg_notify; this
  * listens and forwards each event to that user's sockets at /api/events. A socket opens only with a valid session
  * cookie and a same-origin Origin, checked before the handshake completes.
  */

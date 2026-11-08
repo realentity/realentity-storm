@@ -7,7 +7,7 @@ import { ErrorAlert } from "./ui";
 
 const STATUS_CLASS = { PENDING: "bg-blue-lt", STARTED: "bg-green-lt", CANCELLED: "bg-secondary-lt", SKIPPED: "bg-yellow-lt" } as const;
 
-/** A flow.later pipeline's starts (M14-T3): pending ones I can cancel, and how the last ones went. */
+/** A flow.later pipeline's starts (M14-T3): pending ones to cancel, and how the last ones went. */
 export function ScheduledStartsCard({ pipelineId }: { pipelineId: string }) {
   const starts = useLoad(() => api.scheduledStarts.list(pipelineId), [pipelineId], (signal) => signal.type === "run");
   const action = useAction();

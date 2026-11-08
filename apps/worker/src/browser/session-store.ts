@@ -12,7 +12,7 @@ export function sessionName(host: string): string {
 }
 
 /**
- * Logins kept between runs (README §6): Playwright's storageState (cookies, local storage) as a sealed
+ * Logins kept between runs (docs/design.md §6): Playwright's storageState (cookies, local storage) as a sealed
  * STORAGE_STATE credential per site, bound to that site's host. It is only ever held in memory and in the database:
  * never written to a file (M8-S4).
  */
@@ -37,7 +37,7 @@ export class SessionStore {
     const name = sessionName(host);
     const secret = JSON.stringify(state);
     const existing = await this.prisma.credential.findUnique({ where: { userId_name: { userId, name } } });
-    if (existing && existing.kind !== "STORAGE_STATE") return; // a credential I named so myself: leave it alone
+    if (existing && existing.kind !== "STORAGE_STATE") return; // a credential the user named so: leave it alone
     const credentialId = existing?.credentialId ?? randomUUID();
     const sealed = seal(this.keys, credentialId, secret);
     const data = {

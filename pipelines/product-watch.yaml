@@ -4,7 +4,7 @@
 # price from its text (about $0.001 a page). Add each shop's host to allowedDomains. `select` takes the page's own
 # names for sizes and colors; a size that isn't offered is reported with what is (the second message).
 name: Product watch
-description: My products, in my size and color, that got cheaper since yesterday.
+description: Your products, in your size and color, that got cheaper since yesterday.
 trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
 policy:
   allowedDomains: [www.bergfreunde.eu]

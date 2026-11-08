@@ -39,7 +39,7 @@ describe("rules, suggestions and reflection", () => {
 
   const view = async () => (await agent.get("/api/learning").expect(200)).body as LearningView;
 
-  it("a rule I write is active at once; scoped to a step type and pipeline of mine", async () => {
+  it("a rule the user writes is active at once; scoped to a step type and pipeline of theirs", async () => {
     const rule = (
       await agent.post("/api/rules").send({ text: "Keep replies under 80 words.", stepType: "email.draftReply", pipelineId }).expect(201)
     ).body as RuleView;
@@ -55,7 +55,7 @@ describe("rules, suggestions and reflection", () => {
     ]);
   });
 
-  it("a suggested rule becomes active only when I approve it; I can edit, disable and delete it", async () => {
+  it("a suggested rule becomes active only when the user approves it; they can edit, disable and delete it", async () => {
     const { ruleId } = await db.client.rule.create({
       data: {
         userId,

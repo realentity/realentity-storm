@@ -56,7 +56,7 @@ interface Scope {
 type Resolution = { ok: true; type: TypeInfo; credential?: boolean } | { ok: false; message: string };
 
 /**
- * Compiles a pipeline definition (README §2.1–2.2): validates its structure and every step against the catalog,
+ * Compiles a pipeline definition (docs/design.md §2.1–2.2): validates its structure and every step against the catalog,
  * checks {{references}} and their types, inserts the gates side-effect steps need, and derives the policy
  * (what side-effect steps may target). The runner only ever executes what this produced.
  */
@@ -146,7 +146,7 @@ export class PipelineCompiler {
     for (const [type] of Object.entries(definition.limits)) {
       const limited = this.catalog.get(type);
       if (!limited) errors.push({ path: `limits.${type}`, message: `unknown step type "${type}"` });
-      // The runner applies limits before a side effect executes (README §2.2); elsewhere they would do nothing.
+      // The runner applies limits before a side effect executes (docs/design.md §2.2); elsewhere they would do nothing.
       else if (!limited.sideEffect) errors.push({ path: `limits.${type}`, message: "only side-effect steps have rate limits" });
     }
 
@@ -272,7 +272,7 @@ export class PipelineCompiler {
         }
       }
       if (type.mine) {
-        errors.push({ path: `${at}.type`, message: `${typeName} is a type of mine: pipelines read it, only I write it` });
+        errors.push({ path: `${at}.type`, message: `${typeName} is a type of mine: pipelines read it, only the user writes it` });
         return {};
       }
       if (step.with.collection !== undefined) errors.push({ path: `${at}.collection`, message: "saves into a type or a collection, not both" });
@@ -290,7 +290,7 @@ export class PipelineCompiler {
         }
         const stage = type.stages?.field;
         if (stage && stage in element.fields && !type.stages!.moves.some((m) => m.by.includes("pipeline"))) {
-          errors.push({ path: `${at}.items`, message: `${typeName}.${stage} is moved only by me: no move of it is by: [pipeline]` });
+          errors.push({ path: `${at}.items`, message: `${typeName}.${stage} is moved only by the user: no move of it is by: [pipeline]` });
         }
       }
       return {};
@@ -365,7 +365,7 @@ export class PipelineCompiler {
   }
 
   /**
-   * Checks authored gate.act steps and inserts the missing ones (README §2.2): every side-effect step needs a gate
+   * Checks authored gate.act steps and inserts the missing ones (docs/design.md §2.2): every side-effect step needs a gate
    * before it, for the same items. Gates can be added but not removed.
    */
   private placeGates(
@@ -496,7 +496,7 @@ function triggerType(data: TypeInfo, trigger: Trigger, app: AppDefinition | unde
 }
 
 /**
- * A target from data.read's items (M32): only from a type of mine, which I wrote on its form; a type pipelines write
+ * A target from data.read's items (M32): only from a type of mine, which the user wrote on its form; a type pipelines write
  * holds what pages, feeds and emails said.
  */
 function entityTargetIssue(value: unknown, scope: Scope, known: Map<string, CompiledStepInfo>): string | null {
@@ -559,14 +559,14 @@ function addTarget(
     const source = whole[1].trim();
     if (source.startsWith("cred:")) return "a credential can't be a target";
     if (source === "trigger" || source.startsWith("trigger.")) {
-      // An entity of a type of mine (M32): I wrote it on its form, so its fields may be targets.
+      // An entity of a type of mine (M32): the user wrote it on its form, so its fields may be targets.
       const mine = triggerEntityType(trigger, app)?.mine && source.startsWith("trigger.item.");
       const issue = mine ? null : triggerTargetIssue(trigger, source);
       if (issue) return issue;
       policy.provenance.push({ stepId, field, kind, source });
       return null;
     }
-    // Targets come from data (a fetched email, a job posting), never from text an LLM wrote (README §1.4).
+    // Targets come from data (a fetched email, a job posting), never from text an LLM wrote (docs/design.md §1.4).
     const root = stepOf(source.split(".")[0] ?? "");
     const fromPage = root?.pageFields?.includes(source.split(".")[1] ?? "") && source.split(".").length === 2;
     if (root?.llmOutput && !fromPage) return `a ${kind} can't come from LLM output ({{${source}}} is written by ${root.type})`;

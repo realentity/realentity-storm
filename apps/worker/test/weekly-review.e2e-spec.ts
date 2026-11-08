@@ -114,7 +114,7 @@ describe("weekly review", () => {
 
     await expect(review.sendAll()).resolves.toBe(1);
     const lines = sent[0]?.text.split("\n") ?? [];
-    expect(lines).toEqual(expect.arrayContaining(["Runs: none", "Waiting for me: nothing", "LLM: $0.0000 (this month $0.00)"]));
+    expect(lines).toEqual(expect.arrayContaining(["Runs: none", "Waiting for you: nothing", "LLM: $0.0000 (this month $0.00)"]));
     expect(lines.filter((line) => /^(Budget|Most of it|Applications|Quiet recipes):/.test(line))).toEqual([]);
     expect(sent[0]?.buttons).toEqual([[{ text: "Open Storm", url: "https://storm.test" }]]);
 

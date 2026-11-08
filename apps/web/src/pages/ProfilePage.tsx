@@ -9,9 +9,9 @@ import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * What application forms are filled from (M10, M15): my profile (browser.mapForm proposes every value from it, and
- * nothing it doesn't state), my facts (answers I gave or approved) and my documents (a pipeline attaches my CV by
- * name; at the gate I can attach others).
+ * What application forms are filled from (M10, M15): the profile (browser.mapForm proposes every value from it, and
+ * nothing it doesn't state), the facts (answers the user gave or approved) and the documents (a pipeline attaches a CV
+ * by name; at the gate others can be attached).
  */
 export function ProfilePage() {
   return (
@@ -43,7 +43,7 @@ function About() {
   return (
     <form className="card" onSubmit={(e) => void save(e)}>
       <div className="card-header">
-        <h3 className="card-title">About me</h3>
+        <h3 className="card-title">About you</h3>
       </div>
       <div className="card-body">
         <ErrorAlert error={settings.error ?? action.error} />
@@ -52,11 +52,11 @@ function About() {
           rows={14}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          aria-label="About me"
-          placeholder={"Name: …\nEmail: …\nPhone: …\nLinkedIn: …\nLives in: Sofia, Bulgaria (EU citizen)\nNotice period: 1 month\nSalary expectation: …\nOpen to: remote, hybrid in Sofia"}
+          aria-label="About you"
+          placeholder={"Name: …\nEmail: …\nPhone: …\nLinkedIn: …\nLives in: …\nNotice period: 1 month\nSalary expectation: …\nOpen to: remote, hybrid"}
         />
         <div className="form-hint">
-          Forms are filled only from this and the posting: a question it doesn't answer stays empty for me to fill at the gate.
+          Forms are filled only from this and the posting: a question it doesn't answer stays empty for you to fill at the gate.
         </div>
       </div>
       <div className="card-footer text-end">

@@ -14,7 +14,7 @@ export interface StructuredRequest<S extends z.ZodObject> {
   schema: S;
   maxTokens?: number;
   /**
-   * Caches the system prompt (README §5): for calls that repeat it within minutes (per-item drafts, chunked
+   * Caches the system prompt (docs/design.md §5): for calls that repeat it within minutes (per-item drafts, chunked
    * classification). Below the model's minimum prefix it simply isn't cached; a cache write costs 1.25× input.
    */
   cacheSystem?: boolean;
@@ -45,11 +45,11 @@ export interface LlmClient {
   structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<StructuredResult<z.infer<S>>>;
 }
 
-/** Models without a server-side refusal fallback (README §5). */
+/** Models without a server-side refusal fallback (docs/design.md §5). */
 const NO_FALLBACK = /^claude-haiku-/;
 
 /**
- * Claude through the Messages API, with structured output (README §5): the response must match the zod schema or
+ * Claude through the Messages API, with structured output (docs/design.md §5): the response must match the zod schema or
  * the call fails with a clear error; nothing partial is returned. Sonnet and Opus calls fall back server-side on a
  * policy refusal.
  */
@@ -79,7 +79,7 @@ export interface BatchRequest<S extends z.ZodObject> {
 export type BatchItemResult<T> =
   { customId: string; ok: true; output: T; usage: LlmUsage } | { customId: string; ok: false; error: string; usage: LlmUsage };
 
-/** Calls that can wait (README §5: reflection): answered within 24 hours, at half the price. */
+/** Calls that can wait (docs/design.md §5: reflection): answered within 24 hours, at half the price. */
 export interface LlmBatches {
   submit<S extends z.ZodObject>(requests: BatchRequest<S>[]): Promise<string>;
   /** True once every request has an answer (or failed, expired or was canceled). */

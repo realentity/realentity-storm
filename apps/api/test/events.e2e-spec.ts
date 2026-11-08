@@ -79,7 +79,7 @@ describe("live events (WebSocket)", () => {
     await expect(connect({ cookie })).rejects.toThrow("refused 401");
   });
 
-  it("forwards the worker's events (pg_notify) to my sockets only, and the api's own (kill switch)", async () => {
+  it("forwards the worker's events (pg_notify) to the user's sockets only, and the api's own (kill switch)", async () => {
     const cookie = await sessionCookie();
     const { events } = await connect({ origin, cookie });
     const runEvent: AppEvent = { type: "run", runId: "r-1", pipelineId: "p-1", status: "RUNNING" };
@@ -106,7 +106,7 @@ describe("live events (WebSocket)", () => {
   });
 });
 
-// Behind tailscale serve the Host header may not be what the browser used: APP_ORIGIN pins the allowed Origin.
+// Behind a reverse proxy the Host header may not be what the browser used: APP_ORIGIN pins the allowed Origin.
 describe("live events behind a proxy (APP_ORIGIN)", () => {
   let api: TestApp;
   let url: string;

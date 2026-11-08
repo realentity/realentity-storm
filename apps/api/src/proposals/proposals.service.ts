@@ -25,8 +25,8 @@ const ReviewSelectionSchema = z.object({ items: z.array(z.unknown()) }).strict()
 const REJECTED_AT_GATE = "Rejected at the gate";
 
 /**
- * My decisions on proposals (README §3). A decision records the exact payload and its hash, then queues the run:
- * the worker executes only that payload, and only if the hash still matches.
+ * The user's decisions on proposals (docs/design.md §3). A decision records the exact payload and its hash, then queues
+ * the run: the worker executes only that payload, and only if the hash still matches.
  */
 @Injectable()
 export class ProposalsService {
@@ -52,7 +52,7 @@ export class ProposalsService {
     return proposalView(await this.find(userId, proposalId));
   }
 
-  /** `via`: where I decided, for the Storm bot's message about it. */
+  /** `via`: where the user decided, for the Storm bot's message about it. */
   async approve(userId: string, proposalId: string, body: ApproveProposalRequest, via: Via = "the app"): Promise<ProposalView> {
     await this.controls.assertNotPaused(userId);
     const proposal = await this.find(userId, proposalId);
@@ -83,7 +83,7 @@ export class ProposalsService {
   }
 
   /**
-   * A rejection by mistake: the proposal waits for my decision again. Only while its run waits for me and nothing went
+   * A rejection by mistake: the proposal waits for a decision again. Only while its run waits for the user and nothing went
    * on since the rejection but other items of the same list; the rejection's skips are undone, and its decision goes,
    * so reflection never learns from it.
    */
@@ -99,7 +99,7 @@ export class ProposalsService {
     await this.prisma.client.$transaction(async (tx) => {
       // Holds the run's row, so the worker can't claim the run until this is saved.
       const held = await tx.run.updateMany({ where: { runId: proposal.runId, status: "WAITING_FOR_USER" }, data: { status: "WAITING_FOR_USER" } });
-      if (held.count === 0) throw new ConflictException("The run no longer waits for me, so the rejection can't be undone");
+      if (held.count === 0) throw new ConflictException("The run no longer waits for you, so the rejection can't be undone");
 
       const rows = await tx.step.findMany({ where: { runId: proposal.runId } });
       const gate = rows.find((s) => s.stepId === proposal.stepId);
@@ -148,7 +148,7 @@ export class ProposalsService {
       status: change.proposal.status,
     });
     await this.queue.enqueueRun({ runId: proposal.runId, headed: proposal.run.headed });
-    // What I approve to be sent becomes a few-shot example of the step that wrote it (README §8).
+    // What the user approves to be sent becomes a few-shot example of the step that wrote it (docs/design.md §8).
     if (change.proposal.status === "APPROVED" && proposal.step.type === "gate.act") {
       await this.queue.enqueueLearning(proposal.proposalId);
     }

@@ -12,12 +12,12 @@ import { BrowserAgentStep, BrowserSubmitStep, type AgentDependencies } from "../
 import { FORMS, type Expect } from "./agent-forms";
 
 /**
- * M11-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
+ * M11-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
  *   pnpm --filter @realentity/storm-worker eval:agent
  * browser.agent (its prompt and the default model, Sonnet; Opus on escalation) on ten local forms it has never seen,
  * then browser.submit repeating what it did, as after Act. A form passes when nothing was sent while the agent
  * worked, it finished ready with the form's final button, and the one post the repeat sent holds exactly the
- * expected values from my (made-up) profile, a written answer where one is asked, nothing invented, and my CV.
+ * expected values from the (made-up) profile, a written answer where one is asked, nothing invented, and the CV.
  * Target: 8 of 10. Writes evals/results/<date>-agent.json.
  */
 const PROFILE = `Name: Ana Petrova
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 
   const pool = new BrowserPool({ invisible: true });
   const cv: FormFile = { key: "", document: "cv-main", documentId: "00000000-0000-4000-8000-000000000001", sha256: sha(CV), filename: "Ana Petrova CV.pdf" };
-  // Only what the two steps touch: my profile, my CV, no stored sessions, screenshots nowhere.
+  // Only what the two steps touch: the profile, the CV, no stored sessions, screenshots nowhere.
   const deps = {
     prisma: { userSetting: { findUnique: () => Promise.resolve({ profile: PROFILE }) }, jobPosting: { findFirst: () => Promise.resolve(null) } },
     pool,
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
       output = (await agent.execute(
         {
           url,
-          goal: "Find the application form for this job and fill it from my profile, my CV attached; leave sending it to me.",
+          goal: "Find the application form for this job and fill it from the profile, the CV attached; leave sending it to the user.",
           headed: false,
           documents: ["cv-main"],
           job: { title: "Senior .NET Developer", company: "Acme Logistics", location: "Sofia · Hybrid", url },

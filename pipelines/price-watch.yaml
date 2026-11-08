@@ -1,6 +1,6 @@
 # M13: once a day, the prices of a shop's list (an 8 TB surveillance HDD search, say), remembered per product;
 # a message only when something got cheaper. Needs a recipe for the shop's list with the fields url, title and
-# price (Recipes page: teach it on the search results; the price may be text like "1 299,00 лв."): replace
+# price (Recipes page: teach it on the search results; the price may be text like "1 299,00 €"): replace
 # shop.example/hdd with its name. Several shops: list their recipes in `recipes`.
 name: Price watch
 description: Products of a shop's list that got cheaper since yesterday, with old and new price.

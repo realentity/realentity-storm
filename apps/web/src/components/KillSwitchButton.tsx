@@ -7,7 +7,7 @@ import { useAction, useLoad } from "../lib/use-load";
 import { Modal } from "./ui";
 
 /**
- * Always in the top bar (README §2.6). Engaging stops queued and waiting runs, expires their proposals and makes
+ * Always in the top bar (docs/design.md §2.6). Engaging stops queued and waiting runs, expires their proposals and makes
  * running ones stop at their next step; releasing lets schedules start runs again (stopped runs stay stopped).
  */
 export function KillSwitchButton() {
@@ -75,7 +75,7 @@ export function KillSwitchButton() {
           }
         >
           Queued and waiting runs stop and their proposals expire, so nothing approved can act. Running runs stop at their next step.
-          Schedules keep firing but start nothing until I resume.
+          Schedules keep firing but start nothing until you resume.
         </Modal>
       )}
     </>

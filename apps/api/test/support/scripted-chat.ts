@@ -80,7 +80,7 @@ export function toolResults(request: ChatRequest): { content: string; is_error?:
   return (last?.content ?? []).filter((b) => b.type === "tool_result") as unknown as { content: string; is_error?: boolean }[];
 }
 
-/** Text of the user message I sent in a turn (the first message after the history). */
+/** Text of the user message sent in a turn (the first message after the history). */
 export function userText(request: ChatRequest): string {
   const users = request.messages.filter((m) => m.role === "user" && m.content.some((b) => b.type === "text"));
   const block = users.at(-1)?.content.find((b) => b.type === "text");

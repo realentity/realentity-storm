@@ -154,7 +154,7 @@ describe("apps", () => {
     expect(renamed).toMatchObject({ name: "Jobs", version: 2, pipelines: [expect.objectContaining({ pipelineId: pipeline.pipelineId })] });
   });
 
-  // M35-I1: a draft checked as I edit it, nothing saved
+  // M35-I1: a draft checked while it is edited, nothing saved
   it("checks a draft: its problems at their lines, the pipelines it would break, what it changes", async () => {
     const app = await createApp();
     const pipeline = (await agent.post("/api/pipelines").send({ source: DISCOVERY }).expect(201)).body as PipelineDetailView;
@@ -342,7 +342,7 @@ describe("apps", () => {
   });
 
   // M35-T4
-  it("drafts a type from a sample I paste: a list, an object holding one, or one item", async () => {
+  it("drafts a type from a pasted sample: a list, an object holding one, or one item", async () => {
     const items = [
       { id: "a", name: "WD Purple 8TB", price: "399", currency: "BGN", url: "https://shop.example.org/a" },
       { id: "b", name: "Seagate SkyHawk 8TB", price: 419.5, currency: "BGN", url: "https://shop.example.org/b" },

@@ -11,7 +11,7 @@ import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { FactsService } from "./facts.service";
 
-/** My facts (M15-T1) on the Profile page. */
+/** The user's facts (M15-T1) on the Profile page. */
 @Controller("facts")
 export class FactsController {
   constructor(private readonly facts: FactsService) {}
@@ -42,7 +42,7 @@ export class FactsController {
   }
 }
 
-/** Answering what a run asked me (M15-T3), on its page. */
+/** Answering what a run asked the user (M15-T3), on its page. */
 @Controller("questions")
 export class QuestionsController {
   constructor(private readonly facts: FactsService) {}

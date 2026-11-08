@@ -25,7 +25,7 @@ export interface JobPostingView {
   title: string;
   company: string | null;
   location: string | null;
-  /** The recipe it came from ("dev.bg/search"). */
+  /** The recipe it came from ("jobs.example.com/search"). */
   source: string;
   score: number | null;
   scoreReason: string | null;
@@ -43,7 +43,7 @@ export interface ApplicationView {
   applicationId: string;
   status: ApplicationStatusName;
   submittedAt: string | null;
-  /** When the employer answered, invited me, turned me down (M16): kept when the status moves on. */
+  /** When the employer answered, invited the user, turned them down (M16): kept when the status moves on. */
   respondedAt: string | null;
   interviewAt: string | null;
   rejectedAt: string | null;
@@ -125,7 +125,7 @@ export interface RecipeSummaryView {
   quiet: boolean;
   brokenAt: string | null;
   brokenReason: string | null;
-  /** M11-T3: the agent found a fix for the broken version, waiting for me on the Recipes page. */
+  /** M11-T3: the agent found a fix for the broken version, waiting for the user on the Recipes page. */
   proposedAt: string | null;
   dateCreated: string;
 }
@@ -159,7 +159,7 @@ export interface RecipeDetailView {
 export const ImportRecipeSchema = z.object({ name: z.string().trim().min(3).max(100), source: z.string().min(2).max(50_000) }).strict();
 export type ImportRecipeRequest = z.infer<typeof ImportRecipeSchema>;
 
-/** Teach mode (README §2.4): a run of the "Teach <name>" pipeline, in the live browser. */
+/** Teach mode (docs/design.md §2.4): a run of the "Teach <name>" pipeline, in the live browser. */
 export const TeachRecipeSchema = z
   .object({
     name: z.string().trim().min(3).max(100),

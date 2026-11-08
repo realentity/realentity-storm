@@ -10,8 +10,8 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const TOP_COSTS = 3;
 
 /**
- * The weekly review (M19-T4, README §12): Sunday evening on the Storm bot. The 7-day digest (runs, failures, what
- * waits for me, reflection's suggestions, broken recipes, the LLM cost) and what a week shows better than a day: the
+ * The weekly review (M19-T4, docs/design.md §12): Sunday evening on the Storm bot. The 7-day digest (runs, failures, what
+ * waits for the user, reflection's suggestions, broken recipes, the LLM cost) and what a week shows better than a day: the
  * budget so far, where the money went, application outcomes, recipes that have found nothing for a while.
  */
 export class WeeklyReview {
@@ -79,7 +79,7 @@ export class WeeklyReview {
     return `Applications: ${sent} sent, ${answered} answered, ${interviews} interview(s), ${rejected} turned down`;
   }
 
-  /** M33: the same from the Jobs of my Apps, by the dates each reached its stages. */
+  /** M33: the same from the Jobs of the user's Apps, by the dates each reached its stages. */
   private async jobOutcomes(appIds: string[], since: Date): Promise<string | null> {
     const rows = await this.prisma.dataEntity.findMany({ where: { appId: { in: appIds }, type: "Job" }, select: { stageDates: true } });
     const after = since.toISOString();

@@ -61,8 +61,8 @@ interface StoredProposal {
 }
 
 /**
- * Builder chats (README §2.1, §2.5): a chat per new pipeline or bound to one. Each message I send runs one builder
- * turn; a proposal it makes is saved (as the next version) or dry-run only when I ask. The conversation is kept
+ * Builder chats (docs/design.md §2.1, §2.5): a chat per new pipeline or bound to one. Each message the user sends runs one
+ * builder turn; a proposal it makes is saved (as the next version) or dry-run only when they ask. The conversation is kept
  * exactly as the API saw it, so later turns replay it unchanged.
  */
 @Injectable()
@@ -145,7 +145,7 @@ export class BuilderService {
     };
   }
 
-  /** One builder turn: my message, the builder's answer (and proposal, if it made one). */
+  /** One builder turn: the user's message, the builder's answer (and proposal, if it made one). */
   async send(userId: string, chatId: string, body: BuilderMessageRequest): Promise<BuilderChatView> {
     if (!this.llm) throw new ServiceUnavailableException("The builder needs ANTHROPIC_API_KEY");
     const chat = await this.findChat(userId, chatId);
@@ -252,14 +252,14 @@ export class BuilderService {
       ? withCurrentNames(current.definition as unknown as CompiledDefinition, await this.apps.currentNames(userId), pipelineRow?.name)
       : null;
 
-    // What the builder sees: the current version when it hasn't seen it yet, a suggestion to apply, my message.
+    // What the builder sees: the current version when it hasn't seen it yet, a suggestion to apply, the user's message.
     const parts: string[] = [];
     if (current && !history.some((m) => m.role === "user" && JSON.stringify(m.content).includes(current.pipelineVersionId))) {
       parts.push(
         `<current_pipeline version="${current.version}" id="${current.pipelineVersionId}">\n${definitionToSource(currentDefinition!)}</current_pipeline>`,
       );
     }
-    // M34: my Apps (names and their types' fields), and the App this chat is about, whole, with its pipelines.
+    // M34: the user's Apps (names and their types' fields), and the App this chat is about, whole, with its pipelines.
     const appsList = await this.apps.definitions(userId);
     const appsBlock = `<apps>\n${appsList.map((a) => `${a.name}: ${Object.entries(a.types).map(([t, d]) => `${t} (${Object.keys(d.fields).join(", ")})`).join("; ")}`).join("\n") || "none yet"}\n</apps>`;
     if (appsBlock !== lastShown(history, "apps")) parts.push(appsBlock);
@@ -270,7 +270,7 @@ export class BuilderService {
     }
     const recipes = await this.recipesBlock(userId);
     if (recipes !== lastShown(history, "saved_recipes")) parts.push(recipes);
-    // M38-T5: what the editor has open, when it changed since the builder last saw it, and what I am on there.
+    // M38-T5: what the editor has open, when it changed since the builder last saw it, and what the user is on there.
     if (body.editor) {
       const draft = `<editor_draft>\n${body.editor.source.replace(/\n*$/, "\n")}</editor_draft>`;
       if (draft !== lastShown(history, "editor_draft")) parts.push(draft);
@@ -343,7 +343,7 @@ export class BuilderService {
           compileErrors: result.compileErrors ? json(result.compileErrors) : Prisma.DbNull,
           error: result.error,
           llmUsage: json(result.usage),
-          // After my message, whatever the clock resolution.
+          // After the user's message, whatever the clock resolution.
           dateCreated: new Date(now + 1),
         },
       });
@@ -371,7 +371,7 @@ export class BuilderService {
     }
   }
 
-  /** My pipelines' current definitions (M34: an App proposal's pipelines are compared with them by name). */
+  /** The user's pipelines' current definitions (M34: an App proposal's pipelines are compared with them by name). */
   private async pipelineDefinitions(userId: string): Promise<CompiledDefinition[]> {
     const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } } });
     const versions = await this.prisma.client.pipelineVersion.findMany({ where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } } });
@@ -424,7 +424,7 @@ export class BuilderService {
     if (!pipeline) throw new NotFoundException();
   }
 
-  /** The recipes browser.extract can use (latest versions), as the builder sees them in my message. */
+  /** The recipes browser.extract can use (latest versions), as the builder sees them in the user's message. */
   private async recipesBlock(userId: string): Promise<string> {
     const rows = await this.prisma.client.siteRecipe.findMany({ where: { userId }, orderBy: [{ name: "asc" }, { version: "desc" }] });
     const lines: string[] = [];
@@ -452,7 +452,7 @@ export class BuilderService {
   }
 }
 
-/** The last <tag> block my messages showed the builder, or null: shown again only when it changed. */
+/** The last <tag> block the user's messages showed the builder, or null: shown again only when it changed. */
 function lastShown(history: ChatMessage[], tag: string): string | null {
   const pattern = new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, "g");
   let last: string | null = null;
@@ -506,7 +506,7 @@ function messageView(message: BuilderMessage, current: CompiledDefinition | null
   };
 }
 
-/** An App proposal against my Apps and pipelines as they are now: another version may have been saved since. */
+/** An App proposal against the user's Apps and pipelines as they are now: another version may have been saved since. */
 function appProposalView(stored: StoredAppProposal, apps: AppDefinition[], pipelines: CompiledDefinition[]): AppProposalView {
   const current = apps.find((a) => a.name === stored.appName);
   const open = stored.status === "open";

@@ -20,7 +20,7 @@ import { EventsService } from "../events/events.service";
 
 export const KILL_SWITCH_SUMMARY = "Stopped by the kill switch";
 
-/** Kill switch and run-time settings (README §2.2, §2.6, §5). The worker reads them at every step boundary. */
+/** Kill switch and run-time settings (docs/design.md §2.2, §2.6, §5). The worker reads them at every step boundary. */
 @Injectable()
 export class ControlsService {
   constructor(

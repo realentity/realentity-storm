@@ -229,7 +229,7 @@ function Switches({
           <span className="form-check-label">Enabled</span>
           <div className="small text-secondary">
             {!pipeline.current || pipeline.current.definition.trigger === "manual"
-              ? "Manual trigger: it runs only when I start it."
+              ? "Manual trigger: it runs only when you start it."
               : `${describeTrigger(pipeline.current.definition.trigger)}, while enabled.`}
           </div>
         </label>

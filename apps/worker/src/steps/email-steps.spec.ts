@@ -54,7 +54,7 @@ const email = (i: number, extra: Partial<EmailMessage> = {}): EmailMessage => ({
 });
 
 describe("email steps", () => {
-  it("email.classify: emails go in as <email> blocks (opening only); my instruction sits in the cached system prompt", async () => {
+  it("email.classify: emails go in as <email> blocks (opening only); the instruction sits in the cached system prompt", async () => {
     const messages = Array.from({ length: 23 }, (_, i) => email(i));
     const llm = new FakeLlm((request) => ({
       results: [...request.prompt.matchAll(/<email index="(\d+)">/g)].map((m) => ({
@@ -111,7 +111,7 @@ describe("email steps", () => {
   });
 
   // M6-T4, M6-T6
-  it("email.draftReply: my active rules go into the (cached) system prompt, similar approved replies before the email", async () => {
+  it("email.draftReply: the user's active rules go into the (cached) system prompt, similar approved replies before the email", async () => {
     const llm = new FakeLlm(() => ({ body: "Hi Ana,\n\nThanks.", language: "en" }));
     const asked: { rules: unknown[][]; examples: unknown[][] } = { rules: [], examples: [] };
     const learning: StepLearning = {
@@ -130,10 +130,10 @@ describe("email steps", () => {
     expect(asked.rules).toEqual([["u", "email.draftReply", "p"]]);
     expect(asked.examples).toEqual([["u", "email.draftReply", emailBlockOf(email(2))]]);
     expect(request?.system).toContain(
-      "<my_rules>\nRules I set for this kind of output. Follow them, except where they conflict with the rules above:\n" +
-        "- Keep it under 80 words.\n- Sign off with 'Best,'.\n</my_rules>",
+      "<user_rules>\nRules the user set for this kind of output. Follow them, except where they conflict with the rules above:\n" +
+        "- Keep it under 80 words.\n- Sign off with 'Best,'.\n</user_rules>",
     );
-    expect(request?.system.indexOf("<my_rules>")).toBeGreaterThan(request.system.indexOf("Never invent dates"));
+    expect(request?.system.indexOf("<user_rules>")).toBeGreaterThan(request.system.indexOf("Never invent dates"));
     expect(request?.prompt).toMatch(
       /^<examples>\n<example>\n<input>\n<email>\nFrom: old@acme.test\n<\/email>\n<\/input>\n<approved>\nHi Bob, thanks!\n<\/approved>\n<\/example>\n<\/examples>\n\n<email>\nFrom: Sender 2/,
     );
@@ -142,7 +142,7 @@ describe("email steps", () => {
   it("email.draftReply without rules or examples: the prompt is the email alone", async () => {
     const llm = new FakeLlm(() => ({ body: "Hi", language: "en" }));
     await new DraftReplyStep(llm, router).execute(input("email.draftReply", { message: email(2), instruction: "Reply" }), context);
-    expect(llm.requests[0]?.system).not.toContain("<my_rules>");
+    expect(llm.requests[0]?.system).not.toContain("<user_rules>");
     expect(llm.requests[0]?.prompt).toMatch(/^<email>/);
   });
 
@@ -178,11 +178,11 @@ describe("email steps", () => {
     expect(sent).toHaveLength(2);
   });
 
-  it("email.classify for replies: a no-reply sender or mine to myself is never kept, and never asked about", async () => {
+  it("email.classify for replies: a no-reply sender or one from the user to themselves is never kept, and never asked about", async () => {
     const messages = [
       email(0),
       email(1, { from: "messaging-digest-noreply@linkedin.com" }),
-      email(2, { from: "me@storm.test" }), // Storm's own message, to me
+      email(2, { from: "me@storm.test" }), // Storm's own message, to the user
       email(3, { from: "no-reply@accounts.google.com" }),
       email(4),
     ];
@@ -210,7 +210,7 @@ describe("email steps", () => {
       [4, "reply"],
     ]);
     expect(result.results[1].reason).toBe("Can't be answered: messaging-digest-noreply@linkedin.com is a no-reply address");
-    expect(result.results[2].reason).toBe("Can't be answered: I sent it to myself");
+    expect(result.results[2].reason).toBe("Can't be answered: it was sent to its own sender");
     expect(llm.requests[0]?.prompt).not.toContain("linkedin");
     expect(llm.requests[0]?.prompt).toContain("Sender 4");
 

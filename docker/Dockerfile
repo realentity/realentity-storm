@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Storm images (docs/deployment.md). One build stage, one target per service:
+# Storm images (docs/self-hosting.md). One build stage, one target per service:
 #   api, worker (headless until M8), migrate (prisma migrate deploy + seed), web (Caddy with the built web app).
 # Build context: the repository root (./docker/storm up).
 
@@ -32,7 +32,7 @@ CMD ["node", "dist/main.js"]
 FROM base AS worker
 WORKDIR /app
 COPY --from=build --chown=node:node /out/worker .
-# The browser stack (README §6): Playwright's Chromium with its system libraries, a virtual display (Xvfb + fluxbox),
+# The browser stack (docs/design.md §6): Playwright's Chromium with its system libraries, a virtual display (Xvfb + fluxbox),
 # and the live view (x11vnc on localhost, websockify on 6080 for noVNC). DejaVu for Cyrillic pages.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN node node_modules/playwright/cli.js install --with-deps chromium && \

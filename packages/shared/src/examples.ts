@@ -44,7 +44,7 @@ export type Example = z.output<typeof ExampleSchema>;
 
 export const ExamplesManifestSchema = z.object({ examples: z.array(ExampleSchema).min(1) }).strict();
 
-/** M40-T2: what is set up, for the examples' needs: the server's (email, Telegram, the LLM) and mine. */
+/** M40-T2: what is set up, for the examples' needs: the server's (email, Telegram, the LLM) and the user's. */
 export interface SetupView {
   /** Set up, and the last time mail was read it worked. */
   email: boolean;
@@ -93,7 +93,7 @@ export function readExamples(manifest: string): Example[] {
 /**
  * M40-T2: an example installed again: its App and pipelines under names not taken yet ("Bills 2": an App's name has no
  * brackets; "Bills (2)" for a pipeline, as M39 named duplicates), and what refers to
- * them renamed with them (a pipeline's `app:`, a button's `run:`, run.finished's and flow.later's `pipeline`), my
+ * them renamed with them (a pipeline's `app:`, a button's `run:`, run.finished's and flow.later's `pipeline`), the
  * comments kept. Installed the first time, the documents are as they are.
  */
 export function freeNames(documents: BundleDocument[], taken: { apps: string[]; pipelines: string[] }): string[] {

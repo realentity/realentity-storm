@@ -26,7 +26,7 @@ export interface UploadedFile {
 }
 
 /**
- * My documents (M10): my CV and the cover letters I attach to applications, under DOCUMENTS_DIR. The api writes
+ * The user's documents (M10): their CV and the cover letters they attach to applications, under DOCUMENTS_DIR. The api writes
  * them; the worker only reads them and attaches one only as approved (by id and SHA-256). Uploading under a name in
  * use replaces it: the older row and file stay, so a payload approved before still names the exact file it had.
  */
@@ -71,7 +71,7 @@ export class DocumentsService {
     if (updated.count === 0) throw new NotFoundException();
   }
 
-  /** Any version I own: an approved payload may name one that was replaced since. */
+  /** Any version the user owns: an approved payload may name one that was replaced since. */
   async file(userId: string, documentId: string): Promise<{ stream: ReadStream; mime: string; name: string; size: number }> {
     const document = await this.prisma.client.document.findFirst({ where: { documentId, userId } });
     if (!document) throw new NotFoundException();

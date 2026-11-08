@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 /**
- * My documents (Documents page) for forms to attach, read-only here: the api stores them under DOCUMENTS_DIR. A
+ * The user's documents (Documents page) for forms to attach, read-only here: the api stores them under DOCUMENTS_DIR. A
  * document is attached only as the exact file approved: its row and its SHA-256 must both match.
  */
 export class DocumentStore {
@@ -32,13 +32,13 @@ export class DocumentStore {
   /** The approved file, checked (the same document, the same content), as the form gets it: under its own name. */
   async approvedFile(prisma: PrismaClient, userId: string, file: FormFile): Promise<{ name: string; mimeType: string; buffer: Buffer }> {
     const document = await prisma.document.findFirst({ where: { documentId: file.documentId, userId } });
-    if (!document || document.sha256 !== file.sha256) throw new Error(`The document "${file.document}" isn't the one I approved`);
+    if (!document || document.sha256 !== file.sha256) throw new Error(`The document "${file.document}" isn't the one you approved`);
     const path = resolve(this.root, document.path);
     const inside = relative(this.root, path);
     if (inside.startsWith("..") || isAbsolute(inside)) throw new Error(`The document "${file.document}" is outside the documents folder`);
     const content = await readFile(path);
     if (createHash("sha256").update(content).digest("hex") !== file.sha256) {
-      throw new Error(`The file of "${file.document}" changed on disk since I approved it`);
+      throw new Error(`The file of "${file.document}" changed on disk since you approved it`);
     }
     return { name: document.filename, mimeType: document.mime, buffer: content };
   }

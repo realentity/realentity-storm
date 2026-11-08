@@ -43,7 +43,7 @@ describe("jobs and recipes", () => {
     await api.close();
   });
 
-  it("M9-T6: lists postings best first, filters them, and keeps my decision", async () => {
+  it("M9-T6: lists postings best first, filters them, and keeps the user's decision", async () => {
     const posting = (title: string, score: number | null, company = "Acme") =>
       db.client.jobPosting.create({ data: { userId, source: "dev.bg/search", url: `https://dev.bg/company/jobads/${title.replace(/\W+/g, "-")}/`, title, company, score } });
     await posting("Mid .NET Engineer", 64, "Beta");
@@ -90,7 +90,7 @@ describe("jobs and recipes", () => {
     await agent.get("/api/recipes/dev.bg/other").expect(404);
   });
 
-  it("M11-T3: the agent's fix for a broken recipe is mine to approve (the next version) or discard", async () => {
+  it("M11-T3: the agent's fix for a broken recipe is the user's to approve (the next version) or discard", async () => {
     await agent.post("/api/recipes").send({ name: "dev.bg/search", source: RECIPE }).expect(201);
     await agent.post("/api/recipes/dev.bg/search/fix").expect(400);
     const fixed = parseYaml(RECIPE.replace("{page}", "{page}&fixed=1")) as Prisma.InputJsonValue;

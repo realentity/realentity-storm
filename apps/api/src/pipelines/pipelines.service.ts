@@ -28,7 +28,7 @@ type Compiled = Extract<CompileResult, { ok: true }>;
 type Tx = Prisma.TransactionClient;
 
 /**
- * Pipelines and their versions (README §2.1–2.2). Every save compiles the source; a version stores the compiled
+ * Pipelines and their versions (docs/design.md §2.1–2.2). Every save compiles the source; a version stores the compiled
  * definition and policy, which is what runs execute. Saved versions are immutable; changes create a new one.
  * Before saving, a source can be dry-run as the pipeline's draft: one per pipeline, numbered after the latest saved
  * version, never run for real or on a schedule. Saving the draft's source keeps the draft (and its dry runs) as the
@@ -60,7 +60,7 @@ export class PipelinesService {
     return { result, diff: diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition), ...(renamed ? { renamed } : {}) };
   }
 
-  /** `builderChatId`: the builder chat the source came from (README §2.1), kept with the version. */
+  /** `builderChatId`: the builder chat the source came from (docs/design.md §2.1), kept with the version. */
   async create(userId: string, source: string, builderChatId?: string): Promise<PipelineDetailView> {
     const compiled = await this.compileOrThrow(userId, source);
     await this.assertNameFree(userId, compiled.definition.name);
@@ -100,7 +100,7 @@ export class PipelinesService {
         const now = new Date();
         let saved: PipelineVersion;
         if (draft && sameDefinition(draft, compiled)) {
-          // What I dry-ran is what I save: the draft and its dry runs become this version.
+          // What was dry-run is what is saved: the draft and its dry runs become this version.
           saved = await tx.pipelineVersion.update({
             where: { pipelineVersionId: draft.pipelineVersionId },
             data: { savedAt: now, changeSummary: diff?.summary ?? null, ...(builderChatId ? { builderChatId } : {}) },

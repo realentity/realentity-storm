@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { createPipeline, startRun, unique } from "./support";
 
-// M9-T6: postings a pipeline saved, best first; my decision is kept
-test("the Jobs page lists saved postings best first and keeps the status I set", async ({ page }) => {
+// M9-T6: postings a pipeline saved, best first; the decision is kept
+test("the Jobs page lists saved postings best first and keeps the status set by hand", async ({ page }) => {
   const tag = unique("e2e");
   const url = (n: number) => `https://jobs.example.org/${tag.replace(/\W+/g, "-")}/${n}`;
   const pipeline = await createPipeline(

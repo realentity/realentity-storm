@@ -1,14 +1,14 @@
 import { z } from "zod";
 
 /**
- * A site recipe (README §2.4): how to read a list from a site, as saved selectors, so `browser.extract` runs the same
+ * A site recipe (docs/design.md §2.4): how to read a list from a site, as saved selectors, so `browser.extract` runs the same
  * way every time without an LLM. Versioned per name (`SiteRecipe`); runs use the latest version. Recipes only read:
  * they open pages on their own site and follow its "next page", nothing else.
  */
 
-/** "<site>/<what>", e.g. "dev.bg/search": the site is the host the recipe may open. */
+/** "<site>/<what>", e.g. "jobs.example.com/search": the site is the host the recipe may open. */
 export const RECIPE_NAME = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\/[a-z0-9][a-z0-9-]{0,39}$/;
-export const RecipeNameSchema = z.string().regex(RECIPE_NAME, 'a recipe name, e.g. "dev.bg/search"');
+export const RecipeNameSchema = z.string().regex(RECIPE_NAME, 'a recipe name, e.g. "jobs.example.com/search"');
 
 const Name = z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/, "a camelCase name");
 const Selector = z.string().min(1).max(500);
@@ -31,7 +31,7 @@ const FieldSchema = z
 
 export const RecipeSchema = z
   .object({
-    /** The list's first page, e.g. "https://dev.bg/company/jobs/{category}/?_seniority={seniority}". */
+    /** The list's first page, e.g. "https://jobs.example.com/jobs/{category}/?seniority={seniority}". */
     url: Template,
     /** The placeholders of `url`; a default makes one optional. */
     params: z.record(Name, z.object({ description: z.string().max(200).optional(), default: z.string().max(200).optional() }).strict()).default({}),

@@ -36,7 +36,7 @@ export interface ConsumeOptions {
 }
 
 /**
- * What the worker does with each queue (README §2.6): advance runs, start scheduled runs, keep pg-boss schedules in
+ * What the worker does with each queue (docs/design.md §2.6): advance runs, start scheduled runs, keep pg-boss schedules in
  * line with the enabled pipelines. Everything is idempotent: the runner claims a run before advancing it.
  */
 export class JobHandlers {
@@ -46,10 +46,10 @@ export class JobHandlers {
     private readonly prisma: PrismaClient,
     private readonly runner: PipelineRunner,
     private readonly queue: JobQueue,
-    /** README §8; the runner's tests leave them out. */
+    /** docs/design.md §8; the runner's tests leave them out. */
     private readonly learning?: Learning,
     private readonly reflector?: Reflector,
-    /** README §6: open takeovers lost their page in a restart. */
+    /** docs/design.md §6: open takeovers lost their page in a restart. */
     private readonly takeovers?: TakeoverDesk,
     /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
     private readonly retention?: { artifacts: ArtifactStore; days: number },
@@ -106,7 +106,7 @@ export class JobHandlers {
   }
 
   /**
-   * Advances a run; one held back by a rate limit is sent again for when the limit allows; one waiting for me says
+   * Advances a run; one held back by a rate limit is sent again for when the limit allows; one waiting for the user says
    * so on the Storm bot.
    */
   async advance(runId: string): Promise<RunStatus> {
@@ -156,7 +156,7 @@ export class JobHandlers {
   }
 
   /**
-   * At startup: runs interrupted by a stop or crash continue from their last completed step (README §2.6), and every
+   * At startup: runs interrupted by a stop or crash continue from their last completed step (docs/design.md §2.6), and every
    * queued run gets a job again (a duplicate is harmless).
    */
   async recover(): Promise<void> {

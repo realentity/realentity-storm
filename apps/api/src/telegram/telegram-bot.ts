@@ -58,7 +58,7 @@ const HELP = [
   "Storm bot:",
   "/run <pipeline>: start a pipeline",
   "/status: what runs, what waits",
-  "/inbox: the proposals waiting for me",
+  "/inbox: the proposals waiting for you",
   "/pause: kill switch on (nothing runs or acts)",
   "/resume: kill switch off",
   "/new: a new chat with the pipeline builder",
@@ -67,8 +67,8 @@ const HELP = [
 ].join("\n");
 
 /**
- * The Storm bot, inbound (M12-T3/T4): commands and buttons from my private chat only (TELEGRAM_CHAT_ID is my user
- * id); anything else is ignored without an answer. The single user of this instance is APP_ADMIN_EMAIL.
+ * The Storm bot, inbound (M12-T3/T4): commands and buttons from the user's private chat only (TELEGRAM_CHAT_ID is
+ * their user id); anything else is ignored without an answer. The single user of this instance is APP_ADMIN_EMAIL.
  */
 @Injectable()
 export class TelegramBot {
@@ -147,7 +147,7 @@ export class TelegramBot {
     }
   }
 
-  /** A reply to a question's message: my answer (kept as a fact, the run goes on). False: it replies to something else. */
+  /** A reply to a question's message: the answer (kept as a fact, the run goes on). False: it replies to something else. */
   private async answer(messageId: number, text: string): Promise<boolean> {
     const userId = await this.userId();
     const question = await this.facts.questionForTelegram(userId, messageId);
@@ -188,7 +188,7 @@ export class TelegramBot {
     await this.tell(`Talking about ${pipeline.name}${chat.currentVersion ? ` v${chat.currentVersion}` : ""}: what should change?`);
   }
 
-  /** One of my saved pipelines by its name or the start of it; otherwise says which there are, and null. */
+  /** One of the user's saved pipelines by its name or the start of it; otherwise says which there are, and null. */
   private async pipelineNamed(userId: string, name: string, command: string): Promise<{ pipelineId: string; name: string } | null> {
     const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
     const wanted = name.trim().toLowerCase();
@@ -232,7 +232,7 @@ export class TelegramBot {
     ]);
     const lines = [
       `Kill switch: ${paused ? "ON" : "off"}`,
-      `Running or queued: ${running} · waiting for me: ${waiting} · proposals: ${proposals}`,
+      `Running or queued: ${running} · waiting for you: ${waiting} · proposals: ${proposals}`,
       ...(recent.length ? ["", "Last runs:"] : []),
       ...recent.map((r) => `• ${r.pipelineVersion.pipeline.name}: ${r.status} (${r.trigger}, ${r.startedAt.toISOString().slice(0, 16).replace("T", " ")} UTC)`),
     ];

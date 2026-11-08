@@ -43,10 +43,10 @@ export function stageOf(type: DataType, stage: string | null) {
 /**
  * data.save { type } (M30): each item checked against its type (fields as their kinds, a wrong one left out, an item
  * without a required field not saved), kept by the type's key. Says what was added, changed and, for a complete
- * list, removed, as a collection does, and tells pipelines watching the type (entity.changed). My fields are never
- * written. With stages (M32), a new entity starts at `initial`, and the stage an item gives is taken only when a
- * move by: [pipeline] allows it (an email re-read never moves it back): otherwise it is said in `invalid`. A dry run
- * saves and tells nothing.
+ * list, removed, as a collection does, and tells pipelines watching the type (entity.changed). The user's
+ * (`mine`) fields are never written. With stages (M32), a new entity starts at `initial`, and the stage an item
+ * gives is taken only when a move by: [pipeline] allows it (an email re-read never moves it back): otherwise it is
+ * said in `invalid`. A dry run saves and tells nothing.
  */
 export async function saveEntities(
   prisma: PrismaClient,
@@ -54,7 +54,7 @@ export async function saveEntities(
   context: StepContext,
 ): Promise<unknown> {
   const { appId, app, type } = await appType(prisma, context, typeName);
-  if (type.mine) throw new Error(`${typeName} is a type of mine: pipelines read it, only I write it`);
+  if (type.mine) throw new Error(`${typeName} is a type of mine: pipelines read it, only the user writes it`);
   const stages = type.stages;
   const invalid: { key: string | null; saved: boolean; problems: string[] }[] = [];
   const keyed = new Map<string, { value: Item; stage?: string }>();
@@ -148,7 +148,7 @@ export async function saveEntities(
 const READ_MAX = 5000;
 
 /**
- * data.read (M30): entities of a type of the pipeline's App, as items with my fields, filtered by `where` (data.filter's
+ * data.read (M30): entities of a type of the pipeline's App, as items with the user's fields, filtered by `where` (data.filter's
  * conditions), ordered by `sort` ("-salary", "@firstSeen"), capped by `limit`.
  */
 export class ReadStep implements StepExecutor {

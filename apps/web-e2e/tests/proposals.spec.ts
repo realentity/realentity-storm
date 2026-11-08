@@ -27,8 +27,8 @@ test.describe("proposals", () => {
     await expect(sent).toContainText("done");
     await sent.click();
     await expect(page.getByTestId("timeline")).toContainText('"sentBody": "Thanks, Ana: edited by me"');
-    // Item 2 still waits for me.
-    await expect(page.getByTestId("run-status")).toContainText("waiting for me");
+    // Item 2 still waits for the user.
+    await expect(page.getByTestId("run-status")).toContainText("waiting for you");
   });
 
   // M3-E3

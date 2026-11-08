@@ -1,10 +1,10 @@
-# M24: every morning, my watched products at each of their shops; a message only when something is new: a shop at or
-# under my target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
+# M24: every morning, the watched products at each of their shops; a message only when something is new: a shop at or
+# under its target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
 # in the Prices App (pipelines/apps/prices.yaml: save it first), added on its Watched products page: no
 # allowedDomains needed here.
 name: Prices
 app: Prices
-description: My watched products, told only when a price is worth knowing.
+description: The watched products, told only when a price is worth knowing.
 trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
 steps:
   - id: watch

@@ -27,7 +27,7 @@ export const TEST_BUILDER_LLM = {
       });
     }
 
-    // The pipeline as last shown to the builder, and what I asked.
+    // The pipeline as last shown to the builder, and what the test asked.
     const texts = request.messages
       .filter((m) => m.role === "user")
       .flatMap((m) => m.content.filter((b) => b.type === "text").map((b) => String(b.text)));

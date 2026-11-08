@@ -69,7 +69,7 @@ export interface ProposalView {
 
 export const StartRunSchema = z
   .object({
-    /** Proposals are previews and side-effect steps are skipped (README §2.1). */
+    /** Proposals are previews and side-effect steps are skipped (docs/design.md §2.1). */
     dryRun: z.boolean().default(false),
   })
   .strict();
@@ -191,14 +191,14 @@ export interface RunDetailView extends RunSummaryView {
   headed: boolean;
   steps: RunStepView[];
   proposals: ProposalView[];
-  /** The live browser waiting for me now, if it is. */
+  /** The live browser waiting for the user now, if it is. */
   takeover: TakeoverView | null;
   artifacts: ArtifactView[];
   /** {{trigger}}: the event or webhook call that started it; in a dry run, an example of one. Null: none. */
   triggerData: unknown;
   /** M37-T3: a dry run tried up to this step; null: the whole pipeline. */
   stopAfter: string | null;
-  /** A question the run waits for me to answer (M15-T3). */
+  /** A question the run waits for the user to answer (M15-T3). */
   question: QuestionView | null;
   /** A failed run: whether Retry can go on from the failed steps. Null for other runs. */
   retry: RetryView | null;
@@ -219,7 +219,7 @@ export interface QuestionView {
 export const AnswerQuestionSchema = z.object({ answer: z.string().trim().min(1).max(2000) }).strict();
 export type AnswerQuestionRequest = z.infer<typeof AnswerQuestionSchema>;
 
-/** Something about me only I can say (M15): a form's question and my answer. */
+/** Something about the user only they can say (M15): a form's question and their answer. */
 export interface FactView {
   factId: string;
   question: string;
@@ -248,7 +248,7 @@ export type TakeoverStatusName = (typeof TAKEOVER_STATUSES)[number];
 
 export interface TakeoverView {
   takeoverId: string;
-  /** OPEN: the worker needs me; TAKEN_OVER: I took over. Both wait for Continue or Abort. */
+  /** OPEN: the worker needs the user; TAKEN_OVER: the user took over. Both wait for Continue or Abort. */
   status: TakeoverStatusName;
   reason: string;
   stepKey: string | null;
@@ -272,8 +272,8 @@ export interface ArtifactView {
 }
 
 /**
- * The live view of a run (README §6): where noVNC connects and with which password. The view-only password until I
- * take over (x11vnc ignores input on it); the full one while the run waits for me.
+ * The live view of a run (docs/design.md §6): where noVNC connects and with which password. The view-only password until
+ * the user takes over (x11vnc ignores input on it); the full one while the run waits for the user.
  */
 export interface LiveView {
   /** VNC passwords are configured (VNC_PASSWORD, VNC_VIEW_PASSWORD). */
@@ -292,7 +292,7 @@ export interface LiveView {
 }
 
 export interface LiveWindow {
-  /** A browser window is on the display: a step that draws there is running, or the run waits for me in it. */
+  /** A browser window is on the display: a step that draws there is running, or the run waits for the user in it. */
   open: boolean;
   /** The step running now, if any. */
   step: { stepKey: string; type: string } | null;
@@ -314,7 +314,7 @@ export interface KillSwitchView {
   stoppedRuns?: number;
 }
 
-/** Steps that call the LLM, the nightly reflection, the builder chat and teach mode; each can have its own model (README §5). */
+/** Steps that call the LLM, the nightly reflection, the builder chat and teach mode; each can have its own model (docs/design.md §5). */
 export const LLM_TASKS = [
   "email.classify",
   "email.draftReply",

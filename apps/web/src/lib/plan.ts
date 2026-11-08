@@ -59,7 +59,7 @@ export function stepGraph(definition: CompiledDefinition): StepGraph {
 }
 
 export function describeTrigger(trigger: Trigger): string {
-  if (trigger === "manual") return "Manual: runs when I start it";
+  if (trigger === "manual") return "Manual: runs when you start it";
   if ("schedule" in trigger) return `On schedule ${trigger.schedule} (${trigger.tz})`;
   if ("webhook" in trigger) return `On a webhook call (${trigger.webhook === "token" ? "bearer token" : "HMAC-SHA256 signature"})`;
   switch (trigger.on) {
@@ -82,7 +82,7 @@ export function describeTrigger(trigger: Trigger): string {
   }
 }
 
-/** What the review screen says about what a pipeline may do (README §2.2 "Policy"). */
+/** What the review screen says about what a pipeline may do (docs/design.md §2.2 "Policy"). */
 export function policySummary(definition: CompiledDefinition, policy: CompiledPolicy, catalog: readonly StepTypeView[]): string[] {
   const byType = new Map(catalog.map((s) => [s.type, s]));
   const sideEffects = definition.steps.filter((s) => byType.get(s.type)?.sideEffect);
@@ -93,7 +93,7 @@ export function policySummary(definition: CompiledDefinition, policy: CompiledPo
     for (const step of sideEffects) {
       const gate = definition.steps.find((s) => s.type === "gate.act" && s.with.for === step.id);
       lines.push(
-        `${step.id} (${step.type}) acts outside Storm${step.forEach ? ", once per item" : ""}; it waits for my approval at ${gate?.id ?? "a gate"}.`,
+        `${step.id} (${step.type}) acts outside Storm${step.forEach ? ", once per item" : ""}; it waits for your approval at ${gate?.id ?? "a gate"}.`,
       );
     }
   }

@@ -4,15 +4,16 @@ import { type AgentAction, type FormField } from "@realentity/storm-steps";
 
 /** Facts a form step gets: the most used and newest first, enough for any form. */
 const MAX_FACTS = 100;
-/** Free text written for one job isn't a fact about me. */
+/** Free text written for one job isn't a fact about the user. */
 const NOT_FACTS = new Set(["textarea", "file", "checkbox"]);
 
 
 type ProposalForFacts = Prisma.ProposalGetPayload<{ include: { run: { include: { pipelineVersion: true } } } }>;
 
 /**
- * Facts about me (M15): questions forms ask that only I can answer, and my answers. Written only by my approvals (a
- * form field I filled in or changed at the gate), my answers to a run's questions, and the Profile page; a page or
+ * Facts about the user (M15): questions forms ask that only the user can answer, and their answers. Written only by
+ * their approvals (a form field they filled in or changed at the gate), their answers to a run's questions, and the
+ * Profile page; a page or
  * the LLM alone never writes one. Form steps read them before writing anything new.
  */
 export class Facts {
@@ -28,7 +29,7 @@ export class Facts {
     if (factIds.length) await this.prisma.fact.updateMany({ where: { factId: { in: factIds } }, data: { uses: { increment: 1 }, lastUsedAt: new Date() } });
   }
 
-  /** My answer to a question, or an answer I approved: the fact for that question, new or updated. */
+  /** The user's answer to a question, or an answer they approved: the fact for that question, new or updated. */
   save(userId: string, fact: { question: string; answer: string; source: Fact["source"]; site?: string | null; proposalId?: string; runId?: string }): Promise<Fact> {
     const data = {
       question: fact.question.trim(),
@@ -43,8 +44,9 @@ export class Facts {
   }
 
   /**
-   * The facts an approved form proposal teaches: each short answer (not free text, files or checkboxes) that I filled
-   * in or changed at the gate. What a step proposed and I approved unchanged is already in my profile or my facts.
+   * The facts an approved form proposal teaches: each short answer (not free text, files or checkboxes) that the user
+   * filled in or changed at the gate. What a step proposed and they approved unchanged is already in their profile or
+   * facts.
    */
   async fromProposal(proposal: ProposalForFacts): Promise<number> {
     const definition = proposal.run.pipelineVersion.definition as unknown as CompiledDefinition;

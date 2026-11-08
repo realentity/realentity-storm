@@ -3,7 +3,7 @@ import { type StepContext, type StepExecutor } from "../runner/step-executor";
 
 export type { TelegramConfig };
 
-/** notify.telegram: a message to me (my chat only, from .env), through the Bot API. */
+/** notify.telegram: a message to the user (their chat only, from .env), through the Bot API. */
 export class TelegramStep implements StepExecutor {
   readonly type = "notify.telegram";
 

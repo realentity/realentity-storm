@@ -88,7 +88,7 @@ describe("M32: stages", () => {
     expect(emitted[0]).toMatchObject({ stage: { from: null, to: "new" } });
     expect((await entity()).stageDates).toEqual({ new: expect.any(String) as unknown });
 
-    // new → applied is mine to make, not a pipeline's: said, and the rest saved.
+    // new → applied is the user's to make, not a pipeline's: said, and the rest saved.
     const applied = await save([{ ...job("applied"), title: "Developer" }]);
     expect(applied.invalid).toEqual([{ key: "https://jobs.test/1", saved: true, problems: ["status can't move from new to applied"] }]);
     expect(applied.changed).toEqual([expect.objectContaining({ before: { title: "Dev" }, after: { title: "Developer" } })]);
@@ -118,6 +118,6 @@ describe("M32: stages", () => {
   });
 
   it("refuses to write a type of mine", async () => {
-    await expect(save([{ name: "Acme" }], "Company")).rejects.toThrow("Company is a type of mine: pipelines read it, only I write it");
+    await expect(save([{ name: "Acme" }], "Company")).rejects.toThrow("Company is a type of mine: pipelines read it, only the user writes it");
   });
 });

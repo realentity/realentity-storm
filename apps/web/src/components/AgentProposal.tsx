@@ -34,7 +34,7 @@ interface AgentPayload {
   [other: string]: unknown;
 }
 
-const SOURCE: Record<string, string> = { profile: "from my profile", written: "written for this job", fact: "from my facts", asked: "my answer", none: "" };
+const SOURCE: Record<string, string> = { profile: "from your profile", written: "written for this job", fact: "from your facts", asked: "your answer", none: "" };
 
 /**
  * What browser.agent did, at browser.submit's gate (M11-T2): every action in order, as the live browser repeats it,
@@ -118,7 +118,7 @@ export function AgentProposal({ proposal, pending, onDecided, onReject }: { prop
             disabled={!pending}
             onChange={(e) => setPayload((p) => ({ ...p, stopBeforeSubmit: e.target.checked }))}
           />
-          <span className="form-check-label">Stop before the final button: I press it myself in the live view</span>
+          <span className="form-check-label">Stop before the final button: you press it yourself in the live view</span>
         </label>
       </div>
       {pending && (
@@ -152,7 +152,7 @@ export function AgentProposal({ proposal, pending, onDecided, onReject }: { prop
             The live browser opens <strong className="text-break">{new URL(payload.url).hostname}</strong>, repeats these {payload.actions.length}{" "}
             actions, attaches {payload.files.map((f) => f.filename).join(", ") || "no files"}
             {payload.stopBeforeSubmit ? " and stops before sending." : ` and presses "${payload.submit.name}".`} If the page has changed, it waits
-            for me.
+            for you.
           </p>
         </Modal>
       )}

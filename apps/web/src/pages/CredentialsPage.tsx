@@ -8,7 +8,7 @@ import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * Write-only credentials (README §7): a secret goes in once (or is replaced) and is never shown again. The api
+ * Write-only credentials (docs/design.md §7): a secret goes in once (or is replaced) and is never shown again. The api
  * returns metadata only; secret inputs are cleared as soon as they are sent.
  */
 export function CredentialsPage() {

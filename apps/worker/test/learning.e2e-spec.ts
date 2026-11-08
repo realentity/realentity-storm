@@ -62,7 +62,7 @@ const email = (i: number, subject: string, text: string): EmailMessage => ({
   attachments: [],
 });
 
-describe("learning from my decisions (M6)", () => {
+describe("learning from the user's decisions (M6)", () => {
   let db: PrismaConnection;
   let userId: string;
   let embeddings: FakeEmbeddings;
@@ -91,8 +91,8 @@ describe("learning from my decisions (M6)", () => {
   });
 
   /**
-   * What a run of the recruiter replies pipeline leaves behind once I decided on item 1: the draft step's input and
-   * output, the gate, and the send proposal with my decision.
+   * What a run of the recruiter replies pipeline leaves behind once the user decided on item 1: the draft step's input and
+   * output, the gate, and the send proposal with the user's decision.
    */
   async function decided(
     kind: "APPROVED" | "EDITED" | "REJECTED",
@@ -150,7 +150,7 @@ describe("learning from my decisions (M6)", () => {
 
   // M6-I1
   describe("examples from approved proposals", () => {
-    it("an edited reply becomes an example of the draft step: the email as context, my edit as output, embedded", async () => {
+    it("an edited reply becomes an example of the draft step: the email as context, the user's edit as output, embedded", async () => {
       const { proposalId, message } = await decided("EDITED", { approved: "Hi Ana, thanks! Happy to talk." });
       await expect(learning.fromProposal(proposalId)).resolves.toBe(1);
       expect(await examples()).toEqual([
@@ -198,7 +198,7 @@ describe("learning from my decisions (M6)", () => {
         VALUES (gen_random_uuid(), ${userId}::uuid, ${stepType}, ${context}, ${output}, ${`[${vector.join(",")}]`}::vector, ${model})`;
     }
 
-    it("returns my most similar approved outputs of the same step type only, closest first", async () => {
+    it("returns the user's most similar approved outputs of the same step type only, closest first", async () => {
       await add("email.draftReply", "Senior .NET developer role in Sofia remote", "net-sofia");
       await add("email.draftReply", "Frontend React contract in Berlin", "react-berlin");
       await add("email.draftReply", "Invoice for consulting hours", "invoice");
@@ -288,7 +288,7 @@ describe("learning from my decisions (M6)", () => {
       usage: { ...emptyUsage(), models: ["claude-opus-5-5"], calls: 1, costUsd: 0.05 },
     });
 
-    it("sends my edits and rejections (not approvals as drafted) to Opus as a batch, then polls it", async () => {
+    it("sends the user's edits and rejections (not approvals as drafted) to Opus as a batch, then polls it", async () => {
       for (let i = 0; i < 3; i++) await decided("EDITED", { approved: `Thank you for reaching out about the role. (${i})` });
       await decided("REJECTED", { reason: "Agency, not a direct client" });
       await decided("APPROVED");
@@ -305,7 +305,7 @@ describe("learning from my decisions (M6)", () => {
       const prompt = request.request.prompt;
       expect(prompt.match(/<decision kind="EDITED"/g)).toHaveLength(3);
       expect(prompt).toContain('<decision kind="REJECTED"');
-      expect(prompt).toContain("My reason: Agency, not a direct client");
+      expect(prompt).toContain("The user's reason: Agency, not a direct client");
       expect(prompt).toContain("<proposed>\nI hope this finds you well.");
       expect(prompt).toContain("<approved>\nThank you for reaching out about the role. (0)");
       // The pipeline is one of several of that name in this file: " (n)" since M39-T1.

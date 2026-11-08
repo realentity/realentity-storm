@@ -23,7 +23,7 @@ import { RunsService } from "../runs/runs.service";
 const MAX_ROWS = 5000;
 
 /**
- * Pipelines' pages (M27): the collection a pipeline's data.save keeps, shown as its `view` says, with my marks on
+ * Pipelines' pages (M27): the collection a pipeline's data.save keeps, shown as its `view` says, with the user's marks on
  * the rows and buttons that start pipelines (ordinary runs: gates, policy and the kill switch hold).
  */
 @Injectable()
@@ -112,7 +112,7 @@ export class ViewsService {
     return { ...header, row, history };
   }
 
-  /** My mark on a row; data.save never touches it. */
+  /** The user's mark on a row; data.save never touches it. */
   async mark(userId: string, pipelineId: string, key: string, markId: string, on: boolean): Promise<ViewRow> {
     const { view } = await this.header(userId, pipelineId);
     if (!view.marks.some((m) => m.id === markId)) throw new NotFoundException(`This page has no mark "${markId}"`);

@@ -1,9 +1,9 @@
-# M16: every 15 minutes, emails about my applications move them on (replied, interview, rejected): the Jobs page
+# M16: every 15 minutes, emails about your applications move them on (replied, interview, rejected): the Jobs page
 # and Insight count them, an interview or a rejection cancels the follow-up reminder (follow-up-later.yaml), and a
-# message tells me. Only forward: what I set by hand on the Jobs page stays unless an email moves it further.
+# message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
 name: Application replies
 app: Job Search
-description: Replies about my applications update their status, and tell me.
+description: Replies about your applications update their status, and tell you.
 trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
 steps:
   - id: fetch

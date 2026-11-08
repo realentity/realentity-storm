@@ -18,7 +18,7 @@ export interface Lease {
 }
 
 /**
- * The worker's browsers (README §6): one shared headless Chromium for unattended work, with a few contexts at once,
+ * The worker's browsers (docs/design.md §6): one shared headless Chromium for unattended work, with a few contexts at once,
  * and one headed slot on the virtual display, launched for the step that needs it and closed after (the live view
  * then shows an empty desktop). Headed runs are already one at a time across workers (the runs-headed queue); the
  * slot also serializes them inside one process. Every step gets a fresh context: no profile folder on disk, logins

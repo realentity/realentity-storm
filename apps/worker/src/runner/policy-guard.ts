@@ -15,7 +15,7 @@ export interface TargetCheck {
 export class PolicyViolation extends Error {}
 
 /**
- * Run-time side of the pipeline policy (README §2.2): what a side-effect step targets must be in the static lists,
+ * Run-time side of the pipeline policy (docs/design.md §2.2): what a side-effect step targets must be in the static lists,
  * equal to what its provenance source produced, or explicitly approved as new at the gate.
  */
 export class PolicyGuard {

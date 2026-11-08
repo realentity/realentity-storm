@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createPipeline, startRun, unique } from "./support";
 
-// M32-E1: my comment on a job, a move to Favorite, then Apply starts its pipeline; a type of mine added by hand
+// M32-E1: a comment on a job, a move to Favorite, then Apply starts its pipeline; a type of mine added by hand
 test("an entity's form, stage and button; a type of mine added from its list", async ({ page }) => {
   const name = unique("Jobs");
   const label = `Jobs ${name.split(" ")[1]}`;

@@ -11,9 +11,9 @@ import { DraftReplyStep } from "../src/steps/email-steps";
 import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
 
 /**
- * M6-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
+ * M6-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
  *   pnpm --filter @realentity/storm-worker eval:learning
- * 10 seeded edits in which I removed "I hope this finds you well" (and its Bulgarian twin) from drafts, and in the
+ * 10 seeded edits in which the user removed "I hope this finds you well" (and its Bulgarian twin) from drafts, and in the
  * English ones replaced the sign-off "Best regards" with "Cheers," → reflection (the nightly prompt and model, called
  * directly instead of through the Batch API) must suggest a rule for each → with the suggested rules active, drafts of
  * ten other emails must not contain the phrase, and the English ones must sign off with "Cheers,". Without the rules
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   const seeds = [...replies("en").slice(0, 7), ...replies("bg").slice(0, 3)];
   const heldOut = [...replies("en").slice(7, 13), ...replies("bg").slice(3, 7)];
 
-  // 1. Ten edits: the draft opened with the phrase, what I approved doesn't; English drafts now end with "Cheers,".
+  // 1. Ten edits: the draft opened with the phrase, what the user approved doesn't; English drafts now end with "Cheers,".
   const decisions: ReflectedDecision[] = seeds.map((email, i) => {
     const bg = email.lang === "bg";
     const name = email.fromName.split(" ")[0];
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   console.log(`Reflection suggested ${reflection.output.rules.length} rule(s):`);
   for (const r of reflection.output.rules) console.log(`  - [${r.stepType ?? "all"}] ${r.text}`);
 
-  // 3. Drafts of ten other emails, without and with the suggested rules active (as if I approved them all).
+  // 3. Drafts of ten other emails, without and with the suggested rules active (as if the user approved them all).
   const draft = async (learning: StepLearning) => {
     const step = new DraftReplyStep(llm, router, learning);
     const bodies: { id: string; lang: string; body: string; hasPhrase: boolean; cheers: boolean }[] = [];

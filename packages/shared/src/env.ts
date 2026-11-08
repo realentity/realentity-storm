@@ -29,7 +29,7 @@ export const ServerEnvSchema = z
     APP_TOTP_SECRET: optional(z.string().regex(/^[A-Z2-7]{16,}=*$/, "must be a base32 TOTP secret (pnpm auth:setup)")),
     SESSION_TTL_HOURS: z.coerce.number().int().positive().default(168),
     /**
-     * The address the browser uses (behind tailscale serve: https://storm.example.com:8100). The live events
+     * The address the browser uses (e.g. behind a reverse proxy: https://storm.example.com). The live events
      * socket then accepts only this Origin; unset, the Origin must match the Host header (development).
      */
     APP_ORIGIN: optional(z.url({ protocol: /^https?$/ }).transform((url) => new URL(url).origin)),
@@ -40,49 +40,49 @@ export const ServerEnvSchema = z
     LLM_MODEL_WRITING: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-sonnet-5-5")),
     LLM_MODEL_REFLECTION: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
     LLM_MODEL_BUILDER: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
-    /** Builder chat (README §2.1): a chat stops answering once its calls used this many tokens; a new chat starts over. */
+    /** Builder chat (docs/design.md §2.1): a chat stops answering once its calls used this many tokens; a new chat starts over. */
     BUILDER_CHAT_MAX_TOKENS: z.coerce.number().int().positive().default(2_000_000),
     /** Non-essential pipelines pause when this month's LLM cost reaches it. Settings override it; unset = no limit. */
     LLM_MONTHLY_BUDGET_USD: optional(z.coerce.number().positive()),
 
     /**
-     * Embeddings for few-shot retrieval (README §8): OpenAI, 1024 dimensions (the Examples.embedding column).
+     * Embeddings for few-shot retrieval (docs/design.md §8): OpenAI, 1024 dimensions (the Examples.embedding column).
      * Unset: drafts are written without examples; nothing else changes.
      */
     OPENAI_API_KEY: optional(z.string()),
     EMBEDDINGS_MODEL: z.enum(["text-embedding-3-large", "text-embedding-3-small"]).default("text-embedding-3-large"),
 
     /**
-     * Browser (README §6). Files the pipelines produce (screenshots, traces, downloads) live here; the worker writes,
-     * the api serves them to me.
+     * Browser (docs/design.md §6). Files the pipelines produce (screenshots, traces, downloads) live here; the worker writes,
+     * the api serves them to the user.
      */
     ARTIFACTS_DIR: z.string().min(1).default("data/artifacts"),
     /** Run files older than this are deleted nightly (the runs stay); 0 keeps them. */
     ARTIFACTS_RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
-    /** My documents (CV, cover letters) that forms may attach: the api writes them, the worker only reads. */
+    /** The user's documents (CV, cover letters) that forms may attach: the api writes them, the worker only reads. */
     DOCUMENTS_DIR: z.string().min(1).default("data/documents"),
     /** Live view: x11vnc's passwords, full control and view-only (VNC uses the first 8 characters). Unset: no live view. */
     VNC_PASSWORD: optional(z.string().min(8)),
     VNC_VIEW_PASSWORD: optional(z.string().min(8)),
-    /** A run waiting for me in the live view gives up after this long (its step fails). */
+    /** A run waiting for the user in the live view gives up after this long (its step fails). */
     TAKEOVER_TIMEOUT_MINUTES: z.coerce.number().int().min(1).max(120).default(30),
     /** Downloads larger than this are rejected in quarantine. */
     DOWNLOAD_MAX_MB: z.coerce.number().int().min(1).max(500).default(25),
 
     /**
-     * The Storm bot (M12): its messages go to this chat only, my private chat with it, whose id is my Telegram user
-     * id; commands and buttons are taken only from it.
+     * The Storm bot (M12): its messages go to this chat only, the user's private chat with it, whose id is their
+     * Telegram user id; commands and buttons are taken only from it.
      */
     TELEGRAM_BOT_TOKEN: optional(z.string().regex(/^\d+:[\w-]{30,}$/, "a bot token from @BotFather (123456:ABC...)")),
     TELEGRAM_CHAT_ID: optional(z.string().regex(/^-?\d+$/, "a numeric chat id")),
     /**
-     * The secret Telegram sends with every update (setWebhook secret_token), also checked by hooks-gateway on the
-     * VPS. Unset: /hooks/telegram answers nothing.
+     * The secret Telegram sends with every update (setWebhook secret_token), also checked by a webhook
+     * gateway in front, if there is one. Unset: /hooks/telegram answers nothing.
      */
     TELEGRAM_WEBHOOK_SECRET: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
     /** What the server's own jobs send with their reports (POST /hooks/health, M26). */
     HEALTH_REPORT_TOKEN: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
-    /** The public address of the webhooks, e.g. https://hooks.example.com/storm; shown on the pipeline page. */
+    /** The public address of the webhooks, e.g. https://hooks.example.com/hooks; shown on the pipeline page. */
     HOOKS_PUBLIC_URL: optional(z.url({ protocol: /^https$/ }).transform((url) => url.replace(/\/+$/, ""))),
 
     /**
@@ -105,8 +105,8 @@ export const ServerEnvSchema = z
       .default("mail"),
 
     /**
-     * Google Calendar (calendar.* steps, M14): the OAuth client of my Google Cloud project (a Web application client
-     * whose redirect URI is APP_ORIGIN + /api/google/callback). Unset: Settings says how to set it up.
+     * Google Calendar (calendar.* steps, M14): the OAuth client of the user's Google Cloud project (a Web application
+     * client whose redirect URI is APP_ORIGIN + /api/google/callback). Unset: Settings says how to set it up.
      */
     GOOGLE_CLIENT_ID: optional(z.string().regex(/^[\w.-]+\.apps\.googleusercontent\.com$/, "…apps.googleusercontent.com")),
     GOOGLE_CLIENT_SECRET: optional(z.string().min(10).max(200)),

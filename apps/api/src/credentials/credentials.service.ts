@@ -21,7 +21,7 @@ const viewSelect = {
 type CredentialRow = Prisma.CredentialGetPayload<{ select: typeof viewSelect }>;
 
 /**
- * Credentials are write-only through the api (README §7): it seals values and returns metadata.
+ * Credentials are write-only through the api (docs/design.md §7): it seals values and returns metadata.
  * Decryption exists only in the worker.
  */
 @Injectable()

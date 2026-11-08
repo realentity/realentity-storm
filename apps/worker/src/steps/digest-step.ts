@@ -5,13 +5,13 @@ import { RunControls } from "../runner/run-controls";
 const STATUS_WORDS: Record<string, string> = {
   DONE: "done",
   FAILED: "failed",
-  WAITING_FOR_USER: "waiting for me",
+  WAITING_FOR_USER: "waiting for you",
   ABORTED: "stopped",
   RUNNING: "running",
   QUEUED: "queued",
 };
 const MAX_FAILURES = 10;
-/** Of a list waiting for me to pick from (gate.review): the best few, by score. */
+/** Of a list waiting for the user to pick from (gate.review): the best few, by score. */
 const TOP_TO_PICK = 3;
 
 /** What notify.digest needs from notify.telegram: sending one text. */
@@ -20,7 +20,7 @@ export interface TextSender {
 }
 
 /**
- * notify.digest (README §12): what ran in the last `hours`, what waits for me, what failed, what reflection suggests
+ * notify.digest (docs/design.md §12): what ran in the last `hours`, what waits for the user, what failed, what reflection suggests
  * and what the LLM cost, as one Telegram message. Run summaries and step errors only: no payloads or email text.
  */
 export class DigestStep implements StepExecutor {
@@ -73,7 +73,7 @@ export class DigestStep implements StepExecutor {
       const byPipeline = new Map<string, number>();
       for (const p of waiting)
         byPipeline.set(p.run.pipelineVersion.pipeline.name, (byPipeline.get(p.run.pipelineVersion.pipeline.name) ?? 0) + 1);
-      lines.push(`Waiting for me: ${waiting.length} (${[...byPipeline].map(([name, n]) => `${name}: ${n}`).join(", ")})`);
+      lines.push(`Waiting for you: ${waiting.length} (${[...byPipeline].map(([name, n]) => `${name}: ${n}`).join(", ")})`);
       for (const review of waiting.filter((p) => p.step.type === "gate.review")) {
         const items = ((review.originalPayload as { items?: unknown[] }).items ?? []).filter(isRecord);
         const best = [...items].sort((a, b) => scoreOf(b) - scoreOf(a)).slice(0, TOP_TO_PICK);
@@ -82,7 +82,7 @@ export class DigestStep implements StepExecutor {
         );
       }
     } else {
-      lines.push("Waiting for me: nothing");
+      lines.push("Waiting for you: nothing");
     }
 
     const failed = runs.filter((r) => r.status === "FAILED");

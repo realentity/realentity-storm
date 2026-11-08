@@ -1,0 +1,18 @@
+# An example list recipe for browser.extract (docs/design.md §2.4): a job board's list per category. Change the address and
+# the selectors to your site's, then import it on the Recipes page as "<site>/<what>" (e.g. "jobs.example.com/search"),
+# or teach a recipe there in the live browser instead. Check the site's terms and robots.txt first, and keep a
+# person's pace: here one page every 1.5 s, at most 5 pages per search.
+url: https://jobs.example.com/jobs/{category}/
+params:
+  category: { description: "the site's category slug, e.g. net, java, front-end" }
+item: .job-list-item
+fields:
+  url: { selector: a.job-link, attr: href, required: true }
+  title: { selector: .job-title, required: true }
+  company: { selector: .company-name }
+  location: { selector: .location }
+  posted: { selector: .date }
+key: url
+next: { kind: page, url: "https://jobs.example.com/jobs/{category}/?page={page}", start: 2 }
+maxPages: 5
+delayMs: 1500

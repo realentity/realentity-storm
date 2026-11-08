@@ -19,7 +19,7 @@ test("signs in with password and authenticator code, and out again", async ({ pa
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByLabel("Authenticator code").fill(authenticator.generate(secret!));
   await page.getByRole("button", { name: "Sign in" }).click();
-  // The page I asked for opens.
+  // The page asked for opens.
   await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
 
   await page.getByTitle("Sign out").click();

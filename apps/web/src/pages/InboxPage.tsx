@@ -5,7 +5,7 @@ import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
 import { useLoad } from "../lib/use-load";
 
-/** What waits for my decision (README §3), oldest first. */
+/** What waits for the user's decision (docs/design.md §3), oldest first. */
 export function InboxPage() {
   const proposals = useLoad(
     () => api.proposals.list(),
@@ -21,12 +21,12 @@ export function InboxPage() {
 
   return (
     <>
-      <PageHeader title="Inbox" pretitle="Waiting for me" />
+      <PageHeader title="Inbox" pretitle="Waiting for you" />
       <ErrorAlert error={proposals.error} />
       {takeovers.data && takeovers.data.length > 0 && (
         <div className="card mb-3 border-warning">
           <div className="card-header">
-            <h3 className="card-title">The live browser needs me</h3>
+            <h3 className="card-title">The live browser needs you</h3>
           </div>
           <div className="list-group list-group-flush" data-testid="takeovers">
             {takeovers.data.map((t) => (

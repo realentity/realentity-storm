@@ -25,7 +25,7 @@ export interface ControlledRun {
 const WINDOW_MS = { hour: 3_600_000, day: 86_400_000 } as const;
 
 /**
- * Run-time controls (README §2.2, §2.6, §5): the kill switch, the monthly LLM budget, and rate limits per step type.
+ * Run-time controls (docs/design.md §2.2, §2.6, §5): the kill switch, the monthly LLM budget, and rate limits per step type.
  * Read from the database at every step boundary, so a change applies to runs already in progress.
  */
 export class RunControls {

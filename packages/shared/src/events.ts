@@ -14,7 +14,7 @@ export type AppEvent =
   | { type: "killSwitch"; engaged: boolean }
   /** Rules, pipeline suggestions or a reflection changed (the Rules page). */
   | { type: "learning" }
-  /** A headed run needs me, or I took over, continued or aborted it (README §6). */
+  /** A headed run needs the user, or the user took over, continued or aborted it (docs/design.md §6). */
   | { type: "takeover"; runId: string; status: TakeoverStatusName }
   /** A builder chat got a message or saved a proposal. */
   | { type: "builder"; chatId: string };

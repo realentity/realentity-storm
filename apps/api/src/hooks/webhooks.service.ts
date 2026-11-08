@@ -7,7 +7,7 @@ import { type IncomingHttpHeaders } from "node:http";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 
-/** The largest body a webhook takes (hooks-gateway on the VPS limits it the same). */
+/** The largest body a webhook takes (a gateway in front, if any, should limit it the same). */
 export const MAX_WEBHOOK_BYTES = 64 * 1024;
 const WEBHOOK_ID = /^[A-Za-z0-9_-]{43}$/;
 const SIGNATURE = /^sha256=[0-9a-f]{64}$/;

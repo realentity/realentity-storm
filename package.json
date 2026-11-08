@@ -2,12 +2,15 @@
   "name": "realentity-storm",
   "version": "0.1.0",
   "private": true,
-  "description": "Storm: a personal, self-hosted agent that proposes and, after approval, acts on my behalf",
+  "description": "Storm: a personal, self-hosted agent that proposes and, after approval, acts on your behalf",
+  "license": "AGPL-3.0-only",
+  "repository": "github:realentity/realentity-storm",
   "engines": {
     "node": ">=22.12 <23 || >=24"
   },
   "packageManager": "pnpm@10.2.1",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",

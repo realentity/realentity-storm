@@ -12,7 +12,7 @@ import { createVersion } from "./support/test-steps";
 
 /**
  * M2 exit criteria in one scenario, with the real step implementations (Claude and Telegram faked at their edge):
- * a scheduled pipeline (data + llm + gate + notify) runs from its trigger, pauses at the gate, resumes after my
+ * a scheduled pipeline (data + llm + gate + notify) runs from its trigger, pauses at the gate, resumes after the user's
  * decision, survives a worker restart, and is stopped by the kill switch. The gate is gate.review: the first
  * side-effect step (and with it gate.act in a real pipeline) arrives in M4.
  */
@@ -105,7 +105,7 @@ describe("M2 exit criteria", () => {
     await queue.enqueueRun({ runId, headed: false });
   }
 
-  it("runs on its schedule, pauses at the gate, resumes after my decision across a restart, and stops on the kill switch", async () => {
+  it("runs on its schedule, pauses at the gate, resumes after the user's decision across a restart, and stops on the kill switch", async () => {
     const pipelineVersionId = await createVersion(db.client, userId, DAILY, new PipelineCompiler(defaultCatalog()));
     const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
     await db.client.pipeline.update({ where: { pipelineId }, data: { enabled: true } });
@@ -131,7 +131,7 @@ describe("M2 exit criteria", () => {
     expect(scored.llmUsage).toMatchObject({ costUsd: 0.0001 });
     expect(sent).toEqual([]);
 
-    // The worker stops; I decide while it is down; a new worker process picks the run up.
+    // The worker stops; the user decides while it is down; a new worker process picks the run up.
     for (const name of Object.values(QUEUES)) await queue.boss.offWork(name);
     await approveSelection(runId!, (items) => items.slice(0, 1));
     const restarted = worker();
@@ -139,7 +139,7 @@ describe("M2 exit criteria", () => {
     await restarted.consume({ concurrency: 1, pollingIntervalSeconds: 0.5 });
     await until(runId!, "DONE");
     expect(sent).toHaveLength(1);
-    // Only the item I kept (key order is jsonb's).
+    // Only the item the user kept (key order is jsonb's).
     expect(JSON.parse(sent[0].replace("Picked: ", ""))).toEqual([{ city: "Sofia", title: "Senior .NET", score: 90, scoreReason: "fits" }]);
     const steps = await db.client.step.findMany({ where: { runId } });
     expect(
@@ -149,7 +149,7 @@ describe("M2 exit criteria", () => {
         .sort(),
     ).toEqual(["jobs", "score", "shortlist", "tell"]);
 
-    // Next morning: the run waits at the gate, the kill switch goes on, and my late approval acts on nothing.
+    // Next morning: the run waits at the gate, the kill switch goes on, and the user's late approval acts on nothing.
     await queue.boss.send(QUEUES.trigger, { pipelineId });
     let second: string | undefined;
     while (!second) {

@@ -139,7 +139,7 @@ describe("bundles", () => {
     expect((await check(file(APP, APP))).errors[0].message).toContain("One App a file");
   });
 
-  it("refuses an App that would break one of my pipelines the file leaves out, and imports a pipeline alone", async () => {
+  it("refuses an App that would break one of the user's pipelines the file leaves out, and imports a pipeline alone", async () => {
     await agent
       .post("/api/bundles")
       .send({ text: file(APP, SAVE) })
@@ -148,7 +148,7 @@ describe("bundles", () => {
     expect(preview.ok).toBe(false);
     expect(preview.broken.map((p) => p.name)).toEqual(["Disk prices"]);
 
-    // A pipeline alone, against the App I have.
+    // A pipeline alone, against the App there is.
     const alone = await check(READ);
     expect(alone).toMatchObject({ ok: true });
     expect(alone.items.map((i) => [i.kind, i.action])).toEqual([["pipeline", "create"]]);

@@ -10,8 +10,8 @@ export const STALE_MS = 3 * 60_000;
 const CHECK_MS = 60_000;
 
 /**
- * Watches the worker's heartbeat (README §13, M5-T6) and tells me on Telegram when it goes down and when it is back,
- * once per change. Right after the api starts, a missing heartbeat is "unknown" for a grace period.
+ * Watches the worker's heartbeat (docs/design.md §13, M5-T6) and tells the user on Telegram when it goes down and when
+ * it is back, once per change. Right after the api starts, a missing heartbeat is "unknown" for a grace period.
  */
 @Injectable()
 export class WorkerWatchdog implements OnApplicationBootstrap, OnApplicationShutdown {

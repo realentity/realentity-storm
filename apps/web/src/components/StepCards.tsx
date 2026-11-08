@@ -59,7 +59,7 @@ export function StepCards({
   editable: boolean;
   catalog: StepTypeView[];
   issues: CompileIssue[];
-  /** My Apps' names, to belong to one. */
+  /** The Apps' names, to belong to one. */
   apps: string[];
   /** The App's types, for the trigger and data steps. */
   types: TriggerTypes;
@@ -160,7 +160,7 @@ export function StepCards({
       ))}
       {pipeline.steps.length === 0 && (
         <div className="text-center text-secondary" data-testid="no-steps">
-          No steps yet. A step does one thing (fetch email, ask the LLM, save to an App, send me a message); add the first from the catalog.
+          No steps yet. A step does one thing (fetch email, ask the LLM, save to an App, send you a message); add the first from the catalog.
         </div>
       )}
       <AddHere onAdd={() => setAdding(pipeline.steps.length - 1)} disabled={!editable} last />

@@ -197,7 +197,7 @@ describe("moving into an App", () => {
   });
 
   // M33-T5: a page's collection (M27's view:) into an App's type
-  it("moves a collection into a type, a mark as the yes/no field of mine of its name; a list draws its history chart", async () => {
+  it("moves a collection into a type, a mark as the yes/no field (mine) of its name; a list draws its history chart", async () => {
     const release = (id: string, title: string, marks: Record<string, string> = {}, removedAt: Date | null = null) =>
       db.client.dataRecord.create({
         data: { userId, collection: "releases", key: id, value: { id, title, published: "2026-11-01T10:00:00Z", url: `https://github.com/acme/app/releases/${id}` }, marks, removedAt },

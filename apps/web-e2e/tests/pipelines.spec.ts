@@ -11,7 +11,7 @@ test.describe("pipelines", () => {
 
     await page.getByTestId("check").click();
     await expect(page.getByTestId("policy-summary")).toContainText(
-      "reply (test.send) acts outside Storm, once per item; it waits for my approval at replyGate.",
+      "reply (test.send) acts outside Storm, once per item; it waits for your approval at replyGate.",
     );
     await expect(page.getByTestId("policy-summary")).toContainText("reply.to (recipient) must come from {{item.recruiter}}");
     await expect(page.getByTestId("step-graph")).toContainText("replyGate");

@@ -1,9 +1,9 @@
-# M33: the Prices App. I add the Products to watch, each with its shops (a line each, the variant after "|");
+# M33: the Prices App. You add the Products to watch, each with its shops (a line each, the variant after "|");
 # price.watch (pipelines/prices.yaml) keeps what each shop's page says as an Offer, with its price history, and tells
-# me only what is new. Save it on the Apps page before pipelines/prices.yaml, then press "Move them here" on its page to
+# you only what is new. Save it on the Apps page before pipelines/prices.yaml, then press "Move them here" on its page to
 # bring the products, shops and prices the old Prices page kept.
 name: Prices
-description: Products I watch, and what each shop asks for them
+description: Products you watch, and what each shop asks for them
 icon: tag
 types:
   Product:

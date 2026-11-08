@@ -163,7 +163,7 @@ export function SchemaField({
   );
 }
 
-/** Lists of objects, objects, anything else: YAML in a box, read when I leave it. */
+/** Lists of objects, objects, anything else: YAML in a box, read on leaving it. */
 function YamlField({
   value,
   onChange,
@@ -220,7 +220,7 @@ function YamlField({
   );
 }
 
-/** A box written when I leave it, as CommitInput; Escape puts back what was there. */
+/** A box written on leaving it, as CommitInput; Escape puts back what was there. */
 export function CommitArea({
   value,
   onCommit,

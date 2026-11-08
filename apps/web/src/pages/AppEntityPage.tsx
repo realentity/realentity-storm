@@ -16,7 +16,7 @@ import { asText } from "../lib/view";
 
 /**
  * M31: an entity's own page: its fields (in sections when its App says so) and its history as a chart. M32: its stage
- * with the moves I may make, my fields on a form, its buttons; an entity of a type of mine can be deleted.
+ * with the moves the user may make, their fields on a form, its buttons; an entity of a type of mine can be deleted.
  */
 export function AppEntityPage() {
   const { appId = "", type = "", key = "" } = useParams();

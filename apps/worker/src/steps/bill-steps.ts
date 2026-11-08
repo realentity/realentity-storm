@@ -17,7 +17,7 @@ const PDF_CHARS = 8_000;
 const USUAL_OF = 6;
 
 const BillAnswerSchema = z.object({
-  isBill: z.boolean().describe("an amount I have to pay: an invoice, a utility bill, a payment request; not a receipt of a payment already made, an offer or a newsletter"),
+  isBill: z.boolean().describe("an amount the user has to pay: an invoice, a utility bill, a payment request; not a receipt of a payment already made, an offer or a newsletter"),
   issuer: z.string().max(200).describe("who bills, short: the company name as the bill gives it"),
   amount: z.number().nonnegative().describe("the total to pay, as a number"),
   currency: z.string().max(8).describe("ISO 4217 code, e.g. BGN, EUR"),
@@ -27,8 +27,8 @@ const BillAnswerSchema = z.object({
 });
 
 const SYSTEM = [
-  "You read bills for me out of an email and the text of its PDF attachments. Rules:",
-  "- isBill: true only when it asks me to pay an amount (an invoice, a utility or phone bill, a payment request). " +
+  "You read bills for the user out of an email and the text of its PDF attachments. Rules:",
+  "- isBill: true only when it asks the user to pay an amount (an invoice, a utility or phone bill, a payment request). " +
     "A receipt for a payment already made, an order confirmation, an offer or a newsletter is not a bill.",
   "- Read numbers exactly as written; the amount is the total to pay (with VAT), not a subtotal. A decimal comma is a decimal point.",
   "- Never guess: a date, period or reference the text doesn't give is null. When it isn't a bill, the other fields can be empty.",
@@ -102,7 +102,7 @@ interface ReadBill {
 /**
  * bill.save (M23): bills kept as Bill entities of the pipeline's App (M33, pipelines/apps/bills.yaml), by the sender's
  * domain with the bill's reference, period or due date: the same bill read again (a reminder, the run retried)
- * updates it, keeping whether I paid it. A new one is `due`, and compared with the issuer's usual amount; a dry run
+ * updates it, keeping whether the user paid it. A new one is `due`, and compared with the issuer's usual amount; a dry run
  * saves nothing.
  */
 export class BillSaveStep implements StepExecutor {

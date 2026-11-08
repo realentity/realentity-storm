@@ -18,16 +18,16 @@ It talks only to you. Anything from another user, a group chat, or a forwarded c
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | The bot's token from @BotFather |
 | `TELEGRAM_CHAT_ID` | **Your Telegram user id**. In a private chat with the bot this is also the chat id |
-| `TELEGRAM_WEBHOOK_SECRET` | The `secret_token` the webhook was registered with. It must match the hooks-gateway's `TELEGRAM_STORM_WEBHOOK_SECRET` |
+| `TELEGRAM_WEBHOOK_SECRET` | The `secret_token` the webhook was registered with (`setWebhook`) |
 
 Without the token and chat id, nothing is sent and the bot ignores all messages. Pipelines still run.
 
 With only the token and chat id (no webhook), the bot **sends** messages but cannot **receive** them: you get
 notifications, but commands, buttons and the builder don't work.
 
-Inbound path: Telegram → Cloudflare (`hooks.example.com`) → VPS Traefik → hooks-gateway → Tailscale → server `:8101` →
-api `POST /api/hooks/telegram`. Both the gateway and the api check the secret header and your user id. See
-[deployment.md](deployment.md) for the full setup and troubleshooting.
+Inbound path: Telegram → your public hooks address (a tunnel, a proxy or a gateway) → Storm's hooks-only site
+(`127.0.0.1:7101`, `POST /hooks/*` only) → api `POST /api/hooks/telegram`. The api checks the secret header and your
+user id. See [self-hosting.md](self-hosting.md) ("Webhooks and Telegram") for the setup and `setWebhook`.
 
 **Setting:** *Settings → Approve on Telegram* turns the Approve/Reject buttons on proposals on or off (default: on).
 *Settings → Morning brief* and *Weekly review* turn those messages on or off.
@@ -71,7 +71,7 @@ Bot:  "p" could be: Price watch, Product watch. Pipelines: Bills, Daily digest, 
 ```
 You:  /status
 Bot:  Kill switch: off
-      Running or queued: 1 · waiting for me: 0 · proposals: 3
+      Running or queued: 1 · waiting for you: 0 · proposals: 3
 
       Last runs:
       • Release watch: SUCCEEDED (telegram, 2026-11-02 08:14 UTC)
@@ -160,7 +160,7 @@ the builder instead. The answer is saved on the Profile page as a fact.
 ### 3.5 Alerts
 
 - **Worker down / back**: when the worker's heartbeat stops, and again when it returns (once per change).
-- **Health reports**: a server job (backups, the restore test, …) that reports a failure or stops reporting, once,
+- **Health reports**: a job on the host (backups, the restore test, …) that reports a failure or stops reporting, once,
   and again when it recovers.
 - **LLM budget**: at 80% of the monthly budget, and when the budget is reached (non-essential pipelines then stop
   before their next LLM step). Includes an *Open Settings* button.
@@ -218,7 +218,7 @@ Any pipeline can message you with the `notify.telegram` step. It sends only to y
 starts with `[Dry run]`. Use `{{…}}` to insert outputs from earlier steps, and `when:` to send only when there is
 something to say.
 
-### Example: tell me only when something changed
+### Example: tell you only when something changed
 
 From [pipelines/price-watch.yaml](../pipelines/price-watch.yaml):
 

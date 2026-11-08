@@ -13,7 +13,7 @@ export const CompilePipelineSchema = PipelineSourceSchema.extend({
 export type CompilePipelineRequest = z.infer<typeof CompilePipelineSchema>;
 
 /**
- * Dry run before saving (README §2.1): the source becomes the pipeline's draft (a new pipeline without one), and a
+ * Dry run before saving (docs/design.md §2.1): the source becomes the pipeline's draft (a new pipeline without one), and a
  * dry run of the draft starts. Saving the same source later turns the draft into the next version.
  */
 export const DryRunPipelineSchema = CompilePipelineSchema.extend({
@@ -167,7 +167,7 @@ export interface PipelineDetailView extends PipelineSummaryView {
 
 /** A pipeline's webhook (M12-T2). The secret is in the answer to creating or rotating it, and never again. */
 export interface WebhookView {
-  /** Where the VPS forwards it on the server: POST /hooks/<webhookId>. */
+  /** Where it is received: POST /hooks/<webhookId>. */
   path: string;
   /** The address to give the caller (HOOKS_PUBLIC_URL + /<webhookId>); null when HOOKS_PUBLIC_URL isn't set. */
   url: string | null;

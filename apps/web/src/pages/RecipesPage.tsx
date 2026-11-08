@@ -9,7 +9,7 @@ import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * Site recipes (README §2.4): how browser.extract reads a site's list, versioned. Taught in the live browser
+ * Site recipes (docs/design.md §2.4): how browser.extract reads a site's list, versioned. Taught in the live browser
  * (teach mode) or imported; a recipe whose page changed is marked broken until it works again or is taught anew.
  */
 export function RecipesPage() {
@@ -196,7 +196,7 @@ const KINDS = {
     label: "Job ads",
     fields: ["url", "title", "company", "location", "posted"],
     explain: "url (the ad's link, it identifies the ad), title, company, location, posted (the date shown).",
-    example: { name: "dev.bg/search", url: "https://dev.bg/company/jobs/net/", params: "category=net", hint: "Leave out the promoted ads at the top." },
+    example: { name: "jobs.example.com/search", url: "https://jobs.example.com/jobs/net/", params: "category=net", hint: "Leave out the promoted ads at the top." },
   },
   products: {
     label: "Products",
@@ -213,7 +213,7 @@ const KINDS = {
 } as const;
 type Kind = keyof typeof KINDS;
 
-/** Starts teach mode and opens its run, where the live browser waits for me. */
+/** Starts teach mode and opens its run, where the live browser waits for the user. */
 function TeachRecipe({ initialName, onClose }: { initialName: string; onClose: () => void }) {
   const navigate = useNavigate();
   const [kind, setKind] = useState<Kind>("jobs");
@@ -412,7 +412,7 @@ function ImportRecipe({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <label className="form-label required" htmlFor="import-name">
             Name
           </label>
-          <input id="import-name" className="form-control" placeholder="dev.bg/search" value={name} onChange={(e) => setName(e.target.value)} required />
+          <input id="import-name" className="form-control" placeholder="jobs.example.com/search" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <label className="form-label required" htmlFor="import-source">
           Recipe (YAML or JSON)

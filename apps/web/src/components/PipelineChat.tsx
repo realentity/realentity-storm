@@ -5,7 +5,7 @@ import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
 import { BuilderChat } from "./BuilderChat";
 
-/** The pipeline page's chat (README §2.5): its latest chat, or a new one; older chats stay selectable. */
+/** The pipeline page's chat (docs/design.md §2.5): its latest chat, or a new one; older chats stay selectable. */
 export function PipelineChat({ pipelineId, onSaved }: { pipelineId: string; onSaved: (chat: BuilderChatView) => void }) {
   const chats = useLoad(() => api.builder.list(pipelineId), [pipelineId]);
   // undefined: the latest chat; null: a new chat (created with its first message).

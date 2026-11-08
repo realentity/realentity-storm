@@ -8,13 +8,12 @@ import { resolve } from "node:path";
 import { Builder, type TurnResult } from "../src/builder/builder";
 
 /**
- * M7-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
+ * M7-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
  *   pnpm --filter @realentity/storm-api eval:builder
  * The builder (its prompt, tools and model) recreates the hand-written pipelines from a plain description of what
  * they do, and the result must be equivalent: same trigger, steps, fan-out, gates, recipient provenance and limits.
- * Also: an edit in a pipeline's chat changes only what I asked (M7-T3), and a request the catalog can't serve yet is
- * answered with what is missing instead of a pipeline (M7-T2). M9-V3: the dev.bg job pipeline (applications included
- * since M10), from its description.
+ * Also: an edit in a pipeline's chat changes only what was asked (M7-T3), and a request the catalog can't serve yet is
+ * answered with what is missing instead of a pipeline (M7-T2).
  * Writes evals/results/<date>-builder.json.
  */
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
@@ -57,20 +56,6 @@ const CASES: Case[] = [
     name: "missing capability: downloading files (M7-T2)",
     expected: null,
     description: "Every Friday, download this week's invoices from my accounting portal and email them to my accountant.",
-  },
-  {
-    name: "daily .NET jobs (M9-V3)",
-    expected: "dev-bg-jobs.yaml",
-    recipes: "- dev.bg/search v1: params category (dev.bg's category slug, e.g. net, java)",
-    description:
-      "Every weekday at 8, read the .NET jobs on dev.bg (category net) and keep only the ones I haven't seen before. " +
-      "Label each as posted by a recruitment agency or by the employer itself, and save the agency ones as skipped. " +
-      "Score the others against my profile: senior or lead .NET (C#) backend, ASP.NET Core, Azure, SQL, Sofia hybrid " +
-      "or fully remote; no junior, front-end, QA, support or other stacks. Save every scored job, let me pick from the " +
-      "best 10, and save the ones I pick as shortlisted. For each one I pick, read its application form and fill it from " +
-      "my profile with my CV (the document cv-main) attached and a short message to the employer in the posting's " +
-      "language (why the role fits me, from my profile only, 2-3 sentences); I approve the form, and the browser fills " +
-      "it but leaves the final button to me. At most 5 applications a day, and only dev.bg itself is allowed without asking.",
   },
 ];
 

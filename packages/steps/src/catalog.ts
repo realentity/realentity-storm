@@ -14,7 +14,7 @@ function isJsonata(expression: string): boolean {
 }
 
 /**
- * One step type in the catalog (README §2.3). The builder may only use catalog steps, and new capabilities are
+ * One step type in the catalog (docs/design.md §2.3). The builder may only use catalog steps, and new capabilities are
  * added by writing a new step, never by the LLM. Implementations live in the worker; this is the shared metadata.
  */
 export interface StepDefinition {
@@ -22,26 +22,26 @@ export interface StepDefinition {
   description: string;
   /** Sends, submits or uploads something outside the system: always behind a gate.act, never retried automatically. */
   sideEffect: boolean;
-  /** Input fields that name an external target, checked by the policy layer (README §2.2). Side-effect steps only. */
+  /** Input fields that name an external target, checked by the policy layer (docs/design.md §2.2). Side-effect steps only. */
   targets?: Record<string, TargetKind>;
   /**
    * May receive {{cred:name}} references (browser steps); a list: only in those input fields (http.fetch's headers and
    * query, M29). Everything else, the LLM steps above all, may not.
    */
   acceptsCredentials?: boolean | readonly string[];
-  /** Usable in the multi-user product: no stored site passwords, no restricted scopes (README §17). */
+  /** Usable in a multi-user product: no stored site passwords, no restricted scopes. */
   saasSafe: boolean;
   /**
-   * Drives the headed browser: runs containing it are serialized (one virtual display, README §6). "input": only when
+   * Drives the headed browser: runs containing it are serialized (one virtual display, docs/design.md §6). "input": only when
    * the step's `headed` parameter is true.
    */
   headed?: boolean | "input";
   /**
-   * Calls the LLM, so the monthly budget applies (README §5, M19-T1): once it is reached, a non-essential run stops
+   * Calls the LLM, so the monthly budget applies (docs/design.md §5, M19-T1): once it is reached, a non-essential run stops
    * before this step. browser.extract isn't one: only its fallback calls the LLM, and that checks the budget itself.
    */
   llm?: boolean;
-  /** Its output may contain text an LLM wrote: a side-effect target can never come from it (README §2.2). */
+  /** Its output may contain text an LLM wrote: a side-effect target can never come from it (docs/design.md §2.2). */
   llmOutput?: boolean;
   /** Output fields of an llmOutput step that come from the page, not the LLM (a form's address): they may be targets. */
   pageFields?: string[];
@@ -51,8 +51,8 @@ export interface StepDefinition {
    */
   primary?: string[];
   /**
-   * The output field that is my text once I approve it (README §8): when a side-effect payload field is exactly
-   * {{thisStep.<field>}}, its approved value becomes a few-shot example for this step type.
+   * The output field that is the user's text once approved (docs/design.md §8): when a side-effect payload field is
+   * exactly {{thisStep.<field>}}, its approved value becomes a few-shot example for this step type.
    */
   learns?: string;
   /**
@@ -109,7 +109,7 @@ export const BILL_ENTITY: EntityContract = {
   states: ["due", "paid"],
 };
 
-/** A job and my application to it (M33): what the job steps and application.outcome move through its stages. */
+/** A job and the user's application to it (M33): what the job steps and application.outcome move through its stages. */
 export const JOB_ENTITY: EntityContract = {
   type: "Job",
   key: "url",
@@ -261,7 +261,7 @@ const Select = z.record(z.string().min(1).max(40), z.string().min(1).max(100));
 /** Where data.save and data.dedupe keep and look up items. */
 export const SAVED_LISTS = ["JobPosting"] as const;
 
-/** A collection of my own for data.save and data.history (M13). */
+/** A collection of the user's own for data.save and data.history (M13). */
 export const COLLECTION = /^[a-z][a-z0-9._-]{0,63}$/;
 
 /** A stored document (Documents page), e.g. "cv-main". */
@@ -273,7 +273,7 @@ export const ANSWER_SOURCES = ["profile", "written", "fact", "asked", "none"] as
 
 export const FORM_FIELD_TYPES = ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "file"] as const;
 
-/** One field of an external form, as browser.mapForm read it, with the value to type (README §2.2, map → gate → act). */
+/** One field of an external form, as browser.mapForm read it, with the value to type (docs/design.md §2.2, map → gate → act). */
 export const FormFieldSchema = z.object({
   /** How the field is found on the page (a CSS selector browser.mapForm built from its id or name). */
   key: z.string().min(1).max(500),
@@ -284,13 +284,13 @@ export const FormFieldSchema = z.object({
   options: z.array(z.string().max(300)).max(200).optional(),
   /** What to type or pick; a checkbox: true or false; null: left as it is. File fields get files, not values. */
   value: z.union([z.string().max(10_000), z.boolean()]).nullable(),
-  /** Where the value came from: my profile, written for this job, one of my facts, my answer to a question, or nothing. */
+  /** Where the value came from: the user's profile, written for this job, a fact, an answer to a question, or nothing. */
   source: z.enum(ANSWER_SOURCES).default("none"),
   /** The fact it came from (source fact or asked, M15): the gate shows it. */
   fact: z.object({ factId: z.uuid(), question: z.string().max(300) }).optional(),
   /**
-   * A question that checks I'm a person ("104-43="): never answered by the step; I answer it in the live view before
-   * the form goes (it may change on every load).
+   * A question that checks for a person ("104-43="): never answered by the step; the user answers it in the live view
+   * before the form goes (it may change on every load).
    */
   human: z.boolean().optional(),
 });
@@ -306,7 +306,7 @@ export const FormFileSchema = z.object({
 });
 export type FormFile = z.infer<typeof FormFileSchema>;
 
-/** One of my stored documents, bound by content (file.read's output, browser.upload's file). */
+/** One of the user's stored documents, bound by content (file.read's output, browser.upload's file). */
 export const DocumentFileSchema = FormFileSchema.omit({ key: true });
 
 /**
@@ -320,7 +320,7 @@ export const ElementTargetSchema = z.object({
 });
 export type ElementTarget = z.infer<typeof ElementTargetSchema>;
 
-/** One action of browser.agent's fixed set (README §2.4), as browser.submit repeats it. Attach uses an approved file only. */
+/** One action of browser.agent's fixed set (docs/design.md §2.4), as browser.submit repeats it. Attach uses an approved file only. */
 export const AgentActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("navigate"), url: z.url({ protocol: /^https?$/ }) }),
   z.object({ kind: z.literal("click"), target: ElementTargetSchema }),
@@ -378,7 +378,7 @@ export const CORE_STEPS: StepDefinition[] = [
       items: Items,
       into: z.enum(SAVED_LISTS).default("JobPosting"),
       status: z.enum(["NEW", "SKIPPED", "SHORTLISTED"]).default("NEW"),
-      collection: z.string().regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. releases").optional().describe("a list of my own instead of JobPosting"),
+      collection: z.string().regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. releases").optional().describe("a list of the user's own instead of JobPosting"),
       key: z.string().min(1).optional().describe("the field that identifies an item in the collection, e.g. url or id"),
       fields: z.array(z.string().min(1)).min(1).optional().describe("the fields whose change counts (default: all)"),
       complete: z.boolean().default(false).describe("the items are the whole list: saved ones missing from it are removed"),
@@ -496,7 +496,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Reads addresses without a browser (GET only, no cookies): RSS/Atom feeds become `items` (title, url, published, " +
       "summary, id, source), JSON is `json` (a list, or the list at `itemsAt`, also becomes `items`), anything else " +
-      "`text`. Only hosts in policy.allowedDomains, never private or tailnet addresses. Unchanged since the last read " +
+      "`text`. Only hosts in policy.allowedDomains, never private or CGNAT/Tailscale addresses. Unchanged since the last read " +
       "(ETag / Last-Modified), it reuses what it read then. An API key goes in `headers` or `query` as {{cred:name}} " +
       "(a stored credential): it is sent only to the hosts the credential allows, also after a redirect.",
     sideEffect: false,
@@ -534,8 +534,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "http.request",
     description:
       "Changes something at an API: one POST, PUT, PATCH or DELETE, with `body` sent as JSON. A side effect: it waits " +
-      "at its gate, which shows the method, address, headers and body, until I press Act. The address's host is a " +
-      "target (policy.allowedDomains, or approved at the gate); never a private or tailnet address, and a redirect " +
+      "at its gate, which shows the method, address, headers and body, until the user presses Act. The address's host is a " +
+      "target (policy.allowedDomains, or approved at the gate); never a private or CGNAT/Tailscale address, and a redirect " +
       "isn't followed. An API key goes in `headers` or `query` as {{cred:name}}, sent only to the hosts the credential " +
       "allows. An answer other than 2xx fails the step. Output: status, json (when the answer is JSON), text.",
     sideEffect: true,
@@ -557,7 +557,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Reads a PostgreSQL database: one SQL query, its rows as items (column names as fields; counts as numbers, dates " +
       "as ISO text). `connection` is {{cred:name}}, a database credential: its connection URL, the server among its " +
-      "allowed hosts (the only way to reach a private or tailnet address). Read-only: the query runs as a subquery " +
+      "allowed hosts (the only way to reach a private or CGNAT/Tailscale address). Read-only: the query runs as a subquery " +
       "(SELECT, VALUES, WITH … SELECT), one statement, in a READ ONLY transaction rolled back afterwards, stopped after " +
       "`timeoutSeconds`; at most `maxRows` rows (`truncated` says there were more). Values as $1, $2 from `params`, " +
       "never pasted into the SQL. Use a database user that may only read.",
@@ -641,7 +641,7 @@ export const CORE_STEPS: StepDefinition[] = [
       outcomes: z
         .boolean()
         .default(false)
-        .describe("job postings: my applications' outcomes (interviews, rejections, no answer) calibrate the scores"),
+        .describe("job postings: the user's applications' outcomes (interviews, rejections, no answer) calibrate the scores"),
     }),
     output: z.object({ scored: Items, top: Items }),
   },
@@ -700,7 +700,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "application.outcome",
     entities: [JOB_ENTITY],
     description:
-      "What an email says about one of my submitted applications: matched by the company and role (the sender's " +
+      "What an email says about one of the user's submitted applications: matched by the company and role (the sender's " +
       "domain or the company's name first), and the application moved on: replied, interview, rejected (forward " +
       "only; the date kept, the email noted; application.status emitted, which cancels a follow-up flow.later). " +
       "matched false when it isn't about one (an automatic \"we received it\" isn't an answer). A dry run moves nothing.",
@@ -720,7 +720,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "gate.review",
-    description: "Pauses the run so I can pick which items proceed.",
+    description: "Pauses the run so the user can pick which items proceed.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({ items: Items, mode: z.enum(["select"]).default("select"), title: z.string().max(200).optional() }),
@@ -728,7 +728,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "gate.act",
-    description: "Shows the exact payload of the side-effect step named in `for`; it runs only after I press Act.",
+    description: "Shows the exact payload of the side-effect step named in `for`; it runs only after the user presses Act.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({ for: z.string().min(1) }),
@@ -736,7 +736,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "notify.telegram",
-    description: "Sends me a Telegram message (to me only).",
+    description: "Sends the user a Telegram message (to the user only).",
     sideEffect: false,
     saasSafe: true,
     input: z.object({ text: z.string().min(1).max(4000) }),
@@ -744,7 +744,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "notify.digest",
-    description: "Sends me a Telegram digest of the last `hours`: what ran, what waits for me, what failed.",
+    description: "Sends the user a Telegram digest of the last `hours`: what ran, what waits for the user, what failed.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({ hours: z.number().int().min(1).max(168).default(24) }),
@@ -769,7 +769,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.classify",
     description:
       "Labels each email with the LLM following `instruction`; emails with a `keep` label go to `kept`. With `answerable` " +
-      "(on when `keep` has `reply`), an email that can't be answered (a no-reply sender, or mine to myself) is never kept.",
+      "(on when `keep` has `reply`), an email that can't be answered (a no-reply sender, or the user's own to themselves) is never kept.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -779,7 +779,7 @@ export const CORE_STEPS: StepDefinition[] = [
       instruction: z.string().min(1),
       labels: z.array(z.string().min(1)).min(2).default(["reply", "skip"]),
       keep: z.array(z.string().min(1)).min(1).default(["reply"]),
-      /** Only emails I can answer may be kept: the rest are dropped without the LLM. Default: on when `keep` has "reply". */
+      /** Only answerable emails may be kept: the rest are dropped without the LLM. Default: on when `keep` has "reply". */
       answerable: z.boolean().optional(),
     }),
     output: z.object({
@@ -790,7 +790,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "email.draftReply",
-    description: "Drafts a reply to `message` in my voice, in the email's language, without inventing facts.",
+    description: "Drafts a reply to `message` in the user's voice, in the email's language, without inventing facts.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -799,7 +799,7 @@ export const CORE_STEPS: StepDefinition[] = [
     input: z.object({
       message: EmailMessageSchema,
       instruction: z.string().min(1),
-      /** What the reply may draw on besides the email (my availability, rates, links). */
+      /** What the reply may draw on besides the email (the user's availability, rates, links). */
       context: z.unknown().optional(),
       signature: z.string().max(500).optional(),
     }),
@@ -809,9 +809,9 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "email.awaiting",
     description:
-      "My sent emails that got no answer (M22): threads whose last message is mine (the Sent folder), older than " +
-      "`afterDays`, with nothing from the other side in `mailbox` since. Each of my emails is listed once ever: a " +
-      "thread comes back only when I write in it again. Draft the nudge with email.draftFollowUp (message: " +
+      "The user's sent emails that got no answer (M22): threads whose last message is the user's (the Sent folder), older than " +
+      "`afterDays`, with nothing from the other side in `mailbox` since. Each of the user's emails is listed once ever: a " +
+      "thread comes back only when the user writes in it again. Draft the nudge with email.draftFollowUp (message: " +
       "{{item.message}}) and send it with email.send to {{item.to}}, inReplyTo {{item.message.messageId}}, " +
       "references {{item.references}}. Read-only.",
     sideEffect: false,
@@ -828,12 +828,12 @@ export const CORE_STEPS: StepDefinition[] = [
       threads: z.array(
         z.object({
           threadId: z.string(),
-          to: z.string().describe("who my email went to (its first To)"),
+          to: z.string().describe("who the user's email went to (its first To)"),
           subject: z.string(),
           sentAt: z.string(),
           daysWaiting: z.number().int(),
           followUps: z.number().int().describe("follow-ups already sent in a row"),
-          message: EmailMessageSchema.describe("my email that got no answer"),
+          message: EmailMessageSchema.describe("the user's email that got no answer"),
           references: z.array(z.string()).describe("the thread so far, for email.send"),
         }),
       ),
@@ -842,7 +842,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "email.draftFollowUp",
     description:
-      "Drafts a short, polite follow-up to `message`, my own email that got no answer: in its language, asking " +
+      "Drafts a short, polite follow-up to `message`, the user's own email that got no answer: in its language, asking " +
       "whether they had a chance to look, without new facts or pressure.",
     sideEffect: false,
     llm: true,
@@ -860,8 +860,8 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "price.watch",
     description:
-      "Checks my enabled Products of the pipeline's App (M33, pipelines/apps/prices.yaml): each shop line's page read " +
-      "like shop.product, kept as an Offer with its price history (a removed line's Offer goes). `news`: a shop now at or under my target (once, when it crosses), the lowest in `lowestDays`, back in " +
+      "Checks the user's enabled Products of the pipeline's App (M33, pipelines/apps/prices.yaml): each shop line's page read " +
+      "like shop.product, kept as an Offer with its price history (a removed line's Offer goes). `news`: a shop now at or under the user's target (once, when it crosses), the lowest in `lowestDays`, back in " +
       "stock; `text` says so with the cheapest shop for each (empty when nothing is new, for `when`). The addresses " +
       "are mine (a type of mine), so they need no allowedDomains. A dry run records nothing.",
     sideEffect: false,
@@ -885,7 +885,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "bill.read",
     description:
       "Reads bills out of `messages` (M23): for each email, its text and the text of its PDF attachments go to the " +
-      "LLM, which says whether it is a bill (an amount I have to pay) and reads issuer, amount, currency, due date, " +
+      "LLM, which says whether it is a bill (an amount the user has to pay) and reads issuer, amount, currency, due date, " +
       "period and reference. Emails that aren't bills are dropped. Nothing is paid or saved: bill.save keeps them.",
     sideEffect: false,
     llm: true,
@@ -916,7 +916,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "bill.save",
     description:
       "Keeps bills from bill.read as Bill entities of the pipeline's App (M33; see pipelines/apps/bills.yaml): the same " +
-      "bill again (same sender, reference or period) updates it, a new one is `due` until I mark it paid. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
+      "bill again (same sender, reference or period) updates it, a new one is `due` until the user marks it paid. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
       "(`remindDaysBefore` days before, 09:00) for calendar.create; `jumps`: new bills more than `jumpPercent` above " +
       "the usual (the median of the issuer's last six), and `jumpText` saying so (empty when none, for `when`).",
     sideEffect: false,
@@ -938,7 +938,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "email.send",
     description:
-      "Sends an email from my mailbox (SMTP); with `inReplyTo` (and the original's `references`) a reply in the same " +
+      "Sends an email from the user's mailbox (SMTP); with `inReplyTo` (and the original's `references`) a reply in the same " +
       "thread: the message replied to is added to the references.",
     sideEffect: true,
     targets: { to: "recipient" },
@@ -955,7 +955,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "calendar.find",
     description:
-      "My Google Calendar's events between `from` and `to` (default: the next 7 days), optionally only those matching " +
+      "The user's Google Calendar's events between `from` and `to` (default: the next 7 days), optionally only those matching " +
       "`query` (title, description, location, guests): each with id, title, start, end, allDay, location, link, " +
       "meetLink, attendees, organizer. `none` is true when there are none (for when: a step only if the time is free).",
     sideEffect: false,
@@ -973,9 +973,9 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "calendar.create",
     description:
-      "Creates an event in my Google Calendar: `title`, `start`, `end` or `durationMinutes`, `timeZone` (for a time " +
+      "Creates an event in the user's Google Calendar: `title`, `start`, `end` or `durationMinutes`, `timeZone` (for a time " +
       "without an offset), `description`, `location`, `meet` (a Google Meet link). With `attendees`, Google emails them " +
-      "an invitation from my account (sendInvites). An event with the same title at the same start already there is " +
+      "an invitation from the user's account (sendInvites). An event with the same title at the same start already there is " +
       "not created again (created: false, existing). Behind a gate like every side effect.",
     sideEffect: true,
     targets: { attendees: "recipient" },
@@ -1040,7 +1040,7 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "browser.open",
     description:
       "Opens a page in the browser and returns its text; can sign in with a stored credential first (kept signed in " +
-      "between runs). Read-only: it submits nothing but the sign-in. Headed runs can be watched live, and I take over " +
+      "between runs). Read-only: it submits nothing but the sign-in. Headed runs can be watched live, and the user takes over " +
       "when it meets a CAPTCHA, a 2FA prompt or a page it doesn't recognize.",
     sideEffect: false,
     acceptsCredentials: true,
@@ -1048,7 +1048,7 @@ export const CORE_STEPS: StepDefinition[] = [
     saasSafe: false,
     input: z.object({
       url: z.url({ protocol: /^https?$/ }),
-      /** The watchable browser (live view): for sign-ins and anything I may have to take over. */
+      /** The watchable browser (live view): for sign-ins and anything the user may have to take over. */
       headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
       login: z
         .object({
@@ -1059,7 +1059,7 @@ export const CORE_STEPS: StepDefinition[] = [
         })
         .optional()
         .describe("signs in when the page shows a password field; only on the credential's allowed hosts"),
-      waitFor: Selector.optional().describe("the page is ready when this appears; if it doesn't, I take over"),
+      waitFor: Selector.optional().describe("the page is ready when this appears; if it doesn't, the user takes over"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1075,11 +1075,11 @@ export const CORE_STEPS: StepDefinition[] = [
       "Reads a list (e.g. job postings) from a site with saved recipes (Recipes page), headless and without an LLM: " +
       "every page up to the recipe's limit, each item's fields plus `source` (the recipe). A list param runs one " +
       "search per value. Read-only. Fails clearly, and marks the recipe broken, when the page no longer matches it; " +
-      "with `fallback`, browser.agent finds the list instead and a fixed recipe is proposed for me to approve, read with now.",
+      "with `fallback`, browser.agent finds the list instead and a fixed recipe is proposed for the user to approve, read with now.",
     sideEffect: false,
     saasSafe: false,
     input: z.object({
-      recipes: z.array(RecipeNameSchema).min(1).max(5).describe('saved recipes, e.g. ["dev.bg/search"]'),
+      recipes: z.array(RecipeNameSchema).min(1).max(5).describe('saved recipes, e.g. ["jobs.example.com/search"]'),
       params: z
         .record(z.string(), z.union([z.string(), z.array(z.string()).min(1).max(10)]))
         .default({})
@@ -1093,7 +1093,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "browser.teach",
     description:
-      "Teach mode: opens `url` in the live browser; I bring it to the list to read and press Continue; the LLM " +
+      "Teach mode: opens `url` in the live browser; the user brings it to the list to read and press Continue; the LLM " +
       "proposes a recipe from the page, it is checked on the page (items outlined), and Continue saves it as the next " +
       "version of `recipe`. Used once per site, not in scheduled pipelines.",
     sideEffect: false,
@@ -1122,9 +1122,9 @@ export const CORE_STEPS: StepDefinition[] = [
     entities: [JOB_ENTITY],
     description:
       "Opens an application form (following the page's Apply button when the form isn't there) and reads every field, " +
-      "typing and attaching nothing. Proposes each value from my profile (Settings) and writes free-text answers " +
+      "typing and attaching nothing. Proposes each value from the user's profile (Settings) and writes free-text answers " +
       "following `message`; attaches the stored document `cv` to the CV field. Its output is the payload for " +
-      "browser.fillAndSubmit, which I see and edit at the gate.",
+      "browser.fillAndSubmit, which the user sees and edits at the gate.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -1152,8 +1152,8 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Fills an application form with exactly the approved fields and files and submits it, in the live browser. " +
       "Before typing it reads the form again: a field that changed, a new required field or another address pauses " +
-      "the run for me, and nothing is submitted. With stopBeforeSubmit it fills everything and I press the final " +
-      "button myself.",
+      "the run for the user, and nothing is submitted. With stopBeforeSubmit it fills everything and the user presses " +
+      "the final button.",
     sideEffect: true,
     targets: { url: "domain" },
     headed: true,
@@ -1162,12 +1162,12 @@ export const CORE_STEPS: StepDefinition[] = [
       url: z.url({ protocol: /^https?$/ }),
       fields: z.array(FormFieldSchema),
       files: z.array(FormFileSchema).default([]),
-      stopBeforeSubmit: z.boolean().default(false).describe("fill, then I submit in the live view"),
+      stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
       job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
-      submitted: z.boolean().describe("the form was sent (by the step, or by me when stopBeforeSubmit)"),
+      submitted: z.boolean().describe("the form was sent (by the step, or by the user when stopBeforeSubmit)"),
       url: z.string(),
       confirmation: z.string().describe("the page's text after sending"),
     }),
@@ -1192,7 +1192,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "browser.upload",
     description:
-      "Puts one of my stored documents (`file`, from file.read) into the file field `field` on `url`, and presses " +
+      "Puts one of the user's stored documents (`file`, from file.read) into the file field `field` on `url`, and presses " +
       "`submit` if given, in the live browser. Choosing a file uploads it on many sites: always behind a gate.",
     sideEffect: true,
     targets: { url: "domain" },
@@ -1210,7 +1210,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "file.read",
     description:
-      "Reads the text of one of my stored documents (`document`, e.g. cv-main) or of a file browser.download " +
+      "Reads the text of one of the user's stored documents (`document`, e.g. cv-main) or of a file browser.download " +
       "kept (`artifact`): text files as they are, PDFs' text. Its output also binds a document by content for " +
       "browser.upload.",
     sideEffect: false,
@@ -1238,7 +1238,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "without a recipe, from the page's accessibility outline: navigate, click, type, select, tick, attach one of " +
       "`documents`, read. Only on the start address's site and the pipeline's allowed domains, at most `maxActions` " +
       "actions. It sends nothing: no submit button is pressed, nothing typed leaves the page, no file is picked. " +
-      "Its recorded actions and final button are the payload of browser.submit, which I see at the gate.",
+      "Its recorded actions and final button are the payload of browser.submit, which the user sees at the gate.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -1247,7 +1247,7 @@ export const CORE_STEPS: StepDefinition[] = [
     saasSafe: false,
     input: z.object({
       url: z.url({ protocol: /^https?$/ }),
-      goal: z.string().min(1).max(2000).describe("what to do, e.g. find the application form and fill it from my profile"),
+      goal: z.string().min(1).max(2000).describe("what to do, e.g. find the application form and fill it from the user's profile"),
       headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
       documents: z.array(DocumentName).max(5).default([]).describe('stored documents it may attach, e.g. ["cv-main"]'),
       message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer)"),
@@ -1270,8 +1270,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "browser.submit",
     description:
       "Repeats an approved browser.agent run exactly, without an LLM, in the live browser, and presses its final " +
-      "button. An element that is no longer there, or a page off the allowed sites, pauses the run for me with " +
-      "nothing sent. With stopBeforeSubmit I press the final button myself.",
+      "button. An element that is no longer there, or a page off the allowed sites, pauses the run for the user with " +
+      "nothing sent. With stopBeforeSubmit the user presses the final button.",
     sideEffect: true,
     targets: { url: "domain" },
     headed: true,
@@ -1281,12 +1281,12 @@ export const CORE_STEPS: StepDefinition[] = [
       actions: z.array(AgentActionSchema).max(100),
       files: z.array(FormFileSchema).default([]),
       submit: ElementTargetSchema,
-      stopBeforeSubmit: z.boolean().default(false).describe("fill, then I submit in the live view"),
+      stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
       job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
-      submitted: z.boolean().describe("the form was sent (by the step, or by me when stopBeforeSubmit)"),
+      submitted: z.boolean().describe("the form was sent (by the step, or by the user when stopBeforeSubmit)"),
       url: z.string(),
       confirmation: z.string().describe("the page's text after sending"),
     }),

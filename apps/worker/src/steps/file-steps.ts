@@ -25,7 +25,7 @@ interface DownloadInput {
 }
 
 /**
- * browser.download (README §6, M11-T5): the address itself, or what a click on that page downloads, through the
+ * browser.download (docs/design.md §6, M11-T5): the address itself, or what a click on that page downloads, through the
  * quarantine: kept as the run's artifact only within DOWNLOAD_MAX_MB and when its content is an allowed type for its
  * extension; anything else is deleted and the step fails saying why.
  */
@@ -78,9 +78,9 @@ interface UploadInput {
 }
 
 /**
- * browser.upload (README §2.3, M11-T5): an approved document into a file field, in the live browser, on the allowed
+ * browser.upload (docs/design.md §2.3, M11-T5): an approved document into a file field, in the live browser, on the allowed
  * sites only; the file is the one approved, checked by content. A field that isn't a single file input pauses the
- * run for me with nothing chosen.
+ * run for the user with nothing chosen.
  */
 export class BrowserUploadStep implements StepExecutor {
   readonly type = "browser.upload";
@@ -150,7 +150,7 @@ interface ReadInput {
 }
 
 /**
- * file.read (README §2.3, M11-T5): the text of a stored document of mine or of a kept download: text files as they
+ * file.read (docs/design.md §2.3, M11-T5): the text of a stored document of the user's or of a kept download: text files as they
  * are, PDFs' text layer. Its output names the document by id and SHA-256, so browser.upload sends exactly that file.
  */
 export class FileReadStep implements StepExecutor {
@@ -167,7 +167,7 @@ export class FileReadStep implements StepExecutor {
     if (!document === !artifact) throw new Error("file.read reads one file: give either document or artifact");
     let file: { filename: string; mime: string; sha256: string; content: Buffer; document: string | null; documentId: string | null; artifactId: string | null };
     if (document) {
-      if (!this.documents) throw new Error("My documents aren't available here");
+      if (!this.documents) throw new Error("The user's documents aren't available here");
       const read = await this.documents.read(this.prisma, context.userId, document);
       file = { filename: read.file.filename, mime: read.mimeType, sha256: read.file.sha256, content: read.buffer, document, documentId: read.file.documentId, artifactId: null };
     } else {

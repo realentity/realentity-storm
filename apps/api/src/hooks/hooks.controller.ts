@@ -28,8 +28,8 @@ import { WebhooksService } from "./webhooks.service";
 const digest = (text: string) => createHash("sha256").update(text).digest();
 
 /**
- * What reaches Storm from the Internet (M12-T5): hooks-gateway on the VPS forwards to the hooks-only site on the server
- * (Caddy :8081, /hooks/* only), which ends here. No session: each call carries its own secret.
+ * What reaches Storm from the Internet (M12-T5): whatever brings calls in (a gateway in front, if any) forwards to the
+ * hooks-only site (Caddy :8081, /hooks/* only), which ends here. No session: each call carries its own secret.
  */
 @Public()
 @Throttle({ default: { limit: 120, ttl: 60_000 } })
@@ -43,7 +43,7 @@ export class HooksController {
   ) {}
 
   /**
-   * the server's own jobs reporting (M26): the nightly backup, the restore test, disk and services. From the host, through
+   * The server's own jobs reporting (M26): the nightly backup, the restore test, disk and services. From the host, through
    * the hooks-only site. A wrong token gets the same 404 as an unknown path.
    */
   @Post("health")

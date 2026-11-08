@@ -13,7 +13,7 @@ import { createTestApp, type TestApp } from "./support/test-app";
 const CADDY_IMAGE = "caddy:2.10-alpine";
 const HOST = "host.testcontainers.internal";
 
-// M8-T3 through the real front door: docker/Caddyfile's /vnc (forward_auth to the api), as on the server.
+// M8-T3 through the real front door: docker/Caddyfile's /vnc (forward_auth to the api), as deployed.
 describe("live view through Caddy", () => {
   let api: TestApp;
   let vnc: WebSocketServer;

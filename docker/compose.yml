@@ -1,14 +1,14 @@
-# Storm on the server (app 10; docs/deployment.md). Lives in /opt/realentity-storm (a clone of this repository); secrets in
-# /opt/realentity-storm/.env. The database is the server's native PostgreSQL (storm), which the server's nightly backup dumps.
-# Only the web container publishes ports, on 127.0.0.1: 7100, which `tailscale serve` publishes as :8100 (tailnet only),
-# and 7101, the hooks-only site, as :8101 (for the VPS's hooks-gateway).
+# Storm in production (docs/self-hosting.md), always started through ./docker/storm, which also reads the repository's
+# .env for the ${...} settings below. The database is a PostgreSQL of your own (DATABASE_URL), or compose.local.yml's.
+# Only the web container publishes ports, on 127.0.0.1: STORM_PORT (7100), the app, and STORM_HOOKS_PORT (7101), the
+# hooks-only site. Put HTTPS in front of the app yourself (tailscale serve, Caddy, ...); expose the hooks site to the
+# Internet only if you use Telegram or webhooks (docs/self-hosting.md, "Webhooks and Telegram").
 name: realentity-storm
 
 x-node: &node
   env_file: ${STORM_ENV_FILE:-../.env}
   environment:
     NODE_ENV: production
-    TZ: Europe/Sofia
   extra_hosts:
     - "host.docker.internal:host-gateway"
   restart: unless-stopped
@@ -33,25 +33,25 @@ services:
     image: realentity-storm/api:local
     environment:
       NODE_ENV: production
-      TZ: Europe/Sofia
       API_HOST: 0.0.0.0
       API_PORT: "3000"
       ARTIFACTS_DIR: /data/artifacts
       DOCUMENTS_DIR: /data/documents
     depends_on:
       migrate: { condition: service_completed_successfully }
-    # On the server's secondary disk (static files of apps, like Paperless and Memos). Long form on purpose: a missing disk
-    # stops the container instead of files landing on the main disk.
+    # Under STORM_DATA_DIR (default: the repository's data/ folder; create artifacts/ and documents/ in it, owned by uid
+    # 1000). Long form on purpose: a missing folder (say, an unmounted disk) stops the container instead of files
+    # landing somewhere else.
     volumes:
-      # Screenshots, traces and downloads the worker stored: the api only reads them, to serve them to me.
+      # Screenshots, traces and downloads the worker stored: the api only reads them, to serve them to you.
       - type: bind
-        source: ${STORM_ARTIFACTS:-/data/realentity-storm/artifacts}
+        source: ${STORM_DATA_DIR:-../data}/artifacts
         target: /data/artifacts
         read_only: true
         bind: { create_host_path: false }
-      # My documents (CV, cover letters): uploaded through the api, read by the worker to attach as approved.
+      # Your documents (CV, cover letters): uploaded through the api, read by the worker to attach as approved.
       - type: bind
-        source: ${STORM_DOCUMENTS:-/data/realentity-storm/documents}
+        source: ${STORM_DATA_DIR:-../data}/documents
         target: /data/documents
         bind: { create_host_path: false }
     healthcheck:
@@ -72,23 +72,22 @@ services:
       migrate: { condition: service_completed_successfully }
     environment:
       NODE_ENV: production
-      TZ: Europe/Sofia
       ARTIFACTS_DIR: /data/artifacts
       DOCUMENTS_DIR: /data/documents
     volumes:
       # Files the pipelines produce (screenshots, traces, downloads), deleted after ARTIFACTS_RETENTION_DAYS; working
       # files, not backed up (the runs themselves are in the database).
       - type: bind
-        source: ${STORM_ARTIFACTS:-/data/realentity-storm/artifacts}
+        source: ${STORM_DATA_DIR:-../data}/artifacts
         target: /data/artifacts
         bind: { create_host_path: false }
-      # My documents: only read here (the api writes them); attached to forms only as approved, checked by SHA-256.
+      # Your documents: only read here (the api writes them); attached to forms only as approved, checked by SHA-256.
       - type: bind
-        source: ${STORM_DOCUMENTS:-/data/realentity-storm/documents}
+        source: ${STORM_DATA_DIR:-../data}/documents
         target: /data/documents
         read_only: true
         bind: { create_host_path: false }
-    # The browser stack (README §6): Chromium needs a large /dev/shm; tini reaps Chromium's and Xvfb's processes.
+    # The browser stack (docs/design.md §6): Chromium needs a large /dev/shm; tini reaps Chromium's and Xvfb's processes.
     # Port 6080 (websockify, the live view) is reachable only on the compose network, through Caddy's /vnc.
     shm_size: 1gb
     init: true
@@ -105,7 +104,7 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 3
-    # Time for the queue to hand back its jobs on stop; an interrupted step runs again on start (README §2.6).
+    # Time for the queue to hand back its jobs on stop; an interrupted step runs again on start (docs/design.md §2.6).
     stop_grace_period: 60s
     mem_limit: 2g
     pids_limit: 512
@@ -114,8 +113,8 @@ services:
     build: { context: .., dockerfile: docker/Dockerfile, target: web }
     image: realentity-storm/web:local
     ports:
-      - "127.0.0.1:${STORM_PORT:-7100}:8080" # app 10 (the server's port convention: 7NNE local, 8NNE tailnet)
-      # The hooks-only site (Caddyfile :8081): `tailscale serve --http=8101`, reachable by the VPS's hooks-gateway only.
+      - "127.0.0.1:${STORM_PORT:-7100}:8080" # the app
+      # The hooks-only site (Caddyfile :8081): POST /hooks/* and nothing else, for whatever brings Telegram and webhooks in.
       - "127.0.0.1:${STORM_HOOKS_PORT:-7101}:8081"
     depends_on:
       api: { condition: service_healthy }

@@ -59,7 +59,7 @@ describe("stageEdges", () => {
 
 // M35-U1: the diagram's edits give the YAML expected
 describe("the stages diagram's edits (M35-T3)", () => {
-  it("adds an arrow as its own move, written as I would", () => {
+  it("adds an arrow as its own move, written as by hand", () => {
     const edited = setStageEdge(SOURCE, "Job", "skipped", "new", ["me"]);
     expect(edited).toBe(SOURCE.replace("   # a mistake undone\n", "   # a mistake undone\n        - { from: skipped, to: [new] }\n"));
     valid(edited);
@@ -80,7 +80,7 @@ describe("the stages diagram's edits (M35-T3)", () => {
     expect(stageEdges(valid(edited).moves)).toContainEqual({ from: "new", to: "skipped", by: ["me", "pipeline"] });
   });
 
-  it("removes an arrow from a group of several states, keeping my comment on the line", () => {
+  it("removes an arrow from a group of several states, keeping the comment on the line", () => {
     const edited = setStageEdge(SOURCE, "Job", "applied", "interview", []);
     const edges = stageEdges(valid(edited).moves);
     expect(edges).not.toContainEqual(expect.objectContaining({ from: "applied", to: "interview" }));

@@ -20,10 +20,10 @@ describe("who can't be answered", () => {
       expect([address, isNoReplyAddress(address)]).toEqual([address, false]);
   });
 
-  it("a no-reply sender, or mine to myself", () => {
+  it("a no-reply sender, or the user's own to themselves", () => {
     expect(unanswerable({ from: "ana@acme.test", to: ["me@storm.test"] })).toBeNull();
     expect(unanswerable({ from: "noreply@acme.test", to: ["me@storm.test"] })).toBe("noreply@acme.test is a no-reply address");
-    expect(unanswerable({ from: "Me@Storm.test", to: ["me@storm.test"] })).toBe("I sent it to myself");
+    expect(unanswerable({ from: "Me@Storm.test", to: ["me@storm.test"] })).toBe("it was sent to its own sender");
     expect(unanswerable({ from: "", to: ["me@storm.test"] })).toBe("it has no sender");
   });
 });

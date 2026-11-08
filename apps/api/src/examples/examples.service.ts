@@ -15,8 +15,8 @@ import { PrismaService } from "../database/prisma.service";
 const SERVER_NOTE = "Set on the server (.env)";
 
 /**
- * M40: what the examples need, and what an installed one still needs: what is set up (the server's settings and my
- * credentials, recipes, Google), and its App's pipelines tried and switched on.
+ * M40: what the examples need, and what an installed one still needs: what is set up (the server's settings and the
+ * user's credentials, recipes, Google), and its App's pipelines tried and switched on.
  */
 @Injectable()
 export class ExamplesService {

@@ -36,11 +36,11 @@ export interface CoreStepDependencies {
   fetch?: typeof fetch;
   mail: MailConnector;
   prisma: PrismaClient;
-  /** Active rules and few-shot examples (README §8); none in tests unless given. */
+  /** Active rules and few-shot examples (docs/design.md §8); none in tests unless given. */
   learning?: StepLearning;
-  /** Browser steps (README §6); left out where no browser is needed. Forms also need my documents. */
+  /** Browser steps (docs/design.md §6); left out where no browser is needed. Forms also need the user's documents. */
   browser?: BrowserDependencies | FormDependencies;
-  /** browser.agent's conversation with tools (README §2.4); without it, no agent. */
+  /** browser.agent's conversation with tools (docs/design.md §2.4); without it, no agent. */
   chat?: LlmChat;
   /** DOWNLOAD_MAX_MB: browser.download keeps nothing larger. */
   downloadMaxMb?: number;

@@ -52,7 +52,7 @@ export interface SentMail {
 }
 
 /**
- * A mailbox (README §4): v1 is IMAP + SMTP with an app password; the Gmail API can replace it behind this interface.
+ * A mailbox (docs/design.md §4): v1 is IMAP + SMTP with an app password; the Gmail API can replace it behind this interface.
  * Reading never changes the mailbox (nothing is marked read or moved).
  */
 export interface MailConnector {

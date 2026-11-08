@@ -16,7 +16,7 @@ import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { ViewsService } from "./views.service";
 
-/** Pipelines' pages (M27): the menu, a page's rows, one row, my marks, the buttons. */
+/** Pipelines' pages (M27): the menu, a page's rows, one row, the user's marks, the buttons. */
 @Controller("views")
 export class ViewsController {
   constructor(private readonly views: ViewsService) {}

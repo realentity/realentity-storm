@@ -91,7 +91,7 @@ function isEmpty(value: unknown): boolean {
 }
 
 /**
- * Interprets a PipelineVersion step by step (README §2.6). All progress is in Step rows, so a run resumes from the
+ * Interprets a PipelineVersion step by step (docs/design.md §2.6). All progress is in Step rows, so a run resumes from the
  * last completed step after a restart; nothing that finished runs again, and side-effect steps never run twice.
  * Gates create proposals and pause the run; a side-effect step executes only the approved, hash-checked payload.
  */
@@ -104,7 +104,7 @@ export class PipelineRunner {
     private readonly executors: ExecutorRegistry,
     private readonly controls: RunControls = new RunControls(prisma),
     private readonly events: EventSink = noEvents,
-    /** Headed steps pausing for me; without it, a step that needs me fails. */
+    /** Headed steps pausing for the user; without it, a step that needs the user fails. */
     private readonly takeovers?: TakeoverDesk,
     /** Events for event-triggered pipelines; without it, nothing triggers on what runs do. */
     private readonly triggers?: TriggerEvents,
@@ -133,7 +133,7 @@ export class PipelineRunner {
 
   /**
    * Runs as far as possible: until done, failed, stopped, held back by a rate limit (QUEUED, with `resumeAt`), or
-   * waiting for me. Returns the run's status afterwards.
+   * waiting for the user. Returns the run's status afterwards.
    */
   async advance(runId: string): Promise<RunStatus> {
     for (;;) {
@@ -174,7 +174,7 @@ export class PipelineRunner {
 
   /**
    * After a restart: runs left RUNNING were interrupted. Their interrupted steps re-run on the next advance, except
-   * side-effect steps, which fail (the action may or may not have happened; I decide). Returns the runs to advance.
+   * side-effect steps, which fail (the action may or may not have happened; the user decides). Returns the runs to advance.
    */
   async recoverInterrupted(): Promise<string[]> {
     const runs = await this.prisma.run.findMany({
@@ -349,7 +349,7 @@ export class PipelineRunner {
     }
     if ([...state.blocked.values()].some((items) => items.size > 0)) return { status: "WAITING_FOR_USER" };
     if (last >= 0 && last < state.definition.steps.length - 1) {
-      // The steps I wrote: not the gates the compiler put before side effects.
+      // The steps the user wrote: not the gates the compiler put before side effects.
       const after = state.definition.steps
         .slice(last + 1)
         .filter((s) => !s.type.startsWith("gate."))
@@ -459,7 +459,7 @@ export class PipelineRunner {
     return { kind: "failed" };
   }
 
-  /** gate.act: shows the exact payload of its side-effect step as a proposal, and waits for my decision. */
+  /** gate.act: shows the exact payload of its side-effect step as a proposal, and waits for the user's decision. */
   private async gate(state: RunState, step: CompiledStep, row: Step | undefined, scope: ItemScope | undefined): Promise<StepResult> {
     const targetId = step.with.for as string;
     if (row?.status === "WAITING") {
@@ -520,7 +520,8 @@ export class PipelineRunner {
     return { kind: "waiting" };
   }
 
-  /** gate.review: I pick which items proceed. The proposal lists the items; my approved selection is the output. */
+  /** gate.review: the user picks which items proceed. The proposal lists the items; their approved selection is the
+   * output. */
   private async review(
     state: RunState,
     step: CompiledStep,
@@ -638,7 +639,7 @@ export class PipelineRunner {
       await this.setProposalStatus(state, proposal.proposalId, "DONE");
       return { kind: "done", output };
     } catch (error) {
-      // Never retried automatically (README §2.6).
+      // Never retried automatically (docs/design.md §2.6).
       await this.fail(state, step, running, scope, message(error));
       await this.setProposalStatus(state, proposal.proposalId, "FAILED");
       return { kind: "failed" };

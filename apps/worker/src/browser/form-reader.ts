@@ -86,7 +86,7 @@ const READ_FORM = `() => {
   return { fields: fields.slice(0, 100), submit };
 }`;
 
-/** "104-43=", "What is 3 + 4?", a CAPTCHA: a check that I'm a person, which only I answer. */
+/** "104-43=", "What is 3 + 4?", a CAPTCHA: a check that the user is a person, which only the user answers. */
 export const HUMAN_CHECK = /^\s*(what is\s+|колко (е|прави)\s+)?\d+\s*[-+*x×]\s*\d+\s*=?\s*\??\s*$|captcha|are you (a )?human|not a robot|не съм робот/i;
 /** A trap for bots ("Please leave this field empty"): never filled, so never shown. */
 export const HONEYPOT = /leave (this field )?(blank|empty)|do not fill|don't fill|оставете (това поле )?празно/i;

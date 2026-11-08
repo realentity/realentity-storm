@@ -11,14 +11,14 @@ export interface GoogleOptions {
   apiBase?: string;
 }
 
-/** The calendar can't be used until I sign in with Google again (or for the first time): the step waits for me. */
+/** The calendar can't be used until the user signs in with Google again (or for the first time): the step waits for them. */
 export class GoogleNeedsMe extends Error {}
 
 /** A minute less than Google says, so a token never expires mid-call. */
 const EARLY_MS = 60_000;
 
 /**
- * My Google account for the calendar steps (M14-T1). The refresh token is opened only here, for a fresh access token
+ * The user's Google account for the calendar steps (M14-T1). The refresh token is opened only here, for a fresh access token
  * (kept in memory until shortly before it expires). Google refusing it (revoked, expired) marks the connection
  * NEEDS_RECONNECT, and a call that works marks it CONNECTED again: Settings shows the state as last seen, nothing
  * checks it in the background.
@@ -37,7 +37,7 @@ export class GoogleConnection {
     this.apiBase = options.apiBase ?? GOOGLE_CALENDAR_API;
   }
 
-  /** A Calendar API call as me; JSON in and out. A 401 gets one fresh token, then needs me. */
+  /** A Calendar API call as the user; JSON in and out. A 401 gets one fresh token, then needs the user. */
   async call<T>(userId: string, method: "GET" | "POST", path: string, query: Record<string, string> = {}, body?: unknown): Promise<{ status: number; body: T }> {
     for (let attempt = 1; ; attempt++) {
       const token = await this.accessToken(userId);

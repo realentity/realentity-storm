@@ -3,7 +3,6 @@ packages:
   - "packages/*"
 
 # One place for every version shared across the workspace.
-# Versions pinned on purpose (same Prisma, NestJS, React, Vite, tooling).
 catalog:
   # tooling
   typescript: ^5.7.3

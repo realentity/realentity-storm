@@ -9,7 +9,7 @@ import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { takeoverView } from "../runs/runs.service";
 
-/** Where noVNC connects: Caddy sends it to the worker's websockify after checking my session. */
+/** Where noVNC connects: Caddy sends it to the worker's websockify after checking the session. */
 export const LIVE_PATH = "/vnc/";
 
 const WAITING = ["OPEN", "TAKEN_OVER"] as const;
@@ -20,7 +20,7 @@ export interface TakeoverListItem extends TakeoverView {
 }
 
 /**
- * The live view and takeover (README §6). The worker's step waits with the page open; these only change the
+ * The live view and takeover (docs/design.md §6). The worker's step waits with the page open; these only change the
  * Takeover row it watches. The full VNC password goes out only while a takeover is open: until then the live view
  * connects with the view-only one, and x11vnc ignores input on it.
  */
@@ -51,7 +51,7 @@ export class LiveService {
 
   /**
    * Whether a browser window is on the display now: the running step is one that draws there (always, or with
-   * `headed: true`), or the run waits for me (only a headed step waits in the live view).
+   * `headed: true`), or the run waits for the user (only a headed step waits in the live view).
    */
   private async window(runId: string, pipelineVersionId: string, active: boolean, control: boolean): Promise<LiveWindow> {
     const [running, screenshot] = await Promise.all([
@@ -78,18 +78,18 @@ export class LiveService {
     await this.events.publish(userId, { type: "takeover", runId, status: "TAKEN_OVER" });
   }
 
-  /** Continue from the page as I left it, or Abort the run. */
+  /** Continue from the page as the user left it, or Abort the run. */
   async resolve(userId: string, runId: string, status: "CONTINUED" | "ABORTED"): Promise<void> {
     await this.findRun(userId, runId);
     const updated = await this.prisma.client.takeover.updateMany({
       where: { runId, status: { in: [...WAITING] } },
       data: { status, resolvedAt: new Date() },
     });
-    if (updated.count === 0) throw new ConflictException("The run isn't waiting for me");
+    if (updated.count === 0) throw new ConflictException("The run isn't waiting for you");
     await this.events.publish(userId, { type: "takeover", runId, status });
   }
 
-  /** Runs waiting for me in the live view (the inbox lists them first). */
+  /** Runs waiting for the user in the live view (the inbox lists them first). */
   async waiting(userId: string): Promise<TakeoverListItem[]> {
     const takeovers = await this.prisma.client.takeover.findMany({
       where: { status: { in: [...WAITING] }, run: { userId } },
@@ -103,7 +103,7 @@ export class LiveService {
     }));
   }
 
-  /** A run's file (screenshot, trace, download), mine only, from inside ARTIFACTS_DIR only. */
+  /** A run's file (screenshot, trace, download), the user's only, from inside ARTIFACTS_DIR only. */
   async artifact(userId: string, artifactId: string): Promise<{ stream: ReadStream; mime: string; name: string; size: number }> {
     const artifact = await this.prisma.client.artifact.findFirst({ where: { artifactId, userId } });
     if (!artifact) throw new NotFoundException();

@@ -21,8 +21,8 @@ import { PipelinesService } from "../pipelines/pipelines.service";
 
 /**
  * M35-T5: Apps and pipelines in and out as YAML files. A file is checked whole before anything is saved: its App,
- * each of its pipelines against that App (or the one they name that I have), and my pipelines of that App it leaves
- * out. Then the App first (its pipelines compile against it), then the pipelines; one I have by name gets its next
+ * each of its pipelines against that App (or the one they name that the user has), and the user's pipelines of that App it
+ * leaves out. Then the App first (its pipelines compile against it), then the pipelines; one there is by name gets its next
  * version, one that is the same is left as it is.
  */
 @Injectable()
@@ -96,7 +96,7 @@ export class BundlesService {
     if (appDocuments.length > 1)
       errors.push({ path: "", message: "One App a file: its pipelines may come with it", line: appDocuments[1].line });
 
-    // The App: checked as Save would, and what it changes against the one I have by its name.
+    // The App: checked as Save would, and what it changes against the one there is by its name.
     const appDocument = appDocuments[0];
     let app: AppDefinition | null = null;
     if (appDocument) {
@@ -115,7 +115,7 @@ export class BundlesService {
       });
     }
 
-    // Each pipeline: against the App in the file when it names it, else as Save would (the App I have, if any).
+    // Each pipeline: against the App in the file when it names it, else as Save would (the App there is, if any).
     const pipelineDocuments = documents.filter((d) => d.kind === "pipeline");
     const byName = new Map((await this.prisma.client.pipeline.findMany({ where: { userId } })).map((p) => [p.name, p]));
     const seen = new Set<string>();
@@ -147,7 +147,7 @@ export class BundlesService {
       });
     }
 
-    // My pipelines of the App that the file leaves out: they must still compile against it.
+    // The user's pipelines of the App that the file leaves out: they must still compile against it.
     const broken = app ? await this.apps.brokenBy(userId, app.name, app, [...seen]) : [];
     const ok = errors.length === 0 && items.every((i) => i.errors.length === 0) && broken.length === 0;
     return {

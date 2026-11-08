@@ -275,7 +275,7 @@ describe("M13: inputs without a browser and change detection", () => {
       expect(await run([{ url: "https://shop.test/a", price: 1 }])).not.toHaveProperty("preview");
     });
 
-    it("leaves my marks (M27) as they are, through a change, a removal and a return", async () => {
+    it("leaves the user's marks (M27) as they are, through a change, a removal and a return", async () => {
       const a = { url: "https://shop.test/a", price: 1 };
       await run([a]);
       await db.client.dataRecord.updateMany({ data: { marks: { done: "2026-11-02T10:00:00.000Z" } } });

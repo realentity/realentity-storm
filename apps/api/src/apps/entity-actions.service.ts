@@ -31,8 +31,8 @@ type Item = Record<string, unknown>;
 const STAGE_STATUS: Record<string, string> = { prepared: "PREPARED", applied: "SUBMITTED", responded: "RESPONDED", interview: "INTERVIEW", rejected: "REJECTED" };
 
 /**
- * What I do on an App's pages (M32): my fields on an entity's form, its stage moved as its moves allow me, entities of
- * a type of mine added and deleted, and buttons that start pipelines. Each change tells the App's pipelines
+ * What the user does on an App's pages (M32): their fields on an entity's form, its stage moved as its moves allow them,
+ * entities of a type of mine added and deleted, and buttons that start pipelines. Each change tells the App's pipelines
  * (entity.changed, by: me); a button's run is an ordinary one: gates, the policy and the kill switch hold.
  */
 @Injectable()
@@ -43,7 +43,7 @@ export class EntityActionsService {
     private readonly runs: RunsService,
   ) {}
 
-  /** My fields on the entity's form (a type of mine: any field but the key); null or "" clears one. */
+  /** The user's fields on the entity's form (a type of mine: any field but the key); null or "" clears one. */
   async saveValues(userId: string, appId: string, typeName: string, key: string, values: Item): Promise<void> {
     const { app, type } = await this.app(userId, appId, typeName);
     const entity = await this.entity(appId, typeName, key);

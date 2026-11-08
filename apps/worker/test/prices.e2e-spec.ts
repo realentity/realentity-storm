@@ -86,7 +86,7 @@ describe("price.watch", () => {
     await db.client.dataPoint.deleteMany();
   });
 
-  /** A Product of mine, as its form keeps it: the name is its key, the rest mine. */
+  /** A Product of the user's, as its form keeps it: the name is its key, the rest `mine`. */
   const product = (name: string, fields: { targetPrice?: number; currency?: string; enabled?: boolean; shops: string[] }) =>
     db.client.dataEntity.create({ data: { appId, type: "Product", key: name, value: { name }, mine: fields } });
   const offers = () => db.client.dataEntity.findMany({ where: { appId, type: "Offer" }, orderBy: { key: "asc" } });
@@ -158,7 +158,7 @@ describe("price.watch", () => {
       `Prices:\nJacket: 305.00 EUR at two.localhost, back in stock\n${shops.url("two.localhost", "/p/7")}`,
     );
 
-    // A shop line I removed: its Offer goes.
+    // A shop line the user removed: its Offer goes.
     await db.client.dataEntity.updateMany({ where: { appId, type: "Product" }, data: { mine: { targetPrice: 300, currency: "EUR", shops: [shops.url("one.localhost", "/jacket")] } } });
     await watch();
     expect((await offers()).map((o) => o.removedAt === null)).toEqual([true, false]);

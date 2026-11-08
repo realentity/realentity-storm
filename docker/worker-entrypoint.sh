@@ -1,5 +1,5 @@
 #!/bin/sh
-# The worker container (README §6): a virtual display for headed Chromium, the live view on it, then the worker.
+# The worker container (docs/design.md §6): a virtual display for headed Chromium, the live view on it, then the worker.
 #   Xvfb :99        the display headed runs draw on
 #   fluxbox         a window manager, so Chromium opens maximized
 #   x11vnc          the display over VNC, on localhost only, with two passwords: VNC_PASSWORD (full control) and

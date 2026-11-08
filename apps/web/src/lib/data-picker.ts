@@ -5,7 +5,7 @@ import { type LoosePipeline } from "./step-cards";
 /**
  * M36-T4: the data picker. For one input of one step, what it may be given: the trigger's data and the outputs of the
  * steps before it (and inside a forEach, its item), each of a kind that fits the input. For a side effect's target, only
- * what the compiler lets be one: never an LLM's text, a webhook's body or an entity a pipeline wrote (README §2.2).
+ * what the compiler lets be one: never an LLM's text, a webhook's body or an entity a pipeline wrote (docs/design.md §2.2).
  * The compiler still decides; the picker only doesn't offer what it would refuse.
  */
 

@@ -11,9 +11,9 @@ export const QUEUES = {
   trigger: "pipeline-trigger",
   /** Pipelines were enabled, disabled or changed: reconcile pg-boss schedules with the database. */
   syncSchedules: "schedules-sync",
-  /** I approved a proposal: its approved text becomes a few-shot example (README §8). */
+  /** The user approved a proposal: its approved text becomes a few-shot example (docs/design.md §8). */
   learning: "learning",
-  /** Nightly, or when I ask: send my recent edits and rejections to Claude as a batch. */
+  /** Nightly, or when the user asks: send their recent edits and rejections to Claude as a batch. */
   reflection: "reflection",
   /** Check a submitted reflection batch; saves its suggestions once it has ended. */
   reflectionPoll: "reflection-poll",

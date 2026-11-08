@@ -9,8 +9,8 @@ import { formatDateTime, formatUsd } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
- * What the drafts learn from my decisions (README §8): rules I wrote or approved (injected into the LLM steps),
- * what the nightly reflection suggests (never active until I approve it), and the few-shot examples kept so far.
+ * What the drafts learn from the user's decisions (docs/design.md §8): rules they wrote or approved (injected into the
+ * LLM steps), what the nightly reflection suggests (never active until approved), and the few-shot examples kept so far.
  */
 export function RulesPage() {
   const learning = useLoad(
@@ -72,8 +72,8 @@ export function RulesPage() {
         }
       />
       <p className="text-secondary">
-        Active rules go into every matching LLM step&apos;s instructions. Every night, Claude reads my edits and rejections and suggests new
-        ones; a suggestion does nothing until I approve it.
+        Active rules go into every matching LLM step&apos;s instructions. Every night, Claude reads your edits and rejections and suggests new
+        ones; a suggestion does nothing until you approve it.
       </p>
       <ErrorAlert error={learning.error ?? action.error} />
       {!data && learning.loading && <Loading />}
@@ -224,7 +224,7 @@ export function RulesPage() {
                     </div>
                   )}
                   {data.examples.length === 0 ? (
-                    <div className="text-secondary">None yet: every reply I approve becomes one.</div>
+                    <div className="text-secondary">None yet: every reply you approve becomes one.</div>
                   ) : (
                     <ul className="mb-0">
                       {data.examples.map((e) => (

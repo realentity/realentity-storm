@@ -42,3 +42,6 @@ __pycache__/
 
 # Claude Code personal settings
 .claude/settings.local.json
+
+# Eval results (kept privately)
+apps/*/evals/results/

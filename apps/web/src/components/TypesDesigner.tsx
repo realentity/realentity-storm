@@ -592,8 +592,8 @@ function IconPicker({ value, onPick, disabled }: Readonly<{ value: string; onPic
 }
 
 /**
- * A text the designer writes into the YAML when I'm done with it (Enter, or leaving the box), not at every key: a
- * rename halfway through would rename the pages to half a name. Escape puts back what was there.
+ * A text the designer writes into the YAML when the user is done with it (Enter, or leaving the box), not at every
+ * key: a rename halfway through would rename the pages to half a name. Escape puts back what was there.
  */
 export function CommitInput({
   value,

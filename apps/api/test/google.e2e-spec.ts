@@ -73,7 +73,7 @@ describe("Google Calendar connection", () => {
   /** Google's redirect back: from accounts.google.com, so the browser sends no SameSite=Strict session cookie. */
   const callback = (query: Record<string, string>) => request(api.http).get(`/api/google/callback?${new URLSearchParams(query).toString()}`).expect(302);
 
-  it("sends me to Google's consent screen for offline calendar access, and back to the redirect URI", async () => {
+  it("sends the user to Google's consent screen for offline calendar access, and back to the redirect URI", async () => {
     const status = (await agent.get("/api/google").expect(200)).body as GoogleStatusView;
     expect(status).toEqual({
       configured: true,
@@ -99,7 +99,7 @@ describe("Google Calendar connection", () => {
     await agent.post("/api/google/connect").send({ returnTo: "https://evil.test/" }).expect(400);
   });
 
-  it("the code becomes a sealed refresh token; waiting runs go on; I come back where I started", async () => {
+  it("the code becomes a sealed refresh token; waiting runs go on; the user comes back where they started", async () => {
     // A run waiting for the reconnect (what the worker's calendar step opens).
     const pipeline = await db.client.pipeline.create({ data: { userId, name: "Interview invites" } });
     const version = await db.client.pipelineVersion.create({ data: { pipelineId: pipeline.pipelineId, version: 1, definition: {}, policy: {} } });
@@ -151,7 +151,7 @@ describe("Google Calendar connection", () => {
     await agent.delete(`/api/scheduled-starts/${pending.scheduledStartId}`).expect(204);
     expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: pending.scheduledStartId } })).toMatchObject({
       status: "CANCELLED",
-      reason: "cancelled by me",
+      reason: "cancelled by the user",
     });
     // Only once, and only a pending one.
     await agent.delete(`/api/scheduled-starts/${pending.scheduledStartId}`).expect(404);

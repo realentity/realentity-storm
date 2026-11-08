@@ -6,7 +6,7 @@ import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 
 /**
- * Single-user login: password (argon2id hash) + TOTP, both from .env (README §14).
+ * Single-user login: password (argon2id hash) + TOTP, both from .env (docs/design.md §14).
  * Brute force is limited by the throttler on the login route.
  */
 @Injectable()

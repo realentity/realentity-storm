@@ -10,7 +10,7 @@ export const HEARTBEAT_INTERVAL_MS = 30_000;
 /** Touched with every beat; the container health check reads its age. */
 export const HEARTBEAT_FILE = join(tmpdir(), "storm-worker.alive");
 
-/** Records that the worker is alive (ServiceHeartbeat); the api alerts me on Telegram when it goes stale. */
+/** Records that the worker is alive (ServiceHeartbeat); the api alerts the user on Telegram when it goes stale. */
 export async function beat(prisma: PrismaClient, startedAt: Date, now = new Date()): Promise<void> {
   await prisma.serviceHeartbeat.upsert({
     where: { service: HEARTBEAT_SERVICE },

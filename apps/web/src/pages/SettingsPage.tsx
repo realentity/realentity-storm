@@ -19,7 +19,7 @@ import { useAction, useLoad } from "../lib/use-load";
 
 const SOURCE_LABEL = { settings: "chosen here", env: "from .env", default: "default" } as const;
 
-/** Model per LLM task, the monthly LLM budget, and global rate limits for side-effect steps (README §5, §2.2). */
+/** Model per LLM task, the monthly LLM budget, and global rate limits for side-effect steps (docs/design.md §5, §2.2). */
 export function SettingsPage() {
   const settings = useLoad(() => api.settings.get(), []);
   const spending = useLoad(() => api.settings.spending(), [settings.data?.monthlyBudgetUsd]);

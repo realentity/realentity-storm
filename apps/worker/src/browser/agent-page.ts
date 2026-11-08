@@ -123,9 +123,9 @@ const HELPERS = `
 `;
 
 /**
- * Runs in the page: the agent's view of it (README §2.4: the accessibility outline). One line per interactive element
+ * Runs in the page: the agent's view of it (docs/design.md §2.4: the accessibility outline). One line per interactive element
  * with a ref (data-storm-ref, kept across outlines) the tools take, its role, name and state; headings and text between
- * them. Passwords, hidden inputs and honeypots are left out; a person check is marked as mine. When the page is long,
+ * them. Passwords, hidden inputs and honeypots are left out; a person check is marked as the user's. When the page is long,
  * text goes first, then the outline is cut.
  */
 const OUTLINE = `(max) => {
@@ -163,10 +163,10 @@ const OUTLINE = `(max) => {
     }
     if (role === "file") {
       const attached = el.getAttribute("data-storm-attach");
-      parts.push(attached ? "attaches " + attached + " after I approve" : "a file");
+      parts.push(attached ? "attaches " + attached + " after the user approves" : "a file");
     }
     if (submits(el)) parts.push("submits the form");
-    if (HUMAN.test(name)) parts.push("person check: only I answer it");
+    if (HUMAN.test(name)) parts.push("person check: only the user answers it");
     line("element", parts.join(", "));
   };
   const walk = (el) => {
@@ -263,7 +263,7 @@ const FIND = `(target) => {
   return mark;
 }`;
 
-/** Runs in the page: the labels of the visible person checks ("104-43="), which only I answer. */
+/** Runs in the page: the labels of the visible person checks ("104-43="), which only the user answers. */
 const PERSON_CHECKS = `() => {
   ${HELPERS}
   return [...document.querySelectorAll("input, textarea")].filter((el) => el.getClientRects().length > 0 && HUMAN.test(nameOf(el))).map(nameOf);
@@ -315,7 +315,7 @@ export async function markAttached(page: Page, fileCss: string, document: string
 }
 
 /**
- * What a browser.agent page may send and where it may go (README §2.4, M11-S1/S3). Exploring, the page goes only to
+ * What a browser.agent page may send and where it may go (docs/design.md §2.4, M11-S1/S3). Exploring, the page goes only to
  * allowed sites, posts no form, and no request carries a value the agent typed (in the address or the body, plain or
  * encoded): what it types is for the gate, and only browser.submit sends it. WebSockets are closed. Acting
  * (browser.submit), only the allowed sites hold: the approved values are meant to go. A redirect isn't routed again,
@@ -367,13 +367,13 @@ export class SendGuard {
     }
     if (this.mode === "explore") {
       if (navigation && !["GET", "HEAD"].includes(request.method())) {
-        this.events.push("blocked: the page tried to send a form; sending happens only after I approve");
+        this.events.push("blocked: the page tried to send a form; sending happens only after the user approves");
         return route.abort("blockedbyclient");
       }
       const body = request.postData() ?? "";
       for (const value of this.typed) {
         if (carries(url, body, value)) {
-          this.events.push(`blocked: the page tried to send what you typed to ${host || "the site"}; sending happens only after I approve`);
+          this.events.push(`blocked: the page tried to send what you typed to ${host || "the site"}; sending happens only after the user approves`);
           return route.abort("blockedbyclient");
         }
       }

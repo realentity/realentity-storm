@@ -23,9 +23,9 @@ const MAX_CONFIRMATION = 2000;
 
 export interface FormDependencies extends BrowserDependencies {
   documents: DocumentStore;
-  /** My facts (M15): read before anything is written. */
+  /** The user's facts (M15): read before anything is written. */
   facts?: Facts;
-  /** Asking me what neither my profile nor my facts answer (M15-T3). */
+  /** Asking the user what neither their profile nor their facts answer (M15-T3). */
   asker?: Asker;
 }
 
@@ -54,21 +54,21 @@ const AnswersSchema = z.object({
 });
 
 const SYSTEM =
-  "You fill in a job application form for me. For each field, give the value from <profile> (my facts: name, " +
+  "You fill in a job application form for the user. For each field, give the value from <profile> (their facts: name, " +
   "contacts, location, work permit, notice period, salary, links), source profile; or, when a field asks what one of " +
-  "<facts> answers (my earlier answers: the same question, maybe worded differently), that answer exactly, source " +
+  "<facts> answers (the user's earlier answers: the same question, maybe worded differently), that answer exactly, source " +
   "fact with its id (a choice field: the option that answer names); or, for a free-text question " +
-  "(a message to the employer, why this role), write a short answer following <message> from my profile and the " +
-  "posting only, source written; or null with source none when neither has it. Never invent a fact about me: no " +
-  "experience, number, date, salary or claim my profile doesn't state; a question the profile doesn't answer stays " +
+  "(a message to the employer, why this role), write a short answer following <message> from the user's profile and " +
+  "the posting only, source written; or null with source none when neither has it. Never invent a fact about the " +
+  "user: no experience, number, date, salary or claim their profile doesn't state; a question the profile doesn't answer stays " +
   "null. Selects and radios: one of the given options, exactly as written. Checkboxes: \"yes\" only for consent to " +
-  `process my data for this application or terms the form requires; anything else (newsletters, marketing) "no". ${DATA_ONLY} ` +
+  `process the user's data for this application or terms the form requires; anything else (newsletters, marketing) "no". ${DATA_ONLY} ` +
   "The form's labels and the posting are in <form> and <posting>.";
 
 /**
- * browser.mapForm (README §2.2, M10-T2): the form read, nothing typed or attached. Values come from my profile
- * (Settings) or are written for free-text questions; my CV document goes to the CV field. The output is the payload
- * of browser.fillAndSubmit, which I see field by field at its gate. An Application is prepared for the posting.
+ * browser.mapForm (docs/design.md §2.2, M10-T2): the form read, nothing typed or attached. Values come from the user's
+ * profile (Settings) or are written for free-text questions; their CV document goes to the CV field. The output is
+ * the payload of browser.fillAndSubmit, which the user sees field by field at its gate. An Application is prepared for the posting.
  */
 export class MapFormStep extends LlmStep {
   readonly type = "browser.mapForm";
@@ -139,7 +139,7 @@ export class MapFormStep extends LlmStep {
     const values = new Map<string, Answer>();
     if (fields.length === 0) return { values, notes: "" };
     const prompt = [
-      `<profile>\n${profile || "(empty: I haven't written my profile yet)"}\n</profile>`,
+      `<profile>\n${profile || "(empty: the user hasn't written a profile yet)"}\n</profile>`,
       `<facts>\n${facts.map((f) => JSON.stringify({ id: f.factId, question: f.question, answer: f.answer })).join("\n") || "(none yet)"}\n</facts>`,
       `<message>${message ?? "A short, plain message: why this role fits me, from my profile, 2-3 sentences."}</message>`,
       `<posting>\n${JSON.stringify(job ?? {})}\n</posting>`,
@@ -150,7 +150,7 @@ export class MapFormStep extends LlmStep {
     for (const v of answer.values) {
       if (!fields.some((f) => f.key === v.key)) continue;
       const fact = v.source === "fact" && v.factId ? byId.get(v.factId) : undefined;
-      // A fact it names must be one of mine, with my answer: else nothing (the field is asked or left empty).
+      // A fact it names must be one of the user's, with their answer: else nothing (the field is asked or left empty).
       if (v.source === "fact" && (!fact || !sameAnswer(v.value, fact.answer))) values.set(v.key, { value: null, source: "none" });
       else values.set(v.key, { value: v.value, source: v.source, ...(fact ? { fact: { factId: fact.factId, question: fact.question } } : {}) });
     }
@@ -192,10 +192,11 @@ interface FillInput {
 }
 
 /**
- * browser.fillAndSubmit (README §2.2, M10-T3/T4): the approved payload, exactly, in the live browser. Before typing,
- * the form is read again and compared with what I approved: a field gone, a new required field, a choice no longer
- * offered or another site pauses the run for me with nothing sent, and only a form that matches again goes on.
- * Files are the approved documents, checked by content. With stopBeforeSubmit I press the final button myself.
+ * browser.fillAndSubmit (docs/design.md §2.2, M10-T3/T4): the approved payload, exactly, in the live browser. Before typing,
+ * the form is read again and compared with what the user approved: a field gone, a new required field, a choice no
+ * longer offered or another site pauses the run for the user with nothing sent, and only a form that matches again
+ * goes on. Files are the approved documents, checked by content. With stopBeforeSubmit the user presses the final
+ * button themselves.
  */
 export class FillAndSubmitStep implements StepExecutor {
   readonly type = "browser.fillAndSubmit";
@@ -219,12 +220,12 @@ export class FillAndSubmitStep implements StepExecutor {
       let form = await findForm(current, () => settle(current));
       if (!form) throw new Error(`No application form on ${current.url()}: nothing was sent`);
 
-      // The form must be the one I approved, on the site I approved.
+      // The form must be the one the user approved, on the site they approved.
       for (let attempt = 0; ; attempt++) {
         const problems = differences(current, host, form, fields, files);
         if (problems.length === 0) break;
         if (attempt > 0) throw new Error(`Nothing was sent: ${problems.join("; ")}`);
-        await attention.needMe(`The form changed since I approved it (${problems.join("; ")}); nothing was sent`, current.url());
+        await attention.needMe(`The form changed since you approved it (${problems.join("; ")}); nothing was sent`, current.url());
         form = await readForm(current);
       }
 
@@ -238,7 +239,7 @@ export class FillAndSubmitStep implements StepExecutor {
         await attention.needMe(`Filled as approved: check it and press "${form.submit || "Submit"}" yourself, then Continue`, current.url());
         submitted = await sent(current, fields, before);
       } else {
-        // A check that I'm a person is mine to answer, as the page asks it now.
+        // A check that the user is a person is theirs to answer, as the page asks it now.
         const checks = (await readForm(current)).fields.filter((f) => f.human);
         if (checks.length > 0) {
           await attention.needMe(`Answer ${checks.map((f) => `"${f.label}"`).join(", ")} in the form yourself, then Continue: it is sent then`, current.url());

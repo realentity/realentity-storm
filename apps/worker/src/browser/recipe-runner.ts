@@ -5,7 +5,7 @@ import { type Attention } from "../runner/step-executor";
 
 export type Item = Record<string, string>;
 
-/** The page no longer matches the recipe (README §2.4): the step fails and the recipe is marked broken (M9-T7). */
+/** The page no longer matches the recipe (docs/design.md §2.4): the step fails and the recipe is marked broken (M9-T7). */
 export class RecipeBroken extends Error {}
 
 /** Runs in the page (a string: the worker has no DOM types): each item's fields, text or attribute (links absolute). */

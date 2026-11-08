@@ -34,7 +34,7 @@ const RECONNECTS = 1;
 
 /**
  * Runs `work` against Google; when the calendar isn't connected or Google refused the connection, the run waits for
- * me (Telegram: a Reconnect button) and goes on once I signed in again (the api continues the wait).
+ * the user (Telegram: a Reconnect button) and goes on once they signed in again (the api continues the wait).
  */
 async function withGoogle<T>(deps: CalendarDependencies, context: StepContext, work: () => Promise<T>): Promise<T> {
   for (let asked = 0; ; asked++) {
@@ -51,7 +51,7 @@ async function withGoogle<T>(deps: CalendarDependencies, context: StepContext, w
   }
 }
 
-/** calendar.find (M14-T1): my calendar's events in a range, optionally matching a query. */
+/** calendar.find (M14-T1): the user's calendar's events in a range, optionally matching a query. */
 export class CalendarFindStep implements StepExecutor {
   readonly type = "calendar.find";
 
@@ -75,8 +75,8 @@ export class CalendarFindStep implements StepExecutor {
 }
 
 /**
- * calendar.create (M14-T1): an event in my calendar, behind its gate (a side effect; with attendees, Google emails
- * them from my account). The same title at the same start already there isn't created again. The event's id comes
+ * calendar.create (M14-T1): an event in the user's calendar, behind its gate (a side effect; with attendees, Google
+ * emails them from the user's account). The same title at the same start already there isn't created again. The event's id comes
  * from the run's step, so a step run again after a crash finds the event it created instead of a second one.
  */
 export class CalendarCreateStep implements StepExecutor {

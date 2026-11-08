@@ -1,4 +1,4 @@
-# Every evening, a Telegram message: what ran today, what waits for me, what failed, what the LLM cost.
+# Every evening, a Telegram message: what ran today, what waits for you, what failed, what the LLM cost.
 # Mark it essential on its page, so it keeps running when the monthly LLM budget is spent (it uses no LLM).
 name: Daily digest
 trigger: { schedule: "0 19 * * *", tz: Europe/Sofia }

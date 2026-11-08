@@ -4,8 +4,8 @@ import { z } from "zod";
 import { AppDefinitionSchema, type AppDefinition, type AppIssue } from "./app";
 
 /**
- * M35: an App's YAML as the designer sees it. The designer changes the document, never a copy of its data, so my
- * comments and the order I wrote things in stay; a problem carries its line, to show it on the YAML tab too.
+ * M35: an App's YAML as the designer sees it. The designer changes the document, never a copy of its data, so the
+ * comments and the order things were written in stay; a problem carries its line, to show it on the YAML tab too.
  */
 
 /** The App read from its YAML, or every problem with it: YAML errors, then the definition's, each with its line. */
@@ -41,7 +41,7 @@ export function lineAt(document: Document, lines: LineCounter, path: (string | n
   return undefined;
 }
 
-/** Where a path's node starts: its key's position in a map (the line I'd look at), else the node's own. */
+/** Where a path's node starts: its key's position in a map (the line to look at), else the node's own. */
 function nodeAt(document: Document, path: (string | number)[]): number | undefined {
   if (path.length === 0) return document.contents?.range?.[0];
   const parent = path.length === 1 ? document.contents : document.getIn(path.slice(0, -1), true);
@@ -59,10 +59,10 @@ function nodeAt(document: Document, path: (string | number)[]): number | undefin
 }
 
 /**
- * A change to an App's YAML as the designer makes it: on the document, with my comments and order. The YAML library
+ * A change to an App's YAML as the designer makes it: on the document, with its comments and order. The YAML library
  * writes the whole document its own way (spacing in lists, where comments sit), so only the lines the change touches
- * are taken from it: the document is written before and after the change, and every line the two share is my own
- * line, as I wrote it.
+ * are taken from it: the document is written before and after the change, and every line the two share is the
+ * original line, as written.
  */
 export function editAppSource(source: string, edit: (document: Document) => void): string {
   const document = parseDocument(source);
@@ -85,7 +85,7 @@ export function editAppSource(source: string, edit: (document: Document) => void
     .join("\n")}\n`;
 }
 
-/** A changed line's comment where I had it: at the column of the same comment on one of my lines. */
+/** A changed line's comment where it was: at the column of the same comment on one of the original lines. */
 function alignComment(line: string, mine: string[]): string {
   const match = / # (.*)$/.exec(line);
   if (!match || /["']/.test(line)) return line;
@@ -175,7 +175,7 @@ export const AppCheckRequestSchema = z
   .strict();
 export type AppCheckRequest = z.infer<typeof AppCheckRequestSchema>;
 
-/** M35-T1: a draft App checked as I edit it: its problems, those of its pipelines against it, and what it changes. */
+/** M35-T1: a draft App checked while edited: its problems, those of its pipelines against it, and what it changes. */
 export interface AppCheckView {
   ok: boolean;
   errors: AppIssue[];

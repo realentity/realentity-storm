@@ -4,7 +4,7 @@ import { createPrismaConnection } from "../src/client";
 
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
 
-/** The single user (README §1). Idempotent: run as often as you like. */
+/** The single user (docs/design.md §1). Idempotent: run as often as you like. */
 async function seed(): Promise<void> {
   const email = process.env.APP_ADMIN_EMAIL || "me@localhost";
   const connection = createPrismaConnection();

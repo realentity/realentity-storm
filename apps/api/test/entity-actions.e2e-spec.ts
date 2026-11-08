@@ -59,7 +59,7 @@ steps:
     with: { text: "plain" }
 `;
 
-// M32-I1 (my half), S1: forms, stage moves, entities of a type of mine, buttons
+// M32-I1 (the user's half), S1: forms, stage moves, entities of a type of mine, buttons
 describe("entity actions", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;
@@ -106,7 +106,7 @@ describe("entity actions", () => {
       { data: { data: Record<string, unknown> } }[]
     >`SELECT data FROM pgboss.job WHERE name = ${QUEUES.events} ORDER BY created_on`;
 
-  it("saves my fields on the form, each as its kind, and tells the App's pipelines", async () => {
+  it("saves the user's fields on the form, each as its kind, and tells the App's pipelines", async () => {
     const saved = (
       await agent
         .put(`${page()}/values`)
@@ -127,7 +127,7 @@ describe("entity actions", () => {
     ).body as AppEntityView;
     expect(cleared.mine).toEqual({ comments: "Looks good" });
 
-    // S1: only my fields, and only those on the form; each value as its kind.
+    // S1: only the user's fields, and only those on the form; each value as its kind.
     const wrong = await agent
       .put(`${page()}/values`)
       .send({ values: { title: "Hacked", favorite: true, rating: "lots" } })
@@ -140,7 +140,7 @@ describe("entity actions", () => {
     expect((await db.client.dataEntity.findFirstOrThrow({ where: { key: url } })).value).toEqual({ url, title: "Developer" });
   });
 
-  it("moves the stage as my moves allow, keeping when it first reached each state", async () => {
+  it("moves the stage as the user's moves allow, keeping when it first reached each state", async () => {
     expect(((await agent.get(page()).expect(200)).body as AppEntityView).stage).toEqual({
       value: "new",
       moves: ["favorite", "rejected"],

@@ -1,0 +1,14 @@
+# gitleaks: the default rules plus reviewed false positives. Used by the pre-commit hook (.githooks/pre-commit) and CI.
+# Allowlisted by the exact matched text, so any OTHER value in the same files is still reported.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "reviewed fake values in tests and an empty env sample in old docs"
+regexTarget = "match"
+regexes = [
+  '''^KEY = "sk-live-7f3a9c2e"$''',
+  '''^clientSecret: "secret-123456"$''',
+  '''^NOVNC_PASSWORD=\s+HEADED_CONCURRENCY=1$''',
+]

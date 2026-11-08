@@ -241,7 +241,7 @@ describe("M14: calendar and later starts", () => {
     expect((await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "event" } })).error).toMatch(/payload changed after approval/);
   });
 
-  it("guests are targets: a guest I wrote gets Google's invitation; one the LLM read out of the email can't be a guest", async () => {
+  it("guests are targets: a guest the user wrote gets Google's invitation; one the LLM read out of the email can't be a guest", async () => {
     const withGuest = (to: string) => EVENT(`      attendees: [${to}]\n`).replace("name: Interview event", `name: Interview with ${to}\npolicy: { allowedRecipients: [maria@acme.test] }`);
     const runId = await runner.start(await createVersion(db.client, userId, withGuest("maria@acme.test"), compiler), { trigger: "manual" });
     await runner.advance(runId);
@@ -276,7 +276,7 @@ describe("M14: calendar and later starts", () => {
     expect(google.refreshes).toBe(1);
   });
 
-  it("a refused connection: the run waits for me with a Reconnect button, and goes on once I reconnect", async () => {
+  it("a refused connection: the run waits for the user with a Reconnect button, and goes on once they reconnect", async () => {
     google.tokenError = "invalid_grant";
     const runId = await runner.start(await createVersion(db.client, userId, EVENT(), compiler), { trigger: "manual" });
     await runner.advance(runId);

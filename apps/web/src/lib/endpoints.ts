@@ -125,7 +125,7 @@ export const api = {
     abort: (runId: string) => request<void>("POST", `/runs/${runId}/abort`),
     retry: (runId: string) => request<RunDetailView>("POST", `/runs/${runId}/retry`),
   },
-  /** Runs waiting for me in the live view. */
+  /** Runs waiting for the user in the live view. */
   takeovers: () => request<(TakeoverView & { runId: string; pipelineName: string })[]>("GET", "/takeovers"),
   /** A run's file (screenshot, trace, download): an address for <img> or a download link. */
   artifactUrl: (artifactId: string) => `/api/artifacts/${artifactId}`,
@@ -296,7 +296,7 @@ export const api = {
       request<BuilderChatSummaryView[]>("GET", `/builder/chats${query({ pipelineId, appId })}`),
     create: (pipelineId?: string, appId?: string) => request<BuilderChatView>("POST", "/builder/chats", { pipelineId, appId }),
     get: (chatId: string) => request<BuilderChatView>("GET", `/builder/chats/${chatId}`),
-    /** M38-T5: from an editor, with what it has open and what I am on there. */
+    /** M38-T5: from an editor, with what it has open and what the user is on there. */
     send: (chatId: string, text: string, suggestionId?: string, editor?: { source: string; focus?: string }) =>
       request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages`, { text, suggestionId, ...(editor ? { editor } : {}) }),
     save: (chatId: string, messageId: string) => request<BuilderChatView>("POST", `/builder/chats/${chatId}/messages/${messageId}/save`),

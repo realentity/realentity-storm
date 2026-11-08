@@ -1,5 +1,5 @@
 # M40: the examples offered on the Apps page. Each is an App with the pipelines that fill it, installed together (as
-# an import of one file: M35-T5), its pipelines off until I switch them on. `needs`: what has to be set up before its
+# an import of one file: M35-T5), its pipelines off until you switch them on. `needs`: what has to be set up before its
 # pipelines can run, shown on its card and ticked on its checklist:
 #   email            an email account: IMAP_HOST on the server and the mail credential (Credentials)
 #   google-calendar  Google Calendar connected (Settings)
@@ -7,7 +7,7 @@
 #   llm              the LLM (ANTHROPIC_API_KEY on the server)
 #   credential       a credential of that `name` (Credentials)
 #   recipe           a site recipe of that `name` (Recipes, Teach)
-#   entities         entities of mine of that `type`, added on the App's page
+#   entities         entities of that `type` you add on the App's page
 # `files` are relative to pipelines/: the App first, then its pipelines.
 examples:
   - id: releases-to-read

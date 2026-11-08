@@ -144,7 +144,7 @@ describe("LLM steps", () => {
 describe("notify.telegram", () => {
   const ok = () => Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
 
-  it("sends the text to my chat", async () => {
+  it("sends the text to the user's chat", async () => {
     const send = jest.fn(ok);
     await expect(
       new TelegramStep({ botToken: "123:secret-token", chatId: "42" }, send).execute(

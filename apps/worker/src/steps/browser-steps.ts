@@ -38,17 +38,17 @@ export interface BrowserDependencies {
   sessions: SessionStore;
   vault: CredentialVault;
   artifacts: ArtifactStore;
-  /** A Telegram message to me (a broken recipe). */
+  /** A Telegram message to the user (a broken recipe). */
   notify?(message: string | TelegramMessage): Promise<void>;
   /** The address the browser uses (APP_ORIGIN), for the message's button. */
   appOrigin?: string;
 }
 
 /**
- * browser.open (README §6): a page in a fresh context with the site's kept login, signed in with a credential when
- * the page asks for one, and its text. Headed, I can watch it and take over: on a CAPTCHA, a 2FA prompt, a sign-in
- * that didn't go through or a page without what it waits for, it waits for me with the page open and goes on from
- * where I left it. Secrets never leave it: the text is masked, screenshots cover the fields, the trace is redacted.
+ * browser.open (docs/design.md §6): a page in a fresh context with the site's kept login, signed in with a credential when
+ * the page asks for one, and its text. Headed, the user can watch it and take over: on a CAPTCHA, a 2FA prompt, a
+ * sign-in that didn't go through or a page without what it waits for, it waits for the user with the page open and
+ * goes on from where they left it. Secrets never leave it: the text is masked, screenshots cover the fields, the trace is redacted.
  */
 export class BrowserOpenStep implements StepExecutor {
   readonly type = "browser.open";
@@ -102,7 +102,7 @@ export class BrowserOpenStep implements StepExecutor {
 
   /**
    * Fills the sign-in form (one page, or username then password) with the credential, only on a host the credential
-   * is bound to (README §7, M8-S1): the vault refuses others, and the host is checked again right before typing.
+   * is bound to (docs/design.md §7, M8-S1): the vault refuses others, and the host is checked again right before typing.
    */
   private async signIn(
     page: Page,
@@ -175,7 +175,7 @@ function rememberSession(secrets: PageSecrets, state: Awaited<ReturnType<Browser
   for (const origin of state?.origins ?? []) for (const item of origin.localStorage) if (item.value.length >= 8) secrets.add(item.value);
 }
 
-/** Waits for a CAPTCHA or 2FA prompt to go away, with me. */
+/** Waits for a CAPTCHA or 2FA prompt to go away, with the user. */
 async function unblock(page: Page, attention: Attention): Promise<void> {
   for (let i = 0; i < MAX_TAKEOVERS; i++) {
     const reason = await blockingState(page);
@@ -186,7 +186,7 @@ async function unblock(page: Page, attention: Attention): Promise<void> {
   if (await blockingState(page)) throw new Error("The page is still blocked after taking over");
 }
 
-/** The selector, waited for in slices so Take over works meanwhile; missing, I take a look. */
+/** The selector, waited for in slices so Take over works meanwhile; missing, the user takes a look. */
 async function waitForSelector(page: Page, selector: string, timeout: number, attention: Attention): Promise<void> {
   const found = async (ms: number) =>
     page

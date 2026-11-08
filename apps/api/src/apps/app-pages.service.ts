@@ -41,7 +41,7 @@ const MAX_ROWS = 5000;
 export class AppPagesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Every App's lists that go in the menu, by App, each App's types in the order I wrote them. */
+  /** Every App's lists that go in the menu, by App, each App's types in the order they are written. */
   async menu(userId: string): Promise<AppMenuItem[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
     const versions = await this.prisma.client.appVersion.findMany({
@@ -205,7 +205,7 @@ function listOf(
   return { page, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, groups };
 }
 
-/** An entity as a row: what pipelines wrote, with my fields over it, and its stage. */
+/** An entity as a row: what pipelines wrote, with the user's fields over it, and its stage. */
 function rowOf(entity: DataEntity, type: DataType): ViewRow {
   return {
     key: entity.key,

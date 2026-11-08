@@ -7,7 +7,7 @@ export interface ModelChoice {
   effort: Effort;
 }
 
-/** Task groups and their defaults (README §5): cheap and fast for labelling, stronger for writing. */
+/** Task groups and their defaults (docs/design.md §5): cheap and fast for labelling, stronger for writing. */
 const GROUPS: Record<string, { env: string; default: ModelChoice }> = {
   classify: { env: "LLM_MODEL_CLASSIFY", default: { model: "claude-haiku-5-5", effort: "low" } },
   writing: { env: "LLM_MODEL_WRITING", default: { model: "claude-sonnet-5-5", effort: "medium" } },
@@ -37,7 +37,7 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "shop.product": "classify",
   "browser.mapForm": "writing",
   "browser.agent": "writing",
-  // The agent's second try, when the first model keeps failing (README §5).
+  // The agent's second try, when the first model keeps failing (docs/design.md §5).
   "browser.agent.escalation": "builder",
 };
 
@@ -45,7 +45,7 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
 export type ModelSettingLookup = (userId: string, taskKey: string) => Promise<{ model: string; effort: string | null } | null>;
 
 /**
- * Which model and effort a task uses: my setting for that task (ModelSetting), else the group's model from the
+ * Which model and effort a task uses: the user's setting for that task (ModelSetting), else the group's model from the
  * environment (LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING, LLM_MODEL_REFLECTION, LLM_MODEL_BUILDER), else the group default.
  */
 export class ModelRouter {

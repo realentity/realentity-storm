@@ -1,8 +1,8 @@
-# Phase 1 (README §11): every 15 minutes, read new mail, keep what recruiters and clients wrote to me personally,
-# and draft a reply to each. Every reply waits in the inbox until I press Act (the compiler adds the gate).
+# Phase 1 (docs/design.md §11): every 15 minutes, read new mail, keep what recruiters and clients wrote to you personally,
+# and draft a reply to each. Every reply waits in the inbox until you press Act (the compiler adds the gate).
 # Paste it on the Pipelines page, check, dry run, save, enable. Needs IMAP_HOST/SMTP_HOST and the "mail" credential.
 name: Recruiter and client replies
-description: Drafts replies to recruiters and clients; I review, edit and Act on each.
+description: Drafts replies to recruiters and clients; you review, edit and Act on each.
 trigger: { schedule: "*/15 * * * *", tz: Europe/Sofia }
 steps:
   - id: fetch
@@ -28,7 +28,7 @@ steps:
         Reply briefly and warmly as me. If the role or project could fit, show interest, ask for what is missing
         (rate or salary range, remote or on-site, start date, duration) and propose a short call. If it clearly
         doesn't fit, decline politely in one or two sentences.
-      # What the drafts may draw on besides the email (who I am, what I'm looking for, availability):
+      # What the drafts may draw on besides the email (who you are, what you're looking for, availability):
       # context: |
       #   ...
   - id: send

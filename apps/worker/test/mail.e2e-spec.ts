@@ -184,9 +184,9 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     };
     const sent = await connector.send(userId, outgoing);
     expect(sent.accepted).toEqual([OTHER_MAILBOX]);
-    // Never a reply to my own address: that answers mail I sent myself (Storm's own messages).
+    // Never a reply to the user's own address: that answers mail they sent themselves (Storm's own messages).
     await expect(connector.send(userId, { ...outgoing, to: MAILBOX.toUpperCase() })).rejects.toThrow(
-      "Not sent: a reply to my own address",
+      "Not sent: a reply to your own address",
     );
 
     // What Ana got, read from her mailbox.
@@ -379,7 +379,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     const DAY = 24 * 60 * 60 * 1000;
     const ago = (days: number) => new Date(Date.now() - days * DAY);
     let n = 0;
-    /** A message as a server keeps it: in `mailbox`, dated `date` (my sent ones in Sent, like Gmail's). */
+    /** A message as a server keeps it: in `mailbox`, dated `date` (the user's sent ones in Sent, like Gmail's). */
     async function put(mailbox: string, m: { from?: string; to?: string; subject: string; id: string; inReplyTo?: string; references?: string[]; date: Date }) {
       const raw = [
         `From: ${m.from ?? MAILBOX}`,
@@ -426,7 +426,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     });
 
     // M22-I1, M22-I2
-    it("finds only my unanswered emails, waiting long enough, once ever; a dry run doesn't remember", async () => {
+    it("finds only the user's unanswered emails, waiting long enough, once ever; a dry run doesn't remember", async () => {
       const dry = await awaiting(true);
       expect(dry.threads.map((t) => [t.to, t.subject, t.daysWaiting, t.followUps])).toEqual([["ana@acme.test", "Contract proposal", 6, 0]]);
       expect(dry.threads[0]?.references).toEqual(["<a1@storm.test>"]);
@@ -441,7 +441,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]]]);
     });
 
-    it("the follow-ups pipeline: a draft in the thread, to whom my email went, waiting at the gate", async () => {
+    it("the follow-ups pipeline: a draft in the thread, to whom the user's email went, waiting at the gate", async () => {
       const source = await readFile(join(__dirname, "../../../pipelines/email-follow-ups.yaml"), "utf8");
       const pipelineVersionId = await createVersion(db.client, userId, source);
       const llm = new FakeLlm(() => "Hi Ana, did you have a chance to look at my proposal? Best");
@@ -460,7 +460,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
           references: ["<a1@storm.test>"],
         },
       ]);
-      expect(llm.requests[0]?.system).toContain("an email I sent that got no answer");
+      expect(llm.requests[0]?.system).toContain("an email they sent that got no answer");
     });
   });
 

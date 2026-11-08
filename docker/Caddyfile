@@ -1,5 +1,5 @@
 # Storm's front door inside Docker: the web app, and /api (REST and the live events WebSocket) to the api.
-# Plain HTTP on 127.0.0.1 only; on the server, `tailscale serve` adds HTTPS and publishes it to the tailnet (port 8100).
+# Plain HTTP on 127.0.0.1 only; HTTPS comes from what you put in front (tailscale serve, a reverse proxy).
 {
 	admin off
 	auto_https off
@@ -20,8 +20,8 @@
 		reverse_proxy api:3000
 	}
 
-	# Live view (README §6): noVNC's WebSocket to the worker's websockify, only for a signed-in session (the api
-	# answers 204 or 401); x11vnc then asks for its own password, view-only until I take over. The check goes without
+	# Live view (docs/design.md §6): noVNC's WebSocket to the worker's websockify, only for a signed-in session (the api
+	# answers 204 or 401); x11vnc then asks for its own password, view-only until you take over. The check goes without
 	# the WebSocket's Upgrade headers: with them, Node hands it to the api's upgrade listener, not its routes, and it hangs.
 	handle_path /vnc/* {
 		forward_auth api:3000 {
@@ -39,9 +39,9 @@
 	}
 }
 
-# The hooks-only site (M12-T5): what hooks-gateway on the VPS forwards over Tailscale (`tailscale serve --http=8101`
-# → 127.0.0.1:7101). Only POST /hooks/<…> reaches the api, as /api/hooks/<…>; anything else, the app included, is a
-# 404 here. Each call carries its own secret (the Telegram header, a webhook's signature or token).
+# The hooks-only site (M12-T5, 127.0.0.1:7101): what brings Telegram and webhooks in from the Internet points here
+# (a tunnel, a reverse proxy, or a gateway on another machine). Only POST /hooks/<…> reaches the api, as
+# /api/hooks/<…>; anything else, the app included, is a 404 here. Each call carries its own secret (the Telegram header, a webhook's signature or token).
 :8081 {
 	header -Server
 

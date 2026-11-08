@@ -136,7 +136,7 @@ describe("pipelines", () => {
     expect(steps.find((s) => s.type === "llm.generate")!.llmOutput).toBe(true);
   });
 
-  // M3-T4, M3-E1 (api part): dry run before saving (README §2.1)
+  // M3-T4, M3-E1 (api part): dry run before saving (docs/design.md §2.1)
   describe("drafts", () => {
     afterEach(async () => {
       await db.client.run.deleteMany();

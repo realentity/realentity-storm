@@ -1,5 +1,5 @@
-# M14: every 15 minutes, new mail that invites me to an interview becomes a proposed event in my Google Calendar,
-# with the job and prep notes, and what else is on at that time. Each event waits for my Approve (the compiler adds
+# M14: every 15 minutes, new mail that invites you to an interview becomes a proposed event in your Google Calendar,
+# with the job and prep notes, and what else is on at that time. Each event waits for your Approve (the compiler adds
 # the gate): the proposal shows the exact title, time and notes. An event already there (the same title at the same
 # start) isn't created again. Needs the "mail" credential and Google Calendar connected (Settings).
 name: Interview invites

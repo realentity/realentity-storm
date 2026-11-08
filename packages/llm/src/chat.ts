@@ -38,7 +38,7 @@ export interface ChatResponse {
   usage: LlmUsage;
 }
 
-/** A conversation with tools (README §2.1: the builder). */
+/** A conversation with tools (docs/design.md §2.1: the builder). */
 export interface LlmChat {
   send(request: ChatRequest): Promise<ChatResponse>;
 }

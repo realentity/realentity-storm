@@ -9,7 +9,7 @@ import { createTestApp, type TestApp } from "./support/test-app";
 
 const PDF = Buffer.from("%PDF-1.4\n% my CV\n%%EOF\n");
 
-// M10: my documents (what forms may attach) and my profile (what forms are filled from)
+// M10: the user's documents (what forms may attach) and their profile (what forms are filled from)
 describe("documents and profile", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;
@@ -75,7 +75,7 @@ describe("documents and profile", () => {
     expect(await db.client.document.count()).toBe(0);
   });
 
-  it("other people's documents are not mine", async () => {
+  it("other people's documents are not the user's", async () => {
     const other = await db.client.user.create({ data: { email: `other-${Date.now()}@storm.test` } });
     try {
       const theirs = await db.client.document.create({
@@ -88,7 +88,7 @@ describe("documents and profile", () => {
     }
   });
 
-  it("keeps my profile for application forms; empty clears it", async () => {
+  it("keeps the user's profile for application forms; empty clears it", async () => {
     expect(((await agent.get("/api/settings").expect(200)).body as SettingsView).profile).toBe("");
     const profile = "Ana Petrova · ana@storm.test · Sofia · notice period: 1 month";
     expect(((await agent.put("/api/settings").send({ profile }).expect(200)).body as SettingsView).profile).toBe(profile);

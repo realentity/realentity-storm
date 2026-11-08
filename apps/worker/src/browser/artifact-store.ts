@@ -11,8 +11,8 @@ export interface ArtifactOwner {
 }
 
 /**
- * Files a run produces (README §6, §9): screenshots, traces, accepted downloads. Stored under ARTIFACTS_DIR by run,
- * each with an Artifact row (kind, size, SHA-256); the api serves them to me only.
+ * Files a run produces (docs/design.md §6, §9): screenshots, traces, accepted downloads. Stored under ARTIFACTS_DIR by run,
+ * each with an Artifact row (kind, size, SHA-256); the api serves them to the user only.
  */
 export class ArtifactStore {
   readonly root: string;
@@ -71,7 +71,7 @@ export class ArtifactStore {
     }
   }
 
-  /** A download of mine (file.read): its row and content, only from inside ARTIFACTS_DIR. */
+  /** A download of the user's (file.read): its row and content, only from inside ARTIFACTS_DIR. */
   async readDownload(prisma: PrismaClient, userId: string, artifactId: string): Promise<{ name: string; mime: string; sha256: string; content: Buffer }> {
     const artifact = await prisma.artifact.findFirst({ where: { artifactId, userId, kind: "download" } });
     if (!artifact) throw new Error(`There is no download ${artifactId}`);

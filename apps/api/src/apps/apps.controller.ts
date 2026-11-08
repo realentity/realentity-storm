@@ -59,7 +59,7 @@ export class AppsController {
     return this.apps.create(user.userId, body.source);
   }
 
-  /** M35-T1: a draft App checked as I edit it; nothing is saved. */
+  /** M35-T1: a draft App checked while it is edited; nothing is saved. */
   @Post("check")
   check(
     @CurrentUser() user: AuthenticatedUser,
@@ -76,7 +76,7 @@ export class AppsController {
     return this.apps.draftType(user.userId, body);
   }
 
-  /** M35-T4: a type drafted from a sample I paste. */
+  /** M35-T4: a type drafted from a pasted sample. */
   @Post("draft-type/sample")
   draftTypeFromSample(@Body(new ZodBodyPipe(DraftTypeSampleRequestSchema)) body: DraftTypeSampleRequest): DraftTypeView {
     return this.apps.draftTypeFromSample(body.sample);

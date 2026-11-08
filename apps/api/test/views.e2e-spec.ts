@@ -129,7 +129,7 @@ describe("views", () => {
     await agent.get(`/api/views/${pipelineId}?limit=5000`).expect(400);
   });
 
-  it("keeps my marks: a hiding mark moves the row to its tab, and back", async () => {
+  it("keeps the user's marks: a hiding mark moves the row to its tab, and back", async () => {
     const { pipelineId } = await create(RELEASES);
     await release("v1", { title: "v1.0.0", stars: 5 });
     await release("v2", { title: "v2.0.0", stars: 40 });

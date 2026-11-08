@@ -181,7 +181,7 @@ steps:
     ]);
   });
 
-  it("skips an item's side effect when I reject it, and acts on the others", async () => {
+  it("skips an item's side effect when the user rejects it, and acts on the others", async () => {
     const runId = await runner.start(await version(APPLY), { trigger: "manual" });
     await runner.advance(runId);
     const [p0, p1] = await proposals(runId);
@@ -193,7 +193,7 @@ steps:
     expect(applySteps.map((s) => s.status)).toEqual(["SKIPPED", "DONE"]);
   });
 
-  it("uses my edited payload, not the original", async () => {
+  it("uses the user's edited payload, not the original", async () => {
     const runId = await runner.start(await version(APPLY), { trigger: "manual" });
     await runner.advance(runId);
     const [p0, p1] = await proposals(runId);
@@ -203,7 +203,7 @@ steps:
     expect(submit.calls).toEqual([{ url: JOBS[0].applyUrl, letter: "My own words" }]);
   });
 
-  it("lets me pick items at gate.review; the selection can only drop items", async () => {
+  it("lets the user pick items at gate.review; the selection can only drop items", async () => {
     const runId = await runner.start(
       await version(`
 name: Pick
@@ -381,7 +381,7 @@ steps:
     });
 
     // M2-S4
-    it("refuses a recipient that isn't the one its source produced, unless I approved it as new", async () => {
+    it("refuses a recipient that isn't the one its source produced, unless the user approved it as new", async () => {
       const runId = await runner.start(await version(SEND), { trigger: "manual" });
       await runner.advance(runId);
       const [p0, p1] = await proposals(runId);

@@ -117,7 +117,7 @@ steps:
     expect(await db.client.artifact.count({ where: { runId, kind: "download" } })).toBe(0);
   });
 
-  it("M11-T5: browser.upload sends my approved document only after Act, and file.read reads a PDF's text", async () => {
+  it("M11-T5: browser.upload sends the approved document only after Act, and file.read reads a PDF's text", async () => {
     const source = `name: Upload CV
 policy: { allowedDomains: [ats.localhost] }
 steps:

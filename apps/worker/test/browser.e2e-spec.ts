@@ -194,7 +194,7 @@ ${extra
     }
   });
 
-  it("M8-I2: a CAPTCHA hands the live page to me; Continue goes on from that page, without reloading it", async () => {
+  it("M8-I2: a CAPTCHA hands the live page to the user; Continue goes on from that page, without reloading it", async () => {
     const runId = await startRun(open(sites.url("app", "/captcha"), 'headed: true\nwaitFor: "#ready"'));
     const advancing = runner.advance(runId);
 
@@ -204,7 +204,7 @@ ${extra
     // A job arriving for the run meanwhile doesn't claim it: its step still holds the page.
     expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
 
-    sites.solveCaptcha(); // what I do in the live view
+    sites.solveCaptcha(); // what the user does in the live view
     await db.client.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { status: "CONTINUED", resolvedAt: new Date() } });
     expect(await advancing).toBe("DONE");
     expect((await stepOf(runId)).output).toMatchObject({ text: "Solved content" });
@@ -238,7 +238,7 @@ ${extra
 
     const headless = await startRun(open(sites.url("app", "/captcha")));
     expect(await runner.advance(headless)).toBe("FAILED");
-    expect((await stepOf(headless)).error).toContain("CAPTCHA: needs me, and this step has no live view (set headed: true");
+    expect((await stepOf(headless)).error).toContain("CAPTCHA: needs you, and this step has no live view (set headed: true");
   });
 
   it("after a restart an open takeover expires and its run runs the step again", async () => {

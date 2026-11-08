@@ -40,7 +40,7 @@ const NAVIGATION = [
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-/** What pipelines produce, where I act on it: these hand-built pages, then the pipelines' own (M27, `view`). */
+/** What pipelines produce, where the user acts on it: these hand-built pages, then the pipelines' own (M27, `view`). */
 const PAGES = [
   { to: "/insight", label: "Insight", icon: IconChartBar },
 ];

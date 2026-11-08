@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-# Storm's docker compose, from anywhere in the repository (docs/deployment.md).
+# Storm's docker compose, from anywhere in the repository (docs/self-hosting.md).
 #   ./docker/storm up             build and start (or update) everything
 #   ./docker/storm check          every credential opens with this ENCRYPTION_KEY (values are never printed)
-#   ./docker/storm restore-test   last night's dump restored into a test database and checked; the result on Telegram (M18-T4)
+#   ./docker/storm restore-test   the newest dump restored into a test database and checked; the result on Telegram (M18-T4)
 #   ./docker/storm <args>         passed to docker compose: ps, logs -f worker, restart worker, down, ...
-# STORM_LOCAL=1 adds compose.local.yml (a PostgreSQL container, for testing on a workstation).
+# STORM_LOCAL=1 adds compose.local.yml (a PostgreSQL container, when the host has none).
+# The repository's .env (or STORM_ENV_FILE) is the containers' environment and also fills compose.yml's ${...}
+# settings: STORM_DATA_DIR, STORM_PORT, STORM_HOOKS_PORT.
 set -euo pipefail
 # Git Bash on Windows (local tests): a native path (pwd -W), and no rewriting of container paths.
 here="$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))"
 export MSYS_NO_PATHCONV=1
 
+env_file="${STORM_ENV_FILE:-$here/../.env}"
 files=(-f "$here/compose.yml")
 [ "${STORM_LOCAL:-0}" = "1" ] && files+=(-f "$here/compose.local.yml")
+[ -f "$env_file" ] && files=(--env-file "$env_file" "${files[@]}")
 compose() { docker compose "${files[@]}" "$@"; }
 
-# A value from .env, never printed.
-env_value() { grep -m1 "^$1=" "$here/../.env" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+# A value from the environment, else from .env; never printed.
+env_value() {
+  if [ -n "${!1:-}" ]; then printf '%s\n' "${!1}"; return 0; fi
+  grep -m1 "^$1=" "$env_file" | cut -d= -f2- | sed "s/^[\"']//; s/[\"']$//"
+}
 
 # A result for Storm's Health page (M26): POST /hooks/health on the hooks-only site, with HEALTH_REPORT_TOKEN; Storm
 # alerts once per problem. Without the token (or Storm down), the result goes to Telegram directly.
@@ -41,14 +48,24 @@ tell() {
     "https://api.telegram.org/bot$token/sendMessage" || true
 }
 
-# The restore test of docs/deployment.md as one command: the newest nightly dump (or $2) into storm_restore_test,
-# the counts against the live database, the credentials opened with this ENCRYPTION_KEY, the test database dropped.
-# The restore test runs on the 1st: a report older than a month and a few days means it stopped.
+# The restore test of docs/self-hosting.md as one command, for a PostgreSQL on this host (it uses sudo -u postgres):
+# the newest dump (or $2) into storm_restore_test, the counts against the live database, the credentials opened with
+# this ENCRYPTION_KEY, the test database dropped. The live database and its owner come from DATABASE_URL; the dumps
+# are STORM_DUMPS/<database>-*.dump (pg_dump -Fc), STORM_DUMPS from the environment or .env.
+# Run monthly (a timer or cron job): a report older than a month and a few days means it stopped.
 MONTH_HOURS=$((35 * 24))
 
 restore_test() {
-  local dumps="${STORM_DUMPS:-/var/backups/postgres}" db=storm_restore_test dump age problems=()
-  dump="${1:-$(ls -1t "$dumps"/storm-*.dump 2>/dev/null | head -n1 || true)}"
+  local url live owner dumps db=storm_restore_test dump age problems=()
+  url="$(env_value DATABASE_URL)"
+  live="$(printf '%s' "$url" | sed -E 's#^[a-z]+://[^/]*/([^?]+).*#\1#')"
+  owner="$(printf '%s' "$url" | sed -E 's#^[a-z]+://([^:@/]+).*#\1#')"
+  dumps="$(env_value STORM_DUMPS || true)"
+  if [ -z "$dumps" ]; then
+    echo "Set STORM_DUMPS (the folder with the nightly dumps) in .env" >&2
+    return 1
+  fi
+  dump="${1:-$(ls -1t "$dumps"/"$live"-*.dump 2>/dev/null | head -n1 || true)}"
   if [ -z "$dump" ] || [ ! -f "$dump" ]; then
     report restore-test false "no dump in $dumps" "$MONTH_HOURS"
     echo "No dump in $dumps" >&2
@@ -60,10 +77,10 @@ restore_test() {
   sql() { sudo -u postgres psql -v ON_ERROR_STOP=1 -qtA "$@"; }
   sudo -u postgres dropdb --if-exists "$db"
   trap 'sudo -u postgres dropdb --if-exists storm_restore_test || true' EXIT
-  sudo -u postgres createdb -O storm_user "$db"
+  sudo -u postgres createdb -O "$owner" "$db"
   sql -d "$db" -c 'CREATE EXTENSION vector;' -c 'CREATE EXTENSION citext;'
   # The dumps are root's (the nightly backup's): read here, given to pg_restore on stdin.
-  if ! sudo -u postgres pg_restore -d "$db" --no-owner --no-comments --role=storm_user --exit-on-error < "$dump"; then
+  if ! sudo -u postgres pg_restore -d "$db" --no-owner --no-comments --role="$owner" --exit-on-error < "$dump"; then
     report restore-test false "pg_restore failed for $(basename "$dump")" "$MONTH_HOURS"
     echo "pg_restore failed for $dump" >&2
     return 1
@@ -73,23 +90,23 @@ restore_test() {
   local latest='SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name DESC LIMIT 1;'
   local dumped current schema
   dumped="$(sql -d "$db" -c "$latest" 2>/dev/null || echo "?")"
-  current="$(sql -d storm -c "$latest" 2>/dev/null || echo "?")"
+  current="$(sql -d "$live" -c "$latest" 2>/dev/null || echo "?")"
   [ "$dumped" = "?" ] && problems+=("the dump has no migrations table")
   if [ "$dumped" = "$current" ]; then schema="schema $dumped"; else schema="schema $dumped (live: $current, migrated since)"; fi
 
   # The tables there since M2, which a working install never has empty; the rest are shown, not checked.
-  local table restored live counts=()
+  local table restored now counts=()
   for table in Pipelines Runs Credentials Facts Applications; do
     restored="$(sql -d "$db" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "-")"
-    live="$(sql -d storm -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "-")"
-    counts+=("$table $restored/$live")
+    now="$(sql -d "$live" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null || echo "-")"
+    counts+=("$table $restored/$now")
     case "$table" in Pipelines | Runs | Credentials) ;; *) continue ;; esac
     [ "$restored" = "-" ] && problems+=("$table is missing from the dump")
-    [ "$restored" = "0" ] && [ "$live" != "0" ] && problems+=("$table is empty in the dump")
+    [ "$restored" = "0" ] && [ "$now" != "0" ] && problems+=("$table is empty in the dump")
   done
 
-  local url credentials
-  url="$(env_value DATABASE_URL | sed 's|/storm$|/'"$db"'|')"
+  local credentials
+  url="$(printf '%s' "$url" | sed -E "s#/$live([?]|\$)#/$db\1#")"
   local status=0
   credentials="$(compose run --rm --no-deps -e DATABASE_URL="$url" worker node dist/tools/check-credentials.js 2>&1)" || status=$?
   # Only the tool's own lines: compose adds "Container … Creating" and the like.

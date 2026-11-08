@@ -120,7 +120,7 @@ function Badge({ g }: { g: GoogleStatusView }) {
 function Setup({ g }: { g: GoogleStatusView }) {
   return (
     <div className="text-secondary small" data-testid="google-setup">
-      Not set up: create an OAuth client in Google Cloud (docs/deployment.md, "Google Calendar") with this redirect URI, then put its id and
+      Not set up: create an OAuth client in Google Cloud (docs/google-calendar-setup.md) with this redirect URI, then put its id and
       secret in <code>.env</code> as <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code>:
       <div className="mt-1">
         <code>{g.redirectUri}</code>

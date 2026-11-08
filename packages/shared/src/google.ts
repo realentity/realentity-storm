@@ -8,7 +8,7 @@ export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
-/** My address (the id token's email) and my calendars' events: read, create. */
+/** The user's address (the id token's email) and their calendars' events: read, create. */
 export const GOOGLE_SCOPES = ["openid", "email", "https://www.googleapis.com/auth/calendar.events"] as const;
 
 export interface GoogleClient {
@@ -79,7 +79,7 @@ async function tokenRequest(send: typeof fetch, form: Record<string, string>): P
   if (!response.ok || typeof body.access_token !== "string") {
     const code = typeof body.error === "string" ? body.error : `HTTP ${response.status}`;
     const detail = typeof body.error_description === "string" ? `: ${body.error_description}` : "";
-    // invalid_grant: the refresh token was revoked or expired (or the code was used); invalid_client is my setup.
+    // invalid_grant: the refresh token was revoked or expired (or the code was used); invalid_client is a setup error.
     return { ok: false, error: `Google refused the token (${code}${detail})`, reconnect: code === "invalid_grant" };
   }
   return {

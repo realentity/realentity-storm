@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createPipeline, REPLIES, unique } from "./support";
 
 // M6-T6
-test("a rule I add is active for the step type and pipeline I pick; I can edit, disable and enable it", async ({ page }) => {
+test("a rule added is active for the step type and pipeline picked; it can be edited, disabled and enabled", async ({ page }) => {
   const pipeline = await createPipeline(page, REPLIES(unique("Rules e2e")));
   const text = unique("Keep replies under 80 words");
 

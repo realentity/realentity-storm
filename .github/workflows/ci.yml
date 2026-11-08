@@ -10,6 +10,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  hygiene:
+    name: Secrets and commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The whole history every time (it is small): a secret is a problem in any commit, not only the new ones.
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "$base/$tarball" -O "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          tar -xzf "$tarball" gitleaks
+          ./gitleaks git --no-banner --redact --config .gitleaks.toml .
+
+      # AI use is disclosed once, in the README; commits carry no attribution trailers (.githooks/commit-msg).
+      - name: No AI attribution trailers
+        run: |
+          if git log --format='%H %B' | grep -iE 'co-authored-by:.*(claude|anthropic)|generated with \[?claude code|noreply@anthropic\.com|claude-session:'; then
+            echo "::error::Commit messages above carry AI attribution trailers; reword them."
+            exit 1
+          fi
+
   verify:
     name: Build, lint, typecheck, unit and integration tests
     runs-on: ubuntu-latest
@@ -51,7 +80,7 @@ jobs:
 
   browser:
     name: Browser tests (Playwright, composed stack)
-    # README test strategy: end-to-end web tests run on PRs to main.
+    # docs/design.md test strategy: end-to-end web tests run on PRs to main.
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 30

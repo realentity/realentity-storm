@@ -31,7 +31,7 @@ const PROFILE = "Ana Petrova · ana@storm.test · +359 88 123 4567 · Sofia · E
 
 /**
  * The mapForm model: values from the profile like a real one; the salary from <facts> when one asks it (source
- * fact with its id), else null: the profile doesn't say. `claim` makes it name a fact that isn't mine.
+ * fact with its id), else null: the profile doesn't say. `claim` makes it name a fact that isn't the user's.
  */
 class FactLlm implements LlmClient {
   prompts: string[] = [];
@@ -61,8 +61,8 @@ class FactLlm implements LlmClient {
   }
 }
 
-// M15: facts about me, from my approvals and my answers; reused by the next form; asked once.
-describe("facts about me", () => {
+// M15: facts about the user, from their approvals and their answers; reused by the next form; asked once.
+describe("facts about the user", () => {
   let db: PrismaConnection;
   let userId: string;
   let sites: FixtureSites;
@@ -154,7 +154,7 @@ steps:
     }
     throw new Error(`Timed out waiting for ${what}`);
   };
-  /** What the api does with my answer (FactsService.answer): the fact, the question answered, the wait continued. */
+  /** What the api does with the user's answer (FactsService.answer): the fact, the question answered, the wait continued. */
   async function answer(questionId: string, text: string) {
     const question = await db.client.question.findUniqueOrThrow({ where: { questionId } });
     const fact = await db.client.fact.create({ data: { userId, key: factKey(question.question), question: question.question, answer: text, source: "ASKED", site: question.site } });
@@ -178,7 +178,7 @@ steps:
     const advancing = runner.advance(runId);
 
     // The wait, not the question: it is asked, sent on Telegram, then waited for (answered earlier, nothing continues).
-    await until(() => db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } }), "the wait for my answer");
+    await until(() => db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } }), "the wait for the user's answer");
     const question = await db.client.question.findFirstOrThrow({ where: { runId, status: "OPEN" } });
     expect(question).toMatchObject({ question: "Salary expectation", site: "ats.localhost", stepKey: "map", options: [] });
     expect(telegram).toHaveLength(1);
@@ -206,7 +206,7 @@ steps:
     expect(await db.client.fact.findUniqueOrThrow({ where: { factId: fact.factId } })).toMatchObject({ uses: 1, lastUsedAt: expect.any(Date) as unknown });
   });
 
-  it("M15-T1: what I fill in or change at the gate becomes a fact; free text, unchanged values and rejections don't", async () => {
+  it("M15-T1: what the user fills in or changes at the gate becomes a fact; free text, unchanged values and rejections don't", async () => {
     await db.client.fact.create({ data: { userId, key: factKey("Salary expectation"), question: "Salary expectation", answer: "3 500 EUR", source: "ME" } });
     const runId = await runner.start(await createVersion(db.client, userId, APPLY()), { trigger: "manual" });
     expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
@@ -236,9 +236,9 @@ steps:
     expect((await db.client.fact.findMany({ orderBy: { question: "asc" } })).map((f) => f.answer)).toEqual(["+359 88 999 0000", "4 200 EUR"]);
   });
 
-  it("M15-S1: a form step never writes a fact, and a fact the LLM names that isn't mine (or with another answer) fills nothing", async () => {
+  it("M15-S1: a form step never writes a fact, and a fact the LLM names that isn't the user's (or with another answer) fills nothing", async () => {
     const mine = await db.client.fact.create({ data: { userId, key: factKey("Salary expectation"), question: "Salary expectation", answer: "4 000 EUR", source: "ME" } });
-    // A made-up fact id, and my fact with an answer it changed: neither fills the field.
+    // A made-up fact id, and the user's fact with an answer it changed: neither fills the field.
     for (const claim of [
       { factId: "00000000-0000-4000-8000-000000000bad", value: "1 EUR" },
       { factId: mine.factId, value: "1 EUR" },
@@ -246,8 +246,8 @@ steps:
       llm.claim = claim;
       const runId = await runner.start(await createVersion(db.client, userId, APPLY(`Apply ${claim.factId.slice(0, 4)}`)), { trigger: "manual", dryRun: true });
       const advancing = runner.advance(runId);
-      // The field is empty, so the step asks me; I don't answer: the field stays empty for the gate.
-      await until(() => db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } }), "the wait for my answer");
+      // The field is empty, so the step asks the user; no answer comes: the field stays empty for the gate.
+      await until(() => db.client.takeover.findFirst({ where: { runId, waitsFor: "answer", status: "OPEN" } }), "the wait for the user's answer");
       const question = await db.client.question.findFirstOrThrow({ where: { runId, status: "OPEN" } });
       await db.client.takeover.updateMany({ where: { runId, waitsFor: "answer", status: "OPEN" }, data: { status: "CONTINUED" } });
       expect(await advancing).toBe("DONE");
@@ -255,7 +255,7 @@ steps:
       expect((map.output as { fields: FormField[] }).fields.find((f) => f.label === "Salary expectation")).toMatchObject({ value: null, source: "none" });
       expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({ status: "EXPIRED" });
     }
-    // Mapping (and a page's text) wrote nothing: still only my fact, unchanged.
+    // Mapping (and a page's text) wrote nothing: still only the user's fact, unchanged.
     expect(await db.client.fact.findMany()).toEqual([expect.objectContaining({ factId: mine.factId, answer: "4 000 EUR", uses: 0 })]);
   });
 });

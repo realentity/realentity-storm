@@ -6,7 +6,7 @@ import { api } from "../lib/endpoints";
 import { useAction } from "../lib/use-load";
 import { ErrorAlert } from "./ui";
 
-/** A question the run waits for me to answer (M15-T3): here or by replying on Telegram; the answer becomes a fact. */
+/** A question the run waits for the user to answer (M15-T3): here or by replying on Telegram; the answer becomes a fact. */
 export function QuestionCard({ question, onAnswered }: { question: QuestionView; onAnswered: () => void }) {
   const [answer, setAnswer] = useState("");
   const action = useAction();

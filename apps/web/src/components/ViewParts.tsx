@@ -94,7 +94,7 @@ export function RowLink({ view, row }: { view: PipelineView; row: ViewRow }) {
   );
 }
 
-/** My marks on a row, as toggles. */
+/** The user's marks on a row, as toggles. */
 export function RowMarks({
   pipelineId,
   view,

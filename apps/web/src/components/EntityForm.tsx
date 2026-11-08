@@ -15,7 +15,7 @@ function shown(field: FormField, value: unknown): string {
 }
 
 /**
- * My fields of an entity (M32), an input per kind. Sent as typed: the api reads each as its kind and says what it
+ * An entity's mine fields (M32), an input per kind. Sent as typed: the api reads each as its kind and says what it
  * can't, per field; an empty one clears it.
  */
 export function EntityForm({

@@ -39,7 +39,7 @@ const GAP_X = 84;
 const GAP_Y = 26;
 const PAD = 24;
 
-/** An arrow's colour by who may make it: me, a pipeline, or both. */
+/** An arrow's colour by who may make it: the user, a pipeline, or both. */
 function edgeColor(by: StageActor[]): string {
   if (by.length === 2) return "var(--tblr-primary)";
   return by[0] === "pipeline" ? "var(--tblr-purple)" : "var(--tblr-secondary)";
@@ -72,7 +72,7 @@ export function StagesDesigner({
         <div className="alert alert-warning mb-0">The YAML has errors: fix them on the YAML tab to change the stages here.</div>
       )}
       <div className="text-secondary small">
-        Where each entity is (new, applied, paid…), and how it may move on: by me on its page, by a pipeline&apos;s save, or both. Pipelines
+        Where each entity is (new, applied, paid…), and how it may move on: by you on its page, by a pipeline&apos;s save, or both. Pipelines
         only move forward along the arrows they may take.
       </div>
       {app.types.map(([name, type]) =>
@@ -154,7 +154,7 @@ function TypeStages({
                 title={actor === "me" ? HELP.moveByMe : HELP.moveByPipeline}
                 data-testid={`move-by-${actor}`}
               />
-              <span className="form-check-label">{actor === "me" ? "me, on its page" : "a pipeline's save"}</span>
+              <span className="form-check-label">{actor === "me" ? "you, on its page" : "a pipeline's save"}</span>
             </label>
           ))}
         </div>
@@ -413,7 +413,7 @@ function Legend() {
   );
   return (
     <span className="d-inline-flex gap-3 ms-3 flex-wrap">
-      {item("me", ["me"])}
+      {item("you", ["me"])}
       {item("a pipeline", ["pipeline"])}
       {item("both", ["me", "pipeline"])}
       {item("a move back", ["me"], true)}
@@ -473,7 +473,7 @@ function AddMove({ states, onAdd }: Readonly<{ states: string[]; onAdd: (from: s
             title={actor === "me" ? HELP.moveByMe : HELP.moveByPipeline}
             data-testid={`new-move-by-${actor}`}
           />
-          <span className="form-check-label">{actor === "me" ? "me" : "a pipeline"}</span>
+          <span className="form-check-label">{actor === "me" ? "you" : "a pipeline"}</span>
         </label>
       ))}
       <button
@@ -506,7 +506,7 @@ interface Box {
 /**
  * Where each state goes: in columns by how far along it is. A state's column is one past the furthest of the states a
  * forward move reaches it from, counting the moves a pipeline makes (the path an entity takes) when there are any, else
- * every move to a later state; within a column, in the order I wrote them.
+ * every move to a later state; within a column, in the order written.
  */
 function stageLayout(states: string[], edges: StageEdge[]): { boxes: Map<string, Box>; width: number; rowsHeight: number } {
   const index = new Map(states.map((s, i) => [s, i]));

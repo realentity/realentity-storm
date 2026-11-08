@@ -5,7 +5,7 @@ import { APPLICATION_STATUSES } from "./jobs-api";
 import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 
 /**
- * Pipeline definition (README §2.2): what a pipeline is authored as (YAML or JSON) before compilation.
+ * Pipeline definition (docs/design.md §2.2): what a pipeline is authored as (YAML or JSON) before compilation.
  * This schema checks structure only. Step inputs (`with`) are checked by the compiler in @realentity/storm-steps against the
  * step catalog, because they may contain {{references}} to earlier steps.
  */
@@ -56,7 +56,7 @@ export const EventTriggerSchema = z.discriminatedUnion("on", [
   /** Started by a row's button on a pipeline's page (M27), with the row: {{trigger.item}}. `collection` limits it to one. */
   z.object({ on: z.literal("view.action"), collection: z.string().regex(VIEW_COLLECTION).optional() }).strict(),
   /**
-   * An entity of the pipeline's App was added or changed (M30): by another pipeline's data.save, or by me (M32).
+   * An entity of the pipeline's App was added or changed (M30): by another pipeline's data.save, or by the user (M32).
    * `field` limits it to changes of that field.
    */
   z
@@ -136,7 +136,7 @@ export const PipelineDefinitionSchema = z
     steps: z.array(PipelineStepSchema).min(1).max(50),
     limits: z.record(z.string(), z.string().regex(LIMIT, '"N/day" or "N/hour"')).default({}),
     policy: PipelinePolicySchema.default({ allowedDomains: [], allowedRecipients: [] }),
-    /** Its page (M27): the collection it saves, in the menu, as a list with my marks and buttons. */
+    /** Its page (M27): the collection it saves, in the menu, as a list with the user's marks and buttons. */
     view: PipelineViewSchema.optional(),
   })
   .strict();
@@ -175,7 +175,7 @@ export function namedPipelines(definition: Pick<PipelineDefinition, "trigger" | 
   return [...names];
 }
 
-/** What side-effect steps may target, enforced at run time (README §2.2 "Policy"). */
+/** What side-effect steps may target, enforced at run time (docs/design.md §2.2 "Policy"). */
 export interface CompiledPolicy {
   /** Static allowlists: the definition's policy plus literal targets found in steps. */
   allowedDomains: string[];

@@ -15,7 +15,7 @@ import { HistoryStep } from "../src/steps/history-step";
 import { AlertStep } from "../src/steps/map-alert-steps";
 import { Counting, createVersion } from "./support/test-steps";
 
-/** The test database, its own schema in the search_path: "my app's database" for these tests. */
+/** The test database, its own schema in the search_path: "the user's app's database" for these tests. */
 function appDatabase(options = "-c search_path=m29app"): { url: string; host: string; password: string } {
   const url = new URL(process.env.DATABASE_URL!);
   url.search = "";

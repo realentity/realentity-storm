@@ -18,8 +18,8 @@ export interface BriefEvent {
 export type TodaysEvents = (userId: string, from: Date, to: Date) => Promise<BriefEvent[] | null>;
 
 /**
- * The morning brief (M25, README §12): every morning on the Storm bot, what today needs. Today's calendar (when
- * Google is connected), what waits for me (drafts and follow-ups at their gates, runs paused in the live view), the
+ * The morning brief (M25, docs/design.md §12): every morning on the Storm bot, what today needs. Today's calendar (when
+ * Google is connected), what waits for the user (drafts and follow-ups at their gates, runs paused in the live view), the
  * runs that failed in the last day, unpaid bills due soon. A day with none of it says so in one line.
  */
 export class MorningBrief {
@@ -109,7 +109,7 @@ export class MorningBrief {
   private async bills(userId: string, now: Date): Promise<string | null> {
     const today = dayString(now);
     const until = dayString(new Date(now.getTime() + BILLS_DAYS * DAY_MS));
-    // M33: the Bill entities bill.save keeps in my Apps, not yet paid.
+    // M33: the Bill entities bill.save keeps in the user's Apps, not yet paid.
     const unpaid = await this.prisma.dataEntity.findMany({
       where: { type: "Bill", app: { userId }, removedAt: null, OR: [{ stage: null }, { stage: { not: "paid" } }] },
       select: { value: true },
@@ -128,7 +128,7 @@ export class MorningBrief {
   }
 }
 
-/** Today in Sofia, as instants: from its midnight to the next. */
+/** Today in ZONE, as instants: from its midnight to the next. */
 function dayOf(now: Date): [Date, Date] {
   const day = dayString(now);
   const offset = offsetMinutes(new Date(`${day}T12:00:00Z`));
@@ -136,7 +136,7 @@ function dayOf(now: Date): [Date, Date] {
   return [from, new Date(from.getTime() + DAY_MS)];
 }
 
-/** The date in Sofia, YYYY-MM-DD. */
+/** The date in ZONE, YYYY-MM-DD. */
 function dayString(at: Date): string {
   return at.toLocaleDateString("en-CA", { timeZone: ZONE });
 }

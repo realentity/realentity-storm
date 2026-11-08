@@ -23,10 +23,10 @@ export interface TakeoverOptions {
 const WAITING = ["OPEN", "TAKEN_OVER"] as const;
 
 /**
- * The live browser handed to me and back (README §6, M8-T4/T5). The step stays in progress with its page open; the
- * run shows WAITING_FOR_USER (no other job claims it while a takeover is open) until I press Continue, which goes on
- * from the page as I left it, or Abort, which stops the run. Nobody within the timeout fails the step; the kill switch
- * stops the run.
+ * The live browser handed to the user and back (docs/design.md §6, M8-T4/T5). The step stays in progress with its page
+ * open; the run shows WAITING_FOR_USER (no other job claims it while a takeover is open) until the user presses
+ * Continue, which goes on from the page as they left it, or Abort, which stops the run. Nobody within the timeout
+ * fails the step; the kill switch stops the run.
  */
 export class TakeoverDesk {
   private readonly pollMs: number;
@@ -99,7 +99,7 @@ export class TakeoverDesk {
       ]);
       if (run.status === "ABORTED") {
         await this.resolve(scope, takeover, "EXPIRED");
-        throw new RunStopped("Stopped while waiting for me in the live view");
+        throw new RunStopped("Stopped while waiting for you in the live view");
       }
       if (current.status === "CONTINUED") {
         await this.setRun(scope, "WAITING_FOR_USER", "RUNNING");

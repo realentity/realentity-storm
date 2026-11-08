@@ -41,7 +41,7 @@ describe("format", () => {
     expect(formatDuration("2026-10-31T08:00:00Z", "2026-10-31T08:00:01.250Z")).toBe("1.3 s");
     expect(formatDuration("2026-10-31T08:00:00Z", "2026-10-31T08:03:05Z")).toBe("3 min 5 s");
     expect(formatDuration("2026-10-31T08:00:00Z", null)).toBe("");
-    expect(statusLabel("WAITING_FOR_USER")).toBe("waiting for me");
+    expect(statusLabel("WAITING_FOR_USER")).toBe("waiting for you");
     expect(statusTone("FAILED")).toBe("red");
     expect(statusTone("SOMETHING_NEW")).toBe("secondary");
   });

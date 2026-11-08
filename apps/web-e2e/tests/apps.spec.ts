@@ -55,7 +55,7 @@ steps:
   await expect(page.getByTestId("describe-change")).toBeVisible();
 
   // Dropping a field the pipeline doesn't name is fine; renaming its type isn't.
-  // M35-T1: the designer says so as I type, before Save.
+  // M35-T1: the designer says so while typing, before Save.
   await page.getByTestId("edit-app").click();
   await page.getByTestId("tab-yaml").click();
   await page.getByTestId("app-source").fill(app.replace("  Disk:", "  Drive:"));

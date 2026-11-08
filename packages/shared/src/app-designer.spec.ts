@@ -48,7 +48,7 @@ const valid = (source: string) => {
   return definition!;
 };
 
-// M35-U1: each designer edit gives the YAML expected, my comments and order kept
+// M35-U1: each designer edit gives the YAML expected, its comments and order kept
 describe("the App designer's edits (M35-T2)", () => {
   it("adds a type with a key field", () => {
     const edited = addType(SOURCE, "Issuer");
@@ -170,7 +170,7 @@ describe("a type from a sample (M35-T4)", () => {
     kind: { type: "enum", values: ["hdd", "ssd"] },
   };
 
-  it("adds the fields I kept as a new type, each a line", () => {
+  it("adds the kept fields as a new type, each a line", () => {
     const edited = addDraftedFields(SOURCE, "Disk", drafted, "id", "name");
     expect(edited).toContain(
       "  Disk:\n    key: id\n    title: name\n    fields:\n      id: { type: text, required: true }\n      name: { type: text, required: true }\n      price: { type: money, currency: currency }\n      currency: { type: text }\n      kind: { type: enum, values: [hdd, ssd] }\n",
@@ -178,7 +178,7 @@ describe("a type from a sample (M35-T4)", () => {
     valid(edited);
   });
 
-  it("drops a currency I didn't keep, and wants the key kept", () => {
+  it("drops a currency not kept, and wants the key kept", () => {
     const { currency: _, ...rest } = drafted;
     expect(addDraftedFields(SOURCE, "Disk", rest, "id")).toContain("price: { type: money }");
     expect(() => addDraftedFields(SOURCE, "Disk", { name: drafted.name }, "id")).toThrow(/key/);

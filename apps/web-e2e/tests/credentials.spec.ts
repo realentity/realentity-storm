@@ -61,18 +61,18 @@ test("a database credential: one connection string, checked as it is typed, its 
   await connection.fill("host=postgres dbname=app");
   await expect(form).toContainText("Not a connection string");
   await expect(form.getByRole("button", { name: "Store" })).toBeDisabled();
-  await connection.fill(`postgresql://reader:${password}@storm.example.ts.net:5433/shop`);
-  await expect(page.getByTestId("connection-hint")).toHaveText("Connects to database shop on storm.example.ts.net:5433 as reader, and nowhere else.");
+  await connection.fill(`postgresql://reader:${password}@db.example.ts.net:5433/shop`);
+  await expect(page.getByTestId("connection-hint")).toHaveText("Connects to database shop on db.example.ts.net:5433 as reader, and nowhere else.");
   await page.screenshot({ path: "test-results/credential-database.png" });
   await form.getByRole("button", { name: "Store" }).click();
 
   const row = page.getByTestId("credentials").locator("tr", { hasText: name });
   await expect(row).toContainText("database");
-  await expect(row).toContainText("storm.example.ts.net");
+  await expect(row).toContainText("db.example.ts.net");
 
   await row.getByRole("button", { name: "Replace" }).click();
   await page.getByLabel("New connection string").fill(`postgresql://reader:${password}@elsewhere.example.org/shop`);
-  await expect(page.getByTestId("connection-hint")).toContainText("not storm.example.ts.net. Another server is another credential.");
+  await expect(page.getByTestId("connection-hint")).toContainText("not db.example.ts.net. Another server is another credential.");
   // The preview names the server, never the password.
   await expect(page.getByTestId("connection-hint")).not.toContainText(password);
 });

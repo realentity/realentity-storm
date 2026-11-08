@@ -38,8 +38,8 @@ export function editableText(value: unknown): string {
 }
 
 /**
- * Targets an edit introduces: values of the target fields that weren't among the proposal's targets. They need my
- * explicit approval (the worker refuses them otherwise). Normalized as the worker does: hosts of URLs for domains,
+ * Targets an edit introduces: values of the target fields that weren't among the proposal's targets. They need the
+ * user's explicit approval (the worker refuses them otherwise). Normalized as the worker does: hosts of URLs for domains,
  * lowercase addresses for recipients.
  */
 export function newTargets(targets: readonly TargetView[], edited: Record<string, unknown>): string[] {

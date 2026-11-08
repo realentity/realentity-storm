@@ -1,8 +1,8 @@
-# M22: my emails nobody answered in 5 days get a short follow-up in the same thread, drafted for my approval.
+# M22: your emails nobody answered in 5 days get a short follow-up in the same thread, drafted for your approval.
 # Rejecting one leaves that thread alone; writing in it again makes it count again. Gmail: sentMailbox is found
 # by itself ([Gmail]/Sent Mail).
 name: Email follow-ups
-description: A follow-up for my emails that got no answer in 5 days.
+description: A follow-up for your emails that got no answer in 5 days.
 trigger: { schedule: "0 9 * * 1-5", tz: Europe/Sofia }
 steps:
   - id: waiting

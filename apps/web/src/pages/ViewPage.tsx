@@ -10,7 +10,7 @@ import { columnLabel, rowTitle } from "../lib/view";
 
 const PAGE = 50;
 
-/** M27: a pipeline's page, as its `view` says: its collection's rows by tab, searched, with my marks and its buttons. */
+/** M27: a pipeline's page, as its `view` says: its collection's rows by tab, searched, with the user's marks and its buttons. */
 export function ViewPage() {
   const { pipelineId = "" } = useParams();
   const [tab, setTab] = useState<ViewTab>("current");

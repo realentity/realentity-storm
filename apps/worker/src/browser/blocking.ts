@@ -19,7 +19,7 @@ const TWO_FACTOR = 'input[autocomplete="one-time-code"], input[name*="otp" i], i
 const TWO_FACTOR_TEXT = /verification code|authentication code|two-factor|2-step|security code|код за потвърждение/i;
 
 /**
- * Why the page needs me (README §6), or null: a CAPTCHA or a 2FA prompt. Unknown pages (a selector that doesn't
+ * Why the page needs the user (docs/design.md §6), or null: a CAPTCHA or a 2FA prompt. Unknown pages (a selector that doesn't
  * appear) and timeouts are found by the step, which knows what it waits for.
  */
 export async function blockingState(page: Page): Promise<string | null> {

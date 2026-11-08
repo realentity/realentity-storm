@@ -21,7 +21,7 @@ export interface JobQueueOptions {
 /** pg-boss keeps its tables in their own schema, next to the application's. */
 const SCHEMA = "pgboss";
 
-/** The job queue (pg-boss in Postgres, README §4). */
+/** The job queue (pg-boss in Postgres, docs/design.md §4). */
 export class JobQueue {
   private constructor(readonly boss: PgBoss) {}
 

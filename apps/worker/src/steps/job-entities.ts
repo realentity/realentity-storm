@@ -34,7 +34,7 @@ export async function jobAppOf(prisma: PrismaClient, context: StepContext): Prom
   return type && contractProblems(type, JOB_ENTITY).length === 0 ? { appId: row.appId, app: app.name, type } : null;
 }
 
-/** Every App of mine that keeps jobs: Insight and the weekly review count them all. */
+/** Every App of the user's that keeps jobs: Insight and the weekly review count them all. */
 export async function jobAppIds(prisma: PrismaClient, userId: string): Promise<string[]> {
   const apps = await prisma.app.findMany({ where: { userId, currentVersionId: { not: null } } });
   const versions = await prisma.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
@@ -46,7 +46,7 @@ export async function jobAppIds(prisma: PrismaClient, userId: string): Promise<s
   });
 }
 
-/** A Job as its pipelines and events see it: what was read, my fields, its stage. */
+/** A Job as its pipelines and events see it: what was read, the user's fields, its stage. */
 export function jobItem(job: JobApp, entity: Pick<DataEntity, "value" | "mine" | "stage">): Item {
   return entityItem(entity.value, entity.mine, { field: job.type.stages!.field, value: entity.stage ?? job.type.stages!.initial });
 }

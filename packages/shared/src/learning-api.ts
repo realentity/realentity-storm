@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LLM_TASKS } from "./runs-api";
 
-/** Step types a rule can be for (README §8): the LLM steps. A rule without one applies to all of them. */
+/** Step types a rule can be for (docs/design.md §8): the LLM steps. A rule without one applies to all of them. */
 export const RULE_STEP_TYPES = LLM_TASKS.filter((task) => task !== "reflection" && task !== "builder" && task !== "browser.teach" && task !== "shop.product");
 export type RuleStepType = (typeof RULE_STEP_TYPES)[number];
 
@@ -14,7 +14,7 @@ export type SuggestionStatusName = (typeof SUGGESTION_STATUSES)[number];
 const RuleText = z.string().trim().min(3).max(1000);
 const RuleStepType = z.enum(RULE_STEP_TYPES as [RuleStepType, ...RuleStepType[]]).nullable();
 
-/** A rule I write myself: active right away. */
+/** A rule the user writes: active right away. */
 export const CreateRuleSchema = z
   .object({
     text: RuleText,

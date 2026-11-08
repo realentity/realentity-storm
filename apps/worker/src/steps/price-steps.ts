@@ -39,10 +39,11 @@ interface Read {
 }
 
 /**
- * price.watch (M24): my enabled Products (a type of mine in the pipeline's App, M33), each shop line's page read by
+ * price.watch (M24): the user's enabled Products (a type of mine in the pipeline's App, M33), each shop line's page read by
  * shop.product (schema.org data, the browser, the cheap model, in that order). What each shop says is kept as an Offer
- * with its price history; a line I removed takes its Offer off. What's new is told once: a shop crossing my target, a
- * new low over `lowestDays`, back in stock. The addresses are mine, so each read may go to its own shop only.
+ * with its price history; a line the user removed takes its Offer off. What's new is told once: a shop crossing their
+ * target, a new low over `lowestDays`, back in stock. The addresses are the user's, so each read may go to its own
+ * shop only.
  */
 export class PriceWatchStep implements StepExecutor {
   readonly type = "price.watch";
@@ -102,7 +103,7 @@ export class PriceWatchStep implements StepExecutor {
       }
       if (!context.dryRun) {
         for (const read of reads) await this.record(context.userId, appId, product.name, read, saved.get(read.offer.key));
-        // A shop line I removed: its Offer goes (its history stays, should the line come back).
+        // A shop line the user removed: its Offer goes (its history stays, should the line come back).
         const kept = new Set(offers.map((o) => o.key));
         const gone = [...saved.values()].filter((e) => !e.removedAt && (e.value as Item).product === product.name && !kept.has(e.key));
         if (gone.length) await this.prisma.dataEntity.updateMany({ where: { dataEntityId: { in: gone.map((e) => e.dataEntityId) } }, data: { removedAt: new Date() } });
@@ -194,7 +195,7 @@ export class PriceWatchStep implements StepExecutor {
   }
 }
 
-/** A Product entity as price.watch reads it: watched unless I said not, its shops a line each. */
+/** A Product entity as price.watch reads it: watched unless the user said not, its shops a line each. */
 function productOf(row: DataEntity): Product & { enabled: boolean } {
   const item = entityItem(row.value, row.mine);
   const shops = Array.isArray(item.shops) ? item.shops.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];

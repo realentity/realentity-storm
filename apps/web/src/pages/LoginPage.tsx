@@ -3,7 +3,7 @@ import { ThemeSwitch } from "../components/ThemeSwitch";
 import { useSession } from "../context/use-session";
 import { ApiError, errorMessage } from "../lib/api";
 
-/** Password + TOTP (README §16). Errors don't say which of the two was wrong. */
+/** Password + TOTP (docs/design.md §16). Errors don't say which of the two was wrong. */
 export function LoginPage() {
   const { login } = useSession();
   const [password, setPassword] = useState("");

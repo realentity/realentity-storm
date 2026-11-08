@@ -11,7 +11,7 @@ const TITLE_NAMES = ["title", "name", "position", "subject", "label", "headline"
  * A data type drafted from sample items (M30-T7), without an LLM: each field's kind from its values (an ISO date, an
  * http(s) address, a number, `{ amount, currency }` as money), nested objects as dotted fields, mixed values as text.
  * A field in every item is required; the key is a field whose value differs in every item. A draft to edit, not a
- * decision: names and which fields matter are mine to choose.
+ * decision: names and which fields matter are the user's to choose.
  */
 export function draftType(items: Item[]): DataType | null {
   const samples = items.filter((item) => item && typeof item === "object" && !Array.isArray(item)).slice(0, 500);

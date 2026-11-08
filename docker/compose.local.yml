@@ -1,6 +1,7 @@
-# Local test of the server setup (Docker Desktop on a workstation): a PostgreSQL container in place of the server's native one.
-#   STORM_ENV_FILE=<a test env> docker compose -f docker/compose.yml -f docker/compose.local.yml up -d --build
-# The test env sets DATABASE_URL=postgresql://aime:aime@postgres:5432/aime and APP_ORIGIN=http://localhost:7100.
+# The production stack with a PostgreSQL container, for a host without PostgreSQL or a local test:
+#   STORM_LOCAL=1 ./docker/storm up            (or STORM_ENV_FILE=<a test env> for a separate test setup)
+# The env sets DATABASE_URL=postgresql://aime:aime@postgres:5432/aime and APP_ORIGIN=http://localhost:7100.
+# Change the password for anything but a test.
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -17,17 +18,6 @@ services:
   migrate:
     depends_on:
       postgres: { condition: service_healthy }
-
-  # No secondary disk on a workstation: the repository's data/ folder (create data/artifacts and data/documents first).
-  api:
-    volumes:
-      - ../data/artifacts:/data/artifacts:ro
-      - ../data/documents:/data/documents
-
-  worker:
-    volumes:
-      - ../data/artifacts:/data/artifacts
-      - ../data/documents:/data/documents:ro
 
 volumes:
   pgdata: {}

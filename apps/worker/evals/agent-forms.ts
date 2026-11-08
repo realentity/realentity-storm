@@ -2,7 +2,7 @@
  * M11-V1's ten application forms, none of them seen while building the agent (its tests use careers.localhost): each
  * a different way of being hard for a form reader. Each is served on its own host (f1.localhost …), the form sent to
  * POST /submit (multipart). `expect` is what that post must hold: exact values, a written answer (any text of at
- * least 20 characters, without `not`), a field that must stay out or empty, my CV attached.
+ * least 20 characters, without `not`), a field that must stay out or empty, the CV attached.
  */
 export interface Expect {
   is?: string;
@@ -225,7 +225,7 @@ export const FORMS: FormFixture[] = [
           <button type="submit">Apply</button>`)}`,
       ),
     },
-    // The posting is hybrid in Sofia and I'm open to hybrid there; both of my skills it lists, none I don't have.
+    // The posting is hybrid in Sofia and the user is open to hybrid there; both of their skills it lists, none they lack.
     expect: { ...BASIC, arrangement: { is: "Hybrid" }, skills: { is: "csharp,azure" } },
     cv: "cv",
   },

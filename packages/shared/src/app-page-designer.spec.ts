@@ -24,13 +24,13 @@ pages:
 
 // M37-U: each page edit gives the YAML expected, the rest as written
 describe("the Pages tab's edits (M37-T1)", () => {
-  it("sets a page's property where it is, keeping my comment", () => {
+  it("sets a page's property where it is, keeping its comment", () => {
     expect(setPageProperty(SOURCE, "list", "Bill", "columns", ["issuer", "amount", "status"])).toBe(
       SOURCE.replace("columns: [issuer, amount]   #", "columns: [issuer, amount, status] #"),
     );
   });
 
-  it("adds a property where I'd write it, a list on one line", () => {
+  it("adds a property where it would be written, a list on one line", () => {
     const edited = setPageProperty(SOURCE, "list", "Bill", "menu", { label: "Bills", icon: "receipt" });
     expect(edited).toContain(
       "  - list: Bill\n    menu: { label: Bills, icon: receipt }\n    columns: [issuer, amount]   # the two I look at\n",

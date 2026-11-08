@@ -11,7 +11,7 @@ export interface RotationResult {
 
 /**
  * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens) to the current root key version
- * (README §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
+ * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
  * only if its version is still the old one.
  */
 export class KeyRotation {

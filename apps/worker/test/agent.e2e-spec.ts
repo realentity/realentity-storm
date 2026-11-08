@@ -29,7 +29,7 @@ jest.setTimeout(60_000);
 const PROFILE = "Ana Petrova · ana@storm.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
 const CV = Buffer.from("%PDF-1.4\n% Ana Petrova CV fixture\n%%EOF\n");
 
-/** Up to the filled form: the dialog opened, name and email typed (in one turn), Sofia picked, my CV chosen, consent ticked. */
+/** Up to the filled form: the dialog opened, name and email typed (in one turn), Sofia picked, the CV chosen, consent ticked. */
 const FILL: Move[] = [
   click("button", /Apply for this role/),
   (page) => [type(/Full name/, "Ana Petrova")(page) as never, type(/Email/, "ana@storm.test")(page) as never],
@@ -190,10 +190,10 @@ steps:
     expect(output.submit).toEqual({ css: expect.any(String) as unknown, role: "button", name: "Submit application" });
     expect(output.notes).toBe('A check that you\'re a person ("3 + 4 ="): you answer it in the live view before it is sent.');
 
-    // Nothing left the page: the draft that saves itself as I type was blocked, no file was picked.
+    // Nothing left the page: the draft that saves itself while typing was blocked, no file was picked.
     expect(posted()).toEqual([]);
     expect(chat.results().some((r) => r.includes("tried to send what you typed"))).toBe(true);
-    // The model saw my profile and the documents it may attach; the Sonnet default; the Application prepared.
+    // The model saw the profile and the documents it may attach; the Sonnet default; the Application prepared.
     expect(JSON.stringify(chat.requests[0].messages[0])).toContain(PROFILE);
     expect(JSON.stringify(chat.requests[0].messages[0])).toContain("<documents>cv-main</documents>");
     expect(chat.requests[0].choice.model).toBe("claude-sonnet-5-5");
@@ -207,7 +207,7 @@ steps:
     expect((proposal.originalPayload as { actions: unknown[] }).actions).toEqual(output.actions);
   });
 
-  it("M11-T2: after Act, browser.submit repeats exactly the approved actions, my edit included, waits for my person check, and sends", async () => {
+  it("M11-T2: after Act, browser.submit repeats exactly the approved actions, the user's edit included, waits for the user's person check, and sends", async () => {
     chat.play([...FILL, READY]);
     const { runId } = await run(PIPELINE());
     const proposal = await db.client.proposal.findFirstOrThrow({ where: { runId } });
@@ -285,7 +285,7 @@ steps:
     ]);
     const { runId } = await run(AGENT_ONLY());
     const results = chat.results();
-    expect(results[3]).toMatch(/^"Submit application" submits the form: that's for after I approve/);
+    expect(results[3]).toMatch(/^"Submit application" submits the form: that's for after the user approves/);
     expect(results[4]).toMatch(/the page tried to send what you typed to careers\.localhost/);
     expect(posted()).toEqual([]);
     // Neither click is an action to repeat.
@@ -342,16 +342,16 @@ steps:
     sites.renameSubmit();
     const advancing = runner.advance(runId);
     const takeover = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the pause");
-    expect(takeover.reason).toBe(`The page changed since I approved it (button "Submit application" isn't there); nothing was sent`);
+    expect(takeover.reason).toBe(`The page changed since you approved it (button "Submit application" isn't there); nothing was sent`);
     await resolve(takeover.takeoverId);
     expect(await advancing).toBe("FAILED");
     expect((await sendStep(runId)).error).toBe('Nothing was sent: button "Submit application" isn\'t on the page');
     expect(applications()).toEqual([]);
   });
 
-  // M18-T1: what neither my profile nor my facts say, the agent asks me (M15-T3's Asker); never a secret, and a few times only.
-  describe("M18: the agent asks me", () => {
-    /** What the api does with my answer (FactsService.answer): the fact, the question answered, the wait continued. */
+  // M18-T1: what neither the profile nor the facts say, the agent asks the user (M15-T3's Asker); never a secret, few times.
+  describe("M18: the agent asks the user", () => {
+    /** What the api does with the user's answer (FactsService.answer): the fact, the question answered, the wait continued. */
     async function answer(questionId: string, text: string) {
       const question = await db.client.question.findUniqueOrThrow({ where: { questionId } });
       const fact = await db.client.fact.create({ data: { userId, key: factKey(question.question), question: question.question, answer: text, source: "ASKED", site: question.site } });
@@ -378,7 +378,7 @@ steps:
     }
     const ask = (question: string): Move => () => ({ name: "ask", input: { question } });
 
-    it("M18-I1: asked on Telegram, my answer typed with source asked and kept as a fact; the gate shows it", async () => {
+    it("M18-I1: asked on Telegram, the user's answer typed with source asked and kept as a fact; the gate shows it", async () => {
       sites.askStartDate();
       chat.play([
         ...FILL,
@@ -400,7 +400,7 @@ steps:
       expect(telegram).toEqual([expect.stringMatching(/^Storm asks \(a form on careers\.localhost\): Earliest start date\n/) as unknown]);
       expect(await db.client.question.findFirstOrThrow({ where: { runId } })).toMatchObject({ status: "ANSWERED", stepKey: "agent", site: "careers.localhost" });
       expect(await db.client.fact.findFirstOrThrow()).toMatchObject({ question: "Earliest start date", answer: "1 March 2027", source: "ASKED" });
-      expect(chat.results().some((r) => r.startsWith('My answer: "1 March 2027". Put it in the field, source asked.'))).toBe(true);
+      expect(chat.results().some((r) => r.startsWith('The user\'s answer: "1 March 2027". Put it in the field, source asked.'))).toBe(true);
       const proposal = await db.client.proposal.findFirstOrThrow({ where: { runId } });
       expect((proposal.originalPayload as { actions: AgentAction[] }).actions).toContainEqual({
         kind: "type",
@@ -430,8 +430,8 @@ steps:
 
       // Each result ends with the page (or that it didn't change).
       const results = chat.results().map((r) => r.split("\n")[0]);
-      const secret = "Never ask me for a password, code, login or card: those are mine, in the live view. Leave it empty";
-      expect(results.slice(0, 6)).toEqual([secret, secret, expect.stringMatching(/^My answer/), expect.stringMatching(/^My answer/), expect.stringMatching(/^My answer/), "No questions left (3 asked): leave the field empty"]);
+      const secret = "Never ask the user for a password, code, login or card: those are the user's, in the live view. Leave it empty";
+      expect(results.slice(0, 6)).toEqual([secret, secret, expect.stringMatching(/^The user's answer/), expect.stringMatching(/^The user's answer/), expect.stringMatching(/^The user's answer/), "No questions left (3 asked): leave the field empty"]);
       const asked = await db.client.question.findMany({ where: { runId }, orderBy: { dateCreated: "asc" } });
       expect(asked.map((q) => q.question)).toEqual(["Earliest start date", "Salary expectation", "Are you willing to relocate?"]);
       expect(telegram.some((t) => /password|code/i.test(t))).toBe(false);

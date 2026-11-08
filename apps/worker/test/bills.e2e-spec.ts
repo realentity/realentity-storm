@@ -128,7 +128,7 @@ describe("bills", () => {
       ["Pay evn.test: 84.20 BGN", "2026-11-17T09:00:00"],
       ["Pay telco.test: 120.50 EUR", "2026-11-22T09:00:00"],
     ]);
-    // M33: Bill entities of the App, due until I mark them paid.
+    // M33: Bill entities of the App, due until the user marks them paid.
     expect((await bills()).map((b) => [b.key, b.stage, b.value])).toEqual([
       [
         "evn.test|E-1001",
@@ -154,7 +154,7 @@ describe("bills", () => {
     });
     await save([bill("2026-07", 80), bill("2026-08", 90), bill("2026-09", 85)]);
 
-    // Paid by me, then read again (a reminder): it stays paid.
+    // Paid by the user, then read again (a reminder): it stays paid.
     await db.client.dataEntity.updateMany({ where: { key: "evn.test|E-2026-09" }, data: { stage: "paid" } });
     const again = await save([bill("2026-09", 85)]);
     expect([again.added.length, again.updated.length]).toEqual([0, 1]);

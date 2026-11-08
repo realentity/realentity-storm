@@ -31,7 +31,7 @@ test("a proposal from the editor's chat goes onto the cards with its changes mar
   const description = page.getByLabel("The pipeline's description");
   await description.fill("Replies to recruiters");
   await description.press("Enter");
-  // What I am on goes with the message.
+  // What the user is on goes with the message.
   await page.locator('[data-testid="step-card"][data-step="search"]').getByTestId("input-query").focus();
   const chat = page.getByTestId("editor-chat");
   await expect(chat.getByTestId("editor-chat-context")).toContainText("step search, input query");

@@ -11,7 +11,7 @@ const PAGE = 50;
 const FILTERS = ["pipelineId", "version", "status", "from", "to", "target"] as const;
 type FilterKey = (typeof FILTERS)[number];
 
-/** Every run, newest first, filtered by pipeline, version, status, date and target (README §12). */
+/** Every run, newest first, filtered by pipeline, version, status, date and target (docs/design.md §12). */
 export function HistoryPage() {
   const [params, setParams] = useSearchParams();
   const filter = Object.fromEntries(FILTERS.map((key) => [key, params.get(key) ?? ""])) as Record<FilterKey, string>;

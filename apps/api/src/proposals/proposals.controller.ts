@@ -18,7 +18,7 @@ const STATUS = Object.fromEntries(PROPOSAL_STATUSES.map((s) => [s, s]));
 export class ProposalsController {
   constructor(private readonly proposals: ProposalsService) {}
 
-  /** The inbox: proposals waiting for me by default. */
+  /** The inbox: proposals waiting for the user by default. */
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,

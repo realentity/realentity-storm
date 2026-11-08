@@ -15,8 +15,8 @@ export type CredentialKind = (typeof CredentialKind)[keyof typeof CredentialKind
 export const HOST_PATTERN = /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$|^localhost$/;
 
 /**
- * A host a credential may go to: a name as above, or (M29-T7, a database on the server or the tailnet) an IPv4 address or a
- * single name such as a Docker service ("postgres").
+ * A host a credential may go to: a name as above, or (M29-T7, a database on the same host or a private network) an IPv4
+ * address or a single name such as a Docker service ("postgres").
  */
 export const CREDENTIAL_HOST = new RegExp(`${HOST_PATTERN.source}|^(\\d{1,3}\\.){3}\\d{1,3}$|^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`);
 

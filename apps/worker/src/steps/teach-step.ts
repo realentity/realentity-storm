@@ -61,10 +61,10 @@ const SYSTEM =
   `${DATA_ONLY} The outline is in <page>.`;
 
 /**
- * browser.teach, teach mode (README §2.4, M9-T2): in the live browser, I bring the page to the list to read (search,
- * filters, cookie banner) and press Continue. The LLM proposes a recipe from the page's outline; it is checked on the
+ * browser.teach, teach mode (docs/design.md §2.4, M9-T2): in the live browser, the user brings the page to the list to read
+ * (search, filters, cookie banner) and presses Continue. The LLM proposes a recipe from the page's outline; it is checked on the
  * page as it is (items found, the address rebuilt from the params, the next page read in another tab), and what
- * fails goes back to the LLM. The items it reads are outlined on the page; my Continue saves the recipe as the next
+ * fails goes back to the LLM. The items it reads are outlined on the page; the user's Continue saves the recipe as the next
  * version, Abort discards it. The page never leaves the site, and nothing is typed or submitted.
  */
 export class BrowserTeachStep implements StepExecutor {
@@ -145,7 +145,7 @@ export class RecipeWriter extends LlmStep {
     const ask =
       `<task>Recipe ${task.name} for the list on this page. Fields: ${task.fields.join(", ")}. ` +
       `Params (value in the address → placeholder): ${JSON.stringify(task.params)}.` +
-      `${task.hint ? ` Hint from me: ${task.hint}` : ""}</task>\n<page url="${page.url()}">\n${task.outline}\n</page>`;
+      `${task.hint ? ` Hint from the user: ${task.hint}` : ""}</task>\n<page url="${page.url()}">\n${task.outline}\n</page>`;
     let feedback = "";
     let problems: string[] = [];
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
@@ -201,7 +201,7 @@ async function check(page: Page, name: string, recipe: Recipe, params: Record<st
     problems.push(error instanceof Error ? error.message : String(error));
   }
   const { items, matched } = await readItems(page, recipe);
-  // One item is a list too (a search with one result): I check what is outlined before it is saved.
+  // One item is a list too (a search with one result): the user checks what is outlined before it is saved.
   if (matched === 0) problems.push(`item "${recipe.item}" matches nothing on this page`);
   else if (items.length < matched * 0.8) {
     problems.push(`only ${items.length} of ${matched} items have every required field; mark optional ones not required`);
@@ -212,7 +212,7 @@ async function check(page: Page, name: string, recipe: Recipe, params: Record<st
   return problems;
 }
 
-/** The second page, in another tab so the page I left stays as it is: items, and other ones. */
+/** The second page, in another tab so the page the user left stays as it is: items, and other ones. */
 async function checkNextPage(page: Page, name: string, recipe: Recipe, params: Record<string, string>, firstKeys: Set<string>): Promise<string[]> {
   let next: string | null;
   if (recipe.next?.kind === "page") next = fillTemplate(recipe.next.url, { ...params, page: String(recipe.next.start) }, recipe.params);

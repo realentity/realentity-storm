@@ -9,7 +9,7 @@ import { editAppSource, keepComment } from "./app-source";
 
 export type PageKind = "list" | "view" | "form";
 
-/** What I'd write first on each kind of page, in this order. */
+/** What is written first on each kind of page, in this order. */
 const ORDER: Record<PageKind, string[]> = {
   list: ["list", "menu", "columns", "filters", "search", "sort", "group", "removed", "actions", "moves", "chart"],
   view: ["view", "fields", "sections", "history", "actions"],

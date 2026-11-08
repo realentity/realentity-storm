@@ -5,7 +5,7 @@ import { useLoad } from "../lib/use-load";
 
 const WORKER = { up: ["bg-green-lt", "running"], down: ["bg-red-lt", "down"], unknown: ["bg-secondary-lt", "not known yet"] } as const;
 
-/** M26: server as Storm sees it: the worker, and what the backup, the restore test and the host's checks reported. */
+/** M26: the server as Storm sees it: the worker, and what the backup, the restore test and the host's checks reported. */
 export function HealthPage() {
   const health = useLoad(() => api.health.get(), []);
   if (!health.data) return health.error ? <ErrorAlert error={health.error} /> : <Loading />;
@@ -13,7 +13,7 @@ export function HealthPage() {
   const [badge, label] = WORKER[worker.state];
   return (
     <>
-      <PageHeader title="Health" pretitle="server" />
+      <PageHeader title="Health" pretitle="Server" />
       <div className="card mb-3">
         <div className="card-body d-flex align-items-center gap-2">
           <strong>Worker</strong>
@@ -22,7 +22,7 @@ export function HealthPage() {
         </div>
       </div>
       {checks.length === 0 ? (
-        <Empty>No reports yet. The nightly backup, the restore test and the host's health check report here once HEALTH_REPORT_TOKEN is set (docs/deployment.md).</Empty>
+        <Empty>No reports yet. The nightly backup, the restore test and the host's health check report here once HEALTH_REPORT_TOKEN is set (docs/self-hosting.md, "Health reports").</Empty>
       ) : (
         <div className="card">
           <div className="table-responsive">

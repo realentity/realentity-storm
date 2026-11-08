@@ -95,7 +95,7 @@ test("the designer leaves the types alone while the YAML has errors", async ({ p
   await expect(page.getByTestId("add-field")).toHaveCount(0);
 });
 
-/** Drag on the diagram from one state's box to another's: a move made by me. */
+/** Drag on the diagram from one state's box to another's: a move made by the user. */
 async function drawMove(page: Page, from: string, to: string, nth = 0) {
   const diagram = page.getByTestId("designer-stages").nth(nth);
   const a = await diagram.locator(`[data-testid="stage-box"][data-state="${from}"]`).boundingBox();
@@ -259,7 +259,7 @@ test("the Bills App made in the designer, as pipelines/apps/bills.yaml has it", 
   await expect(page.getByRole("heading", { name })).toBeVisible();
 });
 
-// M35-T4: a type from a sample I paste, its fields kept or left out, into a new type and into one that is there
+// M35-T4: a type from a pasted sample, its fields kept or left out, into a new type and into one that is there
 test("a type from a pasted sample: rows kept, renamed, into a new type and an existing one", async ({ page }) => {
   await page.goto("/apps/new");
   await page.getByTestId("start-empty").click();
@@ -296,7 +296,7 @@ test("a type from a pasted sample: rows kept, renamed, into a new type and an ex
 // M35-T5: an App with its pipeline imported from a file, checked first; exported back
 test("imports an App with its pipeline from a YAML file, and exports it back", async ({ page }) => {
   const name = unique("Shelf");
-  const app = `# books I have
+  const app = `# books on the shelf
 name: ${name}
 icon: book
 types:
@@ -347,12 +347,12 @@ steps:
   await page.goto("/pipelines");
   await page.getByTestId("import-yaml").click();
   await page.getByTestId("import-text").fill(text);
-  await expect(page.getByTestId("import-check")).toContainText("Everything in it is as I have it already");
+  await expect(page.getByTestId("import-check")).toContainText("Everything in it is as you have it already");
   await expect(page.getByTestId("import-save")).toBeDisabled();
 });
 
-// M37-E2: the preview is the page saved: what I drag and click on it is on the App's list after Save
-test("the page's preview, with my entities: a column dragged, a sort and a group clicked, as saved", async ({ page }) => {
+// M37-E2: the preview is the page saved: what is dragged and clicked on it is on the App's list after Save
+test("the page's preview, with its entities: a column dragged, a sort and a group clicked, as saved", async ({ page }) => {
   const name = unique("Drives");
   const app = `name: ${name}
 types:

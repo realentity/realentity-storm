@@ -107,7 +107,7 @@ describe("app pages", () => {
       { value: null, label: "—", count: 1, totals: [{ field: "amount", sums: { BGN: 5 } }] },
     ]);
     expect(keys(view)).toEqual(["w1", "e1", "n1", "e0", "x1"]);
-    // My fields over what pipelines wrote.
+    // The user's fields over what pipelines wrote.
     expect(view.rows[0]?.value).toMatchObject({ payee: "Water", paid: true });
   });
 

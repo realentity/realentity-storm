@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * A pipeline's page (M27): how the collection its data.save keeps is shown, in the menu, as a list and per row, with
- * my own marks and buttons that start pipelines. Declarative only: fields by path, a fixed set of formats, no
+ * the user's own marks and buttons that start pipelines. Declarative only: fields by path, a fixed set of formats, no
  * templates and no HTML, so nothing a page or an email put into a row can do more than be shown as text.
  */
 
@@ -72,7 +72,7 @@ const SortSchema = z.union([
 
 const MARK_ID = /^[a-z][a-z0-9_]{0,29}$/;
 
-/** A mark I set on a row by hand ("done", "read"); data.save never touches it. `hides`: marked rows leave the list. */
+/** A mark set on a row by hand ("done", "read"); data.save never touches it. `hides`: marked rows leave the list. */
 export const ViewMarkSchema = z
   .object({
     id: z.string().regex(MARK_ID, "lowercase letters, digits and _, e.g. done"),
@@ -154,7 +154,7 @@ export interface ViewMenuItem {
 export interface ViewRow {
   key: string;
   value: Record<string, unknown>;
-  /** Mark id → when I set it. */
+  /** Mark id → when it was set. */
   marks: Record<string, string>;
   firstSeenAt: string;
   lastSeenAt: string;

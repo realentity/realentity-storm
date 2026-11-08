@@ -43,8 +43,8 @@ export function searches(params: Record<string, string | string[]>): Record<stri
 }
 
 /**
- * browser.extract (README §2.4): a list read with saved recipes, headless and without an LLM. A recipe that no longer
- * matches the page fails the step with what didn't match, is marked broken and I get a Telegram message the first
+ * browser.extract (docs/design.md §2.4): a list read with saved recipes, headless and without an LLM. A recipe that no longer
+ * matches the page fails the step with what didn't match, is marked broken and the user gets a Telegram message the first
  * time (M9-T7); one that works is marked verified. One that only ever finds its "no results" page for QUIET_DAYS is
  * told once too (M18-T2): the site may have changed so that the list looks empty.
  */

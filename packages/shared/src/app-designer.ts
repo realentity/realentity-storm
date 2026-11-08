@@ -2,7 +2,7 @@ import { isMap, isPair, isScalar, isSeq, type Document, type Node, type YAMLMap 
 import { editAppSource } from "./app-source";
 
 /**
- * M35-T2: the App designer's changes to types and fields, each an edit of the App's YAML (my comments, order and the
+ * M35-T2: the App designer's changes to types and fields, each an edit of the App's YAML (its comments, order and the
  * lines it doesn't touch kept). A rename is renamed where the App uses it (key, title, a money field's currency, the
  * pages of its type); a removal is removed from the pages' lists. What a pipeline uses is not changed here: the check
  * says which ones a change breaks, before Save.
@@ -207,8 +207,8 @@ export function setAppProperty(source: string, property: "name" | "description" 
 }
 
 /**
- * A property set where it is, or a new one where I'd write it: after the ones before it in `order` that are there
- * (a type's title after its key), else first.
+ * A property set where it is, or a new one where it would be written: after the ones before it in `order` that are
+ * there (a type's title after its key), else first.
  */
 function setInOrder(document: Document, node: unknown, property: string, value: unknown, order: string[]): void {
   if (!isMap(node)) throw new Error(`Nothing to set ${property} on`);
@@ -221,7 +221,7 @@ function setInOrder(document: Document, node: unknown, property: string, value: 
   node.items.splice(index, 0, document.createPair(property, value));
 }
 
-/** A drafted field as I'd write it (M35-T4): its kind, and only what isn't a default. */
+/** A drafted field as it would be written (M35-T4): its kind, and only what isn't a default. */
 export interface DraftedField {
   type: string;
   label?: string;
@@ -231,7 +231,7 @@ export interface DraftedField {
 }
 
 /**
- * M35-T4: the fields I kept from a draft, as a new type (its key one of them) or added to a type that is there (the
+ * M35-T4: the fields kept from a draft, as a new type (its key one of them) or added to a type that is there (the
  * ones it has left as they are). A money field's currency it no longer has is dropped.
  */
 export function addDraftedFields(source: string, type: string, fields: Record<string, DraftedField>, key?: string, title?: string): string {

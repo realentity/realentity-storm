@@ -24,7 +24,7 @@ import { useAction, useLoad } from "../lib/use-load";
 const MAX_UPLOAD_BYTES = 200_000;
 
 /**
- * Authoring and review (README §2.1): paste or upload YAML → check (errors, or the readable plan, step graph, policy
+ * Authoring and review (docs/design.md §2.1): paste or upload YAML → check (errors, or the readable plan, step graph, policy
  * and diff against the current version) → dry run → save as the next version. A dry run stores the source as the
  * pipeline's draft; saving the same source keeps that dry run with the new version.
  */
@@ -60,9 +60,9 @@ export function PipelineEditorPage() {
   const app = useLoad(() => (appId ? api.apps.get(appId) : Promise.resolve(null)), [appId]);
   const types = useTriggerTypes(app.data?.definition ?? null);
   const triggerData = useLoad(() => api.steps.triggers(), []);
-  // M37-T3: the last "try up to here": its run, kept while I edit, so the cards after it pick from what it gave.
+  // M37-T3: the last "try up to here": its run, kept while editing, so the cards after it pick from what it gave.
   const [tried, setTried] = useState<{ runId: string; stopAfter: string } | null>(null);
-  // M38-T5: what I am on (sent to the builder), and what its proposal changed once used here.
+  // M38-T5: what the user is on (sent to the builder), and what its proposal changed once used here.
   const [focus, setFocus] = useState<string | undefined>(undefined);
   const [marks, setMarks] = useState<BuilderMarks | null>(null);
   const triedRun = useLoad(
@@ -71,7 +71,7 @@ export function PipelineEditorPage() {
     (signal) => tried !== null && (signal.type === "run" || signal.type === "step") && signal.runId === tried.runId,
   );
 
-  // Checked a moment after each change, so the cards show their problems as I go.
+  // Checked a moment after each change, so the cards show their problems as the user goes.
   const latestCheck = useRef(0);
   useEffect(() => {
     if (source === null || !source.trim()) return;
@@ -413,7 +413,7 @@ function DryRunStatus({ runId }: { runId: string }) {
           <ul className="mt-2 mb-0">
             {previews.map((p) => (
               <li key={p.proposalId}>
-                Would {p.kind === "act" ? "act" : "ask me"}: <strong>{p.stepKey}</strong>
+                Would {p.kind === "act" ? "act" : "ask you"}: <strong>{p.stepKey}</strong>
                 {p.itemIndex !== null && ` #${p.itemIndex + 1}`} → {p.target}
               </li>
             ))}

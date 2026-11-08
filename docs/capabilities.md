@@ -19,13 +19,13 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
-| Job hunting | Track what employers answered to my applications | `application.outcome` |
+| Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
 | Browser | Open pages (with sign-in), read lists with recipes, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
 | Documents | Read a stored document or a downloaded file | `file.read` |
-| Me in the loop | Pick items from a list, approve an action | `gate.review`, `gate.act` |
-| Telling me | A Telegram message, a digest | `notify.telegram`, `notify.digest` |
+| You in the loop | Pick items from a list, approve an action | `gate.review`, `gate.act` |
+| Telling you | A Telegram message, a digest | `notify.telegram`, `notify.digest` |
 | Timing | Start another pipeline later, cancel it | `flow.later`, `flow.cancel` |
 
 ---
@@ -87,7 +87,7 @@ pipeline can be saved.
   must come from real data: the sender of a fetched email, a posting's own URL, a literal in the pipeline, or
   `policy`. `to: "{{draft.body}}"` is rejected.
 - **Domains are allowlisted.** `http.fetch`, `shop.product` and the browser steps only go to hosts the pipeline names
-  in `policy.allowedDomains` (or a host literally written in the step). Private and tailnet addresses are never read.
+  in `policy.allowedDomains` (or a host literally written in the step). Private and VPN addresses are never read.
 - **Credentials only go to the browser.** `{{cred:…}}` is accepted only by `browser.open`'s `login`, and only on the
   hosts the credential allows. LLM steps never see one.
 - **Budget.** Steps that call the LLM stop once the monthly LLM budget is spent, unless the pipeline is marked
@@ -151,7 +151,7 @@ types:
       salary: { type: money, currency: currency }
       currency: { type: text }
       status: { type: enum, values: [new, applied, rejected] }
-      favorite: { type: yesno, mine: true }     # set by me; pipelines never write it
+      favorite: { type: yesno, mine: true }     # set by you; pipelines never write it
 ```
 
 - **Kinds:** `text`, `longtext`, `number`, `money` (with `currency`: the field holding its code), `date`,
@@ -160,7 +160,7 @@ types:
 - **Writing:** each field is read as its kind (`"4 500"` → 4500, an ISO date and time → its date); a wrong one is
   left out and said in `invalid`; an item without a required field, or without its key, isn't saved. What the type
   doesn't name is kept with the entity as it came.
-- **`mine: true`:** a field I set; no pipeline can write it, and every save keeps it.
+- **`mine: true`:** a field you set; no pipeline can write it, and every save keeps it.
 - **Versions:** each save of an App is a new version, with what changed. A version that would break one of its
   pipelines (a type, field or name they use gone) is refused, naming each pipeline and why.
 - **A type from a source:** on the App's editor, *Try the source* dry-runs a pipeline and drafts a type from a
@@ -187,10 +187,10 @@ pages:
 ```
 
 **Stages, forms and buttons (M32).** A type may have a stage: where an entity is (new, favorite, applied…), moved
-only as its `moves` allow and by whom: me on its page (the default), or a pipeline's `data.save` (`by: [me,
-pipeline]`). A move a pipeline may not make is said in `invalid` and the stage stays, so an email re-read never moves
-a job back. The date each state was first reached is kept. My fields (`mine: true`) are edited on the entity's form;
-a whole type can be mine (`mine: true` on the type: I add, edit and delete its entities, pipelines only read it).
+only as its `moves` allow and by whom: you on its page (the default), or a pipeline's `data.save` (`by: [me,
+pipeline]`, where `me` is you). A move a pipeline may not make is said in `invalid` and the stage stays, so an
+email re-read never moves a job back. The date each state was first reached is kept. Your fields (`mine: true`) are edited on the entity's form;
+a whole type can be yours (`mine: true` on the type: you add, edit and delete its entities, pipelines only read it).
 Buttons start pipelines: a list's (a manual or scheduled one), an entity's (one triggered by `{ on: entity.action }`,
 with the entity), shown only while its `when` holds.
 
@@ -209,7 +209,7 @@ types:
       url: { type: url, required: true }
       comments: { type: longtext, mine: true }
   Company:
-    mine: true                               # I write it; its email may be a side effect's target
+    mine: true                               # you write it; its email may be a side effect's target
     key: name
     fields: { name: { type: text, required: true }, email: { type: email } }
 pages:
@@ -222,11 +222,11 @@ pages:
     actions: [{ label: Check now, run: Job Search collect }]
 ```
 
-A target (an address to send to) never comes from a type pipelines write; from a type of mine it may.
+A target (an address to send to) never comes from a type pipelines write; from a `mine` type it may.
 
 A list can also draw a `data.history` collection keyed by its entities above it (`chart: { history, label?, stepped? }`,
 the five with the highest latest value), and *Move them here* on an App's page brings a pipeline's collection (a
-`view:` page's) into one of its types: a mark on a row becomes the yes/no field of mine of its name.
+`view:` page's) into one of its types: a mark on a row becomes the `mine` yes/no field of its name.
 
 **From a sentence (M34).** The pipeline builder proposes a whole App ("I'm looking for a job", "keep my bills") with
 its pipelines, as one proposal to review and save together; *Describe a change* on an App's page asks it to change
@@ -235,8 +235,11 @@ schema.org type that means the same and, after a dry run, drafts it from what th
 not in the types** on an App's page lists the fields its entities have that their type doesn't name, with *Add to the
 type*.
 
-Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables. A ready-made App: [pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml), with its first pipeline
-[job-search-collect.yaml](../pipelines/job-search-collect.yaml). Save the App before its pipelines.
+Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables. Job Search
+([pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml)) is filled by a job-board pipeline of your own
+(`browser.extract` with a recipe like [recipes/example-jobs.yaml](../recipes/example-jobs.yaml), then `data.save` with
+`type: Job`) and by [application-replies.yaml](../pipelines/application-replies.yaml). Save the App before its
+pipelines.
 
 ---
 
@@ -247,17 +250,17 @@ Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Pri
 | `manual` (default) | You press Run, or send `/run <name>` on Telegram | — |
 | `{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }` | A five-field cron time | — |
 | `{ on: run.finished, pipeline: Bills, status: [FAILED] }` | Another pipeline's run ends (default: only `DONE`) | `runId`, `pipeline`, `status`, `summary`, `outputs` |
-| `{ on: application.status, status: [SUBMITTED] }` | One of my applications changes status | `applicationId`, `status`, `job` (title, company, location, url) |
-| `{ on: recipe.broken, site: dev.bg }` | A browser recipe stops matching its site | `site`, `recipe`, `version`, `reason`, `fixProposed` |
+| `{ on: application.status, status: [SUBMITTED] }` | One of your applications changes status | `applicationId`, `status`, `job` (title, company, location, url) |
+| `{ on: recipe.broken, site: jobs.example.com }` | A browser recipe stops matching its site | `site`, `recipe`, `version`, `reason`, `fixProposed` |
 | `{ on: email.classified, label: [interview] }` | An `email.classify` step labels an email | `label`, `reason`, `message` (the email) |
 | `{ on: flow.later }` | Another pipeline's `flow.later` fires | `data`, `key`, `scheduledAt`, `scheduledByRunId` |
 | `{ on: view.action, collection: releases }` | A row's button on a pipeline's page | `collection`, `key`, `item` (the row), `action` |
-| `{ on: entity.changed, type: Job, field: salary, stage: interview }` | An entity of the pipeline's App is added or changed, by another pipeline or by me (`field`: only changes of it; `stage`: only a move into it) | `app`, `type`, `key`, `item`, `before` (null when added), `changed` (field names), `by`, `stage` (`from`, `to`, or null) |
+| `{ on: entity.changed, type: Job, field: salary, stage: interview }` | An entity of the pipeline's App is added or changed, by another pipeline or by you (`field`: only changes of it; `stage`: only a move into it) | `app`, `type`, `key`, `item`, `before` (null when added), `changed` (field names), `by`, `stage` (`from`, `to`, or null) |
 | `{ on: entity.action, type: Job }` | An entity's button on its page | `app`, `type`, `key`, `item`, `action` |
 | `{ webhook: hmac-sha256 }` or `{ webhook: token }` | An HTTP call from the internet (GitHub-style signature, or a bearer token) | `body`, `event`, `receivedAt` |
 
 Only an email's own addresses (`email.classified`) and a posting's own URL (`application.status`) may be used as
-targets of a side effect. Webhook bodies, `flow.later` data, view rows and entities pipelines write are never trusted as targets; an entity of a type of mine is.
+targets of a side effect. Webhook bodies, `flow.later` data, view rows and entities pipelines write are never trusted as targets; an entity of a `mine` type is.
 
 ---
 
@@ -297,7 +300,7 @@ Fields can be dotted paths.
     items: "{{score.scored}}"
     where:
       - { field: score, op: gte, value: 70 }
-      - { field: location, op: contains, value: Sofia }
+      - { field: location, op: contains, value: Remote }
 ```
 
 #### `data.save`
@@ -306,15 +309,15 @@ Saves items and says what changed since the last save.
   A posting saved again keeps its first-seen date, and its status only moves forward.
 - **With `collection`**: a named list of your own, one item per `key`. `changed` compares `fields` (default: all).
   `complete: true` means the items are the whole list, so saved items missing from it go to `removed`.
-- **With `type`** (a type of the pipeline's App, §2.5): as entities, by the type's key; each field as its kind, my
-  fields never written. `fields` and `complete` as with a collection; `key` and `collection` aren't taken. `stage`
-(M33) moves every item to that stage, as the type's moves allow a pipeline (`stage: skipped` for the agencies).
+- **With `type`** (a type of the pipeline's App, §2.5): as entities, by the type's key; each field as its kind, your
+  (`mine`) fields never written. `fields` and `complete` as with a collection; `key` and `collection` aren't taken.
+  `stage` (M33) moves every item to that stage, as the type's moves allow a pipeline (`stage: skipped` for the agencies).
 - Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`, `invalid` (with
   `type`: `key`, `saved`, `problems`). In a dry run nothing is saved: `preview` says so first, and the counts are what
   a run would save.
 
 ```yaml
-# Only new releases continue to the LLM and to me
+# Only new releases continue to the LLM and to you
 - id: seen
   type: data.save
   with: { items: "{{feeds.items}}", collection: releases, key: id, fields: [title] }
@@ -325,13 +328,13 @@ Saves items and says what changed since the last save.
 ```
 
 #### `data.read`
-Reads entities of a type of the pipeline's App (§2.5) as items, my fields included.
+Reads entities of a type of the pipeline's App (§2.5) as items, your (`mine`) fields included.
 - In: `type`, `where` (as `data.filter`, on the type's fields), `sort` (`"-salary"`, `"@firstSeen"`), `limit` [100],
   `removed` [false: the removed ones instead].
 - Out: `items` (typed by the type: `{{item.salary}}` is checked), `count` (matching, before `limit`).
 
 ```yaml
-# Every Monday: my favourite jobs, the best paid first
+# Every Monday: your favourite jobs, the best paid first
 - id: favourites
   type: data.read
   with: { type: Job, where: [{ field: favorite, op: eq, value: true }], sort: -salary, limit: 10 }
@@ -341,7 +344,7 @@ Reads entities of a type of the pipeline's App (§2.5) as items, my fields inclu
 Keeps a number per item over time (a price, a count) and adds a `history` object to each item: `previous`, `change`,
 `changePct`, `min`, `max`, `count`, `direction` (`new`, `up`, `down`, `same`), `lowest`, `usualChange` (the median
 change between the earlier values, once there are 3) and `vsUsual` (this change ÷ the usual one: `3` is three times
-the usual growth). The value can be text such as `"1 299,00 лв."`.
+the usual growth). The value can be text such as `"1 299,00 €"`.
 - In: `items`, `collection`, `key`, `value` (the field with the number), `keep` [60].
 - Out: `items`, `recorded`, `unreadable`.
 
@@ -432,7 +435,7 @@ steps:
   - id: weather
     type: http.fetch
     with:
-      url: https://api.openweathermap.org/data/2.5/forecast?q=Sofia&units=metric
+      url: https://api.openweathermap.org/data/2.5/forecast?q=London&units=metric
       query: { appid: "{{cred:openweather}}" }
       itemsAt: list
 ```
@@ -440,7 +443,7 @@ steps:
 #### `http.request` ⚡
 Changes something at an API: one `POST`, `PUT`, `PATCH` or `DELETE`, with `body` sent as JSON. It waits at its gate,
 which shows the method, address, headers and body, until you press Act. The address's host must be allowed (a literal
-address joins the pipeline's allowed domains, or you approve a new one at the gate); never a private or tailnet
+address joins the pipeline's allowed domains, or you approve a new one at the gate); never a private or VPN
 address, and a redirect isn't followed. An API key goes in `headers` or `query` as `{{cred:name}}`, as in `http.fetch`.
 An answer other than 2xx fails the step with its status.
 - In: `method`, `url`, `headers`, `query`, `body`, `timeoutSeconds` [20].
@@ -454,7 +457,7 @@ steps:
     type: http.request
     with:
       method: POST
-      url: https://api.github.com/repos/me/infra/issues
+      url: https://api.github.com/repos/<owner>/<repo>/issues
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
       body: { title: "Storm: {{trigger.pipeline}} failed", body: "{{trigger.summary}}", labels: [storm] }
 ```
@@ -463,7 +466,7 @@ steps:
 Reads a PostgreSQL database with one SQL query; the rows become `items` (column names as fields, counts as numbers,
 dates as ISO text). `connection` is a database credential: on the Credentials page, kind *database*, and one field,
 the connection string (`postgresql://reader:password@host:5432/app`). The form shows what it connects to (database,
-host, port, user; never the password), and its host becomes the only one it may connect to: a name, a tailnet name,
+host, port, user; never the password), and its host becomes the only one it may connect to: a name, a VPN name,
 an IP address or a Docker service such as `postgres`. Another server is another credential. It is read-only whatever the user may do: the query runs
 as a subquery (so only `SELECT`, `VALUES` or `WITH … SELECT` fit), as one statement, in a read-only transaction that
 is rolled back, and is stopped after `timeoutSeconds`. Still, give it a database user that may only read.
@@ -514,12 +517,12 @@ steps:
 ```
 
 #### `price.watch` 🧠
-Checks my watched **Products** in the pipeline's App (M33: save [pipelines/apps/prices.yaml](../pipelines/apps/prices.yaml)
-and say `app: Prices`): a type of mine, each with its `shops`, a line each (`https://shop/p/7 | size: M, color: Black`
+Checks your watched **Products** in the pipeline's App (M33: save [pipelines/apps/prices.yaml](../pipelines/apps/prices.yaml)
+and say `app: Prices`): a `mine` type, each with its `shops`, a line each (`https://shop/p/7 | size: M, color: Black`
 for a variant). Each shop's page is read like `shop.product` and kept as an **Offer** with its price history (the
-Offer's page charts it; a line I remove takes its Offer off). It reports only news: a shop at or under your target
+Offer's page charts it; a line you remove takes its Offer off). It reports only news: a shop at or under your target
 price (once, when it crosses), the lowest in `lowestDays`, back in stock. `text` names the cheapest shop for each, and
-is empty when there is nothing new. The addresses are mine, so they need no `allowedDomains`. *Move them here* on the
+is empty when there is nothing new. The addresses are yours, so they need no `allowedDomains`. *Move them here* on the
 App's page brings the products, shops and price history the old Prices page kept.
 - In: `product` (only this one; default: all enabled), `lowestDays` [90].
 - Out: `products`, `news`, `text`, `problems`, `report`.
@@ -556,7 +559,7 @@ Labels each item following `instruction`. Items with a `keep` label go to `kept`
 
 #### `llm.score` 🧠
 Scores each item 0–100 against `against` (a profile or criteria). `top` keeps the best N. With `outcomes: true`, the
-outcomes of my past applications (interviews, rejections, silence) calibrate the scores for job postings.
+outcomes of your past applications (interviews, rejections, silence) calibrate the scores for job postings.
 - In: `items`, `against`, `instruction`, `top`, `outcomes` [false].
 - Out: `scored` (all, with `score` and `scoreReason`), `top`.
 
@@ -565,7 +568,7 @@ outcomes of my past applications (interviews, rejections, silence) calibrate the
   type: llm.score
   with:
     items: "{{agencies.kept}}"
-    against: Staff/Principal engineer or architect, TypeScript and Node.js, Sofia hybrid or remote.
+    against: Staff/Principal engineer or architect, TypeScript and Node.js, remote or hybrid.
     top: 10
     outcomes: true
 ```
@@ -634,8 +637,8 @@ email is read once. Text only: attachments are listed, not downloaded.
 
 #### `email.classify` 🧠
 Like `llm.classify`, for emails. Each labelled email also emits an `email.classified` event, which can start other
-pipelines. An email nobody can answer (a no-reply sender such as `messaging-digest-noreply@linkedin.com`, or mail I
-sent to myself, like Storm's own messages) is never kept for a reply: it is labelled skip without asking the LLM. This
+pipelines. An email nobody can answer (a no-reply sender such as `messaging-digest-noreply@linkedin.com`, or mail you
+sent to yourself, like Storm's own messages) is never kept for a reply: it is labelled skip without asking the LLM. This
 is on when `keep` has `reply`; set `answerable` to choose.
 - In: `messages`, `instruction`, `labels` [`reply`, `skip`], `keep` [`reply`], `answerable`.
 - Out: `kept`, `dropped`, `results`.
@@ -649,15 +652,15 @@ is on when `keep` has `reply`; set `answerable` to choose.
 ```
 
 #### `email.draftReply` 🧠
-Drafts a reply in my voice, in the email's language, without inventing facts. It never decides the recipient. Edits
+Drafts a reply in your voice, in the email's language, without inventing facts. It never decides the recipient. Edits
 you make at the gate teach it your style.
 - In: `message`, `instruction`, `context` (what it may draw on: availability, rates, links), `signature`.
 - Out: `subject`, `body`, `language`.
 
 #### `email.send` ⚡
-Sends an email from my mailbox. With `inReplyTo` and `references` it is a reply in the same thread. `to` must come
+Sends an email from your mailbox. With `inReplyTo` and `references` it is a reply in the same thread. `to` must come
 from real data (e.g. `{{item.from}}`), a literal, or `policy.allowedRecipients`. A reply is never sent to a no-reply
-address or to my own address: the step fails with why.
+address or to your own address: the step fails with why.
 - In: `to`, `subject`, `body`, `inReplyTo`, `references`.
 - Out: `messageId`, `accepted`.
 
@@ -668,7 +671,7 @@ address or to my own address: the step fails with why.
   with:
     message: "{{item}}"
     instruction: Reply briefly. If it could fit, ask for the rate and propose a short call; if not, decline politely.
-- id: send                      # a gate is inserted before it: I see and edit each reply, then press Act
+- id: send                      # a gate is inserted before it: you see and edit each reply, then press Act
   type: email.send
   forEach: "{{triage.kept}}"
   with:
@@ -681,14 +684,14 @@ limits: { email.send: 20/day }
 ```
 
 #### `email.awaiting`
-My sent emails that got no answer: threads whose last message is mine, older than `afterDays`, with nothing from the
-other side since. Each email is listed once; a thread comes back only when I write in it again.
+Your sent emails that got no answer: threads whose last message is yours, older than `afterDays`, with nothing from the
+other side since. Each email is listed once; a thread comes back only when you write in it again.
 - In: `afterDays` [5], `lookbackDays` [30], `mailbox` [INBOX], `sentMailbox` (default: the server's Sent folder),
   `maxFollowUps` [1], `limit` [5].
 - Out: `threads` (threadId, to, subject, sentAt, daysWaiting, followUps, message, references).
 
 #### `email.draftFollowUp` 🧠
-Drafts a short, polite follow-up to my own unanswered email, in its language, without new facts or pressure.
+Drafts a short, polite follow-up to your own unanswered email, in its language, without new facts or pressure.
 - In: `message`, `instruction`, `daysWaiting`, `signature`.
 - Out: `subject`, `body`, `language`.
 
@@ -714,10 +717,10 @@ Drafts a short, polite follow-up to my own unanswered email, in its language, wi
 ### 4.5 Job applications
 
 #### `application.outcome` 🧠
-Reads what an email says about one of my submitted applications, matches it to the application (by the sender's
+Reads what an email says about one of your submitted applications, matches it to the application (by the sender's
 domain or the company's name, and the role) and moves it on: `RESPONDED`, `INTERVIEW` or `REJECTED`. Only forward.
 It emits `application.status`, which can cancel a scheduled follow-up. An automatic "we received it" isn't an answer.
-In the Job Search App (M33, `app: Job Search`) it works on the Jobs I applied to, moving each as its stages allow a
+In the Job Search App (M33, `app: Job Search`) it works on the Jobs you applied to, moving each as its stages allow a
 pipeline, the email noted in its comments; `browser.mapForm` and `browser.fillAndSubmit` move a Job to prepared and
 applied, and `llm.score` calibrates on the Jobs' outcomes, all still emitting `application.status`.
 - In: `message`.
@@ -746,10 +749,10 @@ reads issuer, amount, currency, due date, period and reference. Emails that aren
 #### `bill.save`
 Keeps bills as **Bill entities of the pipeline's App** (M33: save [pipelines/apps/bills.yaml](../pipelines/apps/bills.yaml)
 and say `app: Bills`; the compiler checks the App has a Bill type it can write). The same bill again updates it and
-keeps whether I paid it; a new one is `due`. It returns what to do next: `remind` (new
+keeps whether you paid it; a new one is `due`. It returns what to do next: `remind` (new
 bills with a due date, each with `remindAt`, `remindDaysBefore` days before at 09:00) and `jumps` (new bills more than
 `jumpPercent` above the issuer's usual amount), with `jumpText` describing them. The Bills App's list shows them by month
-with the total and what is unpaid, a badge on what is due soon, and Mark paid on each row; the morning brief tells me
+with the total and what is unpaid, a badge on what is due soon, and Mark paid on each row; the morning brief tells you
 the unpaid ones due within three days. *Move them here* on the App's page brings the bills the old Bills page kept.
 - In: `bills`, `remindDaysBefore` [3], `jumpPercent` [30].
 - Out: `added`, `updated`, `remind`, `jumps`, `jumpText`.
@@ -777,13 +780,13 @@ the unpaid ones due within three days. *Move them here* on the App's page brings
 Needs Google Calendar connected in Settings (see [google-calendar-setup.md](google-calendar-setup.md)).
 
 #### `calendar.find`
-My events between `from` and `to` (default: the next 7 days), optionally matching `query`. `durationMinutes` gives a
+Your events between `from` and `to` (default: the next 7 days), optionally matching `query`. `durationMinutes` gives a
 window from `from`, to see what an event at that time would clash with.
 - In: `from`, `to`, `durationMinutes`, `query`, `timeZone`, `maxResults` [50].
 - Out: `events` (id, title, start, end, allDay, location, link, meetLink, attendees, organizer), `count`, `none`.
 
 #### `calendar.create` ⚡
-Creates an event. With `attendees`, Google emails them an invitation from my account. An event with the same title at
+Creates an event. With `attendees`, Google emails them an invitation from your account. An event with the same title at
 the same start isn't created twice.
 - In: `title`, `start`, `end` or `durationMinutes` [60], `timeZone`, `description`, `location`, `attendees`, `meet`
   [false], `sendInvites` [true].
@@ -823,9 +826,9 @@ It submits nothing but the sign-in.
 - id: account
   type: browser.open
   with:
-    url: https://www.jobs.bg/my/applications
+    url: https://jobs.example.com/my/applications
     headed: true
-    login: { credential: "{{cred:jobs-bg}}" }
+    login: { credential: "{{cred:jobs-example}}" }
     waitFor: .applications-list
 - id: summary
   type: llm.summarize
@@ -844,13 +847,13 @@ matches, the step fails clearly and marks the recipe broken (event `recipe.broke
 - id: search
   type: browser.extract
   with:
-    recipes: [dev.bg/search]
+    recipes: [jobs.example.com/search]
     params: { category: [javascript, python, back-end-development] }
     maxItems: 500
     fallback: true
 ```
 
-A recipe ([recipes/dev.bg-search.yaml](../recipes/dev.bg-search.yaml)) names the list's address, its params, the item
+A recipe ([recipes/example-jobs.yaml](../recipes/example-jobs.yaml)) names the list's address, its params, the item
 selector, each field's selector, the key, how to reach the next page, and a polite delay between pages.
 
 #### `browser.teach` 🖥️ 🧠
@@ -872,9 +875,9 @@ proposes a recipe, it's checked on the page (items outlined), and Continue saves
 
 #### `browser.mapForm` 🖥️ 🧠
 Opens an application form (following the page's Apply button if needed) and reads every field, typing nothing. It
-proposes each value from my profile (Settings), writes free-text answers following `message`, uses my stored facts and
-asks me what it can't answer, and attaches the stored document `cv` to the CV field. Its output is the payload of
-`browser.fillAndSubmit`, which I see and can edit at the gate.
+proposes each value from your profile (Settings), writes free-text answers following `message`, uses your stored facts and
+asks you what it can't answer, and attaches the stored document `cv` to the CV field. Its output is the payload of
+`browser.fillAndSubmit`, which you see and can edit at the gate.
 - In: `url`, `headed`, `cv`, `message`, `job`, `timeoutSeconds`.
 - Out: `formUrl`, `fields` (key, label, type, required, options, value, source), `files`, `submit`, `notes`.
 
@@ -930,7 +933,7 @@ gone, or a page off the allowed sites, pauses the run with nothing sent.
     goal: Find the application form and fill it from my profile; attach my CV.
     documents: [cv-main]
     headed: true
-- id: send                    # gate inserted: I see every recorded action and the final button first
+- id: send                    # gate inserted: you see every recorded action and the final button first
   type: browser.submit
   with:
     url: "{{agent.url}}"
@@ -946,7 +949,7 @@ kept only when its size and its real content type (not its name) are allowed: PD
 - Out: `artifactId`, `filename`, `mime`, `size`, `sha256`.
 
 #### `browser.upload` ⚡ 🖥️
-Puts one of my stored documents (from `file.read`) into a file field and presses `submit` if given. Many sites upload
+Puts one of your stored documents (from `file.read`) into a file field and presses `submit` if given. Many sites upload
 as soon as a file is chosen, so this is always behind a gate.
 - In: `url`, `field` (selector of the file input), `file`, `submit`, `timeoutSeconds`.
 - Out: `uploaded`, `url`, `confirmation`.
@@ -972,7 +975,7 @@ you approved.
   type: llm.summarize
   with: { content: "{{text.text}}", instruction: Totals by category, and anything unusual. }
 
-# Upload my CV to a site (gate inserted before upload)
+# Upload your CV to a site (gate inserted before upload)
 - id: cv
   type: file.read
   with: { document: cv-main }
@@ -981,10 +984,10 @@ you approved.
   with: { url: https://ats.example.com/profile, field: "#resume", file: "{{cv}}" }
 ```
 
-### 4.10 Me in the loop
+### 4.10 You in the loop
 
 #### `gate.review`
-Pauses the run and shows a list; I pick which items go on.
+Pauses the run and shows a list; you pick which items go on.
 - In: `items`, `title`.
 - Out: `selected`.
 
@@ -995,7 +998,7 @@ Pauses the run and shows a list; I pick which items go on.
 ```
 
 #### `gate.act`
-Shows the exact payload of the side-effect step named in `for`; that step runs only after I press **Act** (or Approve
+Shows the exact payload of the side-effect step named in `for`; that step runs only after you press **Act** (or Approve
 on Telegram). You rarely write it: the compiler inserts one before every side-effect step. Write it yourself only to
 place it differently; it must come before its step, after every step that step uses, and loop over the same items.
 - In: `for` (the step id).
@@ -1012,15 +1015,15 @@ place it differently; it must come before its step, after every step that step u
   with: { to: "{{item.from}}", subject: "{{draft.subject}}", body: "{{draft.body}}" }
 ```
 
-### 4.11 Telling me
+### 4.11 Telling you
 
 #### `notify.telegram`
-Sends me a Telegram message (only to me, never to anyone else). See [telegram.md](telegram.md).
+Sends you a Telegram message (only to you, never to anyone else). See [telegram.md](telegram.md).
 - In: `text` (up to 4000 characters).
 - Out: `sent`.
 
 #### `notify.digest`
-Sends me a Telegram digest of the last `hours`: what ran, what waits for me, what failed.
+Sends you a Telegram digest of the last `hours`: what ran, what waits for you, what failed.
 - In: `hours` [24].
 - Out: `sent`, `text`.
 
@@ -1048,7 +1051,7 @@ Cancels the starts `flow.later` scheduled with `key` that haven't started yet.
 - Out: `cancelled`.
 
 ```yaml
-# 7 days after I apply, remind me, unless the employer answers first
+# 7 days after you apply, a reminder, unless the employer answers first
 name: Follow-up after applying
 trigger: { on: application.status, status: [SUBMITTED] }
 steps:
@@ -1065,7 +1068,7 @@ steps:
 ```
 
 ```yaml
-# Cancel it by hand, e.g. when I withdraw
+# Cancel it by hand, e.g. when you withdraw
 - id: stop
   type: flow.cancel
   with: { key: "follow-up:{{trigger.applicationId}}" }
@@ -1079,19 +1082,19 @@ What the steps add up to, with the pipeline that does it:
 
 | Goal | Steps | Example |
 | --- | --- | --- |
-| Draft replies to recruiters and clients, send after I approve | `email.fetch` → `email.classify` → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
-| Find new jobs, score them, let me pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | [dev-bg-jobs.yaml](../pipelines/dev-bg-jobs.yaml) |
-| Track answers to my applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
-| Remind me to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
-| Nudge people who didn't answer my emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
+| Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
+| Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) |
+| Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
+| A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
+| Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
-| Keep my bills, remind me before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |
-| Tell me when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../pipelines/prices.yaml) |
+| Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |
+| Tell you when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../pipelines/prices.yaml) |
 | Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../pipelines/price-watch.yaml), [product-watch.yaml](../pipelines/product-watch.yaml) |
-| New releases of my stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../pipelines/release-watch.yaml), [release-notes.yaml](../pipelines/release-notes.yaml) |
-| Email me when it will be colder than 10° in the next 12 hours, and when it's back | `http.fetch` → `data.map` → `data.alert` → `email.send` | [cold-weather.yaml](../pipelines/cold-weather.yaml) |
-| Open a GitHub issue when a pipeline fails, after I approve it | `http.request` on a `run.finished` trigger | [failed-run-issue.yaml](../pipelines/failed-run-issue.yaml) |
-| Tell me when a table grows much faster than usual | `db.query` → `data.history` → `data.alert` → `notify.telegram` | [table-growth.yaml](../pipelines/table-growth.yaml) |
+| New releases of your stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../pipelines/release-watch.yaml), [release-notes.yaml](../pipelines/release-notes.yaml) |
+| Email you when it will be colder than 10° in the next 12 hours, and when it's back | `http.fetch` → `data.map` → `data.alert` → `email.send` | [cold-weather.yaml](../pipelines/cold-weather.yaml) |
+| Open a GitHub issue when a pipeline fails, after you approve it | `http.request` on a `run.finished` trigger | [failed-run-issue.yaml](../pipelines/failed-run-issue.yaml) |
+| Tell you when a table grows much faster than usual | `db.query` → `data.history` → `data.alert` → `notify.telegram` | [table-growth.yaml](../pipelines/table-growth.yaml) |
 | An evening summary of everything | `notify.digest` | [daily-digest.yaml](../pipelines/daily-digest.yaml) |
 | Check the live browser handover | `browser.open` (headed) | [live-view-check.yaml](../pipelines/live-view-check.yaml) |
 
@@ -1104,7 +1107,7 @@ What the steps add up to, with the pipeline that does it:
 - Message anyone on Telegram but you.
 - Read hosts that aren't allowed, or private network addresses.
 - Pay bills, move or delete emails, or mark them read.
-- Reach a server on your private network or tailnet (Home Assistant, a NAS) with `http.fetch` or `http.request`. A
+- Reach a server on your private network or VPN (Home Assistant, a NAS) with `http.fetch` or `http.request`. A
   database there is reachable with `db.query`, because its credential names the host.
 - Write to a database: `db.query` only reads.
 - Send an `http.request` without your approval, or follow its redirects.

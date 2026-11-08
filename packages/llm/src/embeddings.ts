@@ -14,7 +14,7 @@ export interface Embeddings {
 const MAX_CHARS = 12_000;
 
 /**
- * OpenAI embeddings (README §8: one interface; OpenAI, multilingual, 1024 dimensions via `dimensions`).
+ * OpenAI embeddings (docs/design.md §8: one interface; OpenAI, multilingual, 1024 dimensions via `dimensions`).
  * Errors never include the API key.
  */
 export class OpenAiEmbeddings implements Embeddings {

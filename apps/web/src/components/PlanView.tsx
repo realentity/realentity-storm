@@ -10,7 +10,7 @@ interface PlanProps {
   catalog: readonly StepTypeView[];
 }
 
-/** Readable plan (README §2.1): what triggers it, each step in order, and what the policy lets it do. */
+/** Readable plan (docs/design.md §2.1): what triggers it, each step in order, and what the policy lets it do. */
 export function PlanView({ definition, policy, catalog }: PlanProps) {
   const byType = useMemo(() => new Map(catalog.map((s) => [s.type, s])), [catalog]);
   const ids = useMemo(() => new Set(definition.steps.map((s) => s.id)), [definition]);
@@ -58,7 +58,7 @@ export function PlanView({ definition, policy, catalog }: PlanProps) {
                     <code className="small">{step.type}</code>
                     <div className="d-flex gap-1 mt-1 flex-wrap">
                       {type?.sideEffect && <span className="badge bg-red-lt">side effect</span>}
-                      {step.type.startsWith("gate.") && <span className="badge bg-yellow-lt">waits for me</span>}
+                      {step.type.startsWith("gate.") && <span className="badge bg-yellow-lt">waits for you</span>}
                       {step.autoInserted && <span className="badge bg-azure-lt">added by the compiler</span>}
                       {step.forEach && <span className="badge bg-secondary-lt">for each {step.forEach}</span>}
                       {step.when && <span className="badge bg-secondary-lt">only when {step.when} isn't empty</span>}

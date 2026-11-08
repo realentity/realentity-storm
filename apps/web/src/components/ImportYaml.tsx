@@ -14,7 +14,7 @@ const ACTION: Record<BundleItemView["action"], { label: string; badge: string }>
 };
 
 /**
- * M35-T5: "Import YAML": a file (or what I paste) holding an App and its pipelines, or pipelines alone, checked as a
+ * M35-T5: "Import YAML": a file (or pasted text) holding an App and its pipelines, or pipelines alone, checked as a
  * whole first: what each would be (new, its next version with what changes, the same) and every problem with its line.
  * Import saves all of it, App first, or nothing.
  */
@@ -107,7 +107,7 @@ function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; o
     >
       <div className="d-flex flex-column gap-3">
         <div className="text-secondary small">
-          An App (its <code>types</code>) and the pipelines that name it, with <code>---</code> between them; or pipelines alone. One I
+          An App (its <code>types</code>) and the pipelines that name it, with <code>---</code> between them; or pipelines alone. One you
           already have by name becomes its next version. Everything is checked first; nothing is saved unless all of it can be.
         </div>
         <div className="d-flex gap-2 align-items-center">
@@ -178,7 +178,7 @@ function CheckList({ check }: Readonly<{ check: BundleCheckView }>) {
         </div>
       )}
       {check.ok && check.items.every((i) => i.action === "same") && (
-        <div className="text-secondary small">Everything in it is as I have it already.</div>
+        <div className="text-secondary small">Everything in it is as you have it already.</div>
       )}
     </div>
   );

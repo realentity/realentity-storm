@@ -13,7 +13,7 @@ import { useAction, useLoad } from "../lib/use-load";
 import { VIEW_ICON } from "../lib/view";
 
 const PAGE = 50;
-/** Columns of the plain table: the key, the title, then the first fields in the order I wrote them. */
+/** Columns of the plain table: the key, the title, then the first fields in the order written. */
 const COLUMNS = 6;
 
 /**
@@ -333,7 +333,7 @@ function Entities({ appId, type, dataType }: { appId: string; type: string; data
 }
 
 function valueOf(entity: EntityView, field: string): unknown {
-  // My fields are kept by their name ("company.note"), what pipelines wrote as it came.
+  // The user's fields are kept by their name ("company.note"), what pipelines wrote as it came.
   return Object.hasOwn(entity.mine, field) ? entity.mine[field] : entityValueAt(entity.value, field);
 }
 

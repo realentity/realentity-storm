@@ -1,4 +1,4 @@
-# Development: PostgreSQL with pgvector only (README §15). The full stack for the server comes in M5 (README §13).
+# Development: PostgreSQL with pgvector only (docs/design.md §15). The full stack is docker/compose.yml (docs/self-hosting.md).
 # Not needed if you already run PostgreSQL 17 with pgvector locally; point DATABASE_URL there instead.
 name: realentity-storm
 

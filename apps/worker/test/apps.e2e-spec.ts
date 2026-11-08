@@ -145,7 +145,7 @@ describe("M30: entities", () => {
     expect(await db.client.dataEntity.count({ where: { appId, removedAt: null } })).toBe(2);
   });
 
-  it("keeps my fields through every write, and never takes one from a pipeline", async () => {
+  it("keeps the user's fields through every write, and never takes one from a pipeline", async () => {
     await save([job(1)]);
     await db.client.dataEntity.updateMany({ data: { mine: { favorite: true } } });
     const result = await save([job(1, { salary: 6000, favorite: false })]);

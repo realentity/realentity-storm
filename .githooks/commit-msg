@@ -1,0 +1,7 @@
+#!/bin/sh
+# Commit messages carry no AI attribution trailers: the README's "How this was built" discloses it once.
+# Active after `pnpm install` (package.json "prepare" sets core.hooksPath to .githooks).
+if grep -qiE '^(co-authored-by:.*(claude|anthropic)|.*generated with \[?claude code)|noreply@anthropic\.com|claude-session:' "$1"; then
+  echo "commit-msg: remove the AI attribution trailer (Co-Authored-By: Claude / Generated with Claude Code)." >&2
+  exit 1
+fi

@@ -9,7 +9,7 @@ import { formatDateTime } from "../lib/format";
 import { useLoad } from "../lib/use-load";
 import { columnLabel, rowTitle } from "../lib/view";
 
-/** M27: one row of a pipeline's page: its fields, my marks, its buttons, and its history when the view keeps one. */
+/** M27: one row of a pipeline's page: its fields, the user's marks, its buttons, and its history when the view keeps one. */
 export function ViewRowPage() {
   const { pipelineId = "", key = "" } = useParams();
   const loaded = useLoad(

@@ -34,7 +34,7 @@ export function hashMatches(payloadHash: string, shown: string): boolean {
   return payloadHash.slice(0, HASH_CHARS) === shown;
 }
 
-/** The message for a proposal waiting for me; `approvals: false` (the setting) leaves only Open. */
+/** The message for a proposal waiting for the user; `approvals: false` (the setting) leaves only Open. */
 export function proposalMessage(proposal: ProposalForTelegram, options: { approvals: boolean; appOrigin?: string }): TelegramMessage {
   const payload = payloadText(proposal.payload);
   const complete = payload.length <= MAX_PAYLOAD_TEXT;

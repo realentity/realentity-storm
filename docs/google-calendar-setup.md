@@ -2,7 +2,7 @@
 
 Connects your Google Calendar so pipelines can read your events (`calendar.find`) and propose new ones
 (`calendar.create`, always waiting for your approval). It's done once and takes about 15 minutes. You need the Google
-account whose calendar Storm should use, and access to `/opt/realentity-storm/.env` on the server.
+account whose calendar Storm should use, and access to Storm's `.env` on your server ([self-hosting.md](self-hosting.md)).
 
 What you create: a Google Cloud **project**, with the **Calendar API** turned on, a **consent screen** (what Google
 shows when you sign in), and an **OAuth client** (an id and a secret that Storm puts in `.env`).
@@ -68,11 +68,12 @@ sign-in, about 20 seconds); the run goes on once you're back.
 5. **Authorized redirect URIs** → **Add URI**:
 
    ```
-   https://storm.example.com:8100/api/google/callback
+   https://storm.example.com/api/google/callback
    ```
 
-   It must match exactly: `https`, port `8100`, no slash at the end. Storm's **Settings → Google Calendar** shows the
-   address it uses, if you want to compare.
+   That is your `APP_ORIGIN` followed by `/api/google/callback`. It must match exactly: `https`, the same host and
+   port, no slash at the end. Storm's **Settings → Google Calendar** shows the address it uses, if you want to
+   compare.
 6. Press **Create**.
 7. A dialog shows the **Client ID** (ends in `.apps.googleusercontent.com`) and the **Client secret** (starts with
    `GOCSPX-`). **Copy both now, or press Download JSON**: Google may not show the secret again. (If you lose it: open
@@ -80,10 +81,9 @@ sign-in, about 20 seconds); the run goes on once you're back.
 
 ## 5. Put them in Storm's `.env`
 
-On the server:
+On the server, in Storm's folder (the repository's root):
 
 ```sh
-cd /opt/realentity-storm
 nano .env
 ```
 
@@ -106,7 +106,7 @@ which key is wrong (`./docker/storm logs api`; it names the key, never the value
 
 ## 6. Connect in Storm
 
-1. Open <https://storm.example.com:8100/settings>. The **Google Calendar** card now has
+1. Open Storm's **Settings** (`APP_ORIGIN` + `/settings`). The **Google Calendar** card now has
    **Connect Google Calendar** (it said *Not set up* before step 5).
 2. Press it. Google's sign-in opens: choose your account.
 3. Google says **"Google hasn't verified this app"**. That's your own app (step 3): press **Continue** (or
@@ -136,8 +136,8 @@ Done. Pipelines with calendar steps can now run; the review screen no longer war
 To stop the weekly reconnect, publish the app. Google asks for two public pages first:
 
 1. A **homepage** and a **privacy policy** page on a domain you own (e.g. `example.com`; not `hooks.example.com`, which
-   only Telegram and GitHub can reach). A few lines each are enough: Storm is a personal assistant used only by you;
-   it reads and creates events in your own calendar; it shares nothing with anyone.
+   only Telegram and webhook callers can reach). A few lines each are enough: Storm is a personal assistant used only
+   by you; it reads and creates events in your own calendar; it shares nothing with anyone.
 2. **Branding:** fill in **Application home page** and **Application privacy policy link**, and add the domain under
    **Authorized domains**. **Save**. (If Google asks you to verify the domain, do it in Google Search Console with
    a DNS record.)

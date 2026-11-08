@@ -52,7 +52,7 @@ describe("live view and takeover", () => {
     db.client.run.create({ data: { userId, pipelineVersionId: versionId, trigger: "manual", status, headed } });
   const live = async (runId: string) => (await agent.get(`/api/runs/${runId}/live`).expect(200)).body as LiveView;
 
-  it("M8-S5: the view-only password while the run works; the full one only while it waits for me", async () => {
+  it("M8-S5: the view-only password while the run works; the full one only while it waits for the user", async () => {
     const { runId } = await run("RUNNING");
     expect(await live(runId)).toEqual({
       available: true,
@@ -80,7 +80,7 @@ describe("live view and takeover", () => {
     await agent.post(`/api/runs/${headless.runId}/takeover`).expect(409);
   });
 
-  it("says whether a browser window is on the display: a headed step, or waiting for me; else the latest screenshot", async () => {
+  it("says whether a browser window is on the display: a headed step, or waiting for the user; else the latest screenshot", async () => {
     const pipeline = await db.client.pipeline.create({ data: { userId, name: "Watch" } });
     const steps = [
       { id: "search", type: "browser.extract", with: { recipes: ["jobs.bg/search"] } },
@@ -110,14 +110,14 @@ describe("live view and takeover", () => {
     await step("quiet", "browser.open");
     expect((await live(runId)).window).toMatchObject({ open: false, step: { stepKey: "quiet" } });
 
-    // Waiting for me: the window is there, whatever the step.
+    // Waiting for the user: the window is there, whatever the step.
     await db.client.takeover.create({ data: { runId, status: "OPEN", reason: "A CAPTCHA" } });
     expect((await live(runId)).window).toMatchObject({ open: true });
     await db.client.run.deleteMany();
     await db.client.pipeline.delete({ where: { pipelineId: pipeline.pipelineId } });
   });
 
-  it("a run that needs me is listed until I continue or abort it", async () => {
+  it("a run that needs the user is listed until they continue or abort it", async () => {
     const { runId } = await run("WAITING_FOR_USER");
     await db.client.takeover.create({ data: { runId, status: "OPEN", reason: "CAPTCHA", url: "https://jobs.example.org/login" } });
     expect((await agent.get("/api/takeovers").expect(200)).body).toEqual([
@@ -133,7 +133,7 @@ describe("live view and takeover", () => {
     await request(api.http).get("/api/live/authorize").expect(401);
   });
 
-  it("M8-T8: a run's screenshot is served to me from the artifacts folder, and nothing outside it", async () => {
+  it("M8-T8: a run's screenshot is served to the user from the artifacts folder, and nothing outside it", async () => {
     const { runId } = await run("DONE");
     await mkdir(join(artifactsDir, runId), { recursive: true });
     await writeFile(join(artifactsDir, runId, "open-screenshot.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));

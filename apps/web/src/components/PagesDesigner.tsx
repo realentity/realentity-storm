@@ -32,7 +32,7 @@ import { CommitInput, type DesignerEdit } from "./TypesDesigner";
 
 /**
  * M37-T1: the App's pages, a type at a time: its list (in the menu), its own page, and its form when it has fields of
- * mine. A page I haven't written is shown as its default from the type's fields; the first change writes it out.
+ * mine. A page not written yet is shown as its default from the type's fields; the first change writes it out.
  */
 export function PagesDesigner({
   source,
@@ -436,7 +436,7 @@ function TypePages({
                   onChange={(e) => set("list", "moves", e.target.checked || undefined)}
                   data-testid="page-moves"
                 />
-                <span className="form-check-label">a button on each row for each move I can make</span>
+                <span className="form-check-label">a button on each row for each move you can make</span>
               </label>
             </Row>
           )}
@@ -563,7 +563,7 @@ function TypePages({
                 editable={editable}
               />
               <Issues issues={pageIssues(formPage)} onLine={onLine} />
-              <Row label="Fields I fill in" help={HELP.pageFormFields}>
+              <Row label="Fields you fill in" help={HELP.pageFormFields}>
                 <FieldChips
                   value={view.form.map((f) => f.field)}
                   options={mineFields}

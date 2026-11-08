@@ -63,7 +63,7 @@ describe("checkAppSource (M35-T1)", () => {
 });
 
 describe("editAppSource (M35-T1)", () => {
-  it("changes the document, keeping my comments and order", () => {
+  it("changes the document, keeping its comments and order", () => {
     const edited = editAppSource(SOURCE, (document) =>
       document.setIn(["types", "Bill", "fields", "issuer"], document.createNode({ type: "text" }, { flow: true })),
     );
@@ -73,7 +73,7 @@ describe("editAppSource (M35-T1)", () => {
     expect(Object.keys(checkAppSource(edited).definition!.types.Bill.fields)).toEqual(["id", "amount", "currency", "issuer", "status"]);
   });
 
-  it("leaves the lines it doesn't change as I wrote them", () => {
+  it("leaves the lines it doesn't change as written", () => {
     const edited = editAppSource(SOURCE, (document) =>
       document.setIn(["types", "Bill", "stages", "states"], document.createNode(["due", "paid", "late"], { flow: true })),
     );

@@ -25,17 +25,18 @@ const OutcomeSchema = z.object({
 const STATUS = { responded: "RESPONDED", interview: "INTERVIEW", rejected: "REJECTED" } as const;
 
 const SYSTEM =
-  "You read an email I received and decide whether it is about one of my job applications (in <applications>), and " +
-  "what it says: interview (they invite me to an interview or a call, or schedule one), rejected (they won't go on " +
-  "with me), responded (a person from the employer or its recruiter answered otherwise: a question, next steps, an " +
-  "assignment), none (not about these applications, or only an automatic confirmation that my application arrived). " +
+  "You read an email the user received and decide whether it is about one of their job applications (in " +
+  "<applications>), and what it says: interview (they invite the user to an interview or a call, or schedule one), " +
+  "rejected (they won't go on with the user), responded (a person from the employer or its recruiter answered " +
+  "otherwise: a question, next steps, an assignment), none (not about these applications, or only an automatic " +
+  "confirmation that the user's application arrived). " +
   `Pick the application by company and role; null with none when unsure. ${DATA_ONLY} The email is in <email>.`;
 
 /**
- * application.outcome (M16-T3): what an email says about one of my applications, and the application moved on:
+ * application.outcome (M16-T3): what an email says about one of the user's applications, and the application moved on:
  * replied, interview, rejected. Only forward (a rejected one stays rejected; by hand on the Jobs page, anything), the
  * date of each outcome kept, the email noted, and application.status emitted (it cancels a follow-up waiting with
- * flow.later). Candidates are my open applications, those the sender's domain or the company name points to first;
+ * flow.later). Candidates are the user's open applications, those the sender's domain or the company name points to first;
  * without open applications no LLM is asked. A dry run moves nothing.
  */
 export class ApplicationOutcomeStep extends LlmStep {
@@ -87,7 +88,7 @@ export class ApplicationOutcomeStep extends LlmStep {
     return { matched: true, applicationId: application.applicationId, job, status, changed, reason: answer.reason };
   }
 
-  /** M33: the same, on the Jobs of the pipeline's App: a Job I applied to moves forward as its stages allow. */
+  /** M33: the same, on the Jobs of the pipeline's App: a Job the user applied to moves forward as its stages allow. */
   private async onJobs(app: JobApp, message: EmailMessage, context: StepContext): Promise<unknown> {
     const rows = await this.prisma.dataEntity.findMany({ where: { appId: app.appId, type: "Job", removedAt: null, stage: { in: ["applied", "responded", "interview"] } } });
     const applied = (e: (typeof rows)[number]) => (e.stageDates as Record<string, string>).applied ?? "";

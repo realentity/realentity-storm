@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Before a push: the commits being pushed (their added lines and their messages) must not contain any pattern of a
+# private list, e.g. names of your own hosts, domains or addresses. The list is one Perl regex per line (# comments
+# and blank lines ignored), outside this repository: STORM_FORBIDDEN_FILE, or ../realentity-storm-private/forbidden.txt
+# next to this clone. Without a list nothing is checked. Lines matching a pattern of the list's "allow:" lines pass.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+list="${STORM_FORBIDDEN_FILE:-$root/../realentity-storm-private/forbidden.txt}"
+[ -f "$list" ] || exit 0
+
+patterns=() allowed=()
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%$'\r'}"
+  case "$line" in '' | '#'*) continue ;; allow:*) allowed+=("${line#allow:}") ;; *) patterns+=("$line") ;; esac
+done < "$list"
+[ "${#patterns[@]}" -gt 0 ] || exit 0
+
+zero=0000000000000000000000000000000000000000
+found=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # a deleted branch
+  if [ "$remote_sha" = "$zero" ]; then range=("$local_sha" --not --remotes); else range=("$remote_sha..$local_sha"); fi
+  text="$(
+    git log --format='%B' "${range[@]}"
+    git log -p --format= --no-color "${range[@]}" | grep '^+' | grep -v '^+++' || true
+  )"
+  for a in "${allowed[@]+"${allowed[@]}"}"; do text="$(printf '%s\n' "$text" | grep -vP -e "$a" || true)"; done
+  for p in "${patterns[@]}"; do
+    if hits="$(printf '%s\n' "$text" | grep -nP -e "$p")"; then
+      echo "pre-push: forbidden pattern /$p/ in the commits being pushed:" >&2
+      printf '%s\n' "$hits" | head -5 | cut -c1-200 >&2
+      found=1
+    fi
+  done
+done
+if [ "$found" -ne 0 ]; then
+  echo "pre-push: nothing pushed. Fix the commits (git commit --amend / rebase), or edit $list." >&2
+  exit 1
+fi

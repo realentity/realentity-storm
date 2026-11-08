@@ -48,7 +48,7 @@ export class StepsController {
   }
 }
 
-/** As I write it (`input`: defaults optional) or as the step gives it (`output`); what JSON Schema can't say is "any". */
+/** As it is written (`input`: defaults optional) or as the step gives it (`output`); what JSON Schema can't say is "any". */
 function schemaOf(schema: z.ZodType, io: "input" | "output"): JsonSchema {
   const { $schema: _, ...json } = z.toJSONSchema(schema, { io, unrepresentable: "any" }) as JsonSchema;
   return json;

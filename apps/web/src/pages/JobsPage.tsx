@@ -8,13 +8,13 @@ import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
-/** What came of an application, as I set it by hand (or an email did). */
+/** What came of an application, as set by hand (or by an email). */
 const OUTCOME = { SUBMITTED: "applied, no answer", RESPONDED: "replied", INTERVIEW: "interview", REJECTED: "rejected" } as const;
 type Outcome = keyof typeof OUTCOME;
 
 /**
  * The Jobs page (M9-T6): postings that pipelines saved (data.save), best score first, with the score's reason and
- * what I decided. Links open the posting on its site, in a new tab without a referrer.
+ * what the user decided. Links open the posting on its site, in a new tab without a referrer.
  */
 export function JobsPage() {
   const [filter, setFilter] = useState<Partial<JobFilter>>({});

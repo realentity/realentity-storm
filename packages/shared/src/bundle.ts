@@ -78,7 +78,7 @@ export type BundleRequest = z.infer<typeof BundleRequestSchema>;
 export interface BundleItemView {
   kind: "app" | "pipeline";
   name: string;
-  /** The App or pipeline of that name I have: its next version; else a new one. */
+  /** The App or pipeline of that name already there: its next version; else a new one. */
   id: string | null;
   action: "create" | "update" | "same";
   changes: string[];
@@ -90,7 +90,7 @@ export interface BundleCheckView {
   /** About the file as a whole (two Apps, a document that is neither, YAML errors). */
   errors: AppIssue[];
   items: BundleItemView[];
-  /** Pipelines I have that name the App and aren't in the file, and that it would break. */
+  /** Pipelines already there that name the App and aren't in the file, and that it would break. */
   broken: { pipelineId: string; name: string; errors: AppIssue[] }[];
 }
 

@@ -4,8 +4,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PrismaService } from "../database/prisma.service";
 
 /**
- * Facts about me (M15) on the Profile page, and my answers to the questions runs ask (M15-T3): an answer becomes a
- * fact and continues the run waiting for it. Facts are written here and by the worker from my approvals only.
+ * Facts about the user (M15) on the Profile page, and their answers to the questions runs ask (M15-T3): an answer becomes a
+ * fact and continues the run waiting for it. Facts are written here and by the worker from the user's approvals only.
  */
 @Injectable()
 export class FactsService {
@@ -39,7 +39,7 @@ export class FactsService {
   }
 
   /**
-   * My answer to a question a run asked: kept as a fact (that question, this answer), and the run goes on. A choice
+   * The user's answer to a question a run asked: kept as a fact (that question, this answer), and the run goes on. A choice
    * question takes one of its options (any case).
    */
   async answer(userId: string, questionId: string, text: string): Promise<QuestionView> {

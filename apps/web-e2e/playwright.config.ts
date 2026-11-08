@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { STORAGE_STATE, WEB_PORT, WEB_URL, API_PORT } from "./src/stack";
 
 /**
- * Browser tests against the composed stack (README test strategy: PRs to main). Global setup starts PostgreSQL, the
+ * Browser tests against the composed stack (docs/design.md test strategy: PRs to main). Global setup starts PostgreSQL, the
  * api and the worker; the web app runs on Vite's dev server, proxying /api (and the events socket) to that api.
  * One worker: the tests share one database and the kill switch is global.
  */

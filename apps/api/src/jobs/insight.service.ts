@@ -64,7 +64,7 @@ export class InsightService {
   }
 
   /**
-   * The postings found since `from` and what came of each. M33: from the Jobs of my Apps when I have one (the dates
+   * The postings found since `from` and what came of each. M33: from the Jobs of the user's Apps when there is one (the dates
    * each reached its stages), else from what the old Jobs page kept.
    */
   private async postings(userId: string, from: Date): Promise<Posting[]> {
@@ -101,7 +101,7 @@ export class InsightService {
     });
   }
 
-  /** My Apps that keep jobs: a Job type the job steps can move. */
+  /** The user's Apps that keep jobs: a Job type the job steps can move. */
   private async jobApps(userId: string): Promise<string[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } } });
     const versions = await this.prisma.client.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });

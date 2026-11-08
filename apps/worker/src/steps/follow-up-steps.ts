@@ -8,7 +8,7 @@ import { replySubject } from "./email-steps";
 import { DATA_ONLY, EXAMPLES_RULE, LlmStep } from "./llm-steps";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Per mailbox and run: enough for a month of my own email. */
+/** Per mailbox and run: enough for a month of the user's own email. */
 const READ_LIMIT = 300;
 /** Automatic senders: a follow-up to them reaches nobody. */
 const NOBODY = /^(no-?reply|do-?not-?reply|mailer-daemon|postmaster|notifications?)@/i;
@@ -23,10 +23,11 @@ interface AwaitingInput {
 }
 
 /**
- * email.awaiting (M22): my emails nobody answered. A thread waits for an answer when its last message is mine, older
+ * email.awaiting (M22): the user's emails nobody answered. A thread waits for an answer when its last message is
+ * theirs, older
  * than afterDays, and nothing came back in it since (by Message-ID, In-Reply-To and References, not by subject). Each
- * email of mine is listed once ever (FollowUp): rejecting the follow-up leaves the thread alone, and only another
- * message of mine in it makes it come back. A dry run lists without remembering.
+ * email of the user's is listed once ever (FollowUp): rejecting the follow-up leaves the thread alone, and only another
+ * message of theirs in it makes it come back. A dry run lists without remembering.
  */
 export class EmailAwaitingStep implements StepExecutor {
   readonly type = "email.awaiting";
@@ -61,7 +62,7 @@ export class EmailAwaitingStep implements StepExecutor {
       const answers = received.filter((m) => !mine.has(m.messageId) && inThread(m, ids));
       const lastAnswer = Math.max(0, ...answers.map(time));
       if (lastAnswer > time(last)) return [];
-      // My messages since their last answer: the first one, then the follow-ups.
+      // The user's messages since the other side's last answer: the first one, then the follow-ups.
       const followUps = ordered.filter((m) => time(m) > lastAnswer).length - 1;
       if (followUps >= maxFollowUps) return [];
       return [
@@ -103,7 +104,7 @@ function time(message: EmailMessage): number {
   return new Date(message.date).getTime();
 }
 
-/** email.draftFollowUp (M22): a nudge to my own email that got no answer (Sonnet by default). */
+/** email.draftFollowUp (M22): a nudge to the user's own email that got no answer (Sonnet by default). */
 export class DraftFollowUpStep extends LlmStep {
   readonly type = "email.draftFollowUp";
 
@@ -115,14 +116,14 @@ export class DraftFollowUpStep extends LlmStep {
       signature?: string;
     };
     const system = [
-      "You draft a follow-up for me: <email> is an email I sent that got no answer. The follow-up goes in the same " +
-        "thread to its recipient, to be reviewed and sent by me. Rules:",
-      "- Write in the language of my email.",
-      "- Short: a greeting, two or three sentences, a sign-off. Refer to my email; don't repeat it.",
+      "You draft a follow-up for the user: <email> is an email they sent that got no answer. The follow-up goes in the " +
+        "same thread to its recipient, to be reviewed and sent by the user. Rules:",
+      "- Write in the language of the user's email.",
+      "- Short: a greeting, two or three sentences, a sign-off. Refer to the user's email; don't repeat it.",
       "- Polite and without pressure: no guilt, no deadline, no \"just checking in\" filler twice.",
       "- Add no new facts, dates, prices, offers or commitments; where one would be needed, a placeholder like [date].",
       "- Plain text, no subject line, no quoted original.",
-      signature ? "- End with my signature exactly as given." : "- End with a short sign-off, without a name.",
+      signature ? "- End with the user's signature exactly as given." : "- End with a short sign-off, without a name.",
       `- ${EXAMPLES_RULE}`,
       DATA_ONLY,
       `<instruction>${instruction}</instruction>`,

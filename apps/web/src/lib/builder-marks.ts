@@ -3,7 +3,7 @@ import { loosePipeline } from "./step-cards";
 
 /**
  * M38-T5: what a builder's proposal changes in what the editor had open: marked where it is (a step's card, a type's
- * table, a field's row), and listed, until I clear the marks or Undo.
+ * table, a field's row), and listed, until the user clears the marks or Undo.
  */
 export interface BuilderMarks {
   /** Pipeline: step ids and "trigger". App: type names and "Type.field". */

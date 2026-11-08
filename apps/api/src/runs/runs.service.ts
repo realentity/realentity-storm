@@ -161,7 +161,7 @@ export class RunsService {
   /**
    * M17-T1: a failed run goes on from its failed steps: they are cleared and the run queued again, the steps before
    * keep their outputs (an LLM step isn't paid for twice), what already ran is never repeated. Not when a side effect
-   * failed: it may have gone out (an email, a form), so that is a new run, after I checked.
+   * failed: it may have gone out (an email, a form), so that is a new run, after the user checked.
    */
   async retry(userId: string, runId: string): Promise<RunDetailView> {
     await this.controls.assertNotPaused(userId);

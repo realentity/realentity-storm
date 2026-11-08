@@ -203,7 +203,7 @@ steps:
       await expect(request({ method: "DELETE", url: api.url("/repos/me/infra/issues/7", "other.test") })).rejects.toThrow("other.test isn't in the pipeline's allowedDomains");
     });
 
-    it("M29-I6: pipelines/failed-run-issue.yaml: the issue waits at its gate with {{cred:…}}, and is created once I approve", async () => {
+    it("M29-I6: pipelines/failed-run-issue.yaml: the issue waits at its gate with {{cred:…}}, and is created once approved", async () => {
       const source = readFileSync(join(__dirname, "../../../pipelines/failed-run-issue.yaml"), "utf8").replace("https://api.github.com/", `http://api.github.com:${api.port}/`);
       const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()));
       await db.client.credential.updateMany({ data: { name: "github", allowedHosts: ["api.github.com"] } });

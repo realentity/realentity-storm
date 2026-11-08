@@ -60,7 +60,7 @@ export class AppImportsService {
   }
 
   /**
-   * The Prices page's products as Products of mine (a shop line per offer, its variant after "|"), each offer's last
+   * The Prices page's products as the user's Products (a shop line per offer, its variant after "|"), each offer's last
    * reading as an Offer, and its price history under the Offer's key. A product already here (by name) is skipped.
    */
   private async movePrices(userId: string, appId: string): Promise<AppImportResult> {
@@ -132,7 +132,7 @@ export class AppImportsService {
 
   /**
    * The Jobs page's postings as Jobs, each at the stage its application (else its own status) reached, with the date
-   * of each; my notes as its comments. A job already here (by url) is skipped.
+   * of each; the user's notes as its comments. A job already here (by url) is skipped.
    */
   private async moveJobs(userId: string, appId: string): Promise<AppImportResult> {
     const postings = await this.prisma.client.jobPosting.findMany({ where: { userId }, include: { applications: true }, orderBy: { firstSeenAt: "asc" } });
@@ -189,7 +189,7 @@ export class AppImportsService {
 
   /**
    * A collection's rows (M33-T5) as entities of a type pipelines write: each value checked as the type says (one
-   * without its key or a required field stays behind), a mark of mine on the row as the yes/no field of mine of its
+   * without its key or a required field stays behind), a mark of the user's on the row as the yes/no field (mine) of its
    * name (Upgraded → upgraded: true). A row already here (by key) is skipped.
    */
   private async moveCollection(userId: string, appId: string, app: AppDefinition, collection: string, typeName: string): Promise<AppImportResult> {

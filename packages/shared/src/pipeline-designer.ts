@@ -3,7 +3,7 @@ import { editAppSource, keepComment } from "./app-source";
 import { RESERVED_STEP_IDS, STEP_ID } from "./pipeline";
 
 /**
- * M36-T2: the step builder's changes to a pipeline, each an edit of its YAML (my comments, order and the lines it
+ * M36-T2: the step builder's changes to a pipeline, each an edit of its YAML (its comments, order and the lines it
  * doesn't touch kept, as the App designer's). A step renamed is renamed in every {{reference}} to it.
  */
 
@@ -90,7 +90,7 @@ export function setStepInput(source: string, index: number, field: string, value
   });
 }
 
-/** A step's `when`, `forEach` or `retries`: undefined removes it. Placed before its `with`, as I'd write them. */
+/** A step's `when`, `forEach` or `retries`: undefined removes it. Placed before its `with`, as one would write them. */
 export function setStepOption(
   source: string,
   index: number,
@@ -205,7 +205,7 @@ export function notAllowedHost(message: string): string | null {
   return /^(\S+) isn't in policy\.allowedDomains/.exec(message)?.[1] ?? null;
 }
 
-/** My comment on the value a change replaces, on the new one. */
+/** The comment on the value a change replaces, on the new one. */
 /** Every {{from}} and {{from.…}} in the pipeline's text, as {{to…}}. */
 function renameReferences(document: Document, from: string, to: string): void {
   const pattern = new RegExp(`\\{\\{(\\s*)${escapeRegExp(from)}(?=\\s*(?:\\.|\\[|\\}\\}))`, "g");

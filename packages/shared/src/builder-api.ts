@@ -4,7 +4,7 @@ import { type CompiledDefinition, type CompiledPolicy, type CompileIssue } from 
 import { type DefinitionDiff } from "./pipeline-api";
 import { type RunDetailView } from "./runs-api";
 
-/** A chat about one pipeline (README §2.5), or without one to describe a new pipeline (README §2.1). */
+/** A chat about one pipeline (docs/design.md §2.5), or without one to describe a new pipeline (docs/design.md §2.1). */
 export const CreateBuilderChatSchema = z
   .object({
     pipelineId: z.uuid().optional(),
@@ -21,10 +21,10 @@ export type BuilderChatFilter = z.infer<typeof BuilderChatFilterSchema>;
 export const BuilderMessageSchema = z
   .object({
     text: z.string().trim().min(1).max(4000),
-    /** A reflection suggestion to turn into a diff (README §2.5); saving the result marks it done. */
+    /** A reflection suggestion to turn into a diff (docs/design.md §2.5); saving the result marks it done. */
     suggestionId: z.uuid().optional(),
     /**
-     * M38-T5: sent from an editor: what it has open (not saved yet) and what I am on there ("step fetch, input
+     * M38-T5: sent from an editor: what it has open (not saved yet) and what the user is on there ("step fetch, input
      * sinceDays"). The builder changes the draft, not the saved version.
      */
     editor: z
@@ -102,7 +102,7 @@ export interface BuilderChatView extends BuilderChatSummaryView {
   tokenCap: number;
   costUsd: number;
   messages: BuilderMessageView[];
-  /** Open reflection suggestions for the pipeline (README §2.5). */
+  /** Open reflection suggestions for the pipeline (docs/design.md §2.5). */
   suggestions: PipelineSuggestionView[];
   /** ANTHROPIC_API_KEY is set. */
   available: boolean;

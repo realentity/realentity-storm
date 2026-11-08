@@ -263,7 +263,7 @@ steps:
     expect(await db.client.jobPosting.findFirstOrThrow({ where: { title: "Mid .NET Engineer 1" } })).toMatchObject({ status: "SHORTLISTED" });
   });
 
-  it("M9-I3: a redesigned page fails the step clearly, marks the recipe broken and tells me once", async () => {
+  it("M9-I3: a redesigned page fails the step clearly, marks the recipe broken and tells the user once", async () => {
     const recipe = await saveRecipe(boardRecipe());
     sites.redesignJobs();
     for (let i = 0; i < 2; i++) {
@@ -315,7 +315,7 @@ steps:
     expect(llm.prompts[0]).toContain("Version 1 no longer matches the page");
     expect(sites.hits.every((hit) => hit.startsWith("jobs.localhost "))).toBe(true);
 
-    // A proposal on the broken version, not a version: runs keep v1 until I approve it.
+    // A proposal on the broken version, not a version: runs keep v1 until the user approves it.
     const row = await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } });
     expect(row).toMatchObject({ brokenAt: expect.any(Date) as unknown, proposedInRunId: runId, proposed: expect.objectContaining({ item: "li.posting-card" }) as unknown });
     expect(await db.client.siteRecipe.count()).toBe(1);
@@ -371,7 +371,7 @@ steps:
       await db.client.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { status, resolvedAt: new Date() } });
     };
 
-    it("I show the list, the LLM's recipe is checked on the page and fixed, and Continue saves it as the next version", async () => {
+    it("the user shows the list, the LLM's recipe is checked on the page and fixed, and Continue saves it as the next version", async () => {
       await saveRecipe(boardRecipe(), 1);
       llm = new ScriptedLlm([proposal(".card"), proposal("article.job")]);
       const runId = await runner.start(await createVersion(db.client, userId, TEACH()), { trigger: "manual" });

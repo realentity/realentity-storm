@@ -61,7 +61,7 @@ export interface PageStages {
 
 export interface ResolvedListPage {
   type: string;
-  /** A type of mine (M32): I add entities from the list, on a form of all its fields. */
+  /** A type of mine (M32): the user adds entities from the list, on a form of all its fields. */
   mine: boolean;
   create: FormField[] | null;
   actions: { label: string; run: string; confirm?: string }[];
@@ -86,7 +86,7 @@ export interface ResolvedViewPage {
   type: string;
   mine: boolean;
   stages: PageStages | null;
-  /** My fields on its form; empty: none to edit. */
+  /** Fields of mine on its form; empty: none to edit. */
   form: FormField[];
   actions: EntityActionDef[];
   title: string;
@@ -194,7 +194,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
   };
 }
 
-/** The type's own page: as written, or every field in the order I wrote them. */
+/** The type's own page: as written, or every field in the order they are written. */
 export function viewPageOf(app: AppDefinition, typeName: string): ResolvedViewPage {
   const type = app.types[typeName];
   const page = app.pages.find((p): p is ViewPage => "view" in p && p.view === typeName);
@@ -294,7 +294,7 @@ export interface EntityGroup {
 
 export interface AppListView extends AppPageHeader {
   page: ResolvedListPage;
-  /** Entities as rows (my fields over what pipelines wrote), in groups when the page has them, then paged. */
+  /** Entities as rows (fields of mine over what pipelines wrote), in groups when the page has them, then paged. */
   rows: ViewRow[];
   total: number;
   counts: { current: number; removed: number };
@@ -309,15 +309,15 @@ export interface AppEntityView extends AppPageHeader {
   page: ResolvedViewPage;
   row: ViewRow;
   history: { at: string; value: number }[] | null;
-  /** M32: its stage, where I may move it, and when it first reached each state. */
+  /** M32: its stage, where the user may move it, and when it first reached each state. */
   stage: { value: string | null; moves: string[]; dates: Record<string, string> } | null;
-  /** My fields as I set them (the form's values). */
+  /** Fields of mine as the user set them (the form's values). */
   mine: Record<string, unknown>;
   /** The indexes of the view's buttons that apply to it now (`when`). */
   actions: number[];
 }
 
-/** M32: my fields on an entity's form; null or "" clears one. A type of mine: any field, the key included on creation. */
+/** M32: fields of mine on an entity's form; null or "" clears one. A type of mine: any field, the key too on creation. */
 export const EntityValuesRequestSchema = z.object({ values: z.record(z.string(), z.unknown()) }).strict();
 export type EntityValuesRequest = z.infer<typeof EntityValuesRequestSchema>;
 

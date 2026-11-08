@@ -139,7 +139,7 @@ describe("usage and cost", () => {
 });
 
 describe("ModelRouter", () => {
-  it("uses my setting for the task, else the environment's model for its group, else the default", async () => {
+  it("uses the user's setting for the task, else the environment's model for its group, else the default", async () => {
     const settings: Record<string, { model: string; effort: string | null }> = {
       "llm.generate": { model: "claude-opus-5-5", effort: "high" },
       "llm.summarize": { model: "claude-haiku-5-5", effort: "lots" },

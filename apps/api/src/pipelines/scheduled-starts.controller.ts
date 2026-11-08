@@ -28,7 +28,7 @@ export class ScheduledStartsController {
   async cancel(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string): Promise<void> {
     const { count } = await this.prisma.client.scheduledStart.updateMany({
       where: { scheduledStartId: id, userId: user.userId, status: "PENDING" },
-      data: { status: "CANCELLED", reason: "cancelled by me" },
+      data: { status: "CANCELLED", reason: "cancelled by the user" },
     });
     if (count === 0) throw new NotFoundException("No pending start with that id");
   }

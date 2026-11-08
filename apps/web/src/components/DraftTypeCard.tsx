@@ -22,8 +22,8 @@ const FINISHED = new Set(["DONE", "FAILED", "WAITING_FOR_USER", "ABORTED"]);
 type Mode = "sample" | "run";
 
 /**
- * M35-T4: a type from what a source really gives, without an LLM (each field's kind from its values): a sample I
- * paste, or a dry run of a pipeline (nothing sent or saved) and one of its steps. The draft's fields come as rows to
+ * M35-T4: a type from what a source really gives, without an LLM (each field's kind from its values): a sample
+ * pasted, or a dry run of a pipeline (nothing sent or saved) and one of its steps. The draft's fields come as rows to
  * keep or leave out, then go into a new type or one that is there.
  */
 export function DraftTypeCard({ types, onEdit }: Readonly<{ types: string[]; onEdit: (edit: DesignerEdit) => void }>) {
@@ -193,7 +193,7 @@ function FromRun({ onDraft }: Readonly<{ onDraft: (draft: DraftTypeView) => void
   );
 }
 
-/** The draft's fields as rows: each kept unless I untick it; then into a new type, or one that is there. */
+/** The draft's fields as rows: each kept unless unticked; then into a new type, or one that is there. */
 function DraftRows({
   draft,
   types,

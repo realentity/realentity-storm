@@ -4,8 +4,8 @@ import { editAppSource } from "./app-source";
 
 /**
  * M35-T3: a type's stages as the diagram changes them: states, the first one, and moves as arrows (one state to
- * another, made by me, a pipeline or both). The YAML groups moves (`from: [a, b], to: [c, d]`); an arrow changed or
- * removed is split out of its group, which keeps the other arrows on its line as written.
+ * another, made by the user (`me`), a pipeline or both). The YAML groups moves (`from: [a, b], to: [c, d]`); an arrow
+ * changed or removed is split out of its group, which keeps the other arrows on its line as written.
  */
 
 /** An arrow of the diagram: who may move an entity from one state to the other. */
@@ -174,7 +174,7 @@ function hasEdge(move: YAMLMap, from: string, to: string): boolean {
 
 /**
  * A move without one of its arrows: the arrows from its other states as they were, and from this one to its other
- * targets; my comment on its line stays with the first.
+ * targets; a comment on its line stays with the first.
  */
 function splitOut(document: Document, move: YAMLMap, from: string, to: string): YAMLMap[] {
   const froms = valuesOf(move.get("from", true));

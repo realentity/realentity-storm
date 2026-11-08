@@ -48,7 +48,7 @@ export class PricesService {
     };
   }
 
-  /** The Prices pipeline from its template, off until I turn it on. */
+  /** The Prices pipeline from its template, off until the user turns it on. */
   createPipeline(userId: string): Promise<PipelineDetailView> {
     return this.pipelines.create(userId, PRICES_PIPELINE);
   }

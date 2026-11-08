@@ -1,6 +1,6 @@
-# M33: the Bills App. bill.save (pipelines/bills.yaml) keeps each bill read from email as a Bill, due until I mark it
-# paid; the morning brief tells me the unpaid ones due soon. Save it on the Apps page before pipelines/bills.yaml, then
-# press "Move my bills here" on its page to bring the bills the old Bills page kept.
+# M33: the Bills App. bill.save (pipelines/bills.yaml) keeps each bill read from email as a Bill, due until you mark
+# it paid; the morning brief tells you the unpaid ones due soon. Save it on the Apps page before pipelines/bills.yaml,
+# then press "Move my bills here" on its page to bring the bills the old Bills page kept.
 name: Bills
 description: Bills from email, by month, paid or not
 icon: receipt

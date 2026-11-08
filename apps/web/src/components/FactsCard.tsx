@@ -7,11 +7,11 @@ import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 import { Empty, ErrorAlert, Loading } from "./ui";
 
-const SOURCE = { FORM: "from a form I approved", ASKED: "I answered when asked", ME: "written here" } as const;
+const SOURCE = { FORM: "from a form you approved", ASKED: "you answered when asked", ME: "written here" } as const;
 
 /**
- * My facts (M15-T1): what application forms asked that only I can say, and my answers. Forms reuse them word for
- * word before writing anything new; only my approvals, my answers and this card write them.
+ * Facts (M15-T1): what application forms asked that only the user can say, and their answers. Forms reuse them word
+ * for word before writing anything new; only the user's approvals, their answers and this card write them.
  */
 export function FactsCard() {
   const facts = useLoad(() => api.facts.list(), []);

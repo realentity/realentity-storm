@@ -9,7 +9,7 @@ config({ path: resolve(__dirname, "../../../../.env"), quiet: true });
 /**
  * Checks that every stored credential opens with this ENCRYPTION_KEY (restore drill, M5-I1). Prints names and
  * counts only, never a value. Exit code 1 if any credential doesn't open.
- *   pnpm --filter @realentity/storm-worker check:credentials      on the server: ./docker/storm check
+ *   pnpm --filter @realentity/storm-worker check:credentials      on a Docker host: ./docker/storm check
  */
 async function main(): Promise<void> {
   const connection = createPrismaConnection();

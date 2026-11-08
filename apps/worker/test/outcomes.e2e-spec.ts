@@ -34,7 +34,7 @@ const email = (from: string, subject: string, text: string): EmailMessage => ({
   attachments: [],
 });
 
-// M16: outcomes of my applications, from emails (M16-T3), and in the scoring (M16-T2).
+// M16: outcomes of the user's applications, from emails (M16-T3), and in the scoring (M16-T2).
 describe("M16: outcomes", () => {
   let db: PrismaConnection;
   let userId: string;
@@ -133,7 +133,7 @@ describe("M16: outcomes", () => {
     expect(llm.prompts).toHaveLength(calls);
   });
 
-  it("M16-T2: llm.score with outcomes gets my applications and what came of them; without, nothing", async () => {
+  it("M16-T2: llm.score with outcomes gets the user's applications and what came of them; without, nothing", async () => {
     await db.client.application.update({ where: { applicationId: ids.acme }, data: { status: "REJECTED", interviewAt: new Date(), rejectedAt: new Date() } });
     await db.client.application.update({ where: { applicationId: ids.globex }, data: { status: "REJECTED", rejectedAt: new Date() } });
     llm.answer = (prompt) => ({ results: [...prompt.matchAll(/"index":(\d+)/g)].map((m) => ({ index: Number(m[1]), score: 50, reason: "ok" })) });

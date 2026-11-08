@@ -1,7 +1,7 @@
 # M40: the starter example. An App that needs nothing set up: what it keeps comes from public release feeds (no account,
 # no LLM, no messages). A Release starts as new; mark it read or skipped on its row, or open it for its page.
 name: Releases to read
-description: New releases of a few open-source projects, kept until I have read them
+description: New releases of a few open-source projects, kept until you have read them
 icon: package
 types:
   Release:

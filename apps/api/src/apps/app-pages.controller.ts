@@ -64,7 +64,7 @@ export class AppPagesController {
     return this.pages.entity(user.userId, appId, type, key);
   }
 
-  /** M32: an entity of a type of mine, from its list's form. */
+  /** M32: an entity of a type the user writes (mine), from its list's form. */
   @Post(":appId/pages/:type")
   async create(
     @CurrentUser() user: AuthenticatedUser,
@@ -76,7 +76,7 @@ export class AppPagesController {
     return this.pages.entity(user.userId, appId, type, key);
   }
 
-  /** M32: my fields on its form. */
+  /** M32: the user's fields on its form. */
   @Put(":appId/pages/:type/:key/values")
   async saveValues(
     @CurrentUser() user: AuthenticatedUser,

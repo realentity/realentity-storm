@@ -58,7 +58,7 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     app: z.string(),
     type: z.string(),
     key: z.string(),
-    /** The entity, my fields over what pipelines wrote. A target only when its type is mine (M32). */
+    /** The entity, fields of mine over what pipelines wrote. A target only when its type is mine (M32). */
     item: z.record(z.string(), z.unknown()),
     /** The button's label. */
     action: z.string(),
@@ -81,7 +81,7 @@ export function triggerDataSchema(trigger: Trigger): z.ZodObject | null {
 }
 
 /**
- * Which {{trigger.*}} values may be a side effect's target (README §1.4: targets come from data, never from LLM
+ * Which {{trigger.*}} values may be a side effect's target (docs/design.md §1.4: targets come from data, never from LLM
  * text): an email's own addresses and a posting's own URL. A webhook body is written by whoever calls it, and a
  * finished run's outputs may be LLM text, so neither is.
  */

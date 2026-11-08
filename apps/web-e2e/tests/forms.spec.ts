@@ -4,11 +4,11 @@ import { createPipeline, startRun, unique } from "./support";
 
 const pdf = (text: string) => ({ name: `${text}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(`%PDF-1.4\n% ${text}\n%%EOF\n`) });
 
-// M10-T6: an application form at its gate, field by field, with my documents; Act sends exactly what I see
-test("an application form at its gate: I edit a field, attach my cover letter, and Act sends exactly that", async ({ page }) => {
-  // Profile → my profile and documents.
+// M10-T6: an application form at its gate, field by field, with the stored documents; Act sends exactly what is shown
+test("an application form at its gate: a field edited, a cover letter attached, and Act sends exactly that", async ({ page }) => {
+  // Profile → the profile and documents.
   await page.goto("/profile");
-  await page.getByLabel("About me").fill("Ana Petrova · ana@storm.test · Sofia");
+  await page.getByLabel("About you").fill("Ana Petrova · ana@storm.test · Sofia");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Profile saved")).toBeVisible();
   for (const [name, file] of [
@@ -57,7 +57,7 @@ test("an application form at its gate: I edit a field, attach my cover letter, a
   const form = page.getByTestId("form-proposal");
   await expect(form).toContainText("https://ats.example.org/apply/7");
   await expect(form.getByLabel("Full name")).toHaveValue("Ana Petrova");
-  await expect(form.getByTestId("form-field-Full name")).toContainText("from my profile");
+  await expect(form.getByTestId("form-field-Full name")).toContainText("from your profile");
   await expect(form.getByLabel("CV")).toHaveValue(cv.documentId);
   await expect(page.getByTestId("targets")).toContainText("ats.example.org");
 
@@ -78,7 +78,7 @@ test("an application form at its gate: I edit a field, attach my cover letter, a
 });
 
 // M11-T2: what browser.agent did, at browser.submit's gate: every action in order, typed values editable
-test("the agent's actions at the gate: I edit a typed value, and Act repeats exactly that", async ({ page }) => {
+test("the agent's actions at the gate: a typed value edited, and Act repeats exactly that", async ({ page }) => {
   await page.goto("/profile");
   await page.getByLabel("Document name").fill("cv-agent");
   await page.getByLabel("File").setInputFiles(pdf("Ana Petrova CV agent"));
@@ -125,7 +125,7 @@ test("the agent's actions at the gate: I edit a typed value, and Act repeats exa
   await expect(gate.getByTestId("agent-action-3")).toContainText("Click option Sofia");
   await expect(gate.getByTestId("agent-action-4")).toContainText("Attach Ana Petrova CV agent.pdf to Upload CV");
   await expect(gate).toContainText("Then press Submit application");
-  await expect(gate.getByTestId("agent-action-1")).toContainText("from my profile");
+  await expect(gate.getByTestId("agent-action-1")).toContainText("from your profile");
 
   await gate.getByLabel("Type into Full name").fill("Ana P. Petrova");
   await gate.getByRole("button", { name: "Act with edits" }).click();

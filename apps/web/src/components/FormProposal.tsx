@@ -34,16 +34,16 @@ interface FormPayload {
 }
 
 const SOURCE: Record<string, string> = {
-  profile: "from my profile",
+  profile: "from your profile",
   written: "written for this job",
-  fact: "from my facts",
-  asked: "my answer when asked",
+  fact: "from your facts",
+  asked: "your answer when asked",
   none: "",
 };
 
 /**
- * An application form at its gate (M10-T6): every field as it will be typed, the files that will be attached (my
- * stored documents, chosen per field), the address it goes to. Act sends exactly this; anything the form asks
+ * An application form at its gate (M10-T6): every field as it will be typed, the files that will be attached (the
+ * user's stored documents, chosen per field), the address it goes to. Act sends exactly this; anything the form asks
  * beyond it pauses the run instead.
  */
 export function FormProposal({ proposal, pending, onDecided, onReject }: { proposal: ProposalView; pending: boolean; onDecided: () => void; onReject: () => void }) {
@@ -121,13 +121,13 @@ export function FormProposal({ proposal, pending, onDecided, onReject }: { propo
             disabled={!pending}
             onChange={(e) => setPayload((p) => ({ ...p, stopBeforeSubmit: e.target.checked }))}
           />
-          <span className="form-check-label">Stop before the final button: I press it myself in the live view</span>
+          <span className="form-check-label">Stop before the final button: you press it yourself in the live view</span>
         </label>
         {pending && missing.length > 0 && (
           <div className="alert alert-warning mt-3 mb-0">
             <IconAlertTriangle size={16} className="me-1" />
             Required and empty: {missing.map((f) => f.label || f.key).join(", ")}. The site will likely refuse the form, and the run will
-            wait for me.
+            wait for you.
           </div>
         )}
       </div>
@@ -162,7 +162,7 @@ export function FormProposal({ proposal, pending, onDecided, onReject }: { propo
             The live browser opens <strong className="text-break">{new URL(payload.url).hostname}</strong>, fills these{" "}
             {payload.fields.filter((f) => f.value !== null && f.type !== "file").length} fields, attaches{" "}
             {payload.files.map((f) => f.filename).join(", ") || "no files"}
-            {payload.stopBeforeSubmit ? " and stops before sending." : " and sends it."} If the form asks anything else, it waits for me.
+            {payload.stopBeforeSubmit ? " and stops before sending." : " and sends it."} If the form asks anything else, it waits for you.
           </p>
         </Modal>
       )}

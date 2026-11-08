@@ -24,7 +24,7 @@ steps:
         - { isbn: "978-0", title: Dune }
 `;
 
-// Deleting an App or a pipeline (on the server, 2026-11-08: test Apps couldn't be removed)
+// Deleting an App or a pipeline (2026-11-08: test Apps couldn't be removed)
 describe("deleting Apps and pipelines", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;

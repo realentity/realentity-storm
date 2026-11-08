@@ -106,14 +106,14 @@ describe("forms, stages and buttons (M32)", () => {
       'types.Job.stages.moves.0.from: "old" is not one of the states',
       'types.Job.stages.moves.0.to.0: "gone" is not one of the states',
       "types.Mine.stages.moves.0.by: pipelines don't write a type of mine",
-      "pages.0.fields.0: Job.url is written by pipelines: a form edits my fields",
+      "pages.0.fields.0: Job.url is written by pipelines: a form edits fields of mine",
       'pages.0.fields.1: Job has no field "nope"',
       'pages.1.actions.0.when.nope: Job has no field "nope"',
       'pages.1.actions.1.label: "Go" is used by an earlier button',
     ]);
   });
 
-  it("puts my fields on the form, the key of a type of mine off it, and checks each value as its kind", () => {
+  it("puts fields of mine on the form, the key of a type of mine off it, and checks each value as its kind", () => {
     expect(viewPageOf(jobSearch, "Job").form.map((f) => f.field)).toEqual(["comments", "favorite"]);
     expect(viewPageOf(jobSearch, "Company").form.map((f) => f.field)).toEqual(["email", "site"]);
     expect(listPageOf(jobSearch, "Company").create?.map((f) => f.field)).toEqual(["name", "email", "site"]);
@@ -131,7 +131,7 @@ describe("forms, stages and buttons (M32)", () => {
   });
 
   describe("pipelines", () => {
-    it("never write a type of mine, nor a stage only I move", () => {
+    it("never write a type of mine, nor a stage only the user moves", () => {
       expect(
         errorsOf(
           compiler.compile(
@@ -156,11 +156,11 @@ describe("forms, stages and buttons (M32)", () => {
           ),
         ),
       ).toEqual([
-        "steps[1].with.type: Company is a type of mine: pipelines read it, only I write it",
+        "steps[1].with.type: Company is a type of mine: pipelines read it, only the user writes it",
         "steps[2].with.items: Job.favorite is mine: a pipeline can't write it",
         "steps[2].with.items: Job.comments is mine: a pipeline can't write it",
         "steps[2].with.items: Job.rating is mine: a pipeline can't write it",
-        "steps[2].with.items: Job.status is moved only by me: no move of it is by: [pipeline]",
+        "steps[2].with.items: Job.status is moved only by the user: no move of it is by: [pipeline]",
       ]);
     });
 
@@ -228,7 +228,7 @@ describe("forms, stages and buttons (M32)", () => {
       ).toEqual(["trigger.stage: Company has no stages"]);
     });
 
-    // M32-S1: a target only from what I entered, an entity of a type of mine
+    // M32-S1: a target only from what the user entered, an entity of a type of mine
     it("take a target only from an entity of a type of mine", () => {
       const mail = (to: string) => ({
         id: "mail",

@@ -9,7 +9,7 @@ import { DraftReplyStep, emailBlock, EmailClassifyStep } from "../src/steps/emai
 import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
 
 /**
- * M4-V1 and M4-V2 (README test strategy: LLM eval with the real Claude API, run by hand):
+ * M4-V1 and M4-V2 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
  *   pnpm --filter @realentity/storm-worker eval:email            both evals
  *   pnpm --filter @realentity/storm-worker eval:email classify   classification only (cheap: Haiku)
  * Uses the instructions of pipelines/recruiter-replies.yaml, the models from .env/defaults, and writes
@@ -132,7 +132,7 @@ const Verdict = z.object({
   unsupported: z.array(z.string()).describe("each factual claim in the reply that the email, instruction and background don't support"),
 });
 
-/** Rubric judge: what in the reply isn't backed by the email, my instruction or my background (placeholders are fine). */
+/** Rubric judge: what in the reply isn't backed by the email, the instruction or the user's background (placeholders are fine). */
 async function judge(
   llm: ClaudeClient,
   choice: Awaited<ReturnType<ModelRouter["choose"]>>,

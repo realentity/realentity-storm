@@ -11,10 +11,10 @@ import { pageOutline, type RecipeWriter } from "./teach-step";
 const AGENT_ACTIONS = 10;
 
 /**
- * browser.extract's fallback (README §2.4, M11-T3): when a recipe no longer matches its page, the fix already waiting
- * for me is tried first (no LLM); else browser.agent, on the recipe's site only and sending nothing, brings the page
+ * browser.extract's fallback (docs/design.md §2.4, M11-T3): when a recipe no longer matches its page, the fix already waiting
+ * for the user is tried first (no LLM); else browser.agent, on the recipe's site only and sending nothing, brings the page
  * back to the list, and the recipe writer (teach mode's) proposes a recipe checked on that page. The fix is saved on
- * the broken version as a proposal, never as a version: I approve it on the Recipes page. The run reads with it.
+ * the broken version as a proposal, never as a version: the user approves it on the Recipes page. The run reads with it.
  */
 export class RecipeFallback {
   constructor(

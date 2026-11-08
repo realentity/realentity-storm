@@ -18,7 +18,7 @@ import { PrismaService } from "../database/prisma.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 import { RunsService } from "../runs/runs.service";
 
-/** The Jobs page (README §11 Phase 2, M9-T6): postings saved by data.save, scored, and what I decided about them. */
+/** The Jobs page (docs/design.md §11 Phase 2, M9-T6): postings saved by data.save, scored, and the user's decisions. */
 @Injectable()
 export class JobsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -49,7 +49,7 @@ export class JobsService {
 }
 
 /**
- * Site recipes (README §2.4): listed with their health, imported as a new version (checked like a taught one), or
+ * Site recipes (docs/design.md §2.4): listed with their health, imported as a new version (checked like a taught one), or
  * taught: teach mode is a run of a "Teach <name>" pipeline with one browser.teach step, so it has the run page's
  * live view, takeover and history like any other headed run.
  */
@@ -95,7 +95,7 @@ export class RecipesService {
     }
     if (parsed && typeof parsed === "object" && "steps" in parsed) {
       throw new BadRequestException(
-        "This is a pipeline (it has steps): paste it on Pipelines → New pipeline. A recipe has url, item and fields, like recipes/dev.bg-search.yaml",
+        "This is a pipeline (it has steps): paste it on Pipelines → New pipeline. A recipe has url, item and fields, like recipes/example-jobs.yaml",
       );
     }
     const recipe = RecipeSchema.safeParse(parsed);
@@ -149,7 +149,7 @@ export class RecipesService {
     // JSON is YAML: the compiler checks it like any pipeline (the url on the recipe's site is checked by the step).
     const source = JSON.stringify({
       name: pipelineName,
-      description: `Teach mode for the recipe ${name}: I show the list in the live browser, then check what it reads.`,
+      description: `Teach mode for the recipe ${name}: you show the list in the live browser, then check what it reads.`,
       steps: [
         {
           id: "teach",
@@ -175,7 +175,7 @@ export class RecipesService {
 }
 
 function checkedName(name: string): string {
-  if (!RECIPE_NAME.test(name)) throw new BadRequestException('A recipe name is "<site>/<what>", e.g. "dev.bg/search"');
+  if (!RECIPE_NAME.test(name)) throw new BadRequestException('A recipe name is "<site>/<what>", e.g. "jobs.example.com/search"');
   return name;
 }
 

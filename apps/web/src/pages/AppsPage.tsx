@@ -7,7 +7,7 @@ import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
 import { VIEW_ICON } from "../lib/view";
 
-/** M30: my Apps, each with its types (and how many entities each keeps) and the pipelines that name it. */
+/** M30: the Apps, each with its types (and how many entities each keeps) and the pipelines that name it. */
 export function AppsPage() {
   const apps = useLoad(() => api.apps.list(), []);
   return (

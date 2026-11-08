@@ -34,7 +34,7 @@ const SOURCE_LIMIT = 2_000_000;
 const TIMEOUT_MS = 30_000;
 
 /**
- * IMAP (imapflow) and SMTP (nodemailer) with an app password (README §4). The password is decrypted per operation,
+ * IMAP (imapflow) and SMTP (nodemailer) with an app password (docs/design.md §4). The password is decrypted per operation,
  * only for the configured server's host (the credential's allowedHosts), and never appears in errors.
  */
 export class ImapSmtpConnector implements MailConnector {
@@ -126,9 +126,9 @@ export class ImapSmtpConnector implements MailConnector {
     const host = this.config.smtpHost;
     if (!host) throw new Error("Mail is not configured (SMTP_HOST)");
     const login = await this.login(userId, host);
-    // A reply to my own address answers mail I sent myself (Storm's own messages): never sent.
+    // A reply to the user's own address answers mail they sent themselves (Storm's own messages): never sent.
     if (mail.inReplyTo && mail.to.trim().toLowerCase() === login.user.trim().toLowerCase()) {
-      throw new Error("Not sent: a reply to my own address (mail I sent myself)");
+      throw new Error("Not sent: a reply to your own address (mail you sent yourself)");
     }
     const transport = createTransport({
       host,

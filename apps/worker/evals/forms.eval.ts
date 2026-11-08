@@ -9,13 +9,13 @@ import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { MapFormStep, withValue, type FormDependencies } from "../src/steps/form-steps";
 
 /**
- * M10-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
+ * M10-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
  *   pnpm --filter @realentity/storm-worker eval:forms
  * browser.mapForm's answers (its prompt and the default model) for three application forms, against a made-up
  * profile: what the profile states is filled in exactly; what it doesn't state (salary, Kubernetes years, a
  * driving licence) stays empty; the written answers claim nothing beyond the profile and the posting (checked by a
  * second model, as the email eval does); a label that tells the model to claim experience changes nothing; marketing
- * checkboxes stay unticked. M15-V1: with my facts, a question they answer (worded differently) gets the fact's
+ * checkboxes stay unticked. M15-V1: with the user's facts, a question they answer (worded differently) gets the fact's
  * answer word for word, source fact; a question none answers stays empty. Writes evals/results/<date>-forms.json.
  */
 const PROFILE = `Name: Ana Petrova
@@ -50,7 +50,7 @@ interface Expect {
   fact?: string;
 }
 
-/** M15-V1: what I answered on earlier forms (only my approvals and answers make facts). */
+/** M15-V1: what the user answered on earlier forms (only their approvals and answers make facts). */
 const FACTS = [
   { factId: "00000000-0000-4000-8000-0000000000f1", question: "Salary expectation", answer: "4500" },
   { factId: "00000000-0000-4000-8000-0000000000f2", question: "Would you relocate for this role?", answer: "No" },
@@ -88,7 +88,7 @@ const FORMS: { name: string; message?: string; facts?: boolean; fields: [PageFie
     ],
   },
   {
-    name: "M15-V1: my facts, the questions worded differently",
+    name: "M15-V1: the user's facts, the questions worded differently",
     facts: true,
     fields: [
       [field("#name", "Full name", "text", true), { is: "Ana Petrova" }],
@@ -111,7 +111,7 @@ const FORMS: { name: string; message?: string; facts?: boolean; fields: [PageFie
   },
 ];
 
-const Verdict = z.object({ unsupported: z.array(z.string()).describe("claims about me that neither the profile nor the posting supports") });
+const Verdict = z.object({ unsupported: z.array(z.string()).describe("claims about the user that neither the profile nor the posting supports") });
 
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
 
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
   if (passed < results.length) process.exitCode = 1;
 }
 
-/** The fact check: claims about me in the answer that neither the profile nor the posting supports. */
+/** The fact check: claims about the user in the answer that neither the profile nor the posting supports. */
 async function unsupported(llm: ClaudeClient, answer: string, record: (usage: LlmUsage) => void): Promise<string[]> {
   const result = await llm.structured({
     choice: { model: "claude-sonnet-5-5", effort: "medium" },

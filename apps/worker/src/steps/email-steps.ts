@@ -62,7 +62,7 @@ export class EmailClassifyStep extends LlmStep {
       keep: string[];
       answerable?: boolean;
     };
-    // An email I can't answer (a no-reply sender, mine to myself) is never kept for a reply: dropped without the LLM.
+    // An email the user can't answer (a no-reply sender, theirs to themselves) is never kept for a reply: dropped without the LLM.
     const answerableOnly = answerable ?? keep.includes("reply");
     const all = messages.map((message, index) => ({ index, message, why: answerableOnly ? unanswerable(message) : null }));
     const asked = all.filter((m) => m.why === null);
@@ -70,9 +70,9 @@ export class EmailClassifyStep extends LlmStep {
     const schema = z.object({
       results: z.array(z.object({ index: z.number().int(), label: z.enum(labels as [string, ...string[]]), reason: z.string() })),
     });
-    // My instruction and the labels are the same for every chunk: they live in the (cached) system prompt.
+    // The instruction and the labels are the same for every chunk: they live in the (cached) system prompt.
     const system =
-      "You triage emails for my personal automation pipeline. Give every email exactly one of the allowed labels and a " +
+      "You triage emails for the user's personal automation pipeline. Give every email exactly one of the allowed labels and a " +
       `one-sentence reason, using the email's index. ${DATA_ONLY}\n` +
       `<instruction>${instruction}</instruction>\n<labels>${labels.join(", ")}</labels>`;
     const answered = asked.length
@@ -119,16 +119,17 @@ export class DraftReplyStep extends LlmStep {
       signature?: string;
     };
     const system = [
-      "You draft email replies for me, to be reviewed and sent by me. Rules:",
+      "You draft email replies for the user, to be reviewed and sent by them. Rules:",
       "- Reply in the language the email is written in.",
-      "- Use only facts from the email, my instruction and my background. Never invent dates, prices, rates, availability, " +
-        "names, links or commitments; where one is needed and unknown, write a placeholder like [date] for me to fill in.",
-      "- Never accept, confirm or propose a date, time, rate or term on my behalf (not even one the sender offered): " +
-        "leave it to me with a placeholder like [my available times] or [my rate].",
-      "- Don't state anything about me (my experience, skills, situation, what I have read or done) beyond my background, " +
-        "and don't promise follow-ups with a deadline.",
+      "- Use only facts from the email, the instruction and the user's background. Never invent dates, prices, rates, " +
+        "availability, names, links or commitments; where one is needed and unknown, write a placeholder like [date] " +
+        "for the user to fill in.",
+      "- Never accept, confirm or propose a date, time, rate or term on the user's behalf (not even one the sender " +
+        "offered): leave it to the user with a placeholder like [my available times] or [my rate].",
+      "- Don't state anything about the user (their experience, skills, situation, what they have read or done) beyond " +
+        "their background, and don't promise follow-ups with a deadline.",
       "- Plain text, no subject line, no quoted original. Start with the greeting.",
-      signature ? "- End with my signature exactly as given." : "- End with a short sign-off, without a name.",
+      signature ? "- End with the user's signature exactly as given." : "- End with a short sign-off, without a name.",
       `- ${EXAMPLES_RULE}`,
       DATA_ONLY,
       `<instruction>${instruction}</instruction>`,
@@ -167,7 +168,7 @@ export class EmailSendStep implements StepExecutor {
       inReplyTo?: string;
       references?: string[];
     };
-    // Never a reply to an address nobody reads, whatever the pipeline says (my own address: the connector refuses).
+    // Never a reply to an address nobody reads, whatever the pipeline says (the user's own address: the connector refuses).
     if (inReplyTo && isNoReplyAddress(to))
       return Promise.reject(new Error(`Not sent: ${to} is a no-reply address, nobody reads replies to it`));
     // The thread is the original's references plus the message replied to (RFC 5322 §3.6.4).

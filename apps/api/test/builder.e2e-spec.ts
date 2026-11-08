@@ -24,7 +24,7 @@ const replies = (instruction = "Reply briefly and warmly as me.", mailbox = "INB
   limits: { "email.send": "20/day" },
 });
 
-// M7: the builder chat (README §2.1, §2.5), with a scripted model
+// M7: the builder chat (docs/design.md §2.1, §2.5), with a scripted model
 describe("builder chat", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;
@@ -138,8 +138,8 @@ describe("builder chat", () => {
     await agent.post(`/api/builder/chats/${chat.chatId}/messages/${proposal.messageId}/save`).expect(409);
   });
 
-  // M38-T5: from an editor, the builder sees what it has open and what I am on there
-  it("a message from an editor carries its draft (once while unchanged) and what I am on", async () => {
+  // M38-T5: from an editor, the builder sees what it has open and what the user is on there
+  it("a message from an editor carries its draft (once while unchanged) and what the user is on", async () => {
     const pipeline = await createPipeline(replies());
     const chat = await newChat(pipeline.pipelineId);
     const draft = "name: Recruiter replies\nsteps:\n  - id: fetch\n    type: email.fetch\n    with: { mailbox: Drafts }\n";
@@ -176,7 +176,7 @@ describe("builder chat", () => {
       { kind: "step-changed", stepId: "fetch", field: "with.mailbox", before: "INBOX", after: "Work" },
     ]);
 
-    // An unchanged proposal is refused to the builder, not shown to me.
+    // An unchanged proposal is refused to the builder, not shown to the user.
     llm.answer(propose(replies()), say("That's what it does already."));
     await send(chat.chatId, "Keep INBOX after all?");
     expect(toolResults(llm.requests[3])[0]).toMatchObject({ is_error: true, content: "No changes compared to the current version." });
@@ -312,7 +312,7 @@ describe("builder chat", () => {
     expect(userText(llm.last)).toBe("<apps>\nnone yet\n</apps>\n\n<saved_recipes>\nnone yet\n</saved_recipes>\n\nSecond try");
   });
 
-  it("M9: the builder sees the saved recipes in my message when they change; a chat keeps the system prompt it started with", async () => {
+  it("M9: the builder sees the saved recipes in the message when they change; a chat keeps the system prompt it started with", async () => {
     const chat = await newChat();
     llm.answer(say("Which site?"));
     await send(chat.chatId, "Find .NET jobs on dev.bg every morning");
@@ -380,7 +380,7 @@ describe("builder chat", () => {
     expect(detail).toMatchObject({ currentVersion: 1, hasDraft: false });
   });
 
-  it("chats are mine only; one turn at a time per chat", async () => {
+  it("chats are the user's own only; one turn at a time per chat", async () => {
     const chat = await newChat();
     await agent.get("/api/builder/chats/00000000-0000-4000-8000-000000000000").expect(404);
     await agent.post("/api/builder/chats").send({ pipelineId: "00000000-0000-4000-8000-000000000000" }).expect(404);

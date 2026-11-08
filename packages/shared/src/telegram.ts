@@ -16,14 +16,14 @@ export interface TelegramMessage {
 export const TELEGRAM_MAX_TEXT = 4096;
 
 /**
- * Sends a message to my chat through the Bot API (notify.telegram, the worker-down alert). Errors never include
+ * Sends a message to the user's chat through the Bot API (notify.telegram, the worker-down alert). Errors never include
  * the request URL: it contains the bot token.
  */
 export async function sendTelegram(config: TelegramConfig, text: string, send: typeof fetch = fetch): Promise<void> {
   await callTelegram(config, "sendMessage", { chat_id: config.chatId, text, link_preview_options: { is_disabled: true } }, send);
 }
 
-/** A message, with buttons, to my chat; its message id, to edit it later. */
+/** A message, with buttons, to the user's chat; its message id, to edit it later. */
 export async function sendTelegramMessage(config: TelegramConfig, message: TelegramMessage, send: typeof fetch = fetch): Promise<number> {
   const result = await callTelegram(
     config,

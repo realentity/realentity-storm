@@ -13,7 +13,7 @@ import { Logger } from "@nestjs/common";
 const ONE_BY_ONE = 5;
 
 /**
- * Tells me on the Storm bot what a run waits for (M12-T4): each new proposal with Approve / Reject / Open, or one
+ * Tells the user on the Storm bot what a run waits for (M12-T4): each new proposal with Approve / Reject / Open, or one
  * message when a gate made many. Each proposal is told once (Proposal.notifiedAt); dry runs aren't told.
  */
 export class ProposalNotifier {
