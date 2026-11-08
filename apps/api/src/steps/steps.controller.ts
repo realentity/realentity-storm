@@ -28,6 +28,7 @@ export class StepsController {
       llmOutput: step.llmOutput === true,
       targets: { ...(step.targets ?? {}) },
       pageFields: [...(step.pageFields ?? [])],
+      entities: (step.entities ?? []).map((e) => ({ type: e.type, mine: e.mine ?? false })),
       credentials: Array.isArray(step.acceptsCredentials)
         ? [...(step.acceptsCredentials as readonly string[])]
         : step.acceptsCredentials === true,

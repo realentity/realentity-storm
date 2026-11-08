@@ -3,6 +3,7 @@ import { IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppMap } from "../components/AppMap";
+import { ExampleChecklist } from "../components/ExampleChecklist";
 import { ExportYaml } from "../components/ImportYaml";
 import { toast } from "react-toastify";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
@@ -69,6 +70,7 @@ export function AppPage() {
         }
       />
       {data.definition.description && <p className="text-secondary">{data.definition.description}</p>}
+      <ExampleChecklist appId={appId} />
       {data.imports.map((i) => (
         <div key={i.collection ?? i.from} className="alert alert-info d-flex align-items-center gap-3" data-testid="app-import">
           <div>

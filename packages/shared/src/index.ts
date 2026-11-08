@@ -14,6 +14,7 @@ export * from "./canonical-json";
 export * from "./credentials";
 export * from "./env";
 export * from "./events";
+export * from "./examples";
 export * from "./google";
 export * from "./health-api";
 export * from "./jobs-api";

@@ -18,7 +18,7 @@ export class BundlesController {
   /** The file imported: all of it, or nothing when any of it has a problem. */
   @Post()
   save(@CurrentUser() user: AuthenticatedUser, @Body(new ZodBodyPipe(BundleRequestSchema)) body: BundleRequest): Promise<BundleCheckView> {
-    return this.bundles.save(user.userId, body.text);
+    return this.bundles.save(user.userId, body.text, body.example);
   }
 
   @Get("apps/:appId")

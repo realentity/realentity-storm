@@ -9,6 +9,9 @@ import {
   type AppMenuItem,
   type AppSummaryView,
   type AppCheckView,
+  type ChecklistView,
+  type ExampleNeed,
+  type SetupView,
   type AppMapView,
   type AppPreviewView,
   type BundleCheckView,
@@ -226,7 +229,9 @@ export const api = {
   },
   bundles: {
     check: (text: string) => request<BundleCheckView>("POST", "/bundles/check", { text }),
-    save: (text: string) => request<BundleCheckView>("POST", "/bundles", { text }),
+    /** M40-T2: from an example: kept with its App, for its checklist. */
+    save: (text: string, example?: { id: string; needs: ExampleNeed[] }) =>
+      request<BundleCheckView>("POST", "/bundles", example ? { text, example } : { text }),
     exportApp: (appId: string) => request<BundleExportView>("GET", `/bundles/apps/${appId}`),
     exportPipeline: (pipelineId: string) => request<BundleExportView>("GET", `/bundles/pipelines/${pipelineId}`),
   },
@@ -277,6 +282,10 @@ export const api = {
     /** M11-T3: the agent's fix for the broken latest version, approved (the next version) or discarded. */
     approveFix: (name: string) => request<RecipeDetailView>("POST", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/fix`),
     discardFix: (name: string) => request<RecipeDetailView>("DELETE", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/fix`),
+  },
+  examples: {
+    setup: () => request<SetupView>("GET", "/examples/setup"),
+    checklist: (appId: string) => request<ChecklistView | null>("GET", `/examples/apps/${appId}/checklist`),
   },
   builder: {
     /** Without a pipeline: chats about new pipelines, not saved yet. */

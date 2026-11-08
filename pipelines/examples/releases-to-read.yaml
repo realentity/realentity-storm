@@ -1,0 +1,21 @@
+# M40: the starter example's pipeline. Once a day, the newest releases of a few projects from their feeds (no browser,
+# no recipe, no LLM), kept as Releases to read: a release seen before is left as it is, so its stage stays mine.
+# Add or remove projects in `urls` (GitHub: https://github.com/<owner>/<repo>/releases.atom).
+name: Read release feeds
+app: Releases to read
+description: Once a day, the newest releases of a few projects, kept to read.
+trigger: { schedule: "0 9 * * *", tz: Europe/Sofia }
+policy:
+  allowedDomains: [github.com]
+steps:
+  - id: feeds
+    type: http.fetch
+    with:
+      urls:
+        - https://github.com/nodejs/node/releases.atom
+        - https://github.com/microsoft/vscode/releases.atom
+        - https://github.com/prisma/prisma/releases.atom
+      maxItems: 30
+  - id: keep
+    type: data.save
+    with: { items: "{{feeds.items}}", type: Release, fields: [title] }

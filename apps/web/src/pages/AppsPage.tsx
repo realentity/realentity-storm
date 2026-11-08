@@ -1,5 +1,6 @@
 import { IconPlus } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
+import { ExamplesGallery } from "../components/ExamplesGallery";
 import { ImportYaml } from "../components/ImportYaml";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
@@ -48,6 +49,7 @@ export function AppsPage() {
           );
         })}
       </div>
+      <ExamplesGallery onInstalled={apps.reload} />
     </>
   );
 }

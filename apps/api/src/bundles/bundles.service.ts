@@ -6,6 +6,7 @@ import {
   type AppDefinition,
   type AppIssue,
   type BundleCheckView,
+  type BundleRequest,
   type BundleExportView,
   type BundleItemView,
   type CompiledDefinition,
@@ -36,12 +37,16 @@ export class BundlesService {
     return (await this.read(userId, text)).view;
   }
 
-  async save(userId: string, text: string): Promise<BundleCheckView> {
+  async save(userId: string, text: string, example?: BundleRequest["example"]): Promise<BundleCheckView> {
     const { view, app, pipelines } = await this.read(userId, text);
     if (!view.ok) throw new BadRequestException({ message: "The file has problems: nothing was saved", ...view });
     if (app) {
       const item = view.items.find((i) => i.kind === "app")!;
-      if (item.action === "create") item.id = (await this.apps.create(userId, app.source)).appId;
+      if (item.action === "create") {
+        item.id = (await this.apps.create(userId, app.source)).appId;
+        // M40-T2: installed from an example: kept with it, for its checklist.
+        if (example) await this.prisma.client.app.update({ where: { appId: item.id }, data: { example } });
+      }
       else if (item.action === "update") await this.apps.save(userId, item.id!, app.source);
     }
     for (const pipeline of pipelines) {

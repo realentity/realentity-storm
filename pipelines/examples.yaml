@@ -1,0 +1,52 @@
+# M40: the examples offered on the Apps page. Each is an App with the pipelines that fill it, installed together (as
+# an import of one file: M35-T5), its pipelines off until I switch them on. `needs`: what has to be set up before its
+# pipelines can run, shown on its card and ticked on its checklist:
+#   email            an email account: IMAP_HOST on the server and the mail credential (Credentials)
+#   google-calendar  Google Calendar connected (Settings)
+#   telegram         the Telegram bot (TELEGRAM_BOT_TOKEN on the server)
+#   llm              the LLM (ANTHROPIC_API_KEY on the server)
+#   credential       a credential of that `name` (Credentials)
+#   recipe           a site recipe of that `name` (Recipes, Teach)
+#   entities         entities of mine of that `type`, added on the App's page
+# `files` are relative to pipelines/: the App first, then its pipelines.
+examples:
+  - id: releases-to-read
+    name: Releases to read
+    starter: true
+    description: New releases of a few open-source projects, each kept until you mark it read. Needs nothing set up.
+    needs: []
+    files: [examples/releases-to-read-app.yaml, examples/releases-to-read.yaml]
+
+  - id: releases
+    name: Releases
+    description: The releases of what runs on your server, summarized for upgrading, with upgrade notes on a button.
+    needs:
+      - { kind: llm, label: "The LLM, to summarize" }
+      - { kind: telegram, label: "Telegram, for the summaries" }
+    files: [apps/releases.yaml, release-watch.yaml, release-notes.yaml]
+
+  - id: bills
+    name: Bills
+    description: Bills read from your email, by month, due until you mark them paid, with a reminder in your calendar.
+    needs:
+      - { kind: email, label: "An email account, to read the bills from" }
+      - { kind: llm, label: "The LLM, to read each bill" }
+      - { kind: google-calendar, label: "Google Calendar, for the reminders" }
+      - { kind: telegram, label: "Telegram, to tell you about new bills" }
+    files: [apps/bills.yaml, bills.yaml]
+
+  - id: prices
+    name: Prices
+    description: The products you watch across shops, their price history, and a message when one drops below your target.
+    needs:
+      - { kind: entities, type: Product, label: "The products to watch, added on its page" }
+      - { kind: telegram, label: "Telegram, to tell you about drops" }
+    files: [apps/prices.yaml, prices.yaml]
+
+  - id: tables
+    name: Tables
+    description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.
+    needs:
+      - { kind: credential, name: app-db, label: "A database credential named app-db (read-only)" }
+      - { kind: telegram, label: "Telegram, for the alerts" }
+    files: [apps/tables.yaml, table-growth.yaml]

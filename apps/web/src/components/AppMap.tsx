@@ -33,7 +33,7 @@ const short = (text: string, max = 26) => (text.length > max ? `${text.slice(0, 
  * which pipeline writes or reads which type, what a change of a type or a page's button starts. A box opens its page;
  * hovering one leaves only its arrows.
  */
-export function AppMap({ appId, map }: Readonly<{ appId: string; map: AppMapView }>) {
+export function AppMap({ appId, map, preview = false }: Readonly<{ appId: string; map: AppMapView; /** M40: an example's, not installed: nothing to open. */ preview?: boolean }>) {
   const navigate = useNavigate();
   const [hover, setHover] = useState<string | null>(null);
   const columns: Placed[][] = [
@@ -175,10 +175,10 @@ export function AppMap({ appId, map }: Readonly<{ appId: string; map: AppMapView
             <g
               key={node.id}
               transform={`translate(${node.x},${node.y})`}
-              style={{ cursor: node.href ? "pointer" : undefined, opacity: touches(node.id) ? 1 : 0.35 }}
+              style={{ cursor: node.href && !preview ? "pointer" : undefined, opacity: touches(node.id) ? 1 : 0.35 }}
               onMouseEnter={() => setHover(node.id)}
               onMouseLeave={() => setHover(null)}
-              onClick={() => node.href && void navigate(node.href)}
+              onClick={() => !preview && node.href && void navigate(node.href)}
               data-testid="map-node"
               data-id={node.id}
             >

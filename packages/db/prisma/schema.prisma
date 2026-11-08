@@ -861,6 +861,8 @@ model App {
   user             User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
   name             String
   currentVersionId String?  @db.Uuid
+  /// M40: { id, needs }: the example it was installed from; its App page shows a checklist of what is left (M40-T3).
+  example          Json?
   dateCreated      DateTime @default(now())
   dateUpdated      DateTime @updatedAt
 

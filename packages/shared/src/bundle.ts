@@ -1,6 +1,7 @@
 import { parse } from "yaml";
 import { z } from "zod";
 import { type AppIssue } from "./app";
+import { ExampleNeedSchema } from "./examples";
 
 /**
  * M35-T5: Apps and pipelines as YAML files to import and export. One file may hold several documents (`---` between
@@ -64,7 +65,13 @@ export function joinBundle(sources: string[]): string {
   return sources.map((s) => s.replace(/\n+$/, "\n")).join("---\n");
 }
 
-export const BundleRequestSchema = z.object({ text: z.string().min(1).max(500_000) }).strict();
+export const BundleRequestSchema = z
+  .object({
+    text: z.string().min(1).max(500_000),
+    /** M40-T2: installed from an example: kept with its App, for its checklist (M40-T3). */
+    example: z.object({ id: z.string().min(1).max(60), needs: z.array(ExampleNeedSchema).max(10) }).strict().optional(),
+  })
+  .strict();
 export type BundleRequest = z.infer<typeof BundleRequestSchema>;
 
 /** What an imported document would do: new, a next version (with what changes), nothing (the same), or its problems. */
