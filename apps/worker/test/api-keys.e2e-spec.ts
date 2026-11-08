@@ -1,7 +1,7 @@
-import { KeyRing, payloadHash, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
-import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, payloadHash, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -188,12 +188,12 @@ steps:
     const issue = () => ({ method: "POST", url: api.url("/repos/me/infra/issues"), headers: { Authorization: "Bearer {{cred:weather-api}}" } });
 
     it("M29-I5: a POST with a JSON body and a key; an answer other than 2xx fails the step, the key masked; no redirect followed", async () => {
-      expect(await request({ ...issue(), body: { title: "Release watch failed", labels: ["ai-me"] } })).toEqual({
+      expect(await request({ ...issue(), body: { title: "Release watch failed", labels: ["storm"] } })).toEqual({
         status: 201,
         json: { number: 7, title: "Release watch failed" },
         text: '{"number":7,"title":"Release watch failed"}',
       });
-      expect(api.requests[0]).toMatchObject({ method: "POST", authorization: `Bearer ${KEY}`, body: '{"title":"Release watch failed","labels":["ai-me"]}' });
+      expect(api.requests[0]).toMatchObject({ method: "POST", authorization: `Bearer ${KEY}`, body: '{"title":"Release watch failed","labels":["storm"]}' });
 
       const refused = request({ ...issue(), body: {} });
       await expect(refused).rejects.toThrow('answered 422: {"message":"title missing (token •••)"}');
@@ -220,7 +220,7 @@ steps:
       expect(payload).toMatchObject({
         method: "POST",
         headers: { Authorization: "Bearer {{cred:github}}", Accept: "application/vnd.github+json" },
-        body: { title: "AI ME: Release watch failed", body: "github.com answered 503\n\nRun r-1", labels: ["ai-me"] },
+        body: { title: "Storm: Release watch failed", body: "github.com answered 503\n\nRun r-1", labels: ["storm"] },
       });
       await db.client.proposal.update({
         where: { proposalId: proposal.proposalId },

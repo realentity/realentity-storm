@@ -1,6 +1,6 @@
 import { pipelineCost } from "../runs/run-costs";
-import { Prisma, type PipelineVersion } from "@ai-me/db";
-import { JobQueue } from "@ai-me/queue";
+import { Prisma, type PipelineVersion } from "@realentity/storm-db";
+import { JobQueue } from "@realentity/storm-queue";
 import {
   canonicalJson,
   type CompiledDefinition,
@@ -15,8 +15,8 @@ import {
   type PipelineVersionSummaryView,
   type PipelineVersionView,
   type UpdatePipelineRequest,
-} from "@ai-me/shared";
-import { diffDefinitions } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { diffDefinitions } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { AppsService } from "../apps/apps.service";
 import { ControlsService } from "../controls/controls.service";

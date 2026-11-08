@@ -1,5 +1,5 @@
 {
-  "name": "@ai-me/steps",
+  "name": "@realentity/storm-steps",
   "version": "0.1.0",
   "private": true,
   "description": "Step catalog (types, input/output schemas, side-effect flags), pipeline compiler and version diff",
@@ -25,13 +25,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ai-me/shared": "workspace:*",
+    "@realentity/storm-shared": "workspace:*",
     "jsonata": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
     "@eslint/js": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",

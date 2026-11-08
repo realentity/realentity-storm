@@ -6,7 +6,7 @@ import {
   type DefinitionChange,
   type StepTypeView,
   type Trigger,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 
 /** Step ids a step reads from: {{step.field}} in its inputs or forEach, and the step a gate.act is for. */
 export function dependencies(step: CompiledStep, stepIds: ReadonlySet<string>): string[] {
@@ -88,12 +88,12 @@ export function policySummary(definition: CompiledDefinition, policy: CompiledPo
   const sideEffects = definition.steps.filter((s) => byType.get(s.type)?.sideEffect);
   const lines: string[] = [];
   if (sideEffects.length === 0) {
-    lines.push("No side effects: nothing is sent, submitted or uploaded outside AI ME.");
+    lines.push("No side effects: nothing is sent, submitted or uploaded outside Storm.");
   } else {
     for (const step of sideEffects) {
       const gate = definition.steps.find((s) => s.type === "gate.act" && s.with.for === step.id);
       lines.push(
-        `${step.id} (${step.type}) acts outside AI ME${step.forEach ? ", once per item" : ""}; it waits for my approval at ${gate?.id ?? "a gate"}.`,
+        `${step.id} (${step.type}) acts outside Storm${step.forEach ? ", once per item" : ""}; it waits for my approval at ${gate?.id ?? "a gate"}.`,
       );
     }
   }

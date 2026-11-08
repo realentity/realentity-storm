@@ -1,8 +1,8 @@
 {
-  "name": "@ai-me/api",
+  "name": "@realentity/storm-api",
   "version": "0.1.0",
   "private": true,
-  "description": "AI ME API: auth, credentials (encrypt only), and later pipelines, proposals and runs",
+  "description": "Storm API: auth, credentials (encrypt only), and later pipelines, proposals and runs",
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch --preserveWatchOutput",
@@ -16,12 +16,12 @@
     "eval:builder": "tsx evals/builder.eval.ts"
   },
   "dependencies": {
-    "@ai-me/crypto": "workspace:*",
-    "@ai-me/db": "workspace:*",
-    "@ai-me/llm": "workspace:*",
-    "@ai-me/queue": "workspace:*",
-    "@ai-me/shared": "workspace:*",
-    "@ai-me/steps": "workspace:*",
+    "@realentity/storm-crypto": "workspace:*",
+    "@realentity/storm-db": "workspace:*",
+    "@realentity/storm-llm": "workspace:*",
+    "@realentity/storm-queue": "workspace:*",
+    "@realentity/storm-shared": "workspace:*",
+    "@realentity/storm-steps": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
@@ -40,8 +40,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
-    "@ai-me/testing": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
+    "@realentity/storm-testing": "workspace:*",
     "@eslint/js": "catalog:",
     "@nestjs/cli": "catalog:",
     "@nestjs/schematics": "catalog:",

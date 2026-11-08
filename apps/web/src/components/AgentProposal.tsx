@@ -1,4 +1,4 @@
-import { canonicalJson, type ProposalView } from "@ai-me/shared";
+import { canonicalJson, type ProposalView } from "@realentity/storm-shared";
 import { IconBolt, IconDownload, IconX } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { toast } from "react-toastify";

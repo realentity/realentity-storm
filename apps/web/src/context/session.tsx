@@ -1,4 +1,4 @@
-import { type LoginRequest, type SessionView } from "@ai-me/shared";
+import { type LoginRequest, type SessionView } from "@realentity/storm-shared";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiError, onUnauthorized } from "../lib/api";
 import { api } from "../lib/endpoints";

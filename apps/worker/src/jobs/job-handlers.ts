@@ -1,5 +1,5 @@
-import { type PrismaClient, type RunStatus } from "@ai-me/db";
-import { type CompiledDefinition } from "@ai-me/shared";
+import { type PrismaClient, type RunStatus } from "@realentity/storm-db";
+import { type CompiledDefinition } from "@realentity/storm-shared";
 import {
   isScheduled,
   MAINTENANCE_SCHEDULE,
@@ -17,7 +17,7 @@ import {
   type ScheduleTrigger,
   type TriggerJob,
   type WebhookJob,
-} from "@ai-me/queue";
+} from "@realentity/storm-queue";
 import { Logger } from "@nestjs/common";
 import { type ArtifactStore } from "../browser/artifact-store";
 import { type Learning } from "../learning/learning";
@@ -53,7 +53,7 @@ export class JobHandlers {
     private readonly takeovers?: TakeoverDesk,
     /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
     private readonly retention?: { artifacts: ArtifactStore; days: number },
-    /** M12: event and webhook triggers; proposals told on the AI ME bot. */
+    /** M12: event and webhook triggers; proposals told on the Storm bot. */
     private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier; review?: WeeklyReview; brief?: MorningBrief } = {},
   ) {}
 
@@ -107,7 +107,7 @@ export class JobHandlers {
 
   /**
    * Advances a run; one held back by a rate limit is sent again for when the limit allows; one waiting for me says
-   * so on the AI ME bot.
+   * so on the Storm bot.
    */
   async advance(runId: string): Promise<RunStatus> {
     const status = await this.runner.advance(runId);

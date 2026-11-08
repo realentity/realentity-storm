@@ -1,7 +1,7 @@
 import { parse } from "yaml";
 
 /**
- * The builder's model in the browser tests (the shape of @ai-me/llm's LlmChat): nothing goes to Claude. Asked to
+ * The builder's model in the browser tests (the shape of @realentity/storm-llm's LlmChat): nothing goes to Claude. Asked to
  * "also include <place>", it adds the place to the search query of the pipeline it was shown and proposes that;
  * after a tool result it answers in one sentence; anything else gets a question back. An editor's draft (M38-T5) wins
  * over the saved version.

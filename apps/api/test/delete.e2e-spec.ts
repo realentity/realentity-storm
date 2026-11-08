@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type AppDetailView, type PipelineDetailView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type AppDetailView, type PipelineDetailView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 

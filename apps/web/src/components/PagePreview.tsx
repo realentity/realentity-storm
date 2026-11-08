@@ -1,4 +1,4 @@
-import { type AppPreviewView } from "@ai-me/shared";
+import { type AppPreviewView } from "@realentity/storm-shared";
 import { IconLoader2 } from "@tabler/icons-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api } from "../lib/endpoints";

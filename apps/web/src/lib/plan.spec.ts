@@ -1,4 +1,4 @@
-import { type CompiledDefinition, type CompiledPolicy, type StepTypeView } from "@ai-me/shared";
+import { type CompiledDefinition, type CompiledPolicy, type StepTypeView } from "@realentity/storm-shared";
 import { describe, expect, it } from "vitest";
 import { dependencies, describeChange, describeTrigger, policySummary, stepGraph } from "./plan";
 
@@ -61,7 +61,7 @@ describe("plan", () => {
 
   it("summarizes what the pipeline may do: side effects behind gates, targets, limits, headed browser", () => {
     expect(policySummary(APPLY, POLICY, CATALOG)).toEqual([
-      "apply (test.submit) acts outside AI ME, once per item; it waits for my approval at applyGate.",
+      "apply (test.submit) acts outside Storm, once per item; it waits for my approval at applyGate.",
       "Allowed domains: jobs.example.org",
       "apply.url (domain) must come from {{item.applyUrl}}, never from LLM text.",
       "At most 5/day for test.submit",
@@ -69,7 +69,7 @@ describe("plan", () => {
     ]);
     const readOnly = { ...APPLY, steps: APPLY.steps.slice(0, 2), limits: {} };
     expect(policySummary(readOnly, { allowedDomains: [], allowedRecipients: [], provenance: [] }, CATALOG)).toEqual([
-      "No side effects: nothing is sent, submitted or uploaded outside AI ME.",
+      "No side effects: nothing is sent, submitted or uploaded outside Storm.",
     ]);
   });
 

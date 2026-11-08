@@ -1,7 +1,7 @@
-import { type Prisma, type PrismaClient } from "@ai-me/db";
-import { type Embeddings, type LlmUsage } from "@ai-me/llm";
-import { WHOLE_REFERENCE, type CompiledDefinition } from "@ai-me/shared";
-import { type EmailMessage, type StepCatalog } from "@ai-me/steps";
+import { type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { type Embeddings, type LlmUsage } from "@realentity/storm-llm";
+import { WHOLE_REFERENCE, type CompiledDefinition } from "@realentity/storm-shared";
+import { type EmailMessage, type StepCatalog } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { sourceOf } from "../runner/run-values";
 import { emailBlock } from "../steps/email-block";

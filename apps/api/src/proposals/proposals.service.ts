@@ -1,14 +1,14 @@
-import { payloadHash } from "@ai-me/crypto";
-import { Prisma } from "@ai-me/db";
-import { JobQueue } from "@ai-me/queue";
+import { payloadHash } from "@realentity/storm-crypto";
+import { Prisma } from "@realentity/storm-db";
+import { JobQueue } from "@realentity/storm-queue";
 import {
   canonicalJson,
   type ApproveProposalRequest,
   type CompiledDefinition,
   type ProposalStatusName,
   type ProposalView,
-} from "@ai-me/shared";
-import { StepCatalog } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { StepCatalog } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import { ControlsService } from "../controls/controls.service";
@@ -52,7 +52,7 @@ export class ProposalsService {
     return proposalView(await this.find(userId, proposalId));
   }
 
-  /** `via`: where I decided, for the AI ME bot's message about it. */
+  /** `via`: where I decided, for the Storm bot's message about it. */
   async approve(userId: string, proposalId: string, body: ApproveProposalRequest, via: Via = "the app"): Promise<ProposalView> {
     await this.controls.assertNotPaused(userId);
     const proposal = await this.find(userId, proposalId);

@@ -1,7 +1,7 @@
-import { type Application, type JobPosting, type PrismaClient } from "@ai-me/db";
-import { type LlmClient, type ModelRouter } from "@ai-me/llm";
-import { movesForward, OUTCOME_DATE } from "@ai-me/shared";
-import { type EmailMessage } from "@ai-me/steps";
+import { type Application, type JobPosting, type PrismaClient } from "@realentity/storm-db";
+import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { movesForward, OUTCOME_DATE } from "@realentity/storm-shared";
+import { type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
 import { type StepLearning } from "../learning/learning";
 import { type StepContext } from "../runner/step-executor";

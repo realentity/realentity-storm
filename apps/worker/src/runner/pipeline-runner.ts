@@ -1,6 +1,6 @@
-import { payloadHash } from "@ai-me/crypto";
-import { addUsage, type LlmUsage } from "@ai-me/llm";
-import { type Prisma, type PrismaClient, type Proposal, type RunStatus, type Step } from "@ai-me/db";
+import { payloadHash } from "@realentity/storm-crypto";
+import { addUsage, type LlmUsage } from "@realentity/storm-llm";
+import { type Prisma, type PrismaClient, type Proposal, type RunStatus, type Step } from "@realentity/storm-db";
 import {
   canonicalJson,
   type AppEvent,
@@ -8,9 +8,9 @@ import {
   type CompiledPolicy,
   type CompiledStep,
   type ProposalStatusName,
-} from "@ai-me/shared";
-import { type EventJob } from "@ai-me/queue";
-import { referencesIn, type StepCatalog, type StepDefinition } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { type EventJob } from "@realentity/storm-queue";
+import { referencesIn, type StepCatalog, type StepDefinition } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
@@ -723,7 +723,7 @@ export class PipelineRunner {
     await this.spent(state, llmUsage);
   }
 
-  /** A step that called the LLM: 80% of the budget, or all of it, is told on the AI ME bot (M19-T2). */
+  /** A step that called the LLM: 80% of the budget, or all of it, is told on the Storm bot (M19-T2). */
   private async spent(state: RunState, llmUsage: LlmUsage | undefined): Promise<void> {
     if (llmUsage && llmUsage.costUsd > 0) await this.controls.tellBudget(state.userId);
   }

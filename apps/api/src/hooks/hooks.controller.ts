@@ -1,4 +1,4 @@
-import { HealthReportSchema, type ServerEnv, type WebhookView } from "@ai-me/shared";
+import { HealthReportSchema, type ServerEnv, type WebhookView } from "@realentity/storm-shared";
 import {
   Body,
   Controller,
@@ -28,7 +28,7 @@ import { WebhooksService } from "./webhooks.service";
 const digest = (text: string) => createHash("sha256").update(text).digest();
 
 /**
- * What reaches AI ME from the Internet (M12-T5): hooks-gateway on the VPS forwards to the hooks-only site on the server
+ * What reaches Storm from the Internet (M12-T5): hooks-gateway on the VPS forwards to the hooks-only site on the server
  * (Caddy :8081, /hooks/* only), which ends here. No session: each call carries its own secret.
  */
 @Public()
@@ -49,7 +49,7 @@ export class HooksController {
   @Post("health")
   @HttpCode(204)
   async report(
-    @Headers("x-aime-health-token") token: string | undefined,
+    @Headers("x-storm-health-token") token: string | undefined,
     @Body() body: unknown,
   ): Promise<void> {
     const expected = this.env.HEALTH_REPORT_TOKEN;
@@ -58,7 +58,7 @@ export class HooksController {
     await this.health.report(new ZodBodyPipe(HealthReportSchema).transform(body));
   }
 
-  /** The AI ME bot's updates. A wrong secret gets the same 404 as an unknown path. */
+  /** The Storm bot's updates. A wrong secret gets the same 404 as an unknown path. */
   @Post("telegram")
   @HttpCode(200)
   async telegram(@Headers("x-telegram-bot-api-secret-token") secret: string | undefined, @Req() request: Request): Promise<{ ok: true }> {

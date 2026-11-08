@@ -1,19 +1,19 @@
-import { payloadHash } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
+import { payloadHash } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
 import {
   proposalMessage,
   sendTelegramMessage,
   type CompiledDefinition,
   type ProposalForTelegram,
   type TelegramConfig,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 
 /** More new proposals than this at once (a long shortlist) get one message, not one each. */
 const ONE_BY_ONE = 5;
 
 /**
- * Tells me on the AI ME bot what a run waits for (M12-T4): each new proposal with Approve / Reject / Open, or one
+ * Tells me on the Storm bot what a run waits for (M12-T4): each new proposal with Approve / Reject / Open, or one
  * message when a gate made many. Each proposal is told once (Proposal.notifiedAt); dry runs aren't told.
  */
 export class ProposalNotifier {
@@ -47,7 +47,7 @@ export class ProposalNotifier {
         await sendTelegramMessage(
           this.telegram,
           {
-            text: `AI ME · ${pipeline}: ${fresh.length} proposals wait for you.`,
+            text: `Storm · ${pipeline}: ${fresh.length} proposals wait for you.`,
             buttons: this.appOrigin ? [[{ text: "Open the inbox", url: `${this.appOrigin}/inbox` }]] : [],
           },
           this.send,

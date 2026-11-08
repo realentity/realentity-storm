@@ -1,4 +1,4 @@
-import { type ChecklistView, type SetupView } from "@ai-me/shared";
+import { type ChecklistView, type SetupView } from "@realentity/storm-shared";
 import { Controller, Get, Param, ParseUUIDPipe } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ExamplesService } from "./examples.service";

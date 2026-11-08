@@ -1,5 +1,5 @@
-import { type Prisma } from "@ai-me/db";
-import { JobQueue } from "@ai-me/queue";
+import { type Prisma } from "@realentity/storm-db";
+import { JobQueue } from "@realentity/storm-queue";
 import {
   type CreateRuleRequest,
   type LearningView,
@@ -9,7 +9,7 @@ import {
   type ServerEnv,
   type SuggestionStatusName,
   type UpdateRuleRequest,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";

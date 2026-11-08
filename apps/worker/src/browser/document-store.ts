@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { type FormFile } from "@ai-me/steps";
+import { type PrismaClient } from "@realentity/storm-db";
+import { type FormFile } from "@realentity/storm-steps";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";

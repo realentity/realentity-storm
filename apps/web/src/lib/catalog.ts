@@ -1,4 +1,4 @@
-import { type StepTypeView } from "@ai-me/shared";
+import { type StepTypeView } from "@realentity/storm-shared";
 import { useEffect, useState } from "react";
 import { api } from "./endpoints";
 

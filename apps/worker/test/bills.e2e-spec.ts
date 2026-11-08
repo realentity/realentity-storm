@@ -1,8 +1,8 @@
-import { KeyRing, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@ai-me/llm";
-import { type EmailMessage } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
+import { type EmailMessage } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";

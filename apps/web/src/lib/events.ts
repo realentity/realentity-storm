@@ -1,4 +1,4 @@
-import { EVENTS_PATH, type AppEvent } from "@ai-me/shared";
+import { EVENTS_PATH, type AppEvent } from "@realentity/storm-shared";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
 /** "resync": the socket (re)connected, so events may have been missed; refetch everything shown. */

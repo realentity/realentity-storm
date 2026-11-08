@@ -1,4 +1,4 @@
-export { definitionToSource } from "@ai-me/shared";
+export { definitionToSource } from "@realentity/storm-shared";
 
 /** A new pipeline: no description (its box says what goes there). */
 export const NEW_PIPELINE_TEMPLATE = `name: My pipeline

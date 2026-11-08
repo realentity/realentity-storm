@@ -1,5 +1,5 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type HealthView } from "@ai-me/shared";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type HealthView } from "@realentity/storm-shared";
 import request from "supertest";
 import { HealthChecks } from "../src/health/health-checks";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -38,7 +38,7 @@ describe("watching the server: health reports", () => {
 
   const report = (body: Record<string, unknown>, token: string | null = TOKEN) => {
     const call = request(api.http).post("/api/hooks/health");
-    return (token === null ? call : call.set("x-aime-health-token", token)).send(body);
+    return (token === null ? call : call.set("x-storm-health-token", token)).send(body);
   };
   const evaluate = (hoursLater: number) => api.app.get(HealthChecks).evaluate(new Date(Date.now() + hoursLater * HOUR));
 
@@ -50,20 +50,20 @@ describe("watching the server: health reports", () => {
     // A full disk: told once, however often it is reported.
     await report({ name: "server", ok: false, detail: "/data is 91% full; ", maxAgeHours: 5 }).expect(204);
     await report({ name: "server", ok: false, detail: "/data is 92% full; ", maxAgeHours: 5 }).expect(204);
-    expect(alerts).toEqual(["⚠️ AI ME: server: /data is 91% full; "]);
+    expect(alerts).toEqual(["⚠️ Storm: server: /data is 91% full; "]);
     await report({ name: "server", ok: true, detail: "/ 41%, /data 70%; no failed services", maxAgeHours: 5 }).expect(204);
-    expect(alerts.at(-1)).toBe("✅ AI ME: server is fine again: / 41%, /data 70%; no failed services");
+    expect(alerts.at(-1)).toBe("✅ Storm: server is fine again: / 41%, /data 70%; no failed services");
 
     // A backup that failed, then one that didn't run at all.
     await report({ name: "backup", ok: false, detail: "Backup failed (exit 1): journalctl -u nightly-backup" }).expect(204);
-    expect(alerts.at(-1)).toBe("⚠️ AI ME: backup: Backup failed (exit 1): journalctl -u nightly-backup");
+    expect(alerts.at(-1)).toBe("⚠️ Storm: backup: Backup failed (exit 1): journalctl -u nightly-backup");
     await report({ name: "backup", ok: true, detail: "Backup finished OK" }).expect(204);
     alerts = [];
     await evaluate(27);
     await evaluate(28);
     expect(alerts).toEqual([
-      expect.stringMatching(/^⚠️ AI ME: backup: no report since \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(expected every 26 h\)$/),
-      expect.stringMatching(/^⚠️ AI ME: server: no report since .* \(expected every 5 h\)$/),
+      expect.stringMatching(/^⚠️ Storm: backup: no report since \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(expected every 26 h\)$/),
+      expect.stringMatching(/^⚠️ Storm: server: no report since .* \(expected every 5 h\)$/),
     ]);
 
     const view = (await agent.get("/api/health/checks").expect(200)).body as HealthView;

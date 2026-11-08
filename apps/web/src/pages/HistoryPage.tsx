@@ -1,4 +1,4 @@
-import { RUN_STATUSES, type RunFilter, type RunSummaryView } from "@ai-me/shared";
+import { RUN_STATUSES, type RunFilter, type RunSummaryView } from "@realentity/storm-shared";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { RunsTable } from "../components/RunsTable";

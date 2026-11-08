@@ -1,6 +1,6 @@
-import { KeyRing, seal } from "@ai-me/crypto";
-import { Prisma } from "@ai-me/db";
-import { CredentialKind, databaseProblem, type CreateCredentialRequest, type CredentialView } from "@ai-me/shared";
+import { KeyRing, seal } from "@realentity/storm-crypto";
+import { Prisma } from "@realentity/storm-db";
+import { CredentialKind, databaseProblem, type CreateCredentialRequest, type CredentialView } from "@realentity/storm-shared";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";

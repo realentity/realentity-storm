@@ -1,8 +1,8 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { PRICE_WATCH_COLLECTION, PRICES_PIPELINE, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@ai-me/shared";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { PRICE_WATCH_COLLECTION, PRICES_PIPELINE, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@realentity/storm-shared";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { TestEnvironment } from "@ai-me/testing";
+import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 

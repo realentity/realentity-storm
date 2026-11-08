@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { type TelegramMessage } from "@ai-me/shared";
+import { type PrismaClient } from "@realentity/storm-db";
+import { type TelegramMessage } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,7 +18,7 @@ export interface BriefEvent {
 export type TodaysEvents = (userId: string, from: Date, to: Date) => Promise<BriefEvent[] | null>;
 
 /**
- * The morning brief (M25, README §12): every morning on the AI ME bot, what today needs. Today's calendar (when
+ * The morning brief (M25, README §12): every morning on the Storm bot, what today needs. Today's calendar (when
  * Google is connected), what waits for me (drafts and follow-ups at their gates, runs paused in the live view), the
  * runs that failed in the last day, unpaid bills due soon. A day with none of it says so in one line.
  */
@@ -39,14 +39,14 @@ export class MorningBrief {
       select: { userId: true },
     });
     for (const { userId } of users) {
-      await this.notify({ text: await this.compose(userId, now), buttons: this.appOrigin ? [[{ text: "Open AI ME", url: this.appOrigin }]] : undefined });
+      await this.notify({ text: await this.compose(userId, now), buttons: this.appOrigin ? [[{ text: "Open Storm", url: this.appOrigin }]] : undefined });
     }
     if (users.length > 0) this.logger.log(`Morning brief sent to ${users.length} user(s)`);
     return users.length;
   }
 
   async compose(userId: string, now = new Date()): Promise<string> {
-    const title = `AI ME · ${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: ZONE })}`;
+    const title = `Storm · ${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: ZONE })}`;
     const parts = [await this.calendar(userId, now), await this.waiting(userId), await this.failed(userId, now), await this.bills(userId, now)].filter(
       (part): part is string => part !== null,
     );

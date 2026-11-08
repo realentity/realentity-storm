@@ -6,7 +6,7 @@ import {
   type DraftedField,
   type DraftTypeView,
   type RunDetailView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { IconFlask, IconPlus, IconWand } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";

@@ -1,5 +1,5 @@
-import { type Prisma, type Takeover } from "@ai-me/db";
-import { JobQueue } from "@ai-me/queue";
+import { type Prisma, type Takeover } from "@realentity/storm-db";
+import { JobQueue } from "@realentity/storm-queue";
 import {
   type CompiledDefinition,
   type CostsView,
@@ -10,8 +10,8 @@ import {
   type ServerEnv,
   type StepUsageView,
   type TakeoverView,
-} from "@ai-me/shared";
-import { exampleTriggerData, StepCatalog } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { exampleTriggerData, StepCatalog } from "@realentity/storm-steps";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { ControlsService } from "../controls/controls.service";
@@ -265,7 +265,7 @@ function dayAfter(day: string): Date {
   return new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000);
 }
 
-/** The part of Step.llmUsage the run page shows (the stored shape is @ai-me/llm's LlmUsage). */
+/** The part of Step.llmUsage the run page shows (the stored shape is @realentity/storm-llm's LlmUsage). */
 function stepUsage(value: Prisma.JsonValue): StepUsageView | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const usage = value as Record<string, unknown>;

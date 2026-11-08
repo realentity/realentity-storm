@@ -151,7 +151,7 @@ export const DataTypeSchema = z
   );
 export type DataType = z.output<typeof DataTypeSchema>;
 
-/** What AI ME knows of every entity besides its fields: a list may show, sort and group by them. */
+/** What Storm knows of every entity besides its fields: a list may show, sort and group by them. */
 export const ENTITY_META = ["@firstSeen", "@lastSeen"] as const;
 const PageField = z.union([z.enum(ENTITY_META), z.string().regex(ENTITY_FIELD, 'a field of the type, e.g. "salary"')]);
 const PageMenu = z.object({ label: z.string().trim().min(1).max(30), icon: z.enum(VIEW_ICONS).optional() }).strict();

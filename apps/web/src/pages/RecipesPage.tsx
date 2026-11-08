@@ -1,4 +1,4 @@
-import { type RecipeSummaryView } from "@ai-me/shared";
+import { type RecipeSummaryView } from "@realentity/storm-shared";
 import { IconAlertTriangle, IconFileImport, IconSchool } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

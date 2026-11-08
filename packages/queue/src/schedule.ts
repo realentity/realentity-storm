@@ -1,4 +1,4 @@
-import { type Trigger } from "@ai-me/shared";
+import { type Trigger } from "@realentity/storm-shared";
 import { CronExpressionParser } from "cron-parser";
 
 export type ScheduleTrigger = Extract<Trigger, { schedule: string }>;

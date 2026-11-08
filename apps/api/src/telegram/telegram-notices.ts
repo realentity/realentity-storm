@@ -1,5 +1,5 @@
-import { payloadHash } from "@ai-me/crypto";
-import { type Prisma } from "@ai-me/db";
+import { payloadHash } from "@realentity/storm-crypto";
+import { type Prisma } from "@realentity/storm-db";
 import {
   decidedMessage,
   editTelegramMessage,
@@ -7,7 +7,7 @@ import {
   type ProposalForTelegram,
   type ServerEnv,
   type TelegramConfig,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
@@ -22,7 +22,7 @@ export const TELEGRAM_PROPOSAL_INCLUDE = {
 
 export type ProposalForBot = Prisma.ProposalGetPayload<{ include: typeof TELEGRAM_PROPOSAL_INCLUDE }>;
 
-/** A proposal as the AI ME bot shows it (M12-T4). */
+/** A proposal as the Storm bot shows it (M12-T4). */
 export function forTelegram(proposal: ProposalForBot): ProposalForTelegram {
   const payload = proposal.originalPayload as Record<string, unknown>;
   const definition = proposal.run.pipelineVersion.definition as unknown as CompiledDefinition;
@@ -38,7 +38,7 @@ export function forTelegram(proposal: ProposalForBot): ProposalForTelegram {
   };
 }
 
-/** The AI ME bot's messages about proposals, kept in line with decisions made anywhere. */
+/** The Storm bot's messages about proposals, kept in line with decisions made anywhere. */
 @Injectable()
 export class TelegramNotices {
   private readonly logger = new Logger(TelegramNotices.name);

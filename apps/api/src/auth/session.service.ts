@@ -1,4 +1,4 @@
-import { type ServerEnv } from "@ai-me/shared";
+import { type ServerEnv } from "@realentity/storm-shared";
 import { Inject, Injectable } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import { SERVER_ENV } from "../config/server-env";

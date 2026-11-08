@@ -1,5 +1,5 @@
-import { Prisma, type BuilderChat, type BuilderMessage } from "@ai-me/db";
-import { ModelRouter, type ChatMessage, type LlmChat, type LlmUsage } from "@ai-me/llm";
+import { Prisma, type BuilderChat, type BuilderMessage } from "@realentity/storm-db";
+import { ModelRouter, type ChatMessage, type LlmChat, type LlmUsage } from "@realentity/storm-llm";
 import {
   definitionToSource,
   withCurrentNames,
@@ -18,9 +18,9 @@ import {
   type CompileIssue,
   type EffortName,
   type ServerEnv,
-} from "@ai-me/shared";
-import { diffApps, diffDefinitions, RecipeSchema } from "@ai-me/steps";
-import { readAppSource, type AppProposalView } from "@ai-me/shared";
+} from "@realentity/storm-shared";
+import { diffApps, diffDefinitions, RecipeSchema } from "@realentity/storm-steps";
+import { readAppSource, type AppProposalView } from "@realentity/storm-shared";
 import { AppsService } from "../apps/apps.service";
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";

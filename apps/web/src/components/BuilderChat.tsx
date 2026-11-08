@@ -1,4 +1,4 @@
-import { type BuilderChatView, type BuilderMessageView, type PipelineSuggestionView } from "@ai-me/shared";
+import { type BuilderChatView, type BuilderMessageView, type PipelineSuggestionView } from "@realentity/storm-shared";
 import { IconBulb, IconDeviceFloppy, IconEye, IconPencil, IconSend } from "@tabler/icons-react";
 import { useState, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";

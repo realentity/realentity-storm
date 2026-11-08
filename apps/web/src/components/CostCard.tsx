@@ -1,4 +1,4 @@
-import { type PipelineCostView } from "@ai-me/shared";
+import { type PipelineCostView } from "@realentity/storm-shared";
 import { formatUsd } from "../lib/format";
 
 /** A pipeline's LLM cost (M17-T3): its last 30 days, per run, and per month on its schedule. */

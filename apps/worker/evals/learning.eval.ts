@@ -1,6 +1,6 @@
 import { config } from "dotenv";
-import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@ai-me/llm";
-import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
+import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@realentity/storm-llm";
+import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NO_LEARNING, type StepLearning } from "../src/learning/learning";
@@ -12,7 +12,7 @@ import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
 
 /**
  * M6-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
- *   pnpm --filter @ai-me/worker eval:learning
+ *   pnpm --filter @realentity/storm-worker eval:learning
  * 10 seeded edits in which I removed "I hope this finds you well" (and its Bulgarian twin) from drafts, and in the
  * English ones replaced the sign-off "Best regards" with "Cheers," → reflection (the nightly prompt and model, called
  * directly instead of through the Batch API) must suggest a rule for each → with the suggested rules active, drafts of

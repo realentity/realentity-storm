@@ -1,4 +1,4 @@
-import { type QuestionView } from "@ai-me/shared";
+import { type QuestionView } from "@realentity/storm-shared";
 import { IconMessageQuestion } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";

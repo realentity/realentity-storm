@@ -1,4 +1,4 @@
-import { readAppSource, type CompileResult, type CompiledDefinition } from "@ai-me/shared";
+import { readAppSource, type CompileResult, type CompiledDefinition } from "@realentity/storm-shared";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";

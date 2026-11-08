@@ -1,5 +1,5 @@
-import { type Bill } from "@ai-me/db";
-import { type BillsView, type BillView } from "@ai-me/shared";
+import { type Bill } from "@realentity/storm-db";
+import { type BillsView, type BillView } from "@realentity/storm-shared";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 

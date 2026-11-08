@@ -1,7 +1,7 @@
-import { type Fact } from "@ai-me/db";
-import { hostMatches } from "@ai-me/shared";
-import { textOf, toolResult, toolUses, type ChatBlock, type ChatMessage, type ChatTool, type LlmChat, type ModelChoice, type ModelRouter, type ToolUse } from "@ai-me/llm";
-import { type AgentAction, type ElementTarget, type FormField, type FormFile } from "@ai-me/steps";
+import { type Fact } from "@realentity/storm-db";
+import { hostMatches } from "@realentity/storm-shared";
+import { textOf, toolResult, toolUses, type ChatBlock, type ChatMessage, type ChatTool, type LlmChat, type ModelChoice, type ModelRouter, type ToolUse } from "@realentity/storm-llm";
+import { type AgentAction, type ElementTarget, type FormField, type FormFile } from "@realentity/storm-steps";
 import { type BrowserContext, type Page } from "playwright";
 import { z } from "zod";
 import { emptyRequired, findTarget, hostOf, locateRef, markAttached, outline, personChecks, SendGuard, type ElementInfo } from "../browser/agent-page";
@@ -704,7 +704,7 @@ async function element(page: Page, ref: unknown): Promise<ElementInfo | null> {
 }
 
 function byRef(page: Page, ref: unknown) {
-  return page.locator(`[data-aime-ref="${String(ref)}"]`);
+  return page.locator(`[data-storm-ref="${String(ref)}"]`);
 }
 
 /** A file input's target from its selector (its own role and name), so browser.submit finds that input. */
@@ -712,7 +712,7 @@ async function findCss(page: Page, css: string): Promise<ElementTarget | null> {
   const ref = await page
     .locator(css)
     .first()
-    .getAttribute("data-aime-ref")
+    .getAttribute("data-storm-ref")
     .catch(() => null);
   const info = ref ? await locateRef(page, ref) : null;
   return info ? targetOf(info) : null;

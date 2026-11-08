@@ -1,4 +1,4 @@
-import { type JsonSchema } from "@ai-me/shared";
+import { type JsonSchema } from "@realentity/storm-shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parse, stringify } from "yaml";
 import { fieldKind, resolve } from "../lib/schema-form";

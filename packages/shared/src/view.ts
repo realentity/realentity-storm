@@ -9,7 +9,7 @@ import { z } from "zod";
 /** The same names as data.save's `collection`. */
 export const VIEW_COLLECTION = /^[a-z][a-z0-9._-]{0,63}$/;
 
-/** A field of a row's value by dotted path ("company.name"), or what AI ME knows of the row itself. */
+/** A field of a row's value by dotted path ("company.name"), or what Storm knows of the row itself. */
 const FIELD_PATH = /^[A-Za-z_$][\w$-]{0,63}(\.[\w$-]{1,64}){0,5}$/;
 export const ROW_FIELDS = ["@key", "@firstSeen", "@lastSeen"] as const;
 export type RowField = (typeof ROW_FIELDS)[number];

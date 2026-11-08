@@ -1,4 +1,4 @@
-import { type RunCostView } from "@ai-me/shared";
+import { type RunCostView } from "@realentity/storm-shared";
 import { IconChevronDown, IconChevronRight, IconClipboard, IconDownload } from "@tabler/icons-react";
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -50,7 +50,7 @@ export function CostsPage() {
     const blob = new Blob([JSON.stringify({ ...view, runs }, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `ai-me-costs-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `storm-costs-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }

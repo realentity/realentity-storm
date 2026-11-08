@@ -1,6 +1,6 @@
-import { KeyRing, open, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, open, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { Test } from "@nestjs/testing";
 import { randomBytes, randomUUID } from "node:crypto";
 import { checkCredentials } from "../src/secrets/credential-check";

@@ -1,5 +1,5 @@
-import { type LlmUsage } from "@ai-me/llm";
-import { type TriggerEventName } from "@ai-me/shared";
+import { type LlmUsage } from "@realentity/storm-llm";
+import { type TriggerEventName } from "@realentity/storm-shared";
 
 /** What a step implementation knows about where it runs. */
 export interface StepContext {
@@ -54,7 +54,7 @@ export interface NeedMeOptions {
   waitsFor?: string;
   /** Instead of "Open the live view". */
   button?: { text: string; url: string };
-  /** false: no "AI ME needs you" message (the step sends its own, e.g. a question to reply to). */
+  /** false: no "Storm needs you" message (the step sends its own, e.g. a question to reply to). */
   notify?: boolean;
 }
 

@@ -21,7 +21,7 @@ import {
   type EntityListView,
   type EntityQuery,
   type SaveAppRequest,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";

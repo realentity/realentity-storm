@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { type AddressInfo } from "node:net";
 
 /** The test account on the fixture sites; the security tests grep everything the run produced for the password. */
-export const USERNAME = "ana@aime.test";
+export const USERNAME = "ana@storm.test";
 export const PASSWORD = "fixture pass!Wq83zLp0";
 
 export interface FixtureSites {

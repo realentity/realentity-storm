@@ -1,4 +1,4 @@
-import { type CostsView, type RunCostView, type StepCostView } from "@ai-me/shared";
+import { type CostsView, type RunCostView, type StepCostView } from "@realentity/storm-shared";
 import { describe, expect, it } from "vitest";
 import { byPipeline, costReport, filterRuns, formatTokens, totals } from "./costs";
 
@@ -58,7 +58,7 @@ describe("costs", () => {
     const report = costReport(view, RUNS, { pipelineId: null, dryRuns: true }, {
       "email.draftReply": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
     });
-    expect(report).toContain("# AI ME LLM costs: last 30 days (since 2026-10-03)");
+    expect(report).toContain("# Storm LLM costs: last 30 days (since 2026-10-03)");
     expect(report).toContain("Runs: 4 (1 dry, 3 called the LLM) · LLM calls: 6 · total $0.0260 · $0.0065 per run");
     expect(report).toContain("| Triage | 3 | $0.0220 | $0.0073 | $0.0210 | 3 |");
     expect(report).toContain("| draft | email.draftReply | claude-sonnet-5-5 | 0.3 | 2.0K | 600 | 0 | 0 | $0.0067 | 91% |");

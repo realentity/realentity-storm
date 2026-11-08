@@ -1,5 +1,5 @@
-import { llmCostSince, llmSpendSince } from "@ai-me/db";
-import { ModelRouter } from "@ai-me/llm";
+import { llmCostSince, llmSpendSince } from "@realentity/storm-db";
+import { ModelRouter } from "@realentity/storm-llm";
 import {
   EFFORTS,
   LLM_TASKS,
@@ -11,8 +11,8 @@ import {
   type SettingsRequest,
   type SettingsView,
   type SpendingView,
-} from "@ai-me/shared";
-import { StepCatalog } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { StepCatalog } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";

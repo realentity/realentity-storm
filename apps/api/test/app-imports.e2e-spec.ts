@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type AppDetailView, type AppImportResult, type AppListView, type InsightView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type AppDetailView, type AppImportResult, type AppListView, type InsightView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type request from "supertest";

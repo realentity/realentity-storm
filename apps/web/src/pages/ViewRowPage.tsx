@@ -1,4 +1,4 @@
-import { type ViewColumn } from "@ai-me/shared";
+import { type ViewColumn } from "@realentity/storm-shared";
 import { type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PriceChart } from "../components/PriceChart";

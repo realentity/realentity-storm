@@ -25,7 +25,7 @@ import { useConnectionState } from "../lib/events";
 import { useLoad } from "../lib/use-load";
 import { VIEW_ICON } from "../lib/view";
 
-/** AI ME itself. */
+/** Storm itself. */
 const NAVIGATION = [
   { to: "/inbox", label: "Inbox", icon: IconInbox },
   { to: "/pipelines", label: "Pipelines", icon: IconRoute },
@@ -71,7 +71,7 @@ export function AppLayout() {
           <div className="navbar-brand navbar-brand-autodark">
             <NavLink to="/inbox" className="text-reset text-decoration-none fw-bold fs-2 d-flex align-items-center gap-2">
               <img src="/logo.svg" alt="" width={32} height={32} />
-              AI ME
+              Storm
             </NavLink>
           </div>
           <div className={`collapse navbar-collapse ${menuOpen ? "show" : ""}`}>

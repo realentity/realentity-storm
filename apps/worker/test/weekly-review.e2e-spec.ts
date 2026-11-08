@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type TelegramMessage } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type TelegramMessage } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { WeeklyReview } from "../src/jobs/weekly-review";
 import { RunControls } from "../src/runner/run-controls";
 import { createVersion } from "./support/test-steps";
@@ -96,7 +96,7 @@ describe("weekly review", () => {
     const review = new WeeklyReview(db.client, new RunControls(db.client), () => Promise.resolve());
     const text = await review.compose(userId, now);
     const lines = text.split("\n");
-    expect(lines[0]).toBe("AI ME · weekly review, 25 Oct – 1 Nov");
+    expect(lines[0]).toBe("Storm · weekly review, 25 Oct – 1 Nov");
     expect(lines).toContain("Runs: 4 (3 done, 1 failed)");
     expect(lines).toContain("• Job search: jobs.bg/search no longer matches the page");
     expect(lines).toContain("LLM: $2.9500 (this month $0.50)");
@@ -110,13 +110,13 @@ describe("weekly review", () => {
 
   it("goes to whoever hasn't turned it off; a quiet week says so", async () => {
     const sent: TelegramMessage[] = [];
-    const review = new WeeklyReview(db.client, new RunControls(db.client), (m) => (sent.push(m), Promise.resolve()), "https://aime.test");
+    const review = new WeeklyReview(db.client, new RunControls(db.client), (m) => (sent.push(m), Promise.resolve()), "https://storm.test");
 
     await expect(review.sendAll()).resolves.toBe(1);
     const lines = sent[0]?.text.split("\n") ?? [];
     expect(lines).toEqual(expect.arrayContaining(["Runs: none", "Waiting for me: nothing", "LLM: $0.0000 (this month $0.00)"]));
     expect(lines.filter((line) => /^(Budget|Most of it|Applications|Quiet recipes):/.test(line))).toEqual([]);
-    expect(sent[0]?.buttons).toEqual([[{ text: "Open AI ME", url: "https://aime.test" }]]);
+    expect(sent[0]?.buttons).toEqual([[{ text: "Open Storm", url: "https://storm.test" }]]);
 
     await db.client.userSetting.create({ data: { userId, weeklyReview: false } });
     await expect(review.sendAll()).resolves.toBe(0);

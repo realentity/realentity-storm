@@ -1,6 +1,6 @@
-import { KeyRing, open } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type CredentialView } from "@ai-me/shared";
+import { KeyRing, open } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type CredentialView } from "@realentity/storm-shared";
 import { randomUUID } from "node:crypto";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -101,7 +101,7 @@ describe("credentials", () => {
   });
 
   it("does not touch another user's credentials", async () => {
-    const other = await db.client.user.create({ data: { email: `other-${randomUUID()}@aime.test` } });
+    const other = await db.client.user.create({ data: { email: `other-${randomUUID()}@storm.test` } });
     const credentialId = randomUUID();
     await db.client.credential.create({
       data: {

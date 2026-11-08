@@ -1,4 +1,4 @@
-import { fillTemplate, onSite, siteOf, type Recipe } from "@ai-me/steps";
+import { fillTemplate, onSite, siteOf, type Recipe } from "@realentity/storm-steps";
 import { type Page } from "playwright";
 import { blockingState } from "./blocking";
 import { type Attention } from "../runner/step-executor";

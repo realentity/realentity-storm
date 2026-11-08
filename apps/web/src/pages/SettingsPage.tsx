@@ -7,7 +7,7 @@ import {
   type SettingsView,
   type SpendingView,
   type StepTypeView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
@@ -58,7 +58,7 @@ function useSave(onSaved: () => void) {
   return { ...action, save };
 }
 
-/** M12-T4: Approve and Reject on the AI ME bot's messages. */
+/** M12-T4: Approve and Reject on the Storm bot's messages. */
 function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
   const action = useSave(onSaved);
   return (
@@ -81,7 +81,7 @@ function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSa
           />
           <span className="form-check-label">Approve on Telegram</span>
           <div className="small text-secondary">
-            The AI ME bot's messages get Approve and Reject when the whole payload fits in the message and nothing new is targeted.
+            The Storm bot's messages get Approve and Reject when the whole payload fits in the message and nothing new is targeted.
             Off: they only link here.
           </div>
         </label>
@@ -90,7 +90,7 @@ function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSa
   );
 }
 
-/** M19-T4, M25: the weekly review and the morning brief on the AI ME bot. */
+/** M19-T4, M25: the weekly review and the morning brief on the Storm bot. */
 function WeeklyReview({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
   const action = useSave(onSaved);
   const toggle = (field: "weeklyReview" | "morningBrief", label: string, hint: string) => (
@@ -348,7 +348,7 @@ function RateLimits({ settings, catalog, onSaved }: { settings: SettingsView; ca
       </div>
       <div className="card-body">
         <ErrorAlert error={action.error} />
-        <p className="text-secondary small">Caps across all pipelines, for steps that act outside AI ME. Over the cap, a run waits.</p>
+        <p className="text-secondary small">Caps across all pipelines, for steps that act outside Storm. Over the cap, a run waits.</p>
         {Object.keys(limits).length === 0 && <div className="text-secondary mb-2">None set.</div>}
         {Object.entries(limits).map(([stepType, value]) => (
           <div key={stepType} className="d-flex align-items-center gap-2 mb-2">

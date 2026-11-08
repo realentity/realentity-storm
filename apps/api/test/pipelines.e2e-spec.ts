@@ -1,4 +1,4 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import {
   type CompilePipelineResponse,
   type DryRunPipelineResponse,
@@ -7,7 +7,7 @@ import {
   type PipelineVersionView,
   type RunSummaryView,
   type StepTypeView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { randomUUID } from "node:crypto";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -246,7 +246,7 @@ steps:
   });
 
   it("does not show or change another user's pipeline", async () => {
-    const other = await db.client.user.create({ data: { email: `other-${randomUUID()}@aime.test` } });
+    const other = await db.client.user.create({ data: { email: `other-${randomUUID()}@storm.test` } });
     const theirs = await db.client.pipeline.create({ data: { userId: other.userId, name: "Theirs" } });
     await agent.get(`/api/pipelines/${theirs.pipelineId}`).expect(404);
     await agent.post(`/api/pipelines/${theirs.pipelineId}/versions`).send({ source: V1 }).expect(404);

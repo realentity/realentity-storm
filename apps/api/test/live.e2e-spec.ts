@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type LiveView, type RunDetailView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type LiveView, type RunDetailView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ describe("live view and takeover", () => {
   let versionId: string;
 
   beforeAll(async () => {
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-api-artifacts-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-api-artifacts-"));
     process.env.ARTIFACTS_DIR = artifactsDir;
     process.env.VNC_PASSWORD = FULL;
     process.env.VNC_VIEW_PASSWORD = VIEW;

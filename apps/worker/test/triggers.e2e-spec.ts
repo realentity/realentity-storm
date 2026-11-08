@@ -1,8 +1,8 @@
-import { KeyRing, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection, type RunStatus } from "@ai-me/db";
-import { JobQueue, QUEUES, type EventJob } from "@ai-me/queue";
-import { AppDefinitionSchema } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection, type RunStatus } from "@realentity/storm-db";
+import { JobQueue, QUEUES, type EventJob } from "@realentity/storm-queue";
+import { AppDefinitionSchema } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { JobHandlers } from "../src/jobs/job-handlers";
 import { ProposalNotifier } from "../src/jobs/proposal-notifier";
@@ -98,7 +98,7 @@ describe("M12: event and webhook triggers", () => {
     });
     triggers = new Triggers(db.client, runner, queue, keys);
     telegram = new FakeTelegram();
-    const notifier = new ProposalNotifier(db.client, { botToken: "1:x", chatId: "42" }, "https://aime.test", telegram.fetch);
+    const notifier = new ProposalNotifier(db.client, { botToken: "1:x", chatId: "42" }, "https://storm.test", telegram.fetch);
     handlers = new JobHandlers(db.client, runner, queue, undefined, undefined, undefined, undefined, { triggers, notifier });
     for (const name of Object.values(QUEUES)) await queue.boss.deleteAllJobs(name);
   });
@@ -286,7 +286,7 @@ describe("M12: event and webhook triggers", () => {
     });
   });
 
-  describe("M12-T4: proposals on the AI ME bot", () => {
+  describe("M12-T4: proposals on the Storm bot", () => {
     it("tells each new proposal once, with Approve / Reject / Open bound to its payload", async () => {
       const runId = await runner.start(await createVersion(db.client, userId, REPLY), { trigger: "manual" });
       expect(await handlers.advance(runId)).toBe("WAITING_FOR_USER");
@@ -301,7 +301,7 @@ describe("M12: event and webhook triggers", () => {
       const buttons = (messages[0].body.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] }).inline_keyboard[0];
       expect(buttons.map((b) => b.text)).toEqual(["Approve", "Reject", "Open"]);
       expect(buttons[0].callback_data).toMatch(new RegExp(`^a:${proposals[0].proposalId}:[0-9a-f]{16}$`));
-      expect(buttons[2].url).toBe(`https://aime.test/proposals/${proposals[0].proposalId}`);
+      expect(buttons[2].url).toBe(`https://storm.test/proposals/${proposals[0].proposalId}`);
     });
 
     it("leaves Approve out when approvals on Telegram are off, and tells dry runs nothing", async () => {

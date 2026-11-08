@@ -1,10 +1,10 @@
-import { KeyRing, payloadHash, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
-import { type LaterJob } from "@ai-me/queue";
-import { GOOGLE_TOKEN_URL } from "@ai-me/shared";
-import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, payloadHash, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
+import { type LaterJob } from "@realentity/storm-queue";
+import { GOOGLE_TOKEN_URL } from "@realentity/storm-shared";
+import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { type z } from "zod";
 import { GoogleConnection } from "../src/google/google-connection";
 import { LaterStarts } from "../src/runner/later";
@@ -31,7 +31,7 @@ interface StoredEvent {
   htmlLink: string;
 }
 
-/** Google, as far as AI ME uses it: the token endpoint and the primary calendar's events. */
+/** Google, as far as Storm uses it: the token endpoint and the primary calendar's events. */
 class FakeGoogle {
   events: StoredEvent[] = [];
   inserts: { query: URLSearchParams; body: Record<string, unknown> }[] = [];
@@ -136,7 +136,7 @@ describe("M14: calendar and later starts", () => {
 
   const build = (llm: LlmClient) => {
     connection = new GoogleConnection(db.client, keys, { clientId: "client.apps.googleusercontent.com", clientSecret: "secret-123456", fetch: google.fetch as unknown as typeof fetch, apiBase: API });
-    const deps = { google: connection, appOrigin: "https://aime.test" };
+    const deps = { google: connection, appOrigin: "https://storm.test" };
     const desk = new TakeoverDesk(db.client, () => Promise.resolve(), {
       timeoutMs: 20_000,
       pollMs: 100,
@@ -287,7 +287,7 @@ describe("M14: calendar and later starts", () => {
     expect(wait).toMatchObject({ waitsFor: "google", stepKey: "event" });
     expect(wait.reason).toMatch(/^Google refused the token \(invalid_grant: Token has been expired or revoked\.\): it was revoked or has expired: reconnect it in Settings/);
     expect(await db.client.googleConnection.findUniqueOrThrow({ where: { userId } })).toMatchObject({ status: "NEEDS_RECONNECT", brokenAt: expect.any(Date) as unknown });
-    expect(telegram).toEqual([expect.stringMatching(/^AI ME needs you: Google refused the token .* at event\. \[Reconnect Google Calendar https:\/\/aime\.test\/settings#google\]$/)]);
+    expect(telegram).toEqual([expect.stringMatching(/^Storm needs you: Google refused the token .* at event\. \[Reconnect Google Calendar https:\/\/storm\.test\/settings#google\]$/)]);
     expect(google.inserts).toEqual([]);
 
     // What the api's callback does: a new token sealed, the connection CONNECTED, the waits continued.

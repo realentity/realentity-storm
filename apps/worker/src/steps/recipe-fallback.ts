@@ -1,5 +1,5 @@
-import { type SiteRecipe } from "@ai-me/db";
-import { fillTemplate, recipeProblems, RecipeSchema, siteOf, type Recipe } from "@ai-me/steps";
+import { type SiteRecipe } from "@realentity/storm-db";
+import { fillTemplate, recipeProblems, RecipeSchema, siteOf, type Recipe } from "@realentity/storm-steps";
 import { type Page } from "playwright";
 import { readList } from "../browser/recipe-runner";
 import { NO_ATTENTION, type StepContext } from "../runner/step-executor";

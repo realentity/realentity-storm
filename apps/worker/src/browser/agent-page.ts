@@ -1,4 +1,4 @@
-import { type ElementTarget } from "@ai-me/steps";
+import { type ElementTarget } from "@realentity/storm-steps";
 import { type BrowserContext, type Page, type Request, type Route } from "playwright";
 import { HONEYPOT, HUMAN_CHECK } from "./form-reader";
 
@@ -124,13 +124,13 @@ const HELPERS = `
 
 /**
  * Runs in the page: the agent's view of it (README §2.4: the accessibility outline). One line per interactive element
- * with a ref (data-aime-ref, kept across outlines) the tools take, its role, name and state; headings and text between
+ * with a ref (data-storm-ref, kept across outlines) the tools take, its role, name and state; headings and text between
  * them. Passwords, hidden inputs and honeypots are left out; a person check is marked as mine. When the page is long,
  * text goes first, then the outline is cut.
  */
 const OUTLINE = `(max) => {
   ${HELPERS}
-  window.__aimeRef = window.__aimeRef || 0;
+  window.__stormRef = window.__stormRef || 0;
   const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "SVG", "IFRAME", "HEAD"]);
   const shown = (el) => el.checkVisibility ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   const lines = [];
@@ -138,8 +138,8 @@ const OUTLINE = `(max) => {
   const describe = (el) => {
     const role = roleOf(el);
     const name = nameOf(el);
-    const ref = el.getAttribute("data-aime-ref") || "e" + ++window.__aimeRef;
-    el.setAttribute("data-aime-ref", ref);
+    const ref = el.getAttribute("data-storm-ref") || "e" + ++window.__stormRef;
+    el.setAttribute("data-storm-ref", ref);
     const parts = ["[" + ref + "] " + role + ' "' + name.slice(0, 150) + '"'];
     const tag = el.tagName.toLowerCase();
     if (tag === "input" && role === "textbox" && typeOf(el) !== "text") parts.push(typeOf(el));
@@ -162,7 +162,7 @@ const OUTLINE = `(max) => {
       if (href && !href.startsWith("javascript:")) parts.push("→ " + new URL(href, location.href).href.slice(0, 120));
     }
     if (role === "file") {
-      const attached = el.getAttribute("data-aime-attach");
+      const attached = el.getAttribute("data-storm-attach");
       parts.push(attached ? "attaches " + attached + " after I approve" : "a file");
     }
     if (submits(el)) parts.push("submits the form");
@@ -242,7 +242,7 @@ const LOCATE = `(el) => {
 
 /**
  * Runs in the page: the element a recorded action meant, by its selector if that still is the same role and name,
- * else the one visible element with that role and name. Marked with data-aime-found, so a locator can act on it.
+ * else the one visible element with that role and name. Marked with data-storm-found, so a locator can act on it.
  */
 const FIND = `(target) => {
   ${HELPERS}
@@ -257,9 +257,9 @@ const FIND = `(target) => {
     if (matches.length === 1) found = matches[0];
   }
   if (!found) return null;
-  window.__aimeFound = (window.__aimeFound || 0) + 1;
-  const mark = "f" + window.__aimeFound;
-  found.setAttribute("data-aime-found", mark);
+  window.__stormFound = (window.__stormFound || 0) + 1;
+  const mark = "f" + window.__stormFound;
+  found.setAttribute("data-storm-found", mark);
   return mark;
 }`;
 
@@ -286,15 +286,15 @@ export async function outline(page: Page): Promise<string> {
 /** The element behind an outline ref (e12), or null when the page no longer has it. */
 export async function locateRef(page: Page, ref: string): Promise<ElementInfo | null> {
   if (!/^e\d{1,6}$/.test(ref)) return null;
-  if ((await page.locator(`[data-aime-ref="${ref}"]`).count()) !== 1) return null;
+  if ((await page.locator(`[data-storm-ref="${ref}"]`).count()) !== 1) return null;
   // LOCATE is source text (no DOM types here): page.evaluate runs it on the element found by its ref.
-  return page.evaluate<ElementInfo>(`(${LOCATE})(document.querySelector('[data-aime-ref="${ref}"]'))`);
+  return page.evaluate<ElementInfo>(`(${LOCATE})(document.querySelector('[data-storm-ref="${ref}"]'))`);
 }
 
 /** The element of a recorded action on the page as it is now (a locator), or null. */
 export async function findTarget(page: Page, target: ElementTarget): Promise<ReturnType<Page["locator"]> | null> {
   const mark = await page.evaluate<string | null>(`(${FIND})(${JSON.stringify(target)})`).catch(() => null);
-  return mark ? page.locator(`[data-aime-found="${mark}"]`) : null;
+  return mark ? page.locator(`[data-storm-found="${mark}"]`) : null;
 }
 
 export async function personChecks(page: Page): Promise<string[]> {
@@ -310,7 +310,7 @@ export async function markAttached(page: Page, fileCss: string, document: string
   await page
     .locator(fileCss)
     .first()
-    .evaluate((el: { setAttribute(name: string, value: string): void }, name: string) => el.setAttribute("data-aime-attach", name), document)
+    .evaluate((el: { setAttribute(name: string, value: string): void }, name: string) => el.setAttribute("data-storm-attach", name), document)
     .catch(() => undefined);
 }
 

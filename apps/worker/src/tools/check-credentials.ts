@@ -1,5 +1,5 @@
-import { KeyRing } from "@ai-me/crypto";
-import { createPrismaConnection } from "@ai-me/db";
+import { KeyRing } from "@realentity/storm-crypto";
+import { createPrismaConnection } from "@realentity/storm-db";
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import { checkCredentials } from "../secrets/credential-check";
@@ -9,7 +9,7 @@ config({ path: resolve(__dirname, "../../../../.env"), quiet: true });
 /**
  * Checks that every stored credential opens with this ENCRYPTION_KEY (restore drill, M5-I1). Prints names and
  * counts only, never a value. Exit code 1 if any credential doesn't open.
- *   pnpm --filter @ai-me/worker check:credentials      on the server: ./docker/aime check
+ *   pnpm --filter @realentity/storm-worker check:credentials      on the server: ./docker/storm check
  */
 async function main(): Promise<void> {
   const connection = createPrismaConnection();

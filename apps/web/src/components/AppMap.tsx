@@ -1,4 +1,4 @@
-import { type AppMapEdgeKind, type AppMapNode, type AppMapView } from "@ai-me/shared";
+import { type AppMapEdgeKind, type AppMapNode, type AppMapView } from "@realentity/storm-shared";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 

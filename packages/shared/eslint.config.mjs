@@ -1,3 +1,3 @@
-import { nodeConfig } from "@ai-me/config/eslint/base.mjs";
+import { nodeConfig } from "@realentity/storm-config/eslint/base.mjs";
 
 export default nodeConfig(import.meta.dirname);

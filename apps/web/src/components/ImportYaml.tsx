@@ -1,4 +1,4 @@
-import { type BundleCheckView, type BundleItemView } from "@ai-me/shared";
+import { type BundleCheckView, type BundleItemView } from "@realentity/storm-shared";
 import { IconDownload, IconFileImport, IconUpload } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";

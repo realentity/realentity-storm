@@ -1,5 +1,5 @@
-import { type PrismaClient, type Takeover } from "@ai-me/db";
-import { type TelegramMessage } from "@ai-me/shared";
+import { type PrismaClient, type Takeover } from "@realentity/storm-db";
+import { type TelegramMessage } from "@realentity/storm-shared";
 import { type EventSink } from "./pipeline-runner";
 import { RunStopped, type Attention } from "./step-executor";
 
@@ -14,7 +14,7 @@ export interface TakeoverScope {
 export interface TakeoverOptions {
   timeoutMs: number;
   pollMs?: number;
-  /** "AI ME needs you" on Telegram, with a button to the run. */
+  /** "Storm needs you" on Telegram, with a button to the run. */
   notify?: (message: TelegramMessage) => Promise<void>;
   /** The address the browser uses (APP_ORIGIN), for the link. */
   appOrigin?: string;
@@ -65,7 +65,7 @@ export class TakeoverDesk {
         if (options.notify !== false)
           await this.options
             .notify?.({
-              text: `AI ME needs you: ${reason} at ${scope.stepKey}${url && !options.waitsFor ? ` (${hostOf(url)})` : ""}.`,
+              text: `Storm needs you: ${reason} at ${scope.stepKey}${url && !options.waitsFor ? ` (${hostOf(url)})` : ""}.`,
               buttons: button ? [[button]] : [],
             })
             .catch(() => undefined);

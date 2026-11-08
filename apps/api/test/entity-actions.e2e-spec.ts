@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { QUEUES } from "@ai-me/queue";
-import { type AppDetailView, type AppEntityView, type PipelineDetailView, type RunDetailView } from "@ai-me/shared";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { QUEUES } from "@realentity/storm-queue";
+import { type AppDetailView, type AppEntityView, type PipelineDetailView, type RunDetailView } from "@realentity/storm-shared";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 

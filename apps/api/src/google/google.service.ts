@@ -1,4 +1,4 @@
-import { KeyRing, seal } from "@ai-me/crypto";
+import { KeyRing, seal } from "@realentity/storm-crypto";
 import {
   emailOfIdToken,
   exchangeGoogleCode,
@@ -7,7 +7,7 @@ import {
   type GoogleClient,
   type GoogleStatusView,
   type ServerEnv,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import { SERVER_ENV } from "../config/server-env";
@@ -60,7 +60,7 @@ export class GoogleService {
   /** The consent screen's address; `returnTo` is the page to come back to (a path of this app). */
   async connect(userId: string, origin: string, returnTo = "/settings"): Promise<{ url: string }> {
     const client = this.client(origin);
-    if (!returnTo.startsWith("/") || returnTo.startsWith("//")) throw new BadRequestException("returnTo must be a path of AI ME");
+    if (!returnTo.startsWith("/") || returnTo.startsWith("//")) throw new BadRequestException("returnTo must be a path of Storm");
     const state = randomBytes(24).toString("base64url");
     const verifier = randomBytes(48).toString("base64url");
     this.forgetOld();
@@ -87,7 +87,7 @@ export class GoogleService {
     if (!result.ok) return back(pending.returnTo, result.error);
     if (!result.scopes.includes(CALENDAR_SCOPE)) return back(pending.returnTo, "the calendar wasn't allowed: connect again and tick the calendar access");
     if (!result.refreshToken) {
-      return back(pending.returnTo, "Google sent no refresh token: remove AI ME at myaccount.google.com/permissions, then connect again");
+      return back(pending.returnTo, "Google sent no refresh token: remove Storm at myaccount.google.com/permissions, then connect again");
     }
     const email = (result.idToken && emailOfIdToken(result.idToken)) || "your Google account";
     const sealed = seal(this.keys, userId, result.refreshToken);

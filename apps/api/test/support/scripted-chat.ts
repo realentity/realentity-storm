@@ -1,4 +1,4 @@
-import { type ChatBlock, type ChatRequest, type ChatResponse, type LlmChat, type LlmUsage } from "@ai-me/llm";
+import { type ChatBlock, type ChatRequest, type ChatResponse, type LlmChat, type LlmUsage } from "@realentity/storm-llm";
 
 /** One scripted model call: what it answers, given what it was sent. */
 export type Reply = (request: ChatRequest) => ChatResponse;

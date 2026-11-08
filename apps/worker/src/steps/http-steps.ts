@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { hostMatches } from "@ai-me/shared";
+import { type PrismaClient } from "@realentity/storm-db";
+import { hostMatches } from "@realentity/storm-shared";
 import { XMLParser } from "fast-xml-parser";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -15,7 +15,7 @@ type Item = Record<string, unknown>;
 const MAX_REDIRECTS = 5;
 const MAX_TEXT = 50_000;
 const MAX_SUMMARY = 2_000;
-export const USER_AGENT = "AI-ME/1.0 (personal automation; reads feeds and pages it was told to)";
+export const USER_AGENT = "RealEntity-Storm/1.0 (personal automation; reads feeds and pages it was told to)";
 
 /**
  * Where http.fetch never connects (M13-S1): this machine, private networks, Tailscale's 100.64.0.0/10 (the tailnet:

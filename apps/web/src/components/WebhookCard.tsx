@@ -1,4 +1,4 @@
-import { type WebhookView } from "@ai-me/shared";
+import { type WebhookView } from "@realentity/storm-shared";
 import { IconCopy, IconKey, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { toast } from "react-toastify";
@@ -10,7 +10,7 @@ import { ErrorAlert, Modal } from "./ui";
 
 /**
  * A pipeline's webhook (M12-T2): its address, a new secret (shown once, right here), removing it. Calls go to
- * hooks.example.com, which the VPS forwards to AI ME's hooks-only site.
+ * hooks.example.com, which the VPS forwards to Storm's hooks-only site.
  */
 export function WebhookCard({ pipelineId, auth }: { pipelineId: string; auth: "hmac-sha256" | "token" }) {
   const hook = useLoad(() => api.pipelines.webhook(pipelineId), [pipelineId]);

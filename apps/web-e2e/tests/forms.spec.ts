@@ -1,4 +1,4 @@
-import { type RunDetailView } from "@ai-me/shared";
+import { type RunDetailView } from "@realentity/storm-shared";
 import { expect, test } from "@playwright/test";
 import { createPipeline, startRun, unique } from "./support";
 
@@ -8,7 +8,7 @@ const pdf = (text: string) => ({ name: `${text}.pdf`, mimeType: "application/pdf
 test("an application form at its gate: I edit a field, attach my cover letter, and Act sends exactly that", async ({ page }) => {
   // Profile → my profile and documents.
   await page.goto("/profile");
-  await page.getByLabel("About me").fill("Ana Petrova · ana@aime.test · Sofia");
+  await page.getByLabel("About me").fill("Ana Petrova · ana@storm.test · Sofia");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Profile saved")).toBeVisible();
   for (const [name, file] of [

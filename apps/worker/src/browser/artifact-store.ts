@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@ai-me/db";
+import { type PrismaClient } from "@realentity/storm-db";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";

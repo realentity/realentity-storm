@@ -1,4 +1,4 @@
-import { BillPaidSchema, type BillPaidRequest, type BillsView, type BillView } from "@ai-me/shared";
+import { BillPaidSchema, type BillPaidRequest, type BillsView, type BillView } from "@realentity/storm-shared";
 import { Body, Controller, Get, Param, ParseUUIDPipe, Put } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";

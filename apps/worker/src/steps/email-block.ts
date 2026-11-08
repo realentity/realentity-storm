@@ -1,4 +1,4 @@
-import { type EmailMessage } from "@ai-me/steps";
+import { type EmailMessage } from "@realentity/storm-steps";
 
 /** An email as the LLM sees it: headers that matter and the text, inside <email> (data, not instructions). */
 

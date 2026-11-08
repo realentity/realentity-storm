@@ -1,4 +1,4 @@
-import { type HealthView } from "@ai-me/shared";
+import { type HealthView } from "@realentity/storm-shared";
 import { Controller, Get, ServiceUnavailableException } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 import { Public } from "../auth/public.decorator";

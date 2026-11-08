@@ -1,11 +1,11 @@
-import { type HealthCheckView } from "@ai-me/shared";
+import { type HealthCheckView } from "@realentity/storm-shared";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
 
 const WORKER = { up: ["bg-green-lt", "running"], down: ["bg-red-lt", "down"], unknown: ["bg-secondary-lt", "not known yet"] } as const;
 
-/** M26: server as AI ME sees it: the worker, and what the backup, the restore test and the host's checks reported. */
+/** M26: server as Storm sees it: the worker, and what the backup, the restore test and the host's checks reported. */
 export function HealthPage() {
   const health = useLoad(() => api.health.get(), []);
   if (!health.data) return health.error ? <ErrorAlert error={health.error} /> : <Loading />;

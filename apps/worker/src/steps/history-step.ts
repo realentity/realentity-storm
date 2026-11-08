@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@ai-me/db";
+import { type PrismaClient } from "@realentity/storm-db";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { valueAt } from "./data-steps";
 

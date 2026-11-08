@@ -1,4 +1,4 @@
-import { type AppDefinition, type DataType, type FieldKind } from "@ai-me/shared";
+import { type AppDefinition, type DataType, type FieldKind } from "@realentity/storm-shared";
 import { type TypeInfo } from "./type-info";
 
 /** A type of an App by name (M30). */

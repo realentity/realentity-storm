@@ -1,4 +1,4 @@
-import { type FormField } from "@ai-me/steps";
+import { type FormField } from "@realentity/storm-steps";
 import { type Page } from "playwright";
 
 /** A field as the page has it now (no value to type yet). */

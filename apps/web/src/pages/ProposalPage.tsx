@@ -1,4 +1,4 @@
-import { canonicalJson, type ProposalView, type TargetView } from "@ai-me/shared";
+import { canonicalJson, type ProposalView, type TargetView } from "@realentity/storm-shared";
 import { IconAlertTriangle, IconArrowBackUp, IconBolt, IconPencil, IconX } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

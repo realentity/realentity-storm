@@ -1,4 +1,4 @@
-import { JOB_STATUSES, type JobFilter, type JobPostingView, type JobStatusName } from "@ai-me/shared";
+import { JOB_STATUSES, type JobFilter, type JobPostingView, type JobStatusName } from "@realentity/storm-shared";
 import { IconExternalLink } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";

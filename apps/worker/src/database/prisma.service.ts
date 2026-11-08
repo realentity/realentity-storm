@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaClient, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type PrismaClient, type PrismaConnection } from "@realentity/storm-db";
 import { Inject, Injectable, type OnApplicationShutdown } from "@nestjs/common";
-import { type ServerEnv } from "@ai-me/shared";
+import { type ServerEnv } from "@realentity/storm-shared";
 import { SERVER_ENV } from "../config/server-env";
 
 /** One Prisma client (and pg pool) per process. Closed last on shutdown, after the queue stopped running jobs. */

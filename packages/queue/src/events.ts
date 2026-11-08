@@ -1,8 +1,8 @@
-import { type AppEvent } from "@ai-me/shared";
+import { type AppEvent } from "@realentity/storm-shared";
 import { Client } from "pg";
 
 /** Postgres NOTIFY channel: the worker and the api publish, the api forwards to the web app. */
-export const EVENTS_CHANNEL = "aime_events";
+export const EVENTS_CHANNEL = "storm_events";
 
 /** An event addressed to one user. */
 export interface UserEvent {

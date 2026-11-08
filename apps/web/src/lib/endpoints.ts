@@ -83,7 +83,7 @@ import {
   type ViewQuery,
   type ViewRow,
   type ViewRowView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { query, request } from "./api";
 
 /** Every api route the web app uses, typed with the shared DTOs. */

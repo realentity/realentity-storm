@@ -1,4 +1,4 @@
-import { parseServerEnv, type ServerEnv } from "@ai-me/shared";
+import { parseServerEnv, type ServerEnv } from "@realentity/storm-shared";
 import { type Provider } from "@nestjs/common";
 
 export const SERVER_ENV = Symbol("SERVER_ENV");

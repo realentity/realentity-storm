@@ -132,7 +132,7 @@ export interface RecipeSummaryView {
 
 export interface RecipeVersionView {
   version: number;
-  /** The recipe itself (@ai-me/steps RecipeSchema). */
+  /** The recipe itself (@realentity/storm-steps RecipeSchema). */
   recipe: unknown;
   lastVerifiedAt: string | null;
   lastItemsAt: string | null;

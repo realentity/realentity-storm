@@ -1,4 +1,4 @@
-import { checkAppSource, joinBundle, readExamples, type AppMapPipeline, type CompiledDefinition, type Example } from "@ai-me/shared";
+import { checkAppSource, joinBundle, readExamples, type AppMapPipeline, type CompiledDefinition, type Example } from "@realentity/storm-shared";
 import { parse } from "yaml";
 
 /**

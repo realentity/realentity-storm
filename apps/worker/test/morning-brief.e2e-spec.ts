@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type TelegramMessage } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type TelegramMessage } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { MorningBrief, type BriefEvent } from "../src/jobs/morning-brief";
 import { createVersion } from "./support/test-steps";
 
@@ -88,7 +88,7 @@ describe("morning brief", () => {
     const brief = new MorningBrief(db.client, () => Promise.resolve(), (_user, from, to) => (asked.push([from, to]), Promise.resolve(events)));
 
     expect((await brief.compose(userId, now)).split("\n")).toEqual([
-      "AI ME · Tuesday 3 November",
+      "Storm · Tuesday 3 November",
       "Today:",
       "• 10:00 Interview with Acme (Google Meet)",
       "• all day Mum's birthday",
@@ -106,10 +106,10 @@ describe("morning brief", () => {
 
   it("an empty day in one line; a calendar it can't read is said; off in Settings, nothing is sent", async () => {
     const sent: TelegramMessage[] = [];
-    const quiet = new MorningBrief(db.client, (m) => (sent.push(m), Promise.resolve()), () => Promise.resolve(null), "https://aime.test");
+    const quiet = new MorningBrief(db.client, (m) => (sent.push(m), Promise.resolve()), () => Promise.resolve(null), "https://storm.test");
     await expect(quiet.sendAll(now)).resolves.toBe(1);
-    expect(sent[0]?.text).toBe("AI ME · Tuesday 3 November\nNothing on the calendar, nothing waiting, nothing failed, no bills due.");
-    expect(sent[0]?.buttons).toEqual([[{ text: "Open AI ME", url: "https://aime.test" }]]);
+    expect(sent[0]?.text).toBe("Storm · Tuesday 3 November\nNothing on the calendar, nothing waiting, nothing failed, no bills due.");
+    expect(sent[0]?.buttons).toEqual([[{ text: "Open Storm", url: "https://storm.test" }]]);
 
     const broken = new MorningBrief(db.client, () => Promise.resolve(), () => Promise.reject(new Error("Google Calendar needs reconnecting")));
     expect((await broken.compose(userId, now)).split("\n")[1]).toBe("Calendar: can't be read (Google Calendar needs reconnecting)");

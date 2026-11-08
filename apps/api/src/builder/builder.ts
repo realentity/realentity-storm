@@ -9,9 +9,9 @@ import {
   type LlmChat,
   type LlmUsage,
   type ModelChoice,
-} from "@ai-me/llm";
-import { AppDefinitionSchema, type AppDefinition, type CompiledDefinition, type CompileIssue, type CompileResult } from "@ai-me/shared";
-import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@ai-me/steps";
+} from "@realentity/storm-llm";
+import { AppDefinitionSchema, type AppDefinition, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
+import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@realentity/storm-steps";
 import { stringify } from "yaml";
 import { z } from "zod";
 
@@ -333,7 +333,7 @@ export function tokensOf(usage: LlmUsage): number {
 }
 
 function builderSystemPrompt(catalog: string): string {
-  return `You build automation pipelines for me in AI ME, my personal self-hosted assistant. I describe what I want; you
+  return `You build automation pipelines for me in Storm, my personal self-hosted assistant. I describe what I want; you
 turn it into a pipeline definition built only from the step catalog below, and propose it with the propose_pipeline
 tool. I review every proposal (plan, step graph, diff) and save it myself; nothing you do runs or sends anything.
 

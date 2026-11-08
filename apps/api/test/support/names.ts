@@ -1,4 +1,4 @@
-import { type PrismaConnection } from "@ai-me/db";
+import { type PrismaConnection } from "@realentity/storm-db";
 
 /**
  * M39-T1: a saved pipeline's name is its own. A test that saves a source a second time gets its name with " (2)", as

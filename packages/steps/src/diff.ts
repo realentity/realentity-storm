@@ -1,4 +1,4 @@
-import { canonicalJson, type CompiledDefinition, type CompiledStep, type DefinitionChange, type DefinitionDiff } from "@ai-me/shared";
+import { canonicalJson, type CompiledDefinition, type CompiledStep, type DefinitionChange, type DefinitionDiff } from "@realentity/storm-shared";
 
 export type { DefinitionChange, DefinitionDiff };
 

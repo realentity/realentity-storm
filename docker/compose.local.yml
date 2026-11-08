@@ -1,5 +1,5 @@
 # Local test of the server setup (Docker Desktop on a workstation): a PostgreSQL container in place of the server's native one.
-#   AIME_ENV_FILE=<a test env> docker compose -f docker/compose.yml -f docker/compose.local.yml up -d --build
+#   STORM_ENV_FILE=<a test env> docker compose -f docker/compose.yml -f docker/compose.local.yml up -d --build
 # The test env sets DATABASE_URL=postgresql://aime:aime@postgres:5432/aime and APP_ORIGIN=http://localhost:7100.
 services:
   postgres:

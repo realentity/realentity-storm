@@ -1,5 +1,5 @@
-import { type PrismaClient, type SiteRecipe } from "@ai-me/db";
-import { recipeProblems, RecipeSchema, siteOf, type Recipe } from "@ai-me/steps";
+import { type PrismaClient, type SiteRecipe } from "@realentity/storm-db";
+import { recipeProblems, RecipeSchema, siteOf, type Recipe } from "@realentity/storm-steps";
 import { type Page } from "playwright";
 import { type ArtifactOwner } from "../browser/artifact-store";
 import { readList, RecipeBroken, type Item } from "../browser/recipe-runner";
@@ -155,7 +155,7 @@ export class BrowserExtractStep implements StepExecutor {
       const origin = this.deps.appOrigin;
       await this.deps
         .notify?.({
-          text: `AI ME: recipe ${row.name} v${row.version} is broken: ${reason}. ${next}`,
+          text: `Storm: recipe ${row.name} v${row.version} is broken: ${reason}. ${next}`,
           buttons: origin ? [[{ text: "Open the recipe", url: `${origin}/recipes/${row.name}` }]] : [],
         })
         .catch(() => undefined);
@@ -172,7 +172,7 @@ export class BrowserExtractStep implements StepExecutor {
     await this.deps
       .notify?.({
         text:
-          `AI ME: recipe ${row.name} has found nothing since ${since.toISOString().slice(0, 10)}: the site's "no results" page every time. ` +
+          `Storm: recipe ${row.name} has found nothing since ${since.toISOString().slice(0, 10)}: the site's "no results" page every time. ` +
           "If the site changed, teach it again on the Recipes page; if there's just nothing new, ignore this.",
         buttons: origin ? [[{ text: "Open the recipe", url: `${origin}/recipes/${row.name}` }]] : [],
       })

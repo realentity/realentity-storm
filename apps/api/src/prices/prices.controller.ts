@@ -1,4 +1,4 @@
-import { WatchedProductSchema, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@ai-me/shared";
+import { WatchedProductSchema, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
 import { type z } from "zod";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";

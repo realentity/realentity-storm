@@ -1,4 +1,4 @@
-import { type CompiledDefinition, type CompiledPolicy, type CompileIssue, type DefinitionChange, type StepTypeView } from "@ai-me/shared";
+import { type CompiledDefinition, type CompiledPolicy, type CompileIssue, type DefinitionChange, type StepTypeView } from "@realentity/storm-shared";
 import { IconArrowRight, IconShieldCheck } from "@tabler/icons-react";
 import { Fragment, useMemo } from "react";
 import { dependencies, describeChange, describeTrigger, policySummary, stepGraph } from "../lib/plan";

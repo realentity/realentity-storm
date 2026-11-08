@@ -1,4 +1,4 @@
-import { defaultCatalog, PipelineCompiler, StepCatalog } from "@ai-me/steps";
+import { defaultCatalog, PipelineCompiler, StepCatalog } from "@realentity/storm-steps";
 import { Global, Module } from "@nestjs/common";
 import { StepsController } from "./steps.controller";
 

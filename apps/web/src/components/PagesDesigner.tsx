@@ -9,7 +9,7 @@ import {
   type AppDefinition,
   type AppIssue,
   type PageKind,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import {
   IconArrowDown,
   IconArrowLeft,

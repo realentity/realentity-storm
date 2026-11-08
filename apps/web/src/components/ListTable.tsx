@@ -7,7 +7,7 @@ import {
   type PageColumn,
   type ResolvedListPage,
   type ViewRow,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { IconArrowDown, IconArrowUp, IconGripVertical, IconLayoutList } from "@tabler/icons-react";
 import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";

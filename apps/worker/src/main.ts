@@ -2,7 +2,7 @@ import "reflect-metadata";
 import "source-map-support/register";
 import { config } from "dotenv";
 import { resolve } from "node:path";
-import { type ServerEnv } from "@ai-me/shared";
+import { type ServerEnv } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { SERVER_ENV } from "./config/server-env";
@@ -16,7 +16,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(WorkerModule);
   app.enableShutdownHooks();
   const env = app.get<ServerEnv>(SERVER_ENV);
-  Logger.log(`AI ME worker started (${env.NODE_ENV})`, "Bootstrap");
+  Logger.log(`Storm worker started (${env.NODE_ENV})`, "Bootstrap");
 }
 
 bootstrap().catch((error: unknown) => {

@@ -10,7 +10,7 @@ import {
   type ServerEnv,
   type TargetView,
   type TelegramMessage,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { HttpException, Inject, Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import { SERVER_ENV } from "../config/server-env";
@@ -39,7 +39,7 @@ const UpdateSchema = z.object({
       chat: Chat,
       date: z.number(),
       text: z.string().optional(),
-      /** A reply: to a question AI ME asked (M15-T3), it is the answer. */
+      /** A reply: to a question Storm asked (M15-T3), it is the answer. */
       reply_to_message: z.object({ message_id: z.number() }).optional(),
     })
     .optional(),
@@ -55,7 +55,7 @@ const UpdateSchema = z.object({
 type Update = z.infer<typeof UpdateSchema>;
 
 const HELP = [
-  "AI ME bot:",
+  "Storm bot:",
   "/run <pipeline>: start a pipeline",
   "/status: what runs, what waits",
   "/inbox: the proposals waiting for me",
@@ -67,7 +67,7 @@ const HELP = [
 ].join("\n");
 
 /**
- * The AI ME bot, inbound (M12-T3/T4): commands and buttons from my private chat only (TELEGRAM_CHAT_ID is my user
+ * The Storm bot, inbound (M12-T3/T4): commands and buttons from my private chat only (TELEGRAM_CHAT_ID is my user
  * id); anything else is ignored without an answer. The single user of this instance is APP_ADMIN_EMAIL.
  */
 @Injectable()
@@ -236,7 +236,7 @@ export class TelegramBot {
       ...(recent.length ? ["", "Last runs:"] : []),
       ...recent.map((r) => `• ${r.pipelineVersion.pipeline.name}: ${r.status} (${r.trigger}, ${r.startedAt.toISOString().slice(0, 16).replace("T", " ")} UTC)`),
     ];
-    await this.say({ text: lines.join("\n"), buttons: this.open("/", "Open AI ME") });
+    await this.say({ text: lines.join("\n"), buttons: this.open("/", "Open Storm") });
   }
 
   private async inbox(userId: string): Promise<void> {
@@ -285,8 +285,8 @@ export class TelegramBot {
       if (query.message) await this.edit(query.message.message_id, decidedMessage(shown, `Already ${proposal.status.toLowerCase().replace("_", " ")}`));
       return answer(`Already ${proposal.status.toLowerCase().replace("_", " ")}`);
     }
-    if (!(await this.approvalsOn(userId))) return answer("Approvals on Telegram are off (Settings): open it in AI ME");
-    if (shown.gate !== "gate.act") return answer("Pick the items in AI ME");
+    if (!(await this.approvalsOn(userId))) return answer("Approvals on Telegram are off (Settings): open it in Storm");
+    if (shown.gate !== "gate.act") return answer("Pick the items in Storm");
 
     try {
       if (callback.action === "reject") {
@@ -294,10 +294,10 @@ export class TelegramBot {
         return answer("Rejected");
       }
       const full = proposalMessage(shown, { approvals: true }).buttons?.flat().some((b) => b.text === "Approve") ?? false;
-      if (!full) return answer("Too long to approve here: open it in AI ME");
-      if (!hashMatches(shown.payloadHash, callback.hash)) return answer("It changed since this message: open it in AI ME");
+      if (!full) return answer("Too long to approve here: open it in Storm");
+      if (!hashMatches(shown.payloadHash, callback.hash)) return answer("It changed since this message: open it in Storm");
       const fresh = ((proposal.targets as TargetView[] | null) ?? []).filter((t) => t.isNew);
-      if (fresh.length) return answer(`New target ${fresh.map((t) => t.value).join(", ")}: approve it in AI ME`);
+      if (fresh.length) return answer(`New target ${fresh.map((t) => t.value).join(", ")}: approve it in Storm`);
       await this.proposals.approve(userId, proposal.proposalId, { approveNewTargets: [] }, "Telegram");
       return answer("Approved: it acts now");
     } catch (error) {

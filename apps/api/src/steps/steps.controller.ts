@@ -1,5 +1,5 @@
-import { type JsonSchema, type StepTypeView, type TriggerDataView } from "@ai-me/shared";
-import { StepCatalog, TRIGGER_DATA, WEBHOOK_DATA } from "@ai-me/steps";
+import { type JsonSchema, type StepTypeView, type TriggerDataView } from "@realentity/storm-shared";
+import { StepCatalog, TRIGGER_DATA, WEBHOOK_DATA } from "@realentity/storm-steps";
 import { Controller, Get } from "@nestjs/common";
 import { z } from "zod";
 

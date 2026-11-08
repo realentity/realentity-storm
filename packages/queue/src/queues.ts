@@ -1,4 +1,4 @@
-import { type TriggerEventName } from "@ai-me/shared";
+import { type TriggerEventName } from "@realentity/storm-shared";
 import type PgBoss from "pg-boss";
 
 /** Queue names. The api sends to them; the worker consumes them. */

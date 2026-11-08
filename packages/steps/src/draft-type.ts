@@ -1,4 +1,4 @@
-import { DataTypeSchema, ENTITY_FIELD, type DataType, type EntityField, type FieldKind } from "@ai-me/shared";
+import { DataTypeSchema, ENTITY_FIELD, type DataType, type EntityField, type FieldKind } from "@realentity/storm-shared";
 
 type Item = Record<string, unknown>;
 

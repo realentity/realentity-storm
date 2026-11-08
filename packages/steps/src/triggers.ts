@@ -1,4 +1,4 @@
-import { APPLICATION_STATUSES, isEventTrigger, isWebhookTrigger, type Trigger, type TriggerEventName } from "@ai-me/shared";
+import { APPLICATION_STATUSES, isEventTrigger, isWebhookTrigger, type Trigger, type TriggerEventName } from "@realentity/storm-shared";
 import { z } from "zod";
 import { EmailMessageSchema } from "./catalog";
 

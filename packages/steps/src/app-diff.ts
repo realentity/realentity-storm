@@ -1,4 +1,4 @@
-import { canonicalJson, type AppDefinition, type EntityField } from "@ai-me/shared";
+import { canonicalJson, type AppDefinition, type EntityField } from "@realentity/storm-shared";
 
 /** What changed between two versions of an App (M30), a line each: shown with the version. */
 export function diffApps(before: AppDefinition, after: AppDefinition): string[] {

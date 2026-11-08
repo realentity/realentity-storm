@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { type EmailMessage } from "@ai-me/steps";
+import { type PrismaClient } from "@realentity/storm-db";
+import { type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
 import { SENT_MAILBOX, type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";

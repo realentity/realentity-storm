@@ -38,9 +38,9 @@ export class ContainerTestInfrastructure extends TestInfrastructure {
 
   async start(): Promise<string> {
     this.postgres = await new PostgreSqlContainer(POSTGRES_IMAGE)
-      .withDatabase("aime_e2e")
-      .withUsername("aime")
-      .withPassword("aime")
+      .withDatabase("storm_e2e")
+      .withUsername("storm")
+      .withPassword("storm")
       .start();
     return this.postgres.getConnectionUri();
   }
@@ -53,7 +53,7 @@ export class ContainerTestInfrastructure extends TestInfrastructure {
 
 export class LocalTestInfrastructure extends TestInfrastructure {
   readonly kind = "local";
-  private readonly databaseName = `aime_e2e_${process.pid}_${Date.now()}`;
+  private readonly databaseName = `storm_e2e_${process.pid}_${Date.now()}`;
 
   constructor(private readonly serverUrl: string) {
     super();

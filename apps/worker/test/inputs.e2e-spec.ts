@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
 import { PipelineRunner } from "../src/runner/pipeline-runner";

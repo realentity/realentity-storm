@@ -1,4 +1,4 @@
-import { appMap, freeNames, joinBundle, needMet, splitBundle, type AppSummaryView, type SetupView } from "@ai-me/shared";
+import { appMap, freeNames, joinBundle, needMet, splitBundle, type AppSummaryView, type SetupView } from "@realentity/storm-shared";
 import { IconCheck, IconDownload, IconMap, IconSparkles, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

@@ -1,4 +1,4 @@
-import { canonicalJson } from "@ai-me/shared";
+import { canonicalJson } from "@realentity/storm-shared";
 
 type Item = Record<string, unknown>;
 

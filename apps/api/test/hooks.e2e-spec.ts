@@ -1,8 +1,8 @@
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
-import { QUEUES } from "@ai-me/queue";
-import { type PipelineDetailView, type WebhookView } from "@ai-me/shared";
-import { defaultCatalog, type StepDefinition } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { QUEUES } from "@realentity/storm-queue";
+import { type PipelineDetailView, type WebhookView } from "@realentity/storm-shared";
+import { defaultCatalog, type StepDefinition } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHmac } from "node:crypto";
 import request from "supertest";
 import { z } from "zod";
@@ -48,8 +48,8 @@ const ENV = {
   TELEGRAM_BOT_TOKEN: `123456:${"a".repeat(35)}`,
   TELEGRAM_CHAT_ID: String(ME),
   TELEGRAM_WEBHOOK_SECRET: SECRET,
-  APP_ORIGIN: "https://aime.test",
-  HOOKS_PUBLIC_URL: "https://hooks.test/aime",
+  APP_ORIGIN: "https://storm.test",
+  HOOKS_PUBLIC_URL: "https://hooks.test/storm",
 };
 
 interface Call {
@@ -63,7 +63,7 @@ interface Button {
   url?: string;
 }
 
-describe("M12: the AI ME bot and webhooks", () => {
+describe("M12: the Storm bot and webhooks", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;
   let db: PrismaConnection;
@@ -185,7 +185,7 @@ describe("M12: the AI ME bot and webhooks", () => {
       expect(run).toMatchObject({ trigger: "telegram", dryRun: false, status: "QUEUED" });
       expect(await queued(QUEUES.runs)).toEqual([{ data: { runId: run.runId } }]);
       expect(sent()[0].body.text).toBe("Started Replies.");
-      expect(buttonsOf(sent()[0])).toEqual([{ text: "Open the run", url: `https://aime.test/runs/${run.runId}` }]);
+      expect(buttonsOf(sent()[0])).toEqual([{ text: "Open the run", url: `https://storm.test/runs/${run.runId}` }]);
 
       await telegram(message("/run nothing")).expect(200);
       expect(sent()[1].body.text).toBe('No pipeline "nothing". Pipelines: Replies');
@@ -248,7 +248,7 @@ describe("M12: the AI ME bot and webhooks", () => {
       const data = await approveButton();
       await db.client.proposal.update({ where: { proposalId }, data: { originalPayload: { to: "ana@acme.test", body: "Something else" } } });
       await telegram(press(data)).expect(200);
-      expect(answer()).toBe("It changed since this message: open it in AI ME");
+      expect(answer()).toBe("It changed since this message: open it in Storm");
       expect((await db.client.proposal.findUniqueOrThrow({ where: { proposalId } })).status).toBe("PENDING_REVIEW");
     });
 
@@ -257,18 +257,18 @@ describe("M12: the AI ME bot and webhooks", () => {
       await telegram(message("/inbox")).expect(200);
       expect(buttonsOf(sent()[0]).map((b) => b.text)).toEqual(["Reject", "Open"]);
       await telegram(press(`a:${proposalId}:${"0".repeat(16)}`)).expect(200);
-      expect(answer()).toBe("Too long to approve here: open it in AI ME");
+      expect(answer()).toBe("Too long to approve here: open it in Storm");
     });
 
     it("refuses a new target, and everything with approvals on Telegram off", async () => {
       const proposalId = await waiting(undefined, true);
       const data = await approveButton();
       await telegram(press(data)).expect(200);
-      expect(answer()).toBe("New target ana@acme.test: approve it in AI ME");
+      expect(answer()).toBe("New target ana@acme.test: approve it in Storm");
 
       await agent.put("/api/settings").send({ telegramApprovals: false }).expect(200);
       await telegram(press(data)).expect(200);
-      expect(answer()).toBe("Approvals on Telegram are off (Settings): open it in AI ME");
+      expect(answer()).toBe("Approvals on Telegram are off (Settings): open it in Storm");
       await telegram(press(`r:${proposalId}`)).expect(200);
       expect((await db.client.proposal.findUniqueOrThrow({ where: { proposalId } })).status).toBe("PENDING_REVIEW");
     });
@@ -286,7 +286,7 @@ describe("M12: the AI ME bot and webhooks", () => {
     it("M12-E1 (api): created with its secret shown once, rotated keeping its address, removed", async () => {
       const { pipeline, hook } = await withHook("token");
       expect(hook).toMatchObject({ path: expect.stringMatching(/^\/hooks\/[A-Za-z0-9_-]{43}$/) as unknown, secret: expect.any(String) as unknown, lastCalledAt: null });
-      expect(hook.url).toBe(`https://hooks.test/aime/${hook.path.slice("/hooks/".length)}`);
+      expect(hook.url).toBe(`https://hooks.test/storm/${hook.path.slice("/hooks/".length)}`);
       const read = (await agent.get(`/api/pipelines/${pipeline.pipelineId}/webhook`).expect(200)).body as { webhook: WebhookView };
       expect(read.webhook).not.toHaveProperty("secret");
 
@@ -434,8 +434,8 @@ describe("M12: the AI ME bot and webhooks", () => {
         "(/new starts over)",
       ]);
       const [chat] = await chats();
-      expect(buttonsOf(reply).map((b) => b.text)).toEqual(["Save", "Dry run", "Open in AI ME"]);
-      expect(buttonsOf(reply).at(-1)?.url).toBe(`https://aime.test/builder/${chat.builderChatId}`);
+      expect(buttonsOf(reply).map((b) => b.text)).toEqual(["Save", "Dry run", "Open in Storm"]);
+      expect(buttonsOf(reply).at(-1)?.url).toBe(`https://storm.test/builder/${chat.builderChatId}`);
 
       await telegram(press(button(reply, "Save")!)).expect(200);
       expect(answer()).toBe("Saved");
@@ -456,7 +456,7 @@ describe("M12: the AI ME bot and webhooks", () => {
       await telegram(press(button(reply, "Dry run")!)).expect(200);
       expect(answer()).toBe("Dry run started");
       const run = await db.client.run.findFirstOrThrow({ where: { dryRun: true } });
-      expect(buttonsOf(sent().at(-1)!).at(-1)?.url).toBe(`https://aime.test/runs/${run.runId}`);
+      expect(buttonsOf(sent().at(-1)!).at(-1)?.url).toBe(`https://storm.test/runs/${run.runId}`);
     });
 
     // M21-I2

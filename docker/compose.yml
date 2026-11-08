@@ -1,11 +1,11 @@
-# AI ME on the server (app 10; docs/deployment.md). Lives in /opt/ai-me (a clone of this repository); secrets in
-# /opt/ai-me/.env. The database is the server's native PostgreSQL (storm), which the server's nightly backup dumps.
+# Storm on the server (app 10; docs/deployment.md). Lives in /opt/realentity-storm (a clone of this repository); secrets in
+# /opt/realentity-storm/.env. The database is the server's native PostgreSQL (storm), which the server's nightly backup dumps.
 # Only the web container publishes ports, on 127.0.0.1: 7100, which `tailscale serve` publishes as :8100 (tailnet only),
 # and 7101, the hooks-only site, as :8101 (for the VPS's hooks-gateway).
-name: ai-me
+name: realentity-storm
 
 x-node: &node
-  env_file: ${AIME_ENV_FILE:-../.env}
+  env_file: ${STORM_ENV_FILE:-../.env}
   environment:
     NODE_ENV: production
     TZ: Europe/Sofia
@@ -22,7 +22,7 @@ services:
   migrate:
     <<: *node
     build: { context: .., dockerfile: docker/Dockerfile, target: migrate }
-    image: ai-me/migrate:local
+    image: realentity-storm/migrate:local
     restart: "no"
     read_only: false
     mem_limit: 768m
@@ -30,7 +30,7 @@ services:
   api:
     <<: *node
     build: { context: .., dockerfile: docker/Dockerfile, target: api }
-    image: ai-me/api:local
+    image: realentity-storm/api:local
     environment:
       NODE_ENV: production
       TZ: Europe/Sofia
@@ -45,13 +45,13 @@ services:
     volumes:
       # Screenshots, traces and downloads the worker stored: the api only reads them, to serve them to me.
       - type: bind
-        source: ${AIME_ARTIFACTS:-/data/ai-me/artifacts}
+        source: ${STORM_ARTIFACTS:-/data/realentity-storm/artifacts}
         target: /data/artifacts
         read_only: true
         bind: { create_host_path: false }
       # My documents (CV, cover letters): uploaded through the api, read by the worker to attach as approved.
       - type: bind
-        source: ${AIME_DOCUMENTS:-/data/ai-me/documents}
+        source: ${STORM_DOCUMENTS:-/data/realentity-storm/documents}
         target: /data/documents
         bind: { create_host_path: false }
     healthcheck:
@@ -67,7 +67,7 @@ services:
   worker:
     <<: *node
     build: { context: .., dockerfile: docker/Dockerfile, target: worker }
-    image: ai-me/worker:local
+    image: realentity-storm/worker:local
     depends_on:
       migrate: { condition: service_completed_successfully }
     environment:
@@ -79,12 +79,12 @@ services:
       # Files the pipelines produce (screenshots, traces, downloads), deleted after ARTIFACTS_RETENTION_DAYS; working
       # files, not backed up (the runs themselves are in the database).
       - type: bind
-        source: ${AIME_ARTIFACTS:-/data/ai-me/artifacts}
+        source: ${STORM_ARTIFACTS:-/data/realentity-storm/artifacts}
         target: /data/artifacts
         bind: { create_host_path: false }
       # My documents: only read here (the api writes them); attached to forms only as approved, checked by SHA-256.
       - type: bind
-        source: ${AIME_DOCUMENTS:-/data/ai-me/documents}
+        source: ${STORM_DOCUMENTS:-/data/realentity-storm/documents}
         target: /data/documents
         read_only: true
         bind: { create_host_path: false }
@@ -99,7 +99,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "const s = require('fs').statSync(require('os').tmpdir() + '/aime-worker.alive'); process.exit(Date.now() - s.mtimeMs < 120000 ? 0 : 1)",
+          "const s = require('fs').statSync(require('os').tmpdir() + '/storm-worker.alive'); process.exit(Date.now() - s.mtimeMs < 120000 ? 0 : 1)",
         ]
       interval: 30s
       timeout: 5s
@@ -112,11 +112,11 @@ services:
 
   web:
     build: { context: .., dockerfile: docker/Dockerfile, target: web }
-    image: ai-me/web:local
+    image: realentity-storm/web:local
     ports:
-      - "127.0.0.1:${AIME_PORT:-7100}:8080" # app 10 (the server's port convention: 7NNE local, 8NNE tailnet)
+      - "127.0.0.1:${STORM_PORT:-7100}:8080" # app 10 (the server's port convention: 7NNE local, 8NNE tailnet)
       # The hooks-only site (Caddyfile :8081): `tailscale serve --http=8101`, reachable by the VPS's hooks-gateway only.
-      - "127.0.0.1:${AIME_HOOKS_PORT:-7101}:8081"
+      - "127.0.0.1:${STORM_HOOKS_PORT:-7101}:8081"
     depends_on:
       api: { condition: service_healthy }
     restart: unless-stopped

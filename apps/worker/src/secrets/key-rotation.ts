@@ -1,5 +1,5 @@
-import { type KeyRing, rewrap } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
+import { type KeyRing, rewrap } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
 
 export interface RotationResult {
   rewrapped: number;

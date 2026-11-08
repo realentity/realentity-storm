@@ -1,5 +1,5 @@
-import { type LlmClient, type ModelRouter } from "@ai-me/llm";
-import { hostMatches } from "@ai-me/shared";
+import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { hostMatches } from "@realentity/storm-shared";
 import { z } from "zod";
 import { SendGuard } from "../browser/agent-page";
 import { blockingState } from "../browser/blocking";

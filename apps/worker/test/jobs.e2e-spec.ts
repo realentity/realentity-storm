@@ -1,8 +1,8 @@
-import { payloadHash } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type RunStatus } from "@ai-me/db";
-import { JobQueue, QUEUES } from "@ai-me/queue";
-import { PipelineCompiler } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { payloadHash } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type RunStatus } from "@realentity/storm-db";
+import { JobQueue, QUEUES } from "@realentity/storm-queue";
+import { PipelineCompiler } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -177,7 +177,7 @@ steps:
   });
 
   it("nightly maintenance deletes run files past their retention, and keeps the runs and newer files", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "aime-retention-"));
+    const dir = await mkdtemp(join(tmpdir(), "storm-retention-"));
     try {
       const runId = await runner.start(await version(DIGEST), { trigger: "manual" });
       const file = async (name: string, daysOld: number) => {
@@ -206,7 +206,7 @@ steps:
   });
 
   describe("schedules", () => {
-    // M2-I8 (pg-boss side; the local-time computation is tested in @ai-me/queue)
+    // M2-I8 (pg-boss side; the local-time computation is tested in @realentity/storm-queue)
     it("keeps pg-boss schedules in line with the enabled pipelines, in the pipeline's time zone", async () => {
       const scheduled = await pipelineOf(await version(DIGEST));
       const other = await pipelineOf(

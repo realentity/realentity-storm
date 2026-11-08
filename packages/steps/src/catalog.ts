@@ -1,4 +1,4 @@
-import { TYPE_NAME, type FieldKind, type TargetKind } from "@ai-me/shared";
+import { TYPE_NAME, type FieldKind, type TargetKind } from "@realentity/storm-shared";
 import jsonata from "jsonata";
 import { z } from "zod";
 import { RecipeNameSchema } from "./recipe";
@@ -547,7 +547,7 @@ export const CORE_STEPS: StepDefinition[] = [
       url: z.url({ protocol: /^https?$/ }),
       headers: HttpHeaders,
       query: HttpQuery,
-      body: z.unknown().optional().describe("sent as JSON, e.g. { title: ..., labels: [ai-me] }"),
+      body: z.unknown().optional().describe("sent as JSON, e.g. { title: ..., labels: [storm] }"),
       timeoutSeconds: z.number().int().min(2).max(60).default(20),
     }),
     output: z.object({ status: z.number().int(), json: z.unknown(), text: z.string() }),

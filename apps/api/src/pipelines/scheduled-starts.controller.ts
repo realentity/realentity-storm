@@ -1,5 +1,5 @@
-import { type ScheduledStart } from "@ai-me/db";
-import { type ScheduledStartView } from "@ai-me/shared";
+import { type ScheduledStart } from "@realentity/storm-db";
+import { type ScheduledStartView } from "@realentity/storm-shared";
 import { Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { PrismaService } from "../database/prisma.service";

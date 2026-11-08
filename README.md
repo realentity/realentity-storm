@@ -1,4 +1,8 @@
-# AI ME
+# RealEntity Storm
+
+<img src="apps/web/public/logo.svg" alt="" width="64" height="64">
+
+**Storm** for short; part of [RealEntity](https://github.com/realentity). Formerly AI ME.
 
 A personal, self-hosted agent that reads email, finds jobs, prepares replies, fills forms and uploads files on my behalf. **I describe what I want in a chat, the app compiles it into a structured pipeline, and nothing leaves the system without my explicit "Act".** The agent learns from how I edit its proposals.
 
@@ -151,7 +155,7 @@ New capabilities are added by writing a new step class, never by the LLM.
 
 **Bills (M23):** `bill.read` gives each email's text and the text of its PDF attachments (up to two, read in a child process like `file.read`) to the LLM, which says whether it is a bill (an amount to pay, not a receipt or an offer) and reads the issuer, amount, currency, due date, period and reference; it never guesses a field the text doesn't give. `bill.save` keeps them as Bill entities of the **Bills** App (M33, `pipelines/apps/bills.yaml`), one per bill (the sender's domain with the reference, else the period, else the due date), so a reminder email or a retried run updates it (keeping whether I paid it); it lists the new ones with a due date for `calendar.create` (a reminder 3 days before, behind its gate) and tells when a bill is more than 30% above the issuer's usual (the median of its last six). Nothing is paid: a bill's stage moves from due to paid by hand, on its row. See `pipelines/bills.yaml`.
 
-**API data and alerts (M29):** an API's JSON is rarely a list of objects; `data.map` reshapes it with a JSONata expression (Open-Meteo's parallel `hourly.time` and `hourly.temperature_2m` into one item per hour, or one item with the lowest of the next 12 hours). It reads only its input: no network, no code, stopped after a second, and the expression is parsed when the pipeline is saved. `data.alert` checks each item's number against `below` or `above` and remembers, per pipeline, step and key, what is past the line, so an hourly watch tells me once when it crosses and once when it is back past `clearAt` (below 10°, back at 12°), not every hour; its `text` goes into a message with `when`. "Faster than usual" is `data.history`'s `vsUsual` (this change against the median of the earlier ones) into `data.alert`. See `pipelines/cold-weather.yaml` and `pipelines/table-growth.yaml`. An API key goes in `http.fetch`'s `headers` (`Authorization: "Bearer {{cred:github}}"`) or `query` (`appid: "{{cred:openweather}}"`), never in the address: a credential of kind API key on the Credentials page, sent only to its allowed hosts, also after a redirect. `http.request` changes something at an API (a GitHub issue, a task, a webhook call): POST, PUT, PATCH or DELETE with a JSON body, behind its gate, which shows the method, address, headers (keys as `{{cred:name}}`) and body; an answer other than 2xx fails the step (see `pipelines/failed-run-issue.yaml`). `db.query` reads my own databases: `connection: "{{cred:app-db}}"` (a credential of kind database: one field, the connection string `postgresql://reader:…@host:5432/app`, whose host becomes its only allowed host; replacing it keeps it on that host), one SELECT, rows as items (counts as numbers, dates as ISO text); see `pipelines/table-growth.yaml`. Use a database user that may only read; AI ME also refuses anything that isn't a query and reads in a read-only transaction. A trend is seen on the pipeline's page: `view.chart` draws its data.history collection above the list (see the Tables page of `pipelines/table-growth.yaml`).
+**API data and alerts (M29):** an API's JSON is rarely a list of objects; `data.map` reshapes it with a JSONata expression (Open-Meteo's parallel `hourly.time` and `hourly.temperature_2m` into one item per hour, or one item with the lowest of the next 12 hours). It reads only its input: no network, no code, stopped after a second, and the expression is parsed when the pipeline is saved. `data.alert` checks each item's number against `below` or `above` and remembers, per pipeline, step and key, what is past the line, so an hourly watch tells me once when it crosses and once when it is back past `clearAt` (below 10°, back at 12°), not every hour; its `text` goes into a message with `when`. "Faster than usual" is `data.history`'s `vsUsual` (this change against the median of the earlier ones) into `data.alert`. See `pipelines/cold-weather.yaml` and `pipelines/table-growth.yaml`. An API key goes in `http.fetch`'s `headers` (`Authorization: "Bearer {{cred:github}}"`) or `query` (`appid: "{{cred:openweather}}"`), never in the address: a credential of kind API key on the Credentials page, sent only to its allowed hosts, also after a redirect. `http.request` changes something at an API (a GitHub issue, a task, a webhook call): POST, PUT, PATCH or DELETE with a JSON body, behind its gate, which shows the method, address, headers (keys as `{{cred:name}}`) and body; an answer other than 2xx fails the step (see `pipelines/failed-run-issue.yaml`). `db.query` reads my own databases: `connection: "{{cred:app-db}}"` (a credential of kind database: one field, the connection string `postgresql://reader:…@host:5432/app`, whose host becomes its only allowed host; replacing it keeps it on that host), one SELECT, rows as items (counts as numbers, dates as ISO text); see `pipelines/table-growth.yaml`. Use a database user that may only read; Storm also refuses anything that isn't a query and reads in a read-only transaction. A trend is seen on the pipeline's page: `view.chart` draws its data.history collection above the list (see the Tables page of `pipelines/table-growth.yaml`).
 
 **Conditions (`when`):** any step can carry `when: "{{step.field}}"`: it runs only when that value isn't empty (a non-empty list or text, true, a number other than 0); otherwise it is skipped, and so is every later step that uses its output. A watch tells me only about changes this way: `http.fetch` → `data.save` into a collection → `llm.summarize` with `when: "{{save.added}}"` → `notify.telegram` (see `pipelines/release-watch.yaml`, `pipelines/price-watch.yaml`, `pipelines/product-watch.yaml`). A run that skipped steps this way says so at the top of its page ("Done, nothing to tell: cheaper.items was empty, so tell was skipped"), with what it read where a step reports it (`shop.product`: each product's price and stock).
 
@@ -168,7 +172,7 @@ A list recipe ([packages/steps/src/recipe.ts](packages/steps/src/recipe.ts)) is 
 
 **Recipe fallback** (`browser.extract` with `fallback: true`): when a recipe no longer matches its page, the fix already waiting for me is tried first, without an LLM. Otherwise `browser.agent` (read-only, on the recipe's site only, at most 10 actions) brings the page back to the list, and teach mode's recipe writer proposes a recipe from that page, checked on it the same way. The fix is kept on the broken version as a proposal, not as a version: the run reads with it, the Telegram message and the digest say a fix waits, and on the recipe's page I save it as the next version or discard it.
 
-**Application forms** (M10, map → gate → act): `browser.mapForm` opens the posting (following its Apply button when the form isn't on the page) and reads every field, wizard steps included, typing and attaching nothing. Each value comes from my profile (Profile page: plain text, my facts) or, for a free-text question, is written for this job from my profile and the posting only; a question my profile doesn't answer stays empty. My CV (a stored document, `cv: cv-main`) goes to the CV field, bound by id and SHA-256. A question that checks I'm a person ("104-43=") is never sent to the LLM or answered by the step, and a honeypot ("leave this field empty") is never shown or filled. At the gate the form shows field by field: I edit values and attach other documents (a cover letter, say; AI ME only attaches them). `browser.fillAndSubmit` then opens the form in the live browser and reads it again: a field gone, a new required field, a choice no longer offered or another site pauses the run with nothing sent. It fills exactly what I approved, step by step through a wizard, waits for me to answer a person check, and sends; with `stopBeforeSubmit` I press the final button myself. A send counts when the form is gone, or (forms sent without leaving the page) a thank-you appears or the form is cleared. The posting's `Application` goes from prepared to submitted, and the posting to applied.
+**Application forms** (M10, map → gate → act): `browser.mapForm` opens the posting (following its Apply button when the form isn't on the page) and reads every field, wizard steps included, typing and attaching nothing. Each value comes from my profile (Profile page: plain text, my facts) or, for a free-text question, is written for this job from my profile and the posting only; a question my profile doesn't answer stays empty. My CV (a stored document, `cv: cv-main`) goes to the CV field, bound by id and SHA-256. A question that checks I'm a person ("104-43=") is never sent to the LLM or answered by the step, and a honeypot ("leave this field empty") is never shown or filled. At the gate the form shows field by field: I edit values and attach other documents (a cover letter, say; Storm only attaches them). `browser.fillAndSubmit` then opens the form in the live browser and reads it again: a field gone, a new required field, a choice no longer offered or another site pauses the run with nothing sent. It fills exactly what I approved, step by step through a wizard, waits for me to answer a person check, and sends; with `stopBeforeSubmit` I press the final button myself. A send counts when the form is gone, or (forms sent without leaving the page) a thank-you appears or the form is cleared. The posting's `Application` goes from prepared to submitted, and the posting to applied.
 
 **Insight** (M16): the Insight page counts the postings found in a period (M33: the Jobs of the Job Search App, `pipelines/apps/job-search.yaml`, by the date each reached its stage; the old Jobs page's until they are moved) (30 to 365 days) and what came of them: shortlisted, applied, replied, interviews, rejections, still waiting, the median days to a first answer; by source, and by score band (the calibration view: do better scores get more replies and interviews?). An application's outcome is set by an email (`application.outcome`, see `pipelines/application-replies.yaml`) or by hand on the Jobs page; each outcome's date stays when the status moves on, so an interview that ended in a rejection still counts as an interview, and either way `application.status` is emitted (it cancels a pending follow-up).
 
@@ -200,10 +204,10 @@ The worker interprets a `PipelineVersion` step by step:
 - Runs are resumable: after a restart, the worker continues from the last completed step.
 - Retries are per step and configurable. Side-effect steps are never retried automatically.
 - **Kill switch:** one button in the UI (`PUT /api/kill-switch`) pauses all pipelines (schedules fire but start nothing), stops queued and waiting runs and expires their open proposals, so no queued side effect can execute. Runs already in progress stop at their next step boundary. Releasing it doesn't restart stopped runs.
-- **Budget:** when this month's LLM cost (`Step.llmUsage`) reaches the budget (Settings, else `LLM_MONTHLY_BUDGET_USD`), runs of non-essential pipelines stop before their next step that calls the LLM (the catalog marks them: the `llm.*` and email steps, `shop.product`, `application.outcome`, `browser.mapForm`, `browser.agent`, `browser.teach`), and `browser.extract` fails instead of trying its fallback. Pipelines marked essential keep running. The AI ME bot says so at 80% of the budget and when it is reached, once a month each. Settings shows this month against the budget and the last 30 days' cost by step type and model.
+- **Budget:** when this month's LLM cost (`Step.llmUsage`) reaches the budget (Settings, else `LLM_MONTHLY_BUDGET_USD`), runs of non-essential pipelines stop before their next step that calls the LLM (the catalog marks them: the `llm.*` and email steps, `shop.product`, `application.outcome`, `browser.mapForm`, `browser.agent`, `browser.teach`), and `browser.extract` fails instead of trying its fallback. Pipelines marked essential keep running. The Storm bot says so at 80% of the budget and when it is reached, once a month each. Settings shows this month against the budget and the last 30 days' cost by step type and model.
 - **Queue:** pg-boss in PostgreSQL. `runs` advances runs in parallel; `runs-headed` is a singleton queue, so one headed run at a time across all workers; `pipeline-trigger` fires cron schedules in the pipeline's time zone (keyed by pipeline); the worker reconciles schedules with the enabled pipelines at startup and whenever the api asks. A decision queues its run again. The runner claims a run before advancing it, so a duplicate or retried job is harmless.
 
-### 2.7 Triggers, webhooks and the AI ME bot
+### 2.7 Triggers, webhooks and the Storm bot
 
 Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M12):
 
@@ -220,16 +224,16 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 
 - **Only enabled pipelines** start on a trigger, never with the kill switch on, never on their own event, and a chain of triggered runs stops at depth 3. Dry runs trigger nothing.
 - `{{trigger.*}}` is type-checked by the compiler against the event, and available only in a pipeline with that trigger. As a side effect's **target**, only an email's own addresses (`trigger.message.*`) or a posting's URL (`trigger.job.url`) may be used: a webhook body is written by whoever calls it, and a finished run's outputs may be LLM text.
-- **Webhooks:** the pipeline page creates the address (`https://hooks.example.com/aime/<id>`, 32 random bytes) and a secret, shown once and rotatable. `hmac-sha256` checks a GitHub-style `X-Hub-Signature-256` over the body as sent; `token` an `Authorization: Bearer` header. The api checks the address, the size (64 KB) and a token (against its SHA-256) and queues the call; the **worker** checks a signature, since only the worker decrypts (§7). The body is data, like an email's text.
+- **Webhooks:** the pipeline page creates the address (`https://hooks.example.com/storm/<id>`, 32 random bytes) and a secret, shown once and rotatable. `hmac-sha256` checks a GitHub-style `X-Hub-Signature-256` over the body as sent; `token` an `Authorization: Bearer` header. The api checks the address, the size (64 KB) and a token (against its SHA-256) and queues the call; the **worker** checks a signature, since only the worker decrypts (§7). The body is data, like an email's text.
 
-**The AI ME bot** (its own Telegram bot, not n8n's):
+**The Storm bot** (its own Telegram bot, not n8n's):
 
 - **Tells me** what a run waits for: each new proposal with **Approve / Reject / Open** (one message for a gate with more than 5), "needs you" with **Open the live view**, a broken recipe with **Open the recipe**. When I decide anywhere, the message says so and loses its buttons.
-- **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens AI ME. **Settings → Approve on Telegram** turns the buttons off.
+- **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens Storm. **Settings → Approve on Telegram** turns the buttons off.
 - **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`. Only from my private chat (`TELEGRAM_CHAT_ID` is my user id); commands older than 5 minutes are dropped.
-- **The builder (M21):** any other message goes to the pipeline builder, and its answer comes back with the proposal (what it does, when, its steps, the warnings) and Save, Dry run and Open in AI ME. The chat goes on while I'm on it (two hours); `/new` starts over, `/edit <pipeline>` talks about one pipeline. A saved pipeline is off until I press Turn on. The answer comes in the background ("typing…" meanwhile), since a turn can take longer than Telegram waits.
+- **The builder (M21):** any other message goes to the pipeline builder, and its answer comes back with the proposal (what it does, when, its steps, the warnings) and Save, Dry run and Open in Storm. The chat goes on while I'm on it (two hours); `/new` starts over, `/edit <pipeline>` talks about one pipeline. A saved pipeline is off until I press Turn on. The answer comes in the background ("typing…" meanwhile), since a turn can take longer than Telegram waits.
 
-**How it reaches AI ME,** which stays off the Internet: Telegram and webhook callers → Cloudflare (`hooks.example.com`) → the VPS's Traefik → **hooks-gateway** (checks the bot's secret path and header and my user id, or the webhook path's shape and size) → Tailscale → server `:8101`, a second Caddy site that serves only `POST /hooks/*` → the api's `/api/hooks/*`. The api checks Telegram's secret header and my user id again. The VPS can reach nothing else of AI ME.
+**How it reaches Storm,** which stays off the Internet: Telegram and webhook callers → Cloudflare (`hooks.example.com`) → the VPS's Traefik → **hooks-gateway** (checks the bot's secret path and header and my user id, or the webhook path's shape and size) → Tailscale → server `:8101`, a second Caddy site that serves only `POST /hooks/*` → the api's `/api/hooks/*`. The api checks Telegram's secret header and my user id again. The VPS can reach nothing else of Storm.
 
 ---
 
@@ -349,11 +353,11 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
 - **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices) and builder turn (`BuilderMessage.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
-- **Watching the server (M26):** the nightly backup, the monthly restore test and the host's `health-alert` (disk use, failed services, every 4 hours) report their result to AI ME (`POST /hooks/health` on the hooks-only site, with `HEALTH_REPORT_TOKEN`). A report that isn't ok, or one that stops coming (the backup after 26 hours, `health-alert` after 5, the restore test after 35 days), is told on the AI ME bot once, and once when it is fine again; the worker keeps its own watchdog. The **Health** page shows them all.
-- **Morning brief (M25):** every day at 07:30 (Europe/Sofia), on the AI ME bot: today's calendar (when Google is connected), what waits for me (proposals to approve per pipeline, runs paused in the live view), the runs that failed in the last day, and unpaid bills due within three days or overdue. A day with none of it is one line. Off in Settings.
-- **Weekly review:** Sunday 19:00 (Europe/Sofia), on the AI ME bot: the week's digest (runs, failures, what waits for me, reflection's suggestions, broken recipes, LLM cost), the budget so far, the three most expensive step types and models, application outcomes and quiet recipes. Off in Settings.
+- **Watching the server (M26):** the nightly backup, the monthly restore test and the host's `health-alert` (disk use, failed services, every 4 hours) report their result to Storm (`POST /hooks/health` on the hooks-only site, with `HEALTH_REPORT_TOKEN`). A report that isn't ok, or one that stops coming (the backup after 26 hours, `health-alert` after 5, the restore test after 35 days), is told on the Storm bot once, and once when it is fine again; the worker keeps its own watchdog. The **Health** page shows them all.
+- **Morning brief (M25):** every day at 07:30 (Europe/Sofia), on the Storm bot: today's calendar (when Google is connected), what waits for me (proposals to approve per pipeline, runs paused in the live view), the runs that failed in the last day, and unpaid bills due within three days or overdue. A day with none of it is one line. Off in Settings.
+- **Weekly review:** Sunday 19:00 (Europe/Sofia), on the Storm bot: the week's digest (runs, failures, what waits for me, reflection's suggestions, broken recipes, LLM cost), the budget so far, the three most expensive step types and models, application outcomes and quiet recipes. Off in Settings.
 
-**Embeddings:** Anthropic doesn't provide an embeddings model. AI ME uses **OpenAI** `text-embedding-3-large` (multilingual, Bulgarian + English) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
+**Embeddings:** Anthropic doesn't provide an embeddings model. Storm uses **OpenAI** `text-embedding-3-large` (multilingual, Bulgarian + English) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
 
 ---
 
@@ -391,7 +395,7 @@ During local development the worker simply runs with `headless: false`, so the b
 
 - **Browsers:** one shared headless Chromium (a few contexts at once) and one headed slot, launched for the step and closed after. Every step gets a fresh context: the only login it has is the site's sealed storageState, loaded into memory and saved back after the step (credential `session.<host>`, kind `STORAGE_STATE`, bound to that host).
 - **`browser.open`** (the first browser step; M9–M11 add the recipe and agent steps on the same layer): opens a page, signs in when it shows a password field (username and password on one page, or one after the other as SSO providers do), waits for a selector, returns the page text. `headed: true` puts it in the live view.
-- **Blocking states:** a CAPTCHA (reCAPTCHA, hCaptcha, Turnstile frames and markers), a 2FA prompt, a sign-in that didn't go through, a selector that doesn't appear. The step then waits **with the page open**: a `Takeover` row (`OPEN`, or `TAKEN_OVER` when I pressed Take over, picked up at the step's next safe point), the run shows `WAITING_FOR_USER` (no other job can claim it meanwhile), the inbox lists it and Telegram says "AI ME needs you". Continue goes on from the page as I left it; Abort stops the run; nobody within `TAKEOVER_TIMEOUT_MINUTES` fails the step; the kill switch stops it. After a restart the page is gone: the takeover expires and the step runs again. A headless step can't be taken over: it fails with the reason.
+- **Blocking states:** a CAPTCHA (reCAPTCHA, hCaptcha, Turnstile frames and markers), a 2FA prompt, a sign-in that didn't go through, a selector that doesn't appear. The step then waits **with the page open**: a `Takeover` row (`OPEN`, or `TAKEN_OVER` when I pressed Take over, picked up at the step's next safe point), the run shows `WAITING_FOR_USER` (no other job can claim it meanwhile), the inbox lists it and Telegram says "Storm needs you". Continue goes on from the page as I left it; Abort stops the run; nobody within `TAKEOVER_TIMEOUT_MINUTES` fails the step; the kill switch stops it. After a restart the page is gone: the takeover expires and the step runs again. A headless step can't be taken over: it fails with the reason.
 - **Live view security:** Caddy lets `/vnc` through only for a signed-in session (`forward_auth` to the api), and x11vnc (on localhost inside the container, reached through websockify) asks for its own password. The api hands out the **view-only** one (x11vnc ignores input on it) while the worker acts, and the full one only while a takeover is open. Checked in the real container: typing with the view-only password changes nothing.
 - **Nothing secret in what it keeps:** the page text and any snapshot for the LLM have every filled value masked (also URL-, form- and JSON-encoded); screenshots cover password fields and the fields it filled; the Playwright trace is rewritten with credential values, cookie values and stored tokens masked, and dropped if anything is still found. storageState is never written to a file.
 - **Downloads and uploads** (M11): `browser.download` takes the address itself, or what a click on that page downloads, through the quarantine below; `browser.upload` (side effect, behind its gate) puts one stored document, bound by id and SHA-256 (from `file.read`), into a file field on the allowed sites.
@@ -472,7 +476,7 @@ The schema is [packages/db/prisma/schema.prisma](packages/db/prisma/schema.prism
 ## 10. Repository layout
 
 ```text
-ai-me/
+realentity-storm/
 ├─ apps/
 │  ├─ api/            # NestJS: REST + WebSocket, Prisma
 │  │  └─ src/
@@ -571,7 +575,7 @@ Monorepo setup: **pnpm** workspaces with a version **catalog** in `pnpm-workspac
 - **Insight**: the job search in numbers (M16): found, applied, replied, interviews, rejections, by source and score band.
 - **History**: filter by pipeline, version, status, date, target.
 - **Daily digest** (email or Telegram): what ran, what's waiting for me, failures, suggested rules and pipeline changes.
-- **Notifications** when a run enters `WAITING_FOR_USER`: the AI ME bot, with Approve / Reject / Open on each proposal (§2.7).
+- **Notifications** when a run enters `WAITING_FOR_USER`: the Storm bot, with Approve / Reject / Open on each proposal (§2.7).
 
 ---
 
@@ -617,7 +621,7 @@ volumes: { pgdata: {}, artifacts: {} }
 
 Expose services only on the Tailscale interface (Caddy with Tailscale HTTPS certs in front). No public ports.
 
-The real setup follows the server's conventions (native PostgreSQL, `tailscale serve`, the existing nightly backup): [docker/compose.yml](docker/compose.yml), images from [docker/Dockerfile](docker/Dockerfile), run with [docker/aime](docker/aime). Install, updates, restore and checks: [docs/deployment.md](docs/deployment.md).
+The real setup follows the server's conventions (native PostgreSQL, `tailscale serve`, the existing nightly backup): [docker/compose.yml](docker/compose.yml), images from [docker/Dockerfile](docker/Dockerfile), run with [docker/storm](docker/storm). Install, updates, restore and checks: [docs/deployment.md](docs/deployment.md).
 
 ---
 
@@ -679,7 +683,7 @@ SESSION_TTL_HOURS=168
 # My documents (CV, cover letters) that application forms attach: the api writes, the worker only reads
 DOCUMENTS_DIR=data/documents
 # Run files (screenshots, traces) older than this are deleted nightly; 0 keeps them. On the server both folders are on the
-# secondary disk (/data/ai-me, docker/compose.yml)
+# secondary disk (/data/realentity-storm, docker/compose.yml)
 ARTIFACTS_RETENTION_DAYS=90
 # x11vnc's passwords: full control, and view-only (input ignored); VNC uses the first 8 characters. Empty: no live view
 VNC_PASSWORD=
@@ -689,12 +693,12 @@ TAKEOVER_TIMEOUT_MINUTES=30
 DOWNLOAD_MAX_MB=25
 # Headed runs are always one at a time (one display): the runs-headed queue is a pg-boss singleton queue
 
-# The AI ME bot (§2.7): token, my Telegram user id, the secret Telegram sends with each update
+# The Storm bot (§2.7): token, my Telegram user id, the secret Telegram sends with each update
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 TELEGRAM_WEBHOOK_SECRET=
 # Public address of the webhooks (shown on the pipeline page)
-HOOKS_PUBLIC_URL=https://hooks.example.com/aime
+HOOKS_PUBLIC_URL=https://hooks.example.com/storm
 # the server's own jobs reporting to the Health page (M26)
 HEALTH_REPORT_TOKEN=
 ```
@@ -708,15 +712,15 @@ HEALTH_REPORT_TOKEN=
 pnpm install
 docker compose -f docker/docker-compose.yml up -d postgres
 pnpm db:migrate                # prisma migrate dev in packages/db
-pnpm --filter @ai-me/worker exec playwright install chromium
+pnpm --filter @realentity/storm-worker exec playwright install chromium
 
 pnpm dev                       # turbo: api, worker (headless: false → browser opens on the dev machine), web
 
 pnpm test                      # unit tests (Jest; Vitest for web)
 pnpm test:e2e                  # integration tests: PostgreSQL in Testcontainers (E2E_INFRA=local: a temporary database)
-pnpm --filter @ai-me/web-e2e exec playwright install chromium
+pnpm --filter @realentity/storm-web-e2e exec playwright install chromium
 pnpm test:web                  # browser tests (Playwright) against the composed stack: database, api, worker, web
-pnpm --filter @ai-me/worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
+pnpm --filter @realentity/storm-worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
 ```
 
 **Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. On the Credentials page add a

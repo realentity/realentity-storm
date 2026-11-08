@@ -1,4 +1,4 @@
-import { type LiveView as LiveViewState, type RunDetailView } from "@ai-me/shared";
+import { type LiveView as LiveViewState, type RunDetailView } from "@realentity/storm-shared";
 import RFB from "@novnc/novnc";
 import { IconClipboard, IconHandStop, IconPlayerPlay, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";

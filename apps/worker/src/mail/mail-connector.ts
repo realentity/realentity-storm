@@ -1,4 +1,4 @@
-import { type EmailMessage } from "@ai-me/steps";
+import { type EmailMessage } from "@realentity/storm-steps";
 
 /** Where a pipeline stopped reading a mailbox (MailCursor). */
 export interface MailboxPosition {

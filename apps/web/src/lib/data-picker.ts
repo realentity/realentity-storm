@@ -1,4 +1,4 @@
-import { type AppDefinition, type JsonSchema, type RunDetailView, type StepTypeView, type TriggerDataView } from "@ai-me/shared";
+import { type AppDefinition, type JsonSchema, type RunDetailView, type StepTypeView, type TriggerDataView } from "@realentity/storm-shared";
 import { resolve } from "./schema-form";
 import { type LoosePipeline } from "./step-cards";
 

@@ -1,9 +1,9 @@
 {
-  "name": "@ai-me/web",
+  "name": "@realentity/storm-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AI ME web app (React + Vite): login, pipelines, approval inbox, live view",
+  "description": "Storm web app (React + Vite): login, pipelines, approval inbox, live view",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -14,7 +14,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ai-me/shared": "workspace:*",
+    "@realentity/storm-shared": "workspace:*",
     "@novnc/novnc": "catalog:",
     "@tabler/core": "catalog:",
     "@tabler/icons-react": "catalog:",
@@ -25,7 +25,7 @@
     "yaml": "catalog:"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
     "@eslint/js": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

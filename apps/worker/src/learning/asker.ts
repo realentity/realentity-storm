@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { sendTelegramMessage, type TelegramConfig } from "@ai-me/shared";
+import { type PrismaClient } from "@realentity/storm-db";
+import { sendTelegramMessage, type TelegramConfig } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { RunStopped, type StepContext } from "../runner/step-executor";
 
@@ -56,7 +56,7 @@ export class Asker {
   private async tell(questionId: string, runId: string, ask: Ask): Promise<void> {
     if (!this.telegram.botToken || !this.telegram.chatId) return;
     const text = [
-      `AI ME asks${ask.site ? ` (a form on ${ask.site})` : ""}: ${ask.question}`,
+      `Storm asks${ask.site ? ` (a form on ${ask.site})` : ""}: ${ask.question}`,
       ask.options?.length ? `One of: ${ask.options.join(" · ")}` : "",
       "Reply to this message with your answer. It's kept as a fact, so the next form won't ask again.",
     ]
@@ -65,7 +65,7 @@ export class Asker {
     try {
       const messageId = await sendTelegramMessage(
         this.telegram,
-        { text, buttons: this.appOrigin ? [[{ text: "Answer on AI ME", url: `${this.appOrigin}/runs/${runId}` }]] : [] },
+        { text, buttons: this.appOrigin ? [[{ text: "Answer on Storm", url: `${this.appOrigin}/runs/${runId}` }]] : [] },
         this.send,
       );
       await this.prisma.question.update({ where: { questionId }, data: { telegramMessageId: messageId } });

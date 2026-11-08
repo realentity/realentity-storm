@@ -1,5 +1,5 @@
-import { type LlmChat } from "@ai-me/llm";
-import { StepCatalog } from "@ai-me/steps";
+import { type LlmChat } from "@realentity/storm-llm";
+import { StepCatalog } from "@realentity/storm-steps";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { argon2id, hash } from "argon2";

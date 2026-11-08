@@ -1,4 +1,4 @@
-import { entityValueAt, type DataType, type EntityView } from "@ai-me/shared";
+import { entityValueAt, type DataType, type EntityView } from "@realentity/storm-shared";
 import { IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

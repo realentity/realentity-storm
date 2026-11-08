@@ -1,6 +1,6 @@
-import { type KeyRing, open } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
-import { databaseHost, hostMatches } from "@ai-me/shared";
+import { type KeyRing, open } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
+import { databaseHost, hostMatches } from "@realentity/storm-shared";
 
 export class CredentialNotFoundError extends Error {
   constructor(name: string) {

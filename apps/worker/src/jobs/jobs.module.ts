@@ -1,8 +1,8 @@
-import { ClaudeBatches, ClaudeChat, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmChat, type LlmClient } from "@ai-me/llm";
-import { JobQueue, publishEvent } from "@ai-me/queue";
-import { KeyRing } from "@ai-me/crypto";
-import { sendTelegramMessage, type ServerEnv, type TelegramMessage } from "@ai-me/shared";
-import { defaultCatalog, StepCatalog } from "@ai-me/steps";
+import { ClaudeBatches, ClaudeChat, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmChat, type LlmClient } from "@realentity/storm-llm";
+import { JobQueue, publishEvent } from "@realentity/storm-queue";
+import { KeyRing } from "@realentity/storm-crypto";
+import { sendTelegramMessage, type ServerEnv, type TelegramMessage } from "@realentity/storm-shared";
+import { defaultCatalog, StepCatalog } from "@realentity/storm-steps";
 import { Injectable, Logger, Module, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
@@ -31,7 +31,7 @@ import { MorningBrief, type TodaysEvents } from "./morning-brief";
 import { WeeklyReview } from "./weekly-review";
 import { listEvents } from "../steps/calendar-steps";
 
-/** A message to me on the AI ME bot: text, or text with buttons. */
+/** A message to me on the Storm bot: text, or text with buttons. */
 function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promise<void> {
   const config = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
   return async (message) => {

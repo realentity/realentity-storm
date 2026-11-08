@@ -23,7 +23,7 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
   },
   webServer: {
-    command: `pnpm --filter @ai-me/web exec vite --port ${WEB_PORT} --strictPort`,
+    command: `pnpm --filter @realentity/storm-web exec vite --port ${WEB_PORT} --strictPort`,
     url: WEB_URL,
     env: { API_HOST: "127.0.0.1", API_PORT: String(API_PORT) },
     reuseExistingServer: false,

@@ -1,7 +1,7 @@
-import { open, type KeyRing } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
-import { type EventJob, type JobQueue, type LaterJob, type WebhookJob } from "@ai-me/queue";
-import { isEventTrigger, isWebhookTrigger, type CompiledDefinition, type DefinitionRefs, type EventTrigger } from "@ai-me/shared";
+import { open, type KeyRing } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
+import { type EventJob, type JobQueue, type LaterJob, type WebhookJob } from "@realentity/storm-queue";
+import { isEventTrigger, isWebhookTrigger, type CompiledDefinition, type DefinitionRefs, type EventTrigger } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { type LaterStarts } from "./later";

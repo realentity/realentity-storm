@@ -1,7 +1,7 @@
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
-import { QUEUES } from "@ai-me/queue";
-import { type ApplicationView, type InsightView, type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { QUEUES } from "@realentity/storm-queue";
+import { type ApplicationView, type InsightView, type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { parse as parseYaml } from "yaml";
 import { createTestApp, type TestApp } from "./support/test-app";

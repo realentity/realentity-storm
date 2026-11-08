@@ -1,5 +1,5 @@
-import { type Prisma } from "@ai-me/db";
-import { type ProposalView, type TargetView } from "@ai-me/shared";
+import { type Prisma } from "@realentity/storm-db";
+import { type ProposalView, type TargetView } from "@realentity/storm-shared";
 
 /** What a proposal view needs besides the proposal: its pipeline, the gate's type, the decision. */
 export const PROPOSAL_INCLUDE = {

@@ -30,7 +30,7 @@ logs/
 .env.*
 !.env.example
 
-# ── AI ME ──
+# ── Storm ──
 # Runtime data: artifacts, traces, screenshots, downloads (quarantine), backups
 data/
 *.trace.zip

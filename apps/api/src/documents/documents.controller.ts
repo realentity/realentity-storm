@@ -1,4 +1,4 @@
-import { type DocumentView } from "@ai-me/shared";
+import { type DocumentView } from "@realentity/storm-shared";
 import {
   Body,
   Controller,

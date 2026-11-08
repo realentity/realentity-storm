@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# AI ME images (docs/deployment.md). One build stage, one target per service:
+# Storm images (docs/deployment.md). One build stage, one target per service:
 #   api, worker (headless until M8), migrate (prisma migrate deploy + seed), web (Caddy with the built web app).
-# Build context: the repository root (./docker/aime up).
+# Build context: the repository root (./docker/storm up).
 
 # Same Node as CI (.nvmrc).
 ARG NODE_VERSION=24.21.0
@@ -15,11 +15,11 @@ COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
 # prisma generate reads DATABASE_URL from prisma.config.ts; nothing connects during the build.
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
-RUN pnpm turbo run build --env-mode=loose --filter=@ai-me/api --filter=@ai-me/worker --filter=@ai-me/web
+RUN pnpm turbo run build --env-mode=loose --filter=@realentity/storm-api --filter=@realentity/storm-worker --filter=@realentity/storm-web
 # Production node_modules only, workspace packages copied in (their dist).
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm --filter @ai-me/api deploy --legacy --prod /out/api && \
-    pnpm --filter @ai-me/worker deploy --legacy --prod /out/worker
+    pnpm --filter @realentity/storm-api deploy --legacy --prod /out/api && \
+    pnpm --filter @realentity/storm-worker deploy --legacy --prod /out/worker
 
 FROM base AS api
 WORKDIR /app

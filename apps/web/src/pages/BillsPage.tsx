@@ -1,11 +1,11 @@
-import { type BillView, type BillsView } from "@ai-me/shared";
+import { type BillView, type BillsView } from "@realentity/storm-shared";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { useAction, useLoad } from "../lib/use-load";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** M23: the bills read from email, by month; marked paid by hand (AI ME pays nothing). */
+/** M23: the bills read from email, by month; marked paid by hand (Storm pays nothing). */
 export function BillsPage() {
   const bills = useLoad(() => api.bills.list(), []);
   if (!bills.data) return bills.error ? <ErrorAlert error={bills.error} /> : <Loading />;

@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
  */
 export class TestEnvironment {
   /** The seeded user's email (packages/db/prisma/seed.ts reads APP_ADMIN_EMAIL). */
-  static readonly ADMIN_EMAIL = "me@aime.test";
+  static readonly ADMIN_EMAIL = "me@storm.test";
 
   static apply(databaseUrl: string): void {
     process.env.NODE_ENV = "test";

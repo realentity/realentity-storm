@@ -1,4 +1,4 @@
-import { type RunDetailView, type RunSummaryView } from "@ai-me/shared";
+import { type RunDetailView, type RunSummaryView } from "@realentity/storm-shared";
 
 /** Per text value: the opening of an email or page is enough to tell why a step kept or dropped it. */
 const MAX_STRING = 400;

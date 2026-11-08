@@ -1,4 +1,4 @@
-import { type CompiledDefinition } from "@ai-me/shared";
+import { type CompiledDefinition } from "@realentity/storm-shared";
 import { diffDefinitions } from "./diff";
 
 const base: CompiledDefinition = {

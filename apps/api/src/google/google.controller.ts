@@ -1,4 +1,4 @@
-import { type GoogleStatusView } from "@ai-me/shared";
+import { type GoogleStatusView } from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Post, Query, Req, Res } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { type Request, type Response } from "express";

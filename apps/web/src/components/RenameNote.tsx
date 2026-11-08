@@ -1,4 +1,4 @@
-import { type RenameView } from "@ai-me/shared";
+import { type RenameView } from "@realentity/storm-shared";
 import { IconArrowsExchange } from "@tabler/icons-react";
 
 /** M39-T5: a rename, and what follows it: what refers to it does so by id, so nothing breaks. */

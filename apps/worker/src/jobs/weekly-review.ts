@@ -1,5 +1,5 @@
-import { llmCostSince, type PrismaClient } from "@ai-me/db";
-import { type TelegramMessage } from "@ai-me/shared";
+import { llmCostSince, type PrismaClient } from "@realentity/storm-db";
+import { type TelegramMessage } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { type RunControls } from "../runner/run-controls";
 import { DigestStep } from "../steps/digest-step";
@@ -10,7 +10,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const TOP_COSTS = 3;
 
 /**
- * The weekly review (M19-T4, README §12): Sunday evening on the AI ME bot. The 7-day digest (runs, failures, what
+ * The weekly review (M19-T4, README §12): Sunday evening on the Storm bot. The 7-day digest (runs, failures, what
  * waits for me, reflection's suggestions, broken recipes, the LLM cost) and what a week shows better than a day: the
  * budget so far, where the money went, application outcomes, recipes that have found nothing for a while.
  */
@@ -33,7 +33,7 @@ export class WeeklyReview {
     for (const { userId } of users) {
       await this.notify({
         text: await this.compose(userId, now),
-        buttons: this.appOrigin ? [[{ text: "Open AI ME", url: this.appOrigin }]] : undefined,
+        buttons: this.appOrigin ? [[{ text: "Open Storm", url: this.appOrigin }]] : undefined,
       });
     }
     if (users.length > 0) this.logger.log(`Weekly review sent to ${users.length} user(s)`);
@@ -43,7 +43,7 @@ export class WeeklyReview {
   async compose(userId: string, now = new Date()): Promise<string> {
     const since = new Date(now.getTime() - WEEK_MS);
     const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/Sofia" });
-    const lines = [await new DigestStep(this.prisma).compose(userId, 168, null, now, `AI ME · weekly review, ${day(since)} – ${day(now)}`)];
+    const lines = [await new DigestStep(this.prisma).compose(userId, 168, null, now, `Storm · weekly review, ${day(since)} – ${day(now)}`)];
 
     const [settings, month, costs] = await Promise.all([
       this.prisma.userSetting.findUnique({ where: { userId } }),

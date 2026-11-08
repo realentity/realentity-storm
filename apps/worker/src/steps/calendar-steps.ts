@@ -176,5 +176,5 @@ const sameTitle = (a: string | undefined, b: string): boolean => (a ?? "").trim(
 
 /** Google event ids are base32hex (0-9, a-v), 5 to 1024 characters: hex of the run's step fits. */
 function eventId(context: StepContext): string {
-  return `aime${createHash("sha256").update(`${context.runId}:${context.stepKey}:${context.itemIndex ?? ""}`).digest("hex").slice(0, 40)}`;
+  return `storm${createHash("sha256").update(`${context.runId}:${context.stepKey}:${context.itemIndex ?? ""}`).digest("hex").slice(0, 40)}`;
 }

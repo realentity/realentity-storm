@@ -1,5 +1,5 @@
 {
-  "extends": "@ai-me/config/tsconfig/nest.json",
+  "extends": "@realentity/storm-config/tsconfig/nest.json",
   "compilerOptions": {
     "outDir": "./dist",
     "baseUrl": "./",

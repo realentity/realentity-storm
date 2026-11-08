@@ -1,6 +1,6 @@
-import { payloadHash } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { QUEUES } from "@ai-me/queue";
+import { payloadHash } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { QUEUES } from "@realentity/storm-queue";
 import {
   type KillSwitchView,
   type CostsView,
@@ -10,9 +10,9 @@ import {
   type RunSummaryView,
   type SettingsView,
   type SpendingView,
-} from "@ai-me/shared";
-import { defaultCatalog, type StepDefinition } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+} from "@realentity/storm-shared";
+import { defaultCatalog, type StepDefinition } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import request from "supertest";
 import { z } from "zod";
 import { freeName } from "./support/names";

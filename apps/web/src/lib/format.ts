@@ -1,4 +1,4 @@
-import { type JobStatusName, type ProposalStatusName, type RunStatusName, type StepStatusName } from "@ai-me/shared";
+import { type JobStatusName, type ProposalStatusName, type RunStatusName, type StepStatusName } from "@realentity/storm-shared";
 
 const DATE_TIME = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
 

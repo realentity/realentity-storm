@@ -1,5 +1,5 @@
-import { type KeyRing, open } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
+import { type KeyRing, open } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
 
 export interface CredentialCheck {
   ok: string[];

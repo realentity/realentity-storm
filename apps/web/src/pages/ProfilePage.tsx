@@ -1,4 +1,4 @@
-import { DOCUMENT_NAME_PATTERN, type DocumentView } from "@ai-me/shared";
+import { DOCUMENT_NAME_PATTERN, type DocumentView } from "@realentity/storm-shared";
 import { IconDownload, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "react-toastify";

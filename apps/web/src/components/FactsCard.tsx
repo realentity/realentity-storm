@@ -1,4 +1,4 @@
-import { type FactView } from "@ai-me/shared";
+import { type FactView } from "@realentity/storm-shared";
 import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";

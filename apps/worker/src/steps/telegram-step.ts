@@ -1,4 +1,4 @@
-import { sendTelegram, type TelegramConfig } from "@ai-me/shared";
+import { sendTelegram, type TelegramConfig } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 
 export type { TelegramConfig };

@@ -1,4 +1,4 @@
-import { EFFORTS, type EffortName } from "@ai-me/shared";
+import { EFFORTS, type EffortName } from "@realentity/storm-shared";
 
 export type Effort = EffortName;
 

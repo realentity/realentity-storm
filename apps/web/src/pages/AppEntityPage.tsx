@@ -1,4 +1,4 @@
-import { fieldOf, type AppEntityView } from "@ai-me/shared";
+import { fieldOf, type AppEntityView } from "@realentity/storm-shared";
 import { IconTrash } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

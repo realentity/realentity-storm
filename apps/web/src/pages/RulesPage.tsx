@@ -1,4 +1,4 @@
-import { RULE_STEP_TYPES, type RuleStatusName, type RuleStepType, type RuleView } from "@ai-me/shared";
+import { RULE_STEP_TYPES, type RuleStatusName, type RuleStepType, type RuleView } from "@realentity/storm-shared";
 import { IconBulb, IconCheck, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";

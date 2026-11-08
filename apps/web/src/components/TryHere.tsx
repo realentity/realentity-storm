@@ -1,4 +1,4 @@
-import { type RunDetailView } from "@ai-me/shared";
+import { type RunDetailView } from "@realentity/storm-shared";
 import { IconLoader2, IconPlayerPlay } from "@tabler/icons-react";
 import { outputsOf } from "../lib/data-picker";
 import { StatusBadge } from "./ui";

@@ -1,9 +1,9 @@
-import { KeyRing, payloadHash } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
-import { factKey } from "@ai-me/shared";
-import { defaultCatalog, type FormField } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, payloadHash } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
+import { factKey } from "@realentity/storm-shared";
+import { defaultCatalog, type FormField } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +27,7 @@ import { createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
-const PROFILE = "Ana Petrova · ana@aime.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
+const PROFILE = "Ana Petrova · ana@storm.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
 
 /**
  * The mapForm model: values from the profile like a real one; the salary from <facts> when one asks it (source
@@ -44,7 +44,7 @@ class FactLlm implements LlmClient {
     const salary = facts.find((f) => /salary/i.test(f.question));
     const answers: Record<string, { value: string | null; source: string; factId?: string }> = {
       "#name": { value: "Ana Petrova", source: "profile" },
-      "#email": { value: "ana@aime.test", source: "profile" },
+      "#email": { value: "ana@storm.test", source: "profile" },
       "#phone": { value: "+359 88 123 4567", source: "profile" },
       "#notice": { value: "1 month", source: "profile" },
       "#message": { value: "I build .NET backends in Sofia.", source: "written" },
@@ -72,15 +72,15 @@ describe("facts about me", () => {
   let runner: PipelineRunner;
   let learning: Learning;
   const llm = new FactLlm();
-  /** What the AI ME bot sent: the question messages. */
+  /** What the Storm bot sent: the question messages. */
   const telegram: { text: string; messageId: number }[] = [];
 
   beforeAll(async () => {
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     sites = await startFixtureSites();
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
-    documentsDir = await mkdtemp(join(tmpdir(), "aime-documents-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-artifacts-"));
+    documentsDir = await mkdtemp(join(tmpdir(), "storm-documents-"));
     pool = new BrowserPool({ invisible: true });
     const keys = KeyRing.fromEnv(process.env);
     const vault = new CredentialVault(db.client, keys);
@@ -97,7 +97,7 @@ describe("facts about me", () => {
       artifacts: new ArtifactStore(artifactsDir),
       documents: new DocumentStore(documentsDir),
       facts: new Facts(db.client),
-      asker: new Asker(db.client, { botToken: "123:abc", chatId: "42" }, "https://aime.test", sendTelegram as unknown as typeof fetch),
+      asker: new Asker(db.client, { botToken: "123:abc", chatId: "42" }, "https://storm.test", sendTelegram as unknown as typeof fetch),
     };
     const executors = new ExecutorRegistry([new MapFormStep(deps, llm, new ModelRouter(() => Promise.resolve(null))), new FillAndSubmitStep(deps)]);
     const desk = new TakeoverDesk(db.client, () => Promise.resolve(), { timeoutMs: 15_000, pollMs: 100 });
@@ -182,7 +182,7 @@ steps:
     const question = await db.client.question.findFirstOrThrow({ where: { runId, status: "OPEN" } });
     expect(question).toMatchObject({ question: "Salary expectation", site: "ats.localhost", stepKey: "map", options: [] });
     expect(telegram).toHaveLength(1);
-    expect(telegram[0].text).toMatch(/^AI ME asks \(a form on ats\.localhost\): Salary expectation\n\nReply to this message/);
+    expect(telegram[0].text).toMatch(/^Storm asks \(a form on ats\.localhost\): Salary expectation\n\nReply to this message/);
     expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({ telegramMessageId: 9000 });
     expect(await db.client.takeover.findFirstOrThrow({ where: { runId, status: "OPEN" } })).toMatchObject({ waitsFor: "answer" });
 

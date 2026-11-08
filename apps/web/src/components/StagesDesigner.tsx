@@ -13,7 +13,7 @@ import {
   type AppIssue,
   type StageActor,
   type StageEdge,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import {
   IconArrowLeft,
   IconArrowRight,

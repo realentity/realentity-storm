@@ -4,7 +4,7 @@ import {
   type CreateCredentialRequest,
   type CredentialView,
   type ReplaceCredentialSecretRequest,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";

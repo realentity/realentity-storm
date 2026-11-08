@@ -1,7 +1,7 @@
 import { createTransport } from "nodemailer";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
-export const MAILBOX = "me@aime.test";
+export const MAILBOX = "me@storm.test";
 /** The app password of the test mailbox: the S3 test greps every persisted value for it. */
 export const APP_PASSWORD = "gm-app-password-7Qx9vL2p";
 /** Someone I write to: a second mailbox, to read what I sent her. */

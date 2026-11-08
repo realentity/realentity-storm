@@ -6,7 +6,7 @@ import {
   type ExampleNeed,
   type ServerEnv,
   type SetupView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { AppsService } from "../apps/apps.service";
 import { SERVER_ENV } from "../config/server-env";

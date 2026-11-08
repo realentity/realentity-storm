@@ -15,7 +15,7 @@ import {
   type TeachStartedView,
   type UpdateApplicationRequest,
   type UpdateJobRequest,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { z } from "zod";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";

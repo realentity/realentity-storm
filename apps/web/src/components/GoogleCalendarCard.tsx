@@ -1,4 +1,4 @@
-import { type GoogleStatusView } from "@ai-me/shared";
+import { type GoogleStatusView } from "@realentity/storm-shared";
 import { IconBrandGoogle, IconCalendar } from "@tabler/icons-react";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -96,7 +96,7 @@ export function GoogleCalendarCard() {
         )}
         {g?.connected && (
           <div className="form-hint mt-2">
-            Disconnect forgets the token here; to remove AI ME's access at Google too, use{" "}
+            Disconnect forgets the token here; to remove Storm's access at Google too, use{" "}
             <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
               your Google account's permissions
             </a>

@@ -31,7 +31,10 @@ export function LoginPage() {
         <ThemeSwitch />
       </div>
       <div className="container container-tight py-4">
-        <div className="text-center mb-4 fs-1 fw-bold">AI ME</div>
+        <div className="text-center mb-4 d-flex flex-column align-items-center gap-2">
+          <img src="/logo.svg" alt="" width={56} height={56} />
+          <div className="fs-1 fw-bold">RealEntity Storm</div>
+        </div>
         <form className="card card-md" onSubmit={(e) => void submit(e)} autoComplete="off">
           <div className="card-body">
             <h2 className="h2 text-center mb-4">Sign in</h2>

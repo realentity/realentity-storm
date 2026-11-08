@@ -1,4 +1,4 @@
-import { type FunnelRow, type InsightView } from "@ai-me/shared";
+import { type FunnelRow, type InsightView } from "@realentity/storm-shared";
 import { useState } from "react";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";

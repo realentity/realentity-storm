@@ -1,11 +1,11 @@
-import { llmSpendSince, type PrismaClient, type UserSetting } from "@ai-me/db";
+import { llmSpendSince, type PrismaClient, type UserSetting } from "@realentity/storm-db";
 import { Logger } from "@nestjs/common";
-import { LIMIT, type TelegramMessage } from "@ai-me/shared";
+import { LIMIT, type TelegramMessage } from "@realentity/storm-shared";
 
 export interface RunControlsOptions {
   /** LLM_MONTHLY_BUDGET_USD; a UserSetting overrides it. */
   monthlyBudgetUsd?: number;
-  /** The AI ME bot: 80% of the budget spent, and the budget reached (M19-T2). Without it, nothing is told. */
+  /** The Storm bot: 80% of the budget spent, and the budget reached (M19-T2). Without it, nothing is told. */
   notify?: (message: TelegramMessage) => Promise<void>;
   appOrigin?: string;
 }
@@ -52,7 +52,7 @@ export class RunControls {
   }
 
   /**
-   * After LLM calls (M19-T2): at 80% of the budget, and when it is reached, a message on the AI ME bot, once a month
+   * After LLM calls (M19-T2): at 80% of the budget, and when it is reached, a message on the Storm bot, once a month
    * each. Reached at once (one expensive step) is told as reached only. Never throws: spending goes on either way.
    */
   async tellBudget(userId: string, now = new Date()): Promise<void> {
@@ -81,7 +81,7 @@ export class RunControls {
         const until = next.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
         await notify({
           text:
-            `AI ME: the monthly LLM budget (${usd(budget)}) is reached: ${usd(spent)} spent. Non-essential pipelines stop ` +
+            `Storm: the monthly LLM budget (${usd(budget)}) is reached: ${usd(spent)} spent. Non-essential pipelines stop ` +
             `before their LLM steps until ${until}; essential ones go on. To continue now, raise the budget in Settings.`,
           buttons: button,
         });
@@ -91,7 +91,7 @@ export class RunControls {
       if (claimed.count === 0) return;
       await notify({
         text:
-          `AI ME: ${usd(spent)} of the ${usd(budget)} monthly LLM budget is spent (${Math.floor((spent / budget) * 100)}%). ` +
+          `Storm: ${usd(spent)} of the ${usd(budget)} monthly LLM budget is spent (${Math.floor((spent / budget) * 100)}%). ` +
           `When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes.`,
         buttons: button,
       });

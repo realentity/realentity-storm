@@ -1,6 +1,6 @@
 import { config } from "dotenv";
-import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@ai-me/llm";
-import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@ai-me/steps";
+import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@realentity/storm-llm";
+import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@realentity/storm-steps";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -10,8 +10,8 @@ import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
 
 /**
  * M4-V1 and M4-V2 (README test strategy: LLM eval with the real Claude API, run by hand):
- *   pnpm --filter @ai-me/worker eval:email            both evals
- *   pnpm --filter @ai-me/worker eval:email classify   classification only (cheap: Haiku)
+ *   pnpm --filter @realentity/storm-worker eval:email            both evals
+ *   pnpm --filter @realentity/storm-worker eval:email classify   classification only (cheap: Haiku)
  * Uses the instructions of pipelines/recruiter-replies.yaml, the models from .env/defaults, and writes
  * evals/results/<date>-email.json.
  */

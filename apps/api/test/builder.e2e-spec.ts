@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type BuilderChatView, type BuilderDryRunResponse, type PipelineDetailView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type BuilderChatView, type BuilderDryRunResponse, type PipelineDetailView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { MAX_CALLS_PER_TURN } from "../src/builder/builder";
 import { callTools, propose, say, ScriptedChat, toolResults, userText } from "./support/scripted-chat";

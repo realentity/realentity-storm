@@ -1,4 +1,4 @@
-import { type BuilderChatView, type BuilderMessageView } from "@ai-me/shared";
+import { type BuilderChatView, type BuilderMessageView } from "@realentity/storm-shared";
 import { IconDeviceFloppy, IconPencil } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";

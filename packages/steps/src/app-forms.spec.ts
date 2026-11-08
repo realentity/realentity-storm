@@ -1,4 +1,4 @@
-import { AppDefinitionSchema, canMove, checkFormValues, movesFrom, viewPageOf, listPageOf, type CompileResult } from "@ai-me/shared";
+import { AppDefinitionSchema, canMove, checkFormValues, movesFrom, viewPageOf, listPageOf, type CompileResult } from "@realentity/storm-shared";
 import { defaultCatalog } from "./catalog";
 import { PipelineCompiler } from "./compiler";
 

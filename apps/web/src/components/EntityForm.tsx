@@ -1,4 +1,4 @@
-import { type FormField } from "@ai-me/shared";
+import { type FormField } from "@realentity/storm-shared";
 import { IconDeviceFloppy } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { asText } from "../lib/view";

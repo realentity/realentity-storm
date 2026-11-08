@@ -1,6 +1,6 @@
 # Development: PostgreSQL with pgvector only (README §15). The full stack for the server comes in M5 (README §13).
 # Not needed if you already run PostgreSQL 17 with pgvector locally; point DATABASE_URL there instead.
-name: ai-me
+name: realentity-storm
 
 services:
   postgres:
@@ -19,4 +19,6 @@ services:
       retries: 10
 
 volumes:
-  pgdata: {}
+  # Named as before the rename (project ai-me), so an existing development database is kept.
+  pgdata:
+    name: ai-me_pgdata

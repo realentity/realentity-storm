@@ -1,6 +1,6 @@
-import { seal, KeyRing } from "@ai-me/crypto";
-import { JobQueue } from "@ai-me/queue";
-import { isWebhookTrigger, type CompiledDefinition, type ServerEnv, type WebhookView } from "@ai-me/shared";
+import { seal, KeyRing } from "@realentity/storm-crypto";
+import { JobQueue } from "@realentity/storm-queue";
+import { isWebhookTrigger, type CompiledDefinition, type ServerEnv, type WebhookView } from "@realentity/storm-shared";
 import { Inject, Injectable, NotFoundException, PayloadTooLargeException, UnauthorizedException, UnsupportedMediaTypeException } from "@nestjs/common";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { type IncomingHttpHeaders } from "node:http";

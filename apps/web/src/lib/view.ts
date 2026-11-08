@@ -1,4 +1,4 @@
-import { fieldOf, type PipelineView, type ViewColumn, type ViewIcon, type ViewRow } from "@ai-me/shared";
+import { fieldOf, type PipelineView, type ViewColumn, type ViewIcon, type ViewRow } from "@realentity/storm-shared";
 import {
   IconBell,
   IconBook,

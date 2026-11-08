@@ -1,4 +1,4 @@
-import { type CompiledDefinition } from "@ai-me/shared";
+import { type CompiledDefinition } from "@realentity/storm-shared";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { definitionToSource } from "./source";

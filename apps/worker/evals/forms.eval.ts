@@ -1,16 +1,16 @@
 import { config } from "dotenv";
-import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@ai-me/llm";
+import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@realentity/storm-llm";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { type Fact } from "@ai-me/db";
+import { type Fact } from "@realentity/storm-db";
 import { type PageField } from "../src/browser/form-reader";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { MapFormStep, withValue, type FormDependencies } from "../src/steps/form-steps";
 
 /**
  * M10-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
- *   pnpm --filter @ai-me/worker eval:forms
+ *   pnpm --filter @realentity/storm-worker eval:forms
  * browser.mapForm's answers (its prompt and the default model) for three application forms, against a made-up
  * profile: what the profile states is filled in exactly; what it doesn't state (salary, Kubernetes years, a
  * driving licence) stays empty; the written answers claim nothing beyond the profile and the posting (checked by a

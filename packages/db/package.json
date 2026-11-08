@@ -1,8 +1,8 @@
 {
-  "name": "@ai-me/db",
+  "name": "@realentity/storm-db",
   "version": "0.1.0",
   "private": true,
-  "description": "Prisma schema, migrations, seed and client for AI ME (one PostgreSQL database)",
+  "description": "Prisma schema, migrations, seed and client for Storm (one PostgreSQL database)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -17,7 +17,7 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "typecheck": "tsc -p tsconfig.tools.json",
     "lint": "eslint src prisma prisma.config.ts",
-    "test": "echo \"no unit tests in @ai-me/db; schema tests run in the api integration suite\"",
+    "test": "echo \"no unit tests in @realentity/storm-db; schema tests run in the api integration suite\"",
     "clean": "rimraf dist src/generated"
   },
   "dependencies": {
@@ -27,7 +27,7 @@
     "pg": "catalog:"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
     "@eslint/js": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",

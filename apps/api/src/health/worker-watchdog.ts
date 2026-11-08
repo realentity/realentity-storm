@@ -1,4 +1,4 @@
-import { sendTelegram, type ServerEnv } from "@ai-me/shared";
+import { sendTelegram, type ServerEnv } from "@realentity/storm-shared";
 import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
@@ -49,9 +49,9 @@ export class WorkerWatchdog implements OnApplicationBootstrap, OnApplicationShut
     this.state = next;
     if (next === "down" && previous !== "down") {
       const since = heartbeat ? `last seen ${heartbeat.lastSeenAt.toISOString().replace("T", " ").slice(0, 16)} UTC` : "it hasn't started";
-      await this.notify(`⚠️ AI ME: the worker is down (${since}). Scheduled runs and approvals wait until it is back.`);
+      await this.notify(`⚠️ Storm: the worker is down (${since}). Scheduled runs and approvals wait until it is back.`);
     } else if (next === "up" && previous === "down") {
-      await this.notify("✅ AI ME: the worker is back.");
+      await this.notify("✅ Storm: the worker is back.");
     }
     return next;
   }

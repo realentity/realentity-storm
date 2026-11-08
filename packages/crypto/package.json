@@ -1,5 +1,5 @@
 {
-  "name": "@ai-me/crypto",
+  "name": "@realentity/storm-crypto",
   "version": "0.1.0",
   "private": true,
   "description": "Envelope encryption (AES-256-GCM) for stored credentials: seal, open, rewrap, key ring",
@@ -17,10 +17,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ai-me/shared": "workspace:*"
+    "@realentity/storm-shared": "workspace:*"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
     "@eslint/js": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",

@@ -1,4 +1,4 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import {
   type AppCheckView,
   type AppPreviewView,
@@ -8,8 +8,8 @@ import {
   type DraftTypeView,
   type EntityListView,
   type PipelineDetailView,
-} from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+} from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 

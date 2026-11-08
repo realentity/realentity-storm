@@ -1,8 +1,8 @@
-import { KeyRing, payloadHash, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@ai-me/llm";
-import { defaultCatalog, type EmailMessage } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, payloadHash, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
+import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -184,7 +184,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     };
     const sent = await connector.send(userId, outgoing);
     expect(sent.accepted).toEqual([OTHER_MAILBOX]);
-    // Never a reply to my own address: that answers mail I sent myself (AI ME's own messages).
+    // Never a reply to my own address: that answers mail I sent myself (Storm's own messages).
     await expect(connector.send(userId, { ...outgoing, to: MAILBOX.toUpperCase() })).rejects.toThrow(
       "Not sent: a reply to my own address",
     );
@@ -412,13 +412,13 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
 
     beforeAll(async () => {
       // A: waits 6 days. B: answered. C: too recent. D: to a no-reply address. E: already followed up once.
-      await put("Sent", { to: "ana@acme.test", subject: "Contract proposal", id: "<a1@aime.test>", date: ago(6) });
-      await put("Sent", { to: "bob@corp.test", subject: "Invoice question", id: "<b1@aime.test>", date: ago(8) });
-      await put("INBOX", { from: "bob@corp.test", subject: "Re: Invoice question", id: "<b2@corp.test>", inReplyTo: "<b1@aime.test>", references: ["<b1@aime.test>"], date: ago(7) });
-      await put("Sent", { to: "cat@x.test", subject: "Lunch?", id: "<c1@aime.test>", date: ago(2) });
-      await put("Sent", { to: "noreply@shop.test", subject: "Order 42", id: "<d1@aime.test>", date: ago(10) });
-      await put("Sent", { to: "eve@y.test", subject: "Quote", id: "<e1@aime.test>", date: ago(20) });
-      await put("Sent", { to: "eve@y.test", subject: "Re: Quote", id: "<e2@aime.test>", inReplyTo: "<e1@aime.test>", references: ["<e1@aime.test>"], date: ago(9) });
+      await put("Sent", { to: "ana@acme.test", subject: "Contract proposal", id: "<a1@storm.test>", date: ago(6) });
+      await put("Sent", { to: "bob@corp.test", subject: "Invoice question", id: "<b1@storm.test>", date: ago(8) });
+      await put("INBOX", { from: "bob@corp.test", subject: "Re: Invoice question", id: "<b2@corp.test>", inReplyTo: "<b1@storm.test>", references: ["<b1@storm.test>"], date: ago(7) });
+      await put("Sent", { to: "cat@x.test", subject: "Lunch?", id: "<c1@storm.test>", date: ago(2) });
+      await put("Sent", { to: "noreply@shop.test", subject: "Order 42", id: "<d1@storm.test>", date: ago(10) });
+      await put("Sent", { to: "eve@y.test", subject: "Quote", id: "<e1@storm.test>", date: ago(20) });
+      await put("Sent", { to: "eve@y.test", subject: "Re: Quote", id: "<e2@storm.test>", inReplyTo: "<e1@storm.test>", references: ["<e1@storm.test>"], date: ago(9) });
     });
 
     afterEach(async () => {
@@ -429,16 +429,16 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     it("finds only my unanswered emails, waiting long enough, once ever; a dry run doesn't remember", async () => {
       const dry = await awaiting(true);
       expect(dry.threads.map((t) => [t.to, t.subject, t.daysWaiting, t.followUps])).toEqual([["ana@acme.test", "Contract proposal", 6, 0]]);
-      expect(dry.threads[0]?.references).toEqual(["<a1@aime.test>"]);
+      expect(dry.threads[0]?.references).toEqual(["<a1@storm.test>"]);
 
-      expect((await awaiting()).threads.map((t) => t.message.messageId)).toEqual(["<a1@aime.test>"]);
-      expect(await db.client.followUp.findMany({ select: { messageId: true, to: true } })).toEqual([{ messageId: "<a1@aime.test>", to: "ana@acme.test" }]);
+      expect((await awaiting()).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
+      expect(await db.client.followUp.findMany({ select: { messageId: true, to: true } })).toEqual([{ messageId: "<a1@storm.test>", to: "ana@acme.test" }]);
       // Proposed once: rejected or not, it doesn't come back.
       expect((await awaiting()).threads).toEqual([]);
 
       // Two follow-ups in a row allowed: E's second is due.
       const more = await awaiting(true, { maxFollowUps: 2 });
-      expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@aime.test>", "<e2@aime.test>"]]]);
+      expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]]]);
     });
 
     it("the follow-ups pipeline: a draft in the thread, to whom my email went, waiting at the gate", async () => {
@@ -456,8 +456,8 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
           to: "ana@acme.test",
           subject: "Re: Contract proposal",
           body: "Hi Ana, did you have a chance to look at my proposal? Best",
-          inReplyTo: "<a1@aime.test>",
-          references: ["<a1@aime.test>"],
+          inReplyTo: "<a1@storm.test>",
+          references: ["<a1@storm.test>"],
         },
       ]);
       expect(llm.requests[0]?.system).toContain("an email I sent that got no answer");

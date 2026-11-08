@@ -1,5 +1,5 @@
-import { type Fact, type Question } from "@ai-me/db";
-import { factKey, type FactRequest, type FactView, type QuestionView } from "@ai-me/shared";
+import { type Fact, type Question } from "@realentity/storm-db";
+import { factKey, type FactRequest, type FactView, type QuestionView } from "@realentity/storm-shared";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 

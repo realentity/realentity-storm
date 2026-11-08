@@ -1,4 +1,4 @@
-import { type LoginRequest, type ServerEnv } from "@ai-me/shared";
+import { type LoginRequest, type ServerEnv } from "@realentity/storm-shared";
 import { Inject, Injectable, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { verify } from "argon2";
 import { authenticator } from "otplib";

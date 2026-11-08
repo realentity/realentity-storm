@@ -1,4 +1,4 @@
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import {
   EMBEDDING_DIMENSIONS,
   emptyUsage,
@@ -8,9 +8,9 @@ import {
   type Embeddings,
   type LlmBatches,
   type LlmUsage,
-} from "@ai-me/llm";
-import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+} from "@realentity/storm-llm";
+import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type z } from "zod";
@@ -54,7 +54,7 @@ const email = (i: number, subject: string, text: string): EmailMessage => ({
   from: `ana${i}@acme.test`,
   fromName: "Ana",
   replyTo: `ana${i}@acme.test`,
-  to: ["me@aime.test"],
+  to: ["me@storm.test"],
   cc: [],
   subject,
   date: "2026-10-31T08:00:00.000Z",

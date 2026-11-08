@@ -1,4 +1,4 @@
-import { SESSION_COOKIE } from "@ai-me/shared";
+import { SESSION_COOKIE } from "@realentity/storm-shared";
 import { type CanActivate, type ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { IS_PUBLIC, type AuthenticatedRequest } from "./public.decorator";

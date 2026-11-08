@@ -1,4 +1,4 @@
-import { type JsonSchema } from "@ai-me/shared";
+import { type JsonSchema } from "@realentity/storm-shared";
 
 /** Inputs whose text is long or code: a box, monospace for code. */
 const LONG = new Set(["instruction", "text", "body", "prompt", "content", "html", "message", "summary", "notes"]);

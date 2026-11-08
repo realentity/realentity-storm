@@ -1,7 +1,7 @@
 import { TELEGRAM_MAX_TEXT, type TelegramButton, type TelegramMessage } from "./telegram";
 
 /**
- * A proposal on the AI ME bot (M12-T4). Approve is offered only when the message holds the whole payload, and its
+ * A proposal on the Storm bot (M12-T4). Approve is offered only when the message holds the whole payload, and its
  * button carries the start of the payload's hash: a payload that changed since the message was sent isn't approved.
  */
 export interface ProposalForTelegram {
@@ -41,8 +41,8 @@ export function proposalMessage(proposal: ProposalForTelegram, options: { approv
   const item = proposal.itemIndex === null ? "" : ` (item ${proposal.itemIndex + 1})`;
   const header =
     proposal.gate === "gate.review"
-      ? `AI ME · ${proposal.pipeline}: pick what goes on${item}`
-      : `AI ME · ${proposal.pipeline}: approve ${proposal.stepType}${item}?\nTarget: ${proposal.target}`;
+      ? `Storm · ${proposal.pipeline}: pick what goes on${item}`
+      : `Storm · ${proposal.pipeline}: approve ${proposal.stepType}${item}?\nTarget: ${proposal.target}`;
   const text = `${header}\n\n${complete ? payload : `${payload.slice(0, MAX_PAYLOAD_TEXT)}…\n\n(Too long to show in full: open it to decide.)`}`;
 
   const row: TelegramButton[] = [];

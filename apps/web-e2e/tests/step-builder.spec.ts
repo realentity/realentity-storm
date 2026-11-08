@@ -153,7 +153,7 @@ test("table-growth.yaml built on cards compiles the same as the template", async
   const compile = async (source: string) =>
     (
       (await (await page.request.post("/api/pipelines/compile", { data: { source } })).json()) as {
-        result: { ok: boolean; definition: unknown };
+        result: { ok: boolean; definition: unknown; errors?: unknown[] };
       }
     ).result;
   const made = await compile(built);

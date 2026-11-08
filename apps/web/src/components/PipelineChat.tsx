@@ -1,4 +1,4 @@
-import { type BuilderChatView } from "@ai-me/shared";
+import { type BuilderChatView } from "@realentity/storm-shared";
 import { IconMessagePlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { api } from "../lib/endpoints";

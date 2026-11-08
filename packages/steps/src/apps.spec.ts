@@ -1,4 +1,4 @@
-import { AppDefinitionSchema, checkEntity, type AppDefinition, type CompileResult } from "@ai-me/shared";
+import { AppDefinitionSchema, checkEntity, type AppDefinition, type CompileResult } from "@realentity/storm-shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";

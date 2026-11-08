@@ -1,4 +1,4 @@
-import { type CompilePipelineResponse, type PipelineDetailView, type RunDetailView } from "@ai-me/shared";
+import { type CompilePipelineResponse, type PipelineDetailView, type RunDetailView } from "@realentity/storm-shared";
 import { IconArrowBackUp, IconChecks, IconDeviceFloppy, IconEye, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { parseDocument } from "yaml";

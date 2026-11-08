@@ -1,4 +1,4 @@
-import { CredentialKind, databaseConnection, type CredentialView } from "@ai-me/shared";
+import { CredentialKind, databaseConnection, type CredentialView } from "@realentity/storm-shared";
 import { IconKey, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
@@ -262,7 +262,7 @@ function ConnectionHint({ secret, hosts }: { secret: string; hosts?: string[] })
   if (!secret) {
     return (
       <div className="form-hint">
-        For <code>db.query</code>. Use a database user that may only read; AI ME reads in a read-only transaction either way.
+        For <code>db.query</code>. Use a database user that may only read; Storm reads in a read-only transaction either way.
       </div>
     );
   }

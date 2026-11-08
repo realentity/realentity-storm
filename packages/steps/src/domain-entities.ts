@@ -1,4 +1,4 @@
-import { type DataType } from "@ai-me/shared";
+import { type DataType } from "@realentity/storm-shared";
 import { type EntityContract } from "./catalog";
 
 /**

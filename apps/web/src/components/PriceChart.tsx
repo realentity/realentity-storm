@@ -1,4 +1,4 @@
-import { type PriceHistoryView } from "@ai-me/shared";
+import { type PriceHistoryView } from "@realentity/storm-shared";
 import { SeriesChart } from "./SeriesChart";
 
 /**

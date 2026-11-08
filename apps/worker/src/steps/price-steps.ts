@@ -1,6 +1,6 @@
-import { type DataEntity, type Prisma, type PrismaClient } from "@ai-me/db";
-import { entityItem, PRICE_WATCH_COLLECTION } from "@ai-me/shared";
-import { offerKey, parseShopLine } from "@ai-me/steps";
+import { type DataEntity, type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { entityItem, PRICE_WATCH_COLLECTION } from "@realentity/storm-shared";
+import { offerKey, parseShopLine } from "@realentity/storm-steps";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { appType } from "./entity-steps";
 

@@ -1,4 +1,4 @@
-import { KeyRing } from "@ai-me/crypto";
+import { KeyRing } from "@realentity/storm-crypto";
 import { Module } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { CredentialVault } from "./credential-vault";

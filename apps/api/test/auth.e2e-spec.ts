@@ -1,4 +1,4 @@
-import { SESSION_COOKIE } from "@ai-me/shared";
+import { SESSION_COOKIE } from "@realentity/storm-shared";
 import { authenticator } from "otplib";
 import request from "supertest";
 import { createTestApp, TEST_PASSWORD, type TestApp } from "./support/test-app";
@@ -53,7 +53,7 @@ describe("auth", () => {
     expect(cookie).toBeDefined();
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=Strict/i);
-    expect(response.body).toMatchObject({ email: "me@aime.test" });
+    expect(response.body).toMatchObject({ email: "me@storm.test" });
   });
 
   it("keeps the session until logout", async () => {

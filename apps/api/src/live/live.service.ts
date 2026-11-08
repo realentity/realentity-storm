@@ -1,5 +1,5 @@
-import { type CompiledDefinition, type LiveView, type LiveWindow, type ServerEnv, type TakeoverView } from "@ai-me/shared";
-import { StepCatalog } from "@ai-me/steps";
+import { type CompiledDefinition, type LiveView, type LiveWindow, type ServerEnv, type TakeoverView } from "@realentity/storm-shared";
+import { StepCatalog } from "@realentity/storm-steps";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { createReadStream, type ReadStream } from "node:fs";
 import { stat } from "node:fs/promises";

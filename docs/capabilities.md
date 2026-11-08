@@ -1,6 +1,6 @@
-# Capabilities: what AI ME can do, and every step type
+# Capabilities: what Storm can do, and every step type
 
-AI ME runs **pipelines**: short lists of steps, written in YAML (by hand, or by the pipeline builder from a chat
+Storm runs **pipelines**: short lists of steps, written in YAML (by hand, or by the pipeline builder from a chat
 message), that read things, think about them with the LLM, and act only after you approve. A pipeline can do only what
 its steps can do, and it can use only steps from the **step catalog** below. The LLM never invents new capabilities;
 a new capability is a new step written in code ([packages/steps/src/catalog.ts](../packages/steps/src/catalog.ts)
@@ -265,7 +265,7 @@ targets of a side effect. Webhook bodies, `flow.later` data, view rows and entit
 
 Each step lists what it does, its main inputs (defaults in brackets) and its outputs. Marks:
 
-- ⚡ **side effect**: sends or submits something outside AI ME; always behind a gate, never retried.
+- ⚡ **side effect**: sends or submits something outside Storm; always behind a gate, never retried.
 - 🧠 **LLM**: costs LLM tokens; the monthly budget applies.
 - 🖥️ **browser**: needs the self-hosted browser; not available in the multi-user product.
 
@@ -456,7 +456,7 @@ steps:
       method: POST
       url: https://api.github.com/repos/me/infra/issues
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
-      body: { title: "AI ME: {{trigger.pipeline}} failed", body: "{{trigger.summary}}", labels: [ai-me] }
+      body: { title: "Storm: {{trigger.pipeline}} failed", body: "{{trigger.summary}}", labels: [storm] }
 ```
 
 #### `db.query`
@@ -635,7 +635,7 @@ email is read once. Text only: attachments are listed, not downloaded.
 #### `email.classify` 🧠
 Like `llm.classify`, for emails. Each labelled email also emits an `email.classified` event, which can start other
 pipelines. An email nobody can answer (a no-reply sender such as `messaging-digest-noreply@linkedin.com`, or mail I
-sent to myself, like AI ME's own messages) is never kept for a reply: it is labelled skip without asking the LLM. This
+sent to myself, like Storm's own messages) is never kept for a reply: it is labelled skip without asking the LLM. This
 is on when `keep` has `reply`; set `answerable` to choose.
 - In: `messages`, `instruction`, `labels` [`reply`, `skip`], `keep` [`reply`], `answerable`.
 - Out: `kept`, `dropped`, `results`.

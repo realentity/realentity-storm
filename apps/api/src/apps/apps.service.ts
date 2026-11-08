@@ -1,4 +1,4 @@
-import { Prisma } from "@ai-me/db";
+import { Prisma } from "@realentity/storm-db";
 import {
   appMap,
   withCurrentNames,
@@ -27,8 +27,8 @@ import {
   type DraftTypeView,
   type EntityListView,
   type EntityQuery,
-} from "@ai-me/shared";
-import { diffApps, draftField, draftType, leafValues, PipelineCompiler, StepCatalog, type CompileContext } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { diffApps, draftField, draftType, leafValues, PipelineCompiler, StepCatalog, type CompileContext } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";

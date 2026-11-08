@@ -1,5 +1,5 @@
-import { createPrismaConnection } from "@ai-me/db";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection } from "@realentity/storm-db";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { readFile } from "node:fs/promises";
 import { type Server } from "node:http";
 import { type AddressInfo } from "node:net";
@@ -45,7 +45,7 @@ describe("live view through Caddy", () => {
     const db = createPrismaConnection();
     const { userId } = await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } });
     await db.close();
-    cookie = `aime_session=${(await api.app.get(SessionService).create(userId, {})).token}`;
+    cookie = `storm_session=${(await api.app.get(SessionService).create(userId, {})).token}`;
   });
 
   afterAll(async () => {
@@ -77,6 +77,6 @@ describe("live view through Caddy", () => {
     // The session check must answer an upgrade request too (it once hung: Node gave it to the api's upgrade listener).
     expect(await firstMessage({ origin: "https://storm.example", cookie })).toBe("RFB 003.008\n");
     await expect(firstMessage({ origin: "https://storm.example" })).rejects.toThrow("refused 401");
-    await expect(firstMessage({ cookie: "aime_session=forged" })).rejects.toThrow("refused 401");
+    await expect(firstMessage({ cookie: "storm_session=forged" })).rejects.toThrow("refused 401");
   });
 });

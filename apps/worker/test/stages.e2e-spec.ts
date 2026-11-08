@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { AppDefinitionSchema } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { AppDefinitionSchema } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { SaveStep } from "../src/steps/data-steps";
 import { ReadStep } from "../src/steps/entity-steps";

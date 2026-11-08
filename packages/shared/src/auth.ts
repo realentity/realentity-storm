@@ -12,4 +12,4 @@ export interface SessionView {
   expiresAt: string;
 }
 
-export const SESSION_COOKIE = "aime_session";
+export const SESSION_COOKIE = "storm_session";

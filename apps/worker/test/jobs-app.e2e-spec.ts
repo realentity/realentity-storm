@@ -1,7 +1,7 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
-import { defaultCatalog, type EmailMessage } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
+import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type z } from "zod";
@@ -36,7 +36,7 @@ const email = (from: string, subject: string, text: string): EmailMessage => ({
   from,
   fromName: null,
   replyTo: from,
-  to: ["ana@aime.test"],
+  to: ["ana@storm.test"],
   cc: [],
   subject,
   date: new Date().toISOString(),

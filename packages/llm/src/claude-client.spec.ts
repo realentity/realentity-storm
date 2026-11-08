@@ -1,4 +1,4 @@
-import { CLAUDE_MODELS } from "@ai-me/shared";
+import { CLAUDE_MODELS } from "@realentity/storm-shared";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { ClaudeClient, LlmError, usageOf } from "./claude-client";

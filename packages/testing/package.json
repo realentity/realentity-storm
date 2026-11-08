@@ -1,8 +1,8 @@
 {
-  "name": "@ai-me/testing",
+  "name": "@realentity/storm-testing",
   "version": "0.1.0",
   "private": true,
-  "description": "Integration-test infrastructure for AI ME: PostgreSQL with pgvector (Testcontainers or local), migrations, seed and the test environment",
+  "description": "Integration-test infrastructure for Storm: PostgreSQL with pgvector (Testcontainers or local), migrations, seed and the test environment",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -23,13 +23,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ai-me/db": "workspace:*",
+    "@realentity/storm-db": "workspace:*",
     "@testcontainers/postgresql": "catalog:",
     "pg": "catalog:",
     "testcontainers": "catalog:"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
     "@eslint/js": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",

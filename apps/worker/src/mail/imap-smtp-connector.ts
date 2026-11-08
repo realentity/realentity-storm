@@ -1,4 +1,4 @@
-import { type EmailMessage } from "@ai-me/steps";
+import { type EmailMessage } from "@realentity/storm-steps";
 import { ImapFlow, type FetchMessageObject, type MessageStructureObject } from "imapflow";
 import { simpleParser, type AddressObject } from "mailparser";
 import { createTransport } from "nodemailer";
@@ -126,7 +126,7 @@ export class ImapSmtpConnector implements MailConnector {
     const host = this.config.smtpHost;
     if (!host) throw new Error("Mail is not configured (SMTP_HOST)");
     const login = await this.login(userId, host);
-    // A reply to my own address answers mail I sent myself (AI ME's own messages): never sent.
+    // A reply to my own address answers mail I sent myself (Storm's own messages): never sent.
     if (mail.inReplyTo && mail.to.trim().toLowerCase() === login.user.trim().toLowerCase()) {
       throw new Error("Not sent: a reply to my own address (mail I sent myself)");
     }

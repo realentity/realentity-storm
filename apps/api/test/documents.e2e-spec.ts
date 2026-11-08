@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type DocumentView, type SettingsView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type DocumentView, type SettingsView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ describe("documents and profile", () => {
   let documentsDir: string;
 
   beforeAll(async () => {
-    documentsDir = await mkdtemp(join(tmpdir(), "aime-api-documents-"));
+    documentsDir = await mkdtemp(join(tmpdir(), "storm-api-documents-"));
     process.env.DOCUMENTS_DIR = documentsDir;
     api = await createTestApp();
     agent = await api.signedIn();
@@ -76,7 +76,7 @@ describe("documents and profile", () => {
   });
 
   it("other people's documents are not mine", async () => {
-    const other = await db.client.user.create({ data: { email: `other-${Date.now()}@aime.test` } });
+    const other = await db.client.user.create({ data: { email: `other-${Date.now()}@storm.test` } });
     try {
       const theirs = await db.client.document.create({
         data: { userId: other.userId, name: "cv-main", filename: "x.pdf", mime: "application/pdf", size: 1, sha256: "0".repeat(64), path: "x.pdf" },
@@ -90,7 +90,7 @@ describe("documents and profile", () => {
 
   it("keeps my profile for application forms; empty clears it", async () => {
     expect(((await agent.get("/api/settings").expect(200)).body as SettingsView).profile).toBe("");
-    const profile = "Ana Petrova · ana@aime.test · Sofia · notice period: 1 month";
+    const profile = "Ana Petrova · ana@storm.test · Sofia · notice period: 1 month";
     expect(((await agent.put("/api/settings").send({ profile }).expect(200)).body as SettingsView).profile).toBe(profile);
     expect((await db.client.userSetting.findUniqueOrThrow({ where: { userId } })).profile).toBe(profile);
     expect(((await agent.put("/api/settings").send({ profile: "  " }).expect(200)).body as SettingsView).profile).toBe("");

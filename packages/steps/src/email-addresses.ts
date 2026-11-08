@@ -2,7 +2,7 @@ import { type EmailMessage } from "./catalog";
 
 /**
  * Who can't be answered: an address nobody reads (no-reply, a mailer daemon, a bounce address), or mail I sent to
- * myself (AI ME's own messages, my notes). Replies to them are never drafted nor sent.
+ * myself (Storm's own messages, my notes). Replies to them are never drafted nor sent.
  */
 const NO_REPLY = /(^|[._+-])(no[._-]?reply|do[._-]?not[._-]?reply|mailer[._-]?daemon|postmaster|bounces?)([._+-]|$)|noreply|donotreply/i;
 

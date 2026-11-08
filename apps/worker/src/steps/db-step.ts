@@ -20,7 +20,7 @@ const TYPES = new TypeOverrides();
 TYPES.setTypeParser(20, (value: string) => (Number.isSafeInteger(Number(value)) ? Number(value) : value));
 
 const connect: Connect = (connectionString, timeoutMs) =>
-  new Client({ connectionString: readOnly(connectionString), connectionTimeoutMillis: timeoutMs, application_name: "ai-me db.query", types: TYPES });
+  new Client({ connectionString: readOnly(connectionString), connectionTimeoutMillis: timeoutMs, application_name: "storm db.query", types: TYPES });
 
 /**
  * Read-only from the first statement, whatever the role may do. Added to the URL's own `options` (a search_path, say):
@@ -66,7 +66,7 @@ export class DbQueryStep implements StepExecutor {
       // queryMode "extended": one statement even without parameters (the simple protocol would run "…; DROP TABLE x"
       // as two). pg supports it; its types don't list it yet.
       const query: QueryConfig & { queryMode: "extended" } = {
-        text: `SELECT * FROM (\n${body}\n) AS ai_me_query LIMIT ${maxRows + 1}`,
+        text: `SELECT * FROM (\n${body}\n) AS storm_query LIMIT ${maxRows + 1}`,
         values: params,
         queryMode: "extended",
       };

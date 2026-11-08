@@ -1,4 +1,4 @@
-import { type TargetView } from "@ai-me/shared";
+import { type TargetView } from "@realentity/storm-shared";
 import { describe, expect, it } from "vitest";
 import { formatDuration, formatUsd, statusLabel, statusTone } from "./format";
 import { changedFields, editableText, newTargets, readEdits } from "./payload";

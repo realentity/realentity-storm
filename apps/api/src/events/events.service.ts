@@ -1,5 +1,5 @@
-import { EventListener, publishEvent, type UserEvent } from "@ai-me/queue";
-import { EVENTS_PATH, SESSION_COOKIE, type AppEvent, type ServerEnv } from "@ai-me/shared";
+import { EventListener, publishEvent, type UserEvent } from "@realentity/storm-queue";
+import { EVENTS_PATH, SESSION_COOKIE, type AppEvent, type ServerEnv } from "@realentity/storm-shared";
 import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import { type IncomingMessage, type Server } from "node:http";

@@ -1,5 +1,5 @@
-import { KeyRing } from "@ai-me/crypto";
-import { createPrismaConnection } from "@ai-me/db";
+import { KeyRing } from "@realentity/storm-crypto";
+import { createPrismaConnection } from "@realentity/storm-db";
 import { config } from "dotenv";
 import { resolve } from "node:path";
 import { KeyRotation } from "../secrets/key-rotation";

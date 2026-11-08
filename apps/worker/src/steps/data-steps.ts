@@ -1,5 +1,5 @@
-import { type JobPosting, type JobPostingStatus, type Prisma, type PrismaClient } from "@ai-me/db";
-import { canonicalJson } from "@ai-me/shared";
+import { type JobPosting, type JobPostingStatus, type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { canonicalJson } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { matchesAll, valueAt, type Condition } from "./conditions";
 import { appType, saveEntities } from "./entity-steps";

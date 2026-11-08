@@ -1,4 +1,4 @@
-import { LoginSchema, SESSION_COOKIE, type LoginRequest, type ServerEnv, type SessionView } from "@ai-me/shared";
+import { LoginSchema, SESSION_COOKIE, type LoginRequest, type ServerEnv, type SessionView } from "@realentity/storm-shared";
 import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { type CookieOptions, type Request, type Response } from "express";

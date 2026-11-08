@@ -1,6 +1,6 @@
-import { type Fact, type Prisma, type PrismaClient } from "@ai-me/db";
-import { factKey, type CompiledDefinition } from "@ai-me/shared";
-import { type AgentAction, type FormField } from "@ai-me/steps";
+import { type Fact, type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { factKey, type CompiledDefinition } from "@realentity/storm-shared";
+import { type AgentAction, type FormField } from "@realentity/storm-steps";
 
 /** Facts a form step gets: the most used and newest first, enough for any form. */
 const MAX_FACTS = 100;

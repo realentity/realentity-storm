@@ -8,7 +8,7 @@ import {
   type BuilderDryRunResponse,
   type BuilderMessageRequest,
   type CreateBuilderChatRequest,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";

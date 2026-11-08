@@ -1,4 +1,4 @@
-import { AppDefinitionSchema, groupValue, listPageOf, viewPageOf } from "@ai-me/shared";
+import { AppDefinitionSchema, groupValue, listPageOf, viewPageOf } from "@realentity/storm-shared";
 
 const types = {
   Bill: {

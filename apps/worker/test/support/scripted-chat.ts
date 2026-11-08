@@ -1,4 +1,4 @@
-import { emptyUsage, type ChatBlock, type ChatRequest, type ChatResponse, type LlmChat } from "@ai-me/llm";
+import { emptyUsage, type ChatBlock, type ChatRequest, type ChatResponse, type LlmChat } from "@realentity/storm-llm";
 
 /** A move of the scripted agent: a tool and its input, worked out from the page it was last shown. */
 export type Move = (page: string) => { name: string; input: Record<string, unknown> } | { name: string; input: Record<string, unknown> }[];

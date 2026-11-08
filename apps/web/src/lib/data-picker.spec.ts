@@ -1,4 +1,4 @@
-import { AppDefinitionSchema, type JsonSchema, type RunDetailView, type StepTypeView } from "@ai-me/shared";
+import { AppDefinitionSchema, type JsonSchema, type RunDetailView, type StepTypeView } from "@realentity/storm-shared";
 import { describe, expect, it } from "vitest";
 import { fits, offersFor, outputsOf, withValue, type PickerContext } from "./data-picker";
 import { loosePipeline } from "./step-cards";

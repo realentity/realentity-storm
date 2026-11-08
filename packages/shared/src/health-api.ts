@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** A report from one of the server's jobs (M26): POST /hooks/health with the x-aime-health-token header. */
+/** A report from one of the server's jobs (M26): POST /hooks/health with the x-storm-health-token header. */
 export const HealthReportSchema = z
   .object({
     name: z.string().regex(/^[a-z0-9-]{1,40}$/, "lowercase letters, digits and -, e.g. backup"),

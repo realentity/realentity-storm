@@ -1,7 +1,7 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
-import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
+import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
 import { type z } from "zod";
@@ -191,7 +191,7 @@ describe("shop.product: watching a product page", () => {
       }),
     ]);
     expect(problems).toEqual([]);
-    expect(shop.requests.map((r) => r.agent)).toEqual([expect.stringMatching(/^AI-ME\//)]);
+    expect(shop.requests.map((r) => r.agent)).toEqual([expect.stringMatching(/^RealEntity-Storm\//)]);
     expect(llm.prompts).toHaveLength(0);
   });
 

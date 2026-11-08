@@ -1,9 +1,9 @@
-import { KeyRing } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
-import { TestEnvironment } from "@ai-me/testing";
-import { type TelegramMessage } from "@ai-me/shared";
-import { defaultCatalog, type Recipe } from "@ai-me/steps";
+import { KeyRing } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
+import { TestEnvironment } from "@realentity/storm-testing";
+import { type TelegramMessage } from "@realentity/storm-shared";
+import { defaultCatalog, type Recipe } from "@realentity/storm-steps";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,7 +78,7 @@ describe("recipes and job postings", () => {
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     sites = await startFixtureSites();
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-artifacts-"));
     pool = new BrowserPool({ invisible: true });
     const keys = KeyRing.fromEnv(process.env);
     const vault = new CredentialVault(db.client, keys);
@@ -207,7 +207,7 @@ steps:
     await db.client.siteRecipe.update({ where: { siteRecipeId: recipe.siteRecipeId }, data: { lastItemsAt: last } });
     for (let i = 0; i < 2; i++) expect((await run(SEARCH("cobol"))).status).toBe("DONE");
     expect(notified).toEqual([
-      `AI ME: recipe jobs.localhost/search has found nothing since ${last.toISOString().slice(0, 10)}: the site's "no results" page every time. ` +
+      `Storm: recipe jobs.localhost/search has found nothing since ${last.toISOString().slice(0, 10)}: the site's "no results" page every time. ` +
         "If the site changed, teach it again on the Recipes page; if there's just nothing new, ignore this.",
     ]);
     expect(await quiet()).toMatchObject({ quietToldAt: expect.any(Date) as unknown, lastItemsAt: last, brokenAt: null });

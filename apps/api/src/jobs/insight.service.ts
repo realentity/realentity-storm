@@ -1,6 +1,6 @@
-import { JobQueue } from "@ai-me/queue";
-import { OUTCOME_DATE, readAppSource, type ApplicationView, type FunnelRow, type InsightView, type UpdateApplicationRequest } from "@ai-me/shared";
-import { contractProblems, JOB_ENTITY } from "@ai-me/steps";
+import { JobQueue } from "@realentity/storm-queue";
+import { OUTCOME_DATE, readAppSource, type ApplicationView, type FunnelRow, type InsightView, type UpdateApplicationRequest } from "@realentity/storm-shared";
+import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 

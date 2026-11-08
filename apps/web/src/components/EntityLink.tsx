@@ -1,4 +1,4 @@
-import { fieldOf, safeLink, type ViewRow } from "@ai-me/shared";
+import { fieldOf, safeLink, type ViewRow } from "@realentity/storm-shared";
 import { IconExternalLink } from "@tabler/icons-react";
 
 /** An entity's address (its type's first url field, M31), as an icon that opens it: http(s) only. */

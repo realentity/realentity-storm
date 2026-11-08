@@ -1,6 +1,6 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { ModelRouter, type LlmClient } from "@ai-me/llm";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { ModelRouter, type LlmClient } from "@realentity/storm-llm";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

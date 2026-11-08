@@ -70,7 +70,7 @@ export const ServerEnvSchema = z
     DOWNLOAD_MAX_MB: z.coerce.number().int().min(1).max(500).default(25),
 
     /**
-     * The AI ME bot (M12): its messages go to this chat only, my private chat with it, whose id is my Telegram user
+     * The Storm bot (M12): its messages go to this chat only, my private chat with it, whose id is my Telegram user
      * id; commands and buttons are taken only from it.
      */
     TELEGRAM_BOT_TOKEN: optional(z.string().regex(/^\d+:[\w-]{30,}$/, "a bot token from @BotFather (123456:ABC...)")),
@@ -82,7 +82,7 @@ export const ServerEnvSchema = z
     TELEGRAM_WEBHOOK_SECRET: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
     /** What the server's own jobs send with their reports (POST /hooks/health, M26). */
     HEALTH_REPORT_TOKEN: optional(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "32 to 256 of A-Z a-z 0-9 _ -: openssl rand -hex 32")),
-    /** The public address of the webhooks, e.g. https://hooks.example.com/aime; shown on the pipeline page. */
+    /** The public address of the webhooks, e.g. https://hooks.example.com/storm; shown on the pipeline page. */
     HOOKS_PUBLIC_URL: optional(z.url({ protocol: /^https$/ }).transform((url) => url.replace(/\/+$/, ""))),
 
     /**

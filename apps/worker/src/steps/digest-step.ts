@@ -1,4 +1,4 @@
-import { llmSpendSince, type PrismaClient } from "@ai-me/db";
+import { llmSpendSince, type PrismaClient } from "@realentity/storm-db";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { RunControls } from "../runner/run-controls";
 
@@ -40,7 +40,7 @@ export class DigestStep implements StepExecutor {
   }
 
   /** The digest's text; `ownRunId`: the run sending it, left out of its runs. */
-  async compose(userId: string, hours: number, ownRunId: string | null, now = new Date(), title = `AI ME · last ${hours} h`): Promise<string> {
+  async compose(userId: string, hours: number, ownRunId: string | null, now = new Date(), title = `Storm · last ${hours} h`): Promise<string> {
     const since = new Date(now.getTime() - hours * 60 * 60 * 1000);
     const runs = await this.prisma.run.findMany({
       where: { userId, startedAt: { gte: since }, ...(ownRunId ? { runId: { not: ownRunId } } : {}) },

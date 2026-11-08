@@ -1,6 +1,6 @@
-import { type PrismaClient } from "@ai-me/db";
-import { hostMatches } from "@ai-me/shared";
-import { type FormFile } from "@ai-me/steps";
+import { type PrismaClient } from "@realentity/storm-db";
+import { hostMatches } from "@realentity/storm-shared";
+import { type FormFile } from "@realentity/storm-steps";
 import { execFile } from "node:child_process";
 import { type Page } from "playwright";
 import { hostOf, SendGuard } from "../browser/agent-page";

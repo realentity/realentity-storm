@@ -1,4 +1,4 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { STALE_MS, WorkerWatchdog } from "../src/health/worker-watchdog";
 import { createTestApp, type TestApp } from "./support/test-app";
 

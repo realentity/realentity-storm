@@ -1,7 +1,7 @@
-import { type Prisma, type PrismaClient } from "@ai-me/db";
-import { emptyUsage, type LlmBatches, type ModelRouter } from "@ai-me/llm";
-import { RULE_STEP_TYPES } from "@ai-me/shared";
-import { type StepCatalog } from "@ai-me/steps";
+import { type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { emptyUsage, type LlmBatches, type ModelRouter } from "@realentity/storm-llm";
+import { RULE_STEP_TYPES } from "@realentity/storm-shared";
+import { type StepCatalog } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { z } from "zod";
 import { type EventSink } from "../runner/pipeline-runner";

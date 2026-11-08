@@ -1,4 +1,4 @@
-import { type DataRecord } from "@ai-me/db";
+import { type DataRecord } from "@realentity/storm-db";
 import {
   CHART_SERIES,
   fieldOf,
@@ -14,7 +14,7 @@ import {
   type ViewQuery,
   type ViewRow,
   type ViewRowView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";

@@ -1,4 +1,4 @@
-import { TRIGGER_EVENTS, type Trigger } from "@ai-me/shared";
+import { TRIGGER_EVENTS, type Trigger } from "@realentity/storm-shared";
 import { exampleTriggerData, triggerDataSchema } from "./triggers";
 
 describe("example trigger data for dry runs", () => {

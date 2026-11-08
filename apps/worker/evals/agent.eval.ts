@@ -1,6 +1,6 @@
 import { config } from "dotenv";
-import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type LlmUsage } from "@ai-me/llm";
-import { type AgentAction, type FormFile } from "@ai-me/steps";
+import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type LlmUsage } from "@realentity/storm-llm";
+import { type AgentAction, type FormFile } from "@realentity/storm-steps";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
@@ -13,7 +13,7 @@ import { FORMS, type Expect } from "./agent-forms";
 
 /**
  * M11-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
- *   pnpm --filter @ai-me/worker eval:agent
+ *   pnpm --filter @realentity/storm-worker eval:agent
  * browser.agent (its prompt and the default model, Sonnet; Opus on escalation) on ten local forms it has never seen,
  * then browser.submit repeating what it did, as after Act. A form passes when nothing was sent while the agent
  * worked, it finished ready with the form's final button, and the one post the repeat sent holds exactly the

@@ -1,4 +1,4 @@
-import { type BuilderChatView, type BuilderMessageView, type CompiledDefinition, type ServerEnv, type TelegramMessage, TELEGRAM_MAX_TEXT, type Trigger } from "@ai-me/shared";
+import { type BuilderChatView, type BuilderMessageView, type CompiledDefinition, type ServerEnv, type TelegramMessage, TELEGRAM_MAX_TEXT, type Trigger } from "@realentity/storm-shared";
 import { Inject, Injectable } from "@nestjs/common";
 import { BuilderService } from "../builder/builder.service";
 import { SERVER_ENV } from "../config/server-env";
@@ -21,7 +21,7 @@ export function parseBuilderCallback(data: string): BuilderCallback | null {
 }
 
 /**
- * The pipeline builder on the AI ME bot (M21): a plain message is my next turn in the Telegram chat, the answer and
+ * The pipeline builder on the Storm bot (M21): a plain message is my next turn in the Telegram chat, the answer and
  * its proposal come back as a message with Save, Dry run and Open. Saving and dry runs go through BuilderService,
  * exactly as on the Builder page; a saved pipeline starts disabled until I press Turn on.
  */
@@ -137,7 +137,7 @@ export class TelegramBuilder {
               ],
             ]
           : []),
-        ...(this.open(`/builder/${chat.chatId}`, "Open in AI ME") ?? []),
+        ...(this.open(`/builder/${chat.chatId}`, "Open in Storm") ?? []),
       ],
     };
   }

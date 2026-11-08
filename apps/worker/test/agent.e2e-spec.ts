@@ -1,9 +1,9 @@
-import { payloadHash, KeyRing } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
-import { ModelRouter } from "@ai-me/llm";
-import { factKey } from "@ai-me/shared";
-import { defaultCatalog, type AgentAction, type FormFile } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { payloadHash, KeyRing } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
+import { ModelRouter } from "@realentity/storm-llm";
+import { factKey } from "@realentity/storm-shared";
+import { defaultCatalog, type AgentAction, type FormFile } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,13 +26,13 @@ import { createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
-const PROFILE = "Ana Petrova · ana@aime.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
+const PROFILE = "Ana Petrova · ana@storm.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
 const CV = Buffer.from("%PDF-1.4\n% Ana Petrova CV fixture\n%%EOF\n");
 
 /** Up to the filled form: the dialog opened, name and email typed (in one turn), Sofia picked, my CV chosen, consent ticked. */
 const FILL: Move[] = [
   click("button", /Apply for this role/),
-  (page) => [type(/Full name/, "Ana Petrova")(page) as never, type(/Email/, "ana@aime.test")(page) as never],
+  (page) => [type(/Full name/, "Ana Petrova")(page) as never, type(/Email/, "ana@storm.test")(page) as never],
   click("combobox", /Where are you based/),
   click("option", /^Sofia$/),
   (page) => ({ name: "attach", input: { ref: ref(page, "file", /Upload CV/), document: "cv-main" } }),
@@ -50,15 +50,15 @@ describe("browser agent", () => {
   let pool: BrowserPool;
   let runner: PipelineRunner;
   const chat = new ScriptedChat();
-  /** What the AI ME bot sent: the agent's questions (M18-T1). */
+  /** What the Storm bot sent: the agent's questions (M18-T1). */
   const telegram: string[] = [];
 
   beforeAll(async () => {
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     sites = await startFixtureSites();
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
-    documentsDir = await mkdtemp(join(tmpdir(), "aime-documents-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-artifacts-"));
+    documentsDir = await mkdtemp(join(tmpdir(), "storm-documents-"));
     pool = new BrowserPool({ invisible: true });
     const keys = KeyRing.fromEnv(process.env);
     const vault = new CredentialVault(db.client, keys);
@@ -74,7 +74,7 @@ describe("browser agent", () => {
       telegram.push((JSON.parse(init?.body ?? "{}") as { text: string }).text);
       return Promise.resolve(new Response(JSON.stringify({ ok: true, result: { message_id: 9000 + telegram.length } })));
     };
-    const asker = new Asker(db.client, { botToken: "123:abc", chatId: "42" }, "https://aime.test", sendTelegram as unknown as typeof fetch);
+    const asker = new Asker(db.client, { botToken: "123:abc", chatId: "42" }, "https://storm.test", sendTelegram as unknown as typeof fetch);
     const router = new ModelRouter(() => Promise.resolve(null));
     const executors = new ExecutorRegistry([new BrowserAgentStep({ ...deps, chat, router, facts: new Facts(db.client), asker }), new BrowserSubmitStep(deps)]);
     const desk = new TakeoverDesk(db.client, () => Promise.resolve(), { timeoutMs: 10_000, pollMs: 100 });
@@ -179,7 +179,7 @@ steps:
     expect(output.actions.map((a) => [a.kind, "target" in a ? a.target.name : a.url, "value" in a ? a.value : "document" in a ? a.document : null])).toEqual([
       ["click", "Apply for this role", null],
       ["type", "Full name", "Ana Petrova"],
-      ["type", "Email", "ana@aime.test"],
+      ["type", "Email", "ana@storm.test"],
       ["click", "Where are you based?", null],
       ["click", "Sofia", null],
       ["attach", "Upload CV", "cv-main"],
@@ -213,7 +213,7 @@ steps:
     const proposal = await db.client.proposal.findFirstOrThrow({ where: { runId } });
     await approve(proposal, (p) => {
       const typed = (p.actions as AgentAction[]).find((a) => a.kind === "type" && a.target.name === "Email") as { value: string };
-      typed.value = "ana.petrova@aime.test";
+      typed.value = "ana.petrova@storm.test";
       return p;
     });
     const advancing = runner.advance(runId);
@@ -235,7 +235,7 @@ steps:
     expect(sentForm).toHaveLength(1);
     const part = (name: string) => new RegExp(`name="${name}"(?:; filename="[^"]*")?\\r\\n(?:Content-Type: [^\\r]*\\r\\n)?\\r\\n([\\s\\S]*?)\\r\\n--`).exec(sentForm[0].body)?.[1];
     expect(part("fullName")).toBe("Ana Petrova");
-    expect(part("mail")).toBe("ana.petrova@aime.test");
+    expect(part("mail")).toBe("ana.petrova@storm.test");
     expect(part("city")).toBe("Sofia");
     expect(part("consent")).toBe("on");
     expect(sentForm[0].body).toContain('name="cv"; filename="Ana Petrova CV.pdf"');
@@ -397,7 +397,7 @@ steps:
       await done();
       expect(status).toBe("WAITING_FOR_USER");
 
-      expect(telegram).toEqual([expect.stringMatching(/^AI ME asks \(a form on careers\.localhost\): Earliest start date\n/) as unknown]);
+      expect(telegram).toEqual([expect.stringMatching(/^Storm asks \(a form on careers\.localhost\): Earliest start date\n/) as unknown]);
       expect(await db.client.question.findFirstOrThrow({ where: { runId } })).toMatchObject({ status: "ANSWERED", stepKey: "agent", site: "careers.localhost" });
       expect(await db.client.fact.findFirstOrThrow()).toMatchObject({ question: "Earliest start date", answer: "1 March 2027", source: "ASKED" });
       expect(chat.results().some((r) => r.startsWith('My answer: "1 March 2027". Put it in the field, source asked.'))).toBe(true);

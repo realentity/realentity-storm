@@ -1,6 +1,6 @@
-import { type Prisma } from "@ai-me/db";
-import { checkEntity, PRICE_WATCH_COLLECTION, readAppSource, type AppImportRequest, type AppDefinition, type AppImportResult, type AppImportView } from "@ai-me/shared";
-import { BILL_ENTITY, billValue, contractProblems, JOB_ENTITY, OFFER_ENTITY, offerKey, PRODUCT_ENTITY, type EntityContract } from "@ai-me/steps";
+import { type Prisma } from "@realentity/storm-db";
+import { checkEntity, PRICE_WATCH_COLLECTION, readAppSource, type AppImportRequest, type AppDefinition, type AppImportResult, type AppImportView } from "@realentity/storm-shared";
+import { BILL_ENTITY, billValue, contractProblems, JOB_ENTITY, OFFER_ENTITY, offerKey, PRODUCT_ENTITY, type EntityContract } from "@realentity/storm-steps";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 

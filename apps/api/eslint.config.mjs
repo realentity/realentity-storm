@@ -1,4 +1,4 @@
-import { nodeConfig } from "@ai-me/config/eslint/base.mjs";
+import { nodeConfig } from "@realentity/storm-config/eslint/base.mjs";
 
 export default [
   ...nodeConfig(import.meta.dirname),
@@ -8,7 +8,7 @@ export default [
     rules: {
       "no-restricted-imports": [
         "error",
-        { paths: [{ name: "@ai-me/crypto", importNames: ["open", "rewrap"], message: "Only the worker decrypts credentials (README §7)." }] },
+        { paths: [{ name: "@realentity/storm-crypto", importNames: ["open", "rewrap"], message: "Only the worker decrypts credentials (README §7)." }] },
       ],
     },
   },

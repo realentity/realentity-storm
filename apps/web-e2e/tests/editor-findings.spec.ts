@@ -1,4 +1,4 @@
-import { type AppDetailView } from "@ai-me/shared";
+import { type AppDetailView } from "@realentity/storm-shared";
 import { expect, test, type Page } from "@playwright/test";
 import { createPipeline, startRun, unique } from "./support";
 

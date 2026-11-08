@@ -1,4 +1,4 @@
-import { Prisma, type WatchedOffer, type WatchedProduct } from "@ai-me/db";
+import { Prisma, type WatchedOffer, type WatchedProduct } from "@realentity/storm-db";
 import {
   type CompiledDefinition,
   type PipelineDetailView,
@@ -9,7 +9,7 @@ import {
   type PriceHistoryView,
   type WatchedOfferView,
   type WatchedProductView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { type z } from "zod";
 import { PrismaService } from "../database/prisma.service";

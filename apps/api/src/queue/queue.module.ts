@@ -1,5 +1,5 @@
-import { JobQueue } from "@ai-me/queue";
-import { type ServerEnv } from "@ai-me/shared";
+import { JobQueue } from "@realentity/storm-queue";
+import { type ServerEnv } from "@realentity/storm-shared";
 import { Global, Inject, Injectable, Logger, Module, type OnModuleDestroy } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 

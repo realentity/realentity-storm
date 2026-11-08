@@ -15,6 +15,6 @@ steps:
         Authorization: "Bearer {{cred:github}}"
         Accept: application/vnd.github+json
       body:
-        title: "AI ME: {{trigger.pipeline}} failed"
+        title: "Storm: {{trigger.pipeline}} failed"
         body: "{{trigger.summary}}\n\nRun {{trigger.runId}}"
-        labels: [ai-me]
+        labels: [storm]

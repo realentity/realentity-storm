@@ -30,7 +30,7 @@ export class JobQueue {
     const boss = new PgBoss({
       connectionString: options.connectionString,
       schema: SCHEMA,
-      application_name: `ai-me-${options.role}`,
+      application_name: `storm-${options.role}`,
       max: worker ? 4 : 2,
       schedule: worker,
       supervise: worker,

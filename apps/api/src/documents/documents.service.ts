@@ -1,5 +1,5 @@
-import { type Document } from "@ai-me/db";
-import { DOCUMENT_NAME_PATTERN, type DocumentView, type ServerEnv } from "@ai-me/shared";
+import { type Document } from "@realentity/storm-db";
+import { DOCUMENT_NAME_PATTERN, type DocumentView, type ServerEnv } from "@realentity/storm-shared";
 import { BadRequestException, Inject, Injectable, NotFoundException, PayloadTooLargeException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, type ReadStream } from "node:fs";

@@ -1,4 +1,4 @@
-import { defaultCatalog } from "@ai-me/steps";
+import { defaultCatalog } from "@realentity/storm-steps";
 import { MapStep } from "./map-alert-steps";
 
 const FORECAST = { hourly: { time: ["2026-11-03T14:00", "2026-11-03T15:00", "2026-11-03T16:00"], temperature_2m: [12.1, 9.4, 9.8] } };

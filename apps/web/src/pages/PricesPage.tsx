@@ -1,4 +1,4 @@
-import { type PriceHistoryView, type PricesStatusView, type WatchedProductRequest, type WatchedProductView } from "@ai-me/shared";
+import { type PriceHistoryView, type PricesStatusView, type WatchedProductRequest, type WatchedProductView } from "@realentity/storm-shared";
 import { IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

@@ -1,4 +1,4 @@
-import { checkAppSource, listPageOf, viewPageOf } from "@ai-me/shared";
+import { checkAppSource, listPageOf, viewPageOf } from "@realentity/storm-shared";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

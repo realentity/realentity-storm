@@ -1,4 +1,4 @@
-import { canonicalJson } from "@ai-me/shared";
+import { canonicalJson } from "@realentity/storm-shared";
 import { createHash } from "node:crypto";
 
 /** SHA-256 (hex) of a payload's canonical JSON: what I approved is exactly what the worker may execute. */

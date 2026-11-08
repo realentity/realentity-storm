@@ -1,5 +1,5 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { definitionToSource, type PipelineDetailView } from "@ai-me/shared";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { definitionToSource, type PipelineDetailView } from "@realentity/storm-shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type request from "supertest";

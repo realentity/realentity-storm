@@ -1,4 +1,4 @@
-import { type PipelineDetailView } from "@ai-me/shared";
+import { type PipelineDetailView } from "@realentity/storm-shared";
 import { IconEye, IconLayoutList, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

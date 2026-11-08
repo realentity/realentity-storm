@@ -1,5 +1,5 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { type AppDetailView, type BundleCheckView, type BundleExportView, type PipelineDetailView } from "@ai-me/shared";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { type AppDetailView, type BundleCheckView, type BundleExportView, type PipelineDetailView } from "@realentity/storm-shared";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 

@@ -1,15 +1,15 @@
 import { config } from "dotenv";
-import { readAppSource } from "@ai-me/shared";
-import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type ChatMessage, type LlmUsage } from "@ai-me/llm";
-import { definitionToSource, type CompiledDefinition } from "@ai-me/shared";
-import { defaultCatalog, diffDefinitions, PipelineCompiler } from "@ai-me/steps";
+import { readAppSource } from "@realentity/storm-shared";
+import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type ChatMessage, type LlmUsage } from "@realentity/storm-llm";
+import { definitionToSource, type CompiledDefinition } from "@realentity/storm-shared";
+import { defaultCatalog, diffDefinitions, PipelineCompiler } from "@realentity/storm-steps";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Builder, type TurnResult } from "../src/builder/builder";
 
 /**
  * M7-V1 (README test strategy: LLM eval with the real Claude API, run by hand):
- *   pnpm --filter @ai-me/api eval:builder
+ *   pnpm --filter @realentity/storm-api eval:builder
  * The builder (its prompt, tools and model) recreates the hand-written pipelines from a plain description of what
  * they do, and the result must be equivalent: same trigger, steps, fan-out, gates, recipient provenance and limits.
  * Also: an edit in a pipeline's chat changes only what I asked (M7-T3), and a request the catalog can't serve yet is

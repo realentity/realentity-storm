@@ -1,7 +1,7 @@
 # M29: every hour, the next 12 hours of Sofia's forecast from Open-Meteo (free, no key). An email once when it will
 # drop below 10°, and once more when it is back at 12° or over: data.alert remembers between runs, so a cold
 # evening is one email, not one an hour. Another place: its latitude and longitude in the url, and its name in
-# `place`. The email waits for my approval at its gate like every email AI ME sends; set `to` to my address.
+# `place`. The email waits for my approval at its gate like every email Storm sends; set `to` to my address.
 name: Cold weather
 description: An email when the next 12 hours in Sofia drop below 10°, and when they are back over 12°.
 trigger: { schedule: "0 * * * *", tz: Europe/Sofia }

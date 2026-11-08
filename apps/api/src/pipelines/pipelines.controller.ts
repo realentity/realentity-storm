@@ -12,7 +12,7 @@ import {
   type PipelineSummaryView,
   type PipelineVersionView,
   type UpdatePipelineRequest,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";

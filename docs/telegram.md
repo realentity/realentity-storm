@@ -1,6 +1,6 @@
-# Telegram: what the AI ME bot does and what you can do with it
+# Telegram: what the Storm bot does and what you can do with it
 
-AI ME has its own Telegram bot. It does three jobs:
+Storm has its own Telegram bot. It does three jobs:
 
 1. **It tells you things**: proposals waiting for approval, runs that need you, questions only you can answer,
    alerts, and a brief every morning, a digest every evening and a review every week.
@@ -18,7 +18,7 @@ It talks only to you. Anything from another user, a group chat, or a forwarded c
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | The bot's token from @BotFather |
 | `TELEGRAM_CHAT_ID` | **Your Telegram user id**. In a private chat with the bot this is also the chat id |
-| `TELEGRAM_WEBHOOK_SECRET` | The `secret_token` the webhook was registered with. It must match the hooks-gateway's `TELEGRAM_AIME_WEBHOOK_SECRET` |
+| `TELEGRAM_WEBHOOK_SECRET` | The `secret_token` the webhook was registered with. It must match the hooks-gateway's `TELEGRAM_STORM_WEBHOOK_SECRET` |
 
 Without the token and chat id, nothing is sent and the bot ignores all messages. Pipelines still run.
 
@@ -77,7 +77,7 @@ Bot:  Kill switch: off
       • Release watch: SUCCEEDED (telegram, 2026-11-02 08:14 UTC)
       • Daily digest: SUCCEEDED (schedule, 2026-11-01 17:00 UTC)
       • Price watch: FAILED (schedule, 2026-11-01 08:00 UTC)
-      [Open AI ME]
+      [Open Storm]
 ```
 
 ```
@@ -98,7 +98,7 @@ When a run reaches a gate (`gate.act` or `gate.review`), each new proposal arriv
 produces more than 5 at once, you get a single message with a link to the inbox. Dry runs never notify.
 
 ```
-Bot:  AI ME · Application replies: approve email.send?
+Bot:  Storm · Application replies: approve email.send?
       Target: hr@example.com
 
       to: hr@example.com
@@ -108,29 +108,29 @@ Bot:  AI ME · Application replies: approve email.send?
       [Approve] [Reject] [Open]
 ```
 
-When you decide, whether here, in AI ME or anywhere else, the message is edited to show the outcome and its buttons
+When you decide, whether here, in Storm or anywhere else, the message is edited to show the outcome and its buttons
 are removed.
 
 **Approve** appears, and works, only when all of these are true:
 - the message shows the whole payload (not cut off for length),
-- it is a `gate.act` proposal (for `gate.review` you pick items in AI ME),
+- it is a `gate.act` proposal (for `gate.review` you pick items in Storm),
 - the proposal is still waiting,
 - the payload hasn't changed since the message was sent (the button carries its hash),
-- nothing new is targeted (a new target must be approved in AI ME).
+- nothing new is targeted (a new target must be approved in Storm).
 
-If any of these fails, the button says why and you open the proposal in AI ME instead. **Reject** always works on a
+If any of these fails, the button says why and you open the proposal in Storm instead. **Reject** always works on a
 waiting `gate.act` proposal.
 
-### 3.2 "AI ME needs you": takeovers
+### 3.2 "Storm needs you": takeovers
 
 A browser step that hits a CAPTCHA, a 2FA prompt, a failed sign-in or a missing element waits with the page open:
 
 ```
-Bot:  AI ME needs you: CAPTCHA at apply (jobs.example.com).
+Bot:  Storm needs you: CAPTCHA at apply (jobs.example.com).
       [Open the live view]
 ```
 
-Open the live view, solve it, then press Continue (or Abort) in AI ME. If nobody responds within
+Open the live view, solve it, then press Continue (or Abort) in Storm. If nobody responds within
 `TAKEOVER_TIMEOUT_MINUTES`, the step fails.
 
 ### 3.3 Questions: reply to answer
@@ -138,9 +138,9 @@ Open the live view, solve it, then press Continue (or Abort) in AI ME. If nobody
 When a form asks something that neither your profile nor your facts answer, the run asks you:
 
 ```
-Bot:  AI ME asks (a form on jobs.example.com): What is your notice period?
+Bot:  Storm asks (a form on jobs.example.com): What is your notice period?
       Reply to this message with your answer. It's kept as a fact, so the next form won't ask again.
-      [Answer on AI ME]
+      [Answer on Storm]
 
 You:  (reply to that message) 1 month
 Bot:  Thanks: "What is your notice period?" is 1 month. Kept for the next forms; the run goes on.
@@ -188,7 +188,7 @@ Bot:  Here's a pipeline that reads the front page daily and messages you only wh
 
       (/new starts over)
       [Save] [Dry run]
-      [Open in AI ME]
+      [Open in Storm]
 ```
 
 Then:
@@ -204,7 +204,7 @@ Editing an existing pipeline:
 You:  /edit price watch
 Bot:  Talking about Price watch v3: what should change?
 You:  Also tell me when something becomes more expensive by more than 10%.
-Bot:  … [Save as v4] [Dry run] [Open in AI ME]
+Bot:  … [Save as v4] [Dry run] [Open in Storm]
 ```
 
 If the builder's last attempt didn't compile, the answer lists the errors. If it refuses (busy, no API key, cost
@@ -297,10 +297,10 @@ Other pipelines that use Telegram: [release-watch.yaml](../pipelines/release-wat
 - **Only you.** Messages from other users, groups or channels are ignored without a reply.
 - **It doesn't act on its own from the chat.** Side effects still go through gates. Telegram can approve only
   complete, unchanged proposals whose targets you've approved before.
-- **Message length:** Telegram's limit is 4096 characters. Longer proposals are cut off and must be decided in AI ME.
+- **Message length:** Telegram's limit is 4096 characters. Longer proposals are cut off and must be decided in Storm.
   Longer builder answers are truncated.
 - **No images, files or voice.** It handles text only.
-- **Item picking (`gate.review`) is done in AI ME**, not in the chat.
+- **Item picking (`gate.review`) is done in Storm**, not in the chat.
 - **Late commands are dropped** (older than 5 minutes). Button presses and replies are still handled.
 
 ## 7. Troubleshooting
@@ -311,5 +311,5 @@ Other pipelines that use Telegram: [release-watch.yaml](../pipelines/release-wat
 | Notifications arrive, but the bot doesn't respond | The webhook isn't set up, or `TELEGRAM_WEBHOOK_SECRET` doesn't match the gateway (`forwarded: 404` in its log) |
 | The gateway forwarded (`forwarded: 200`) but the bot is silent | `TELEGRAM_CHAT_ID` isn't your user id |
 | No Approve button | The payload was too long, it's a `gate.review`, or *Approve on Telegram* is off |
-| "It changed since this message" | The payload was edited after the message was sent: decide in AI ME |
+| "It changed since this message" | The payload was edited after the message was sent: decide in Storm |
 | A reply to a question went to the builder | It was a new message, not a Telegram *reply* to the question |

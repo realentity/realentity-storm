@@ -1,6 +1,6 @@
-import { type KeyRing, open } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
-import { GOOGLE_CALENDAR_API, refreshGoogleToken } from "@ai-me/shared";
+import { type KeyRing, open } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
+import { GOOGLE_CALENDAR_API, refreshGoogleToken } from "@realentity/storm-shared";
 
 export interface GoogleOptions {
   clientId?: string;
@@ -51,11 +51,11 @@ export class GoogleConnection {
       if (response.status === 401) {
         this.tokens.delete(userId);
         if (attempt === 1) continue;
-        throw await this.broken(userId, "Google no longer accepts AI ME's access");
+        throw await this.broken(userId, "Google no longer accepts Storm's access");
       }
       const json = (await response.json().catch(() => ({}))) as T & { error?: { message?: string; status?: string } };
       if (response.status === 403 && /insufficient|scope/i.test(json.error?.status ?? json.error?.message ?? "")) {
-        throw await this.broken(userId, "AI ME's access doesn't include the calendar");
+        throw await this.broken(userId, "Storm's access doesn't include the calendar");
       }
       if (response.status >= 400 && response.status !== 409) {
         throw new Error(`Google Calendar answered ${response.status}${json.error?.message ? `: ${json.error.message}` : ""}`);

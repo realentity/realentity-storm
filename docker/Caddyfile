@@ -1,4 +1,4 @@
-# AI ME's front door inside Docker: the web app, and /api (REST and the live events WebSocket) to the api.
+# Storm's front door inside Docker: the web app, and /api (REST and the live events WebSocket) to the api.
 # Plain HTTP on 127.0.0.1 only; on the server, `tailscale serve` adds HTTPS and publishes it to the tailnet (port 8100).
 {
 	admin off

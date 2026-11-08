@@ -1,7 +1,7 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { publishEvent } from "@ai-me/queue";
-import { EVENTS_PATH, type AppEvent } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { publishEvent } from "@realentity/storm-queue";
+import { EVENTS_PATH, type AppEvent } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { type Server } from "node:http";
 import { type AddressInfo } from "node:net";
 import request from "supertest";
@@ -42,7 +42,7 @@ describe("live events (WebSocket)", () => {
   /** A fresh session's cookie header (login itself is covered in auth.e2e-spec; TOTP codes can't be reused). */
   async function sessionCookie(): Promise<string> {
     const { token } = await api.app.get(SessionService).create(userId, {});
-    return `aime_session=${token}`;
+    return `storm_session=${token}`;
   }
 
   /** Opens a socket; resolves with it and the events it receives, or rejects with the refused status. */
@@ -73,7 +73,7 @@ describe("live events (WebSocket)", () => {
 
   it("refuses a socket without a session, with an unknown session, or from another origin", async () => {
     await expect(connect({ origin })).rejects.toThrow("refused 401");
-    await expect(connect({ origin, cookie: "aime_session=forged" })).rejects.toThrow("refused 401");
+    await expect(connect({ origin, cookie: "storm_session=forged" })).rejects.toThrow("refused 401");
     const cookie = await sessionCookie();
     await expect(connect({ origin: "https://evil.example", cookie })).rejects.toThrow("refused 401");
     await expect(connect({ cookie })).rejects.toThrow("refused 401");
@@ -123,7 +123,7 @@ describe("live events behind a proxy (APP_ORIGIN)", () => {
     const db = createPrismaConnection();
     const userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     await db.close();
-    cookie = `aime_session=${(await api.app.get(SessionService).create(userId, {})).token}`;
+    cookie = `storm_session=${(await api.app.get(SessionService).create(userId, {})).token}`;
   });
 
   afterAll(async () => {

@@ -1,4 +1,4 @@
-import { type LoginRequest, type SessionView } from "@ai-me/shared";
+import { type LoginRequest, type SessionView } from "@realentity/storm-shared";
 import { createContext, useContext } from "react";
 
 export interface SessionState {

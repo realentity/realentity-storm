@@ -1,5 +1,5 @@
 {
-  "extends": "@ai-me/config/tsconfig/library.json",
+  "extends": "@realentity/storm-config/tsconfig/library.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src"

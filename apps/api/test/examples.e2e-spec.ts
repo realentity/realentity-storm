@@ -1,4 +1,4 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import {
   definitionToSource,
   freeNames,
@@ -9,11 +9,11 @@ import {
   type ChecklistView,
   type CompiledDefinition,
   type SetupView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type request from "supertest";
-import { TestEnvironment } from "@ai-me/testing";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const PIPELINES = join(__dirname, "../../../pipelines");

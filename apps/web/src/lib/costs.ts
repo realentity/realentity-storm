@@ -1,4 +1,4 @@
-import { type CostsView, type ModelChoiceView, type RunCostView } from "@ai-me/shared";
+import { type CostsView, type ModelChoiceView, type RunCostView } from "@realentity/storm-shared";
 import { formatUsd } from "./format";
 
 /** What the Costs page shows: one pipeline or all, with or without dry runs. */
@@ -160,7 +160,7 @@ export function costReport(
     row(cells.map(() => "---"));
   };
 
-  lines.push(`# AI ME LLM costs: last ${view.days} days (since ${view.since.slice(0, 10)})`, "");
+  lines.push(`# Storm LLM costs: last ${view.days} days (since ${view.since.slice(0, 10)})`, "");
   const scope = [
     filter.pipelineId ? `pipeline: ${pipelines[0]?.pipelineName ?? filter.pipelineId}` : "all pipelines",
     filter.dryRuns ? "dry runs included" : "dry runs left out",

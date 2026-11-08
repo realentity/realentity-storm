@@ -1,6 +1,6 @@
-import { type DataEntity, type Prisma, type PrismaClient } from "@ai-me/db";
-import { canMove, entityItem, readAppSource, type ApplicationStatusName, type DataType } from "@ai-me/shared";
-import { contractProblems, JOB_ENTITY } from "@ai-me/steps";
+import { type DataEntity, type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { canMove, entityItem, readAppSource, type ApplicationStatusName, type DataType } from "@realentity/storm-shared";
+import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
 import { type StepContext } from "../runner/step-executor";
 
 type Item = Record<string, unknown>;

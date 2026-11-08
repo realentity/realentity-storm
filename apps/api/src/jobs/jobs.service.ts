@@ -1,5 +1,5 @@
 import { applicationView } from "./insight.service";
-import { Prisma, type Application, type JobPosting, type SiteRecipe } from "@ai-me/db";
+import { Prisma, type Application, type JobPosting, type SiteRecipe } from "@realentity/storm-db";
 import {
   type ImportRecipeRequest,
   type JobFilter,
@@ -10,8 +10,8 @@ import {
   type TeachRecipeRequest,
   type TeachStartedView,
   type UpdateJobRequest,
-} from "@ai-me/shared";
-import { RECIPE_NAME, recipeProblems, RecipeSchema, siteOf } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { RECIPE_NAME, recipeProblems, RecipeSchema, siteOf } from "@realentity/storm-steps";
 import { BadRequestException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { parse as parseYaml } from "yaml";
 import { PrismaService } from "../database/prisma.service";

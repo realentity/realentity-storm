@@ -13,7 +13,7 @@ import {
   type CompileIssue,
   type CredentialView,
   type StepTypeView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import {
   IconAlertTriangle,
   IconArrowDown,

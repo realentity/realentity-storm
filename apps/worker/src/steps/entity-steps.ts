@@ -1,8 +1,8 @@
-import { type Prisma, type PrismaClient } from "@ai-me/db";
-import { canMove, canonicalJson, checkEntity, entityItem, readAppSource, type AppDefinition, type DataType } from "@ai-me/shared";
+import { type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { canMove, canonicalJson, checkEntity, entityItem, readAppSource, type AppDefinition, type DataType } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { matchesAll, valueAt, type Condition } from "./conditions";
-import { contractProblems, JOB_ENTITY } from "@ai-me/steps";
+import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
 import { emitStatus, STAGE_STATUS } from "./job-entities";
 
 type Item = Record<string, unknown>;

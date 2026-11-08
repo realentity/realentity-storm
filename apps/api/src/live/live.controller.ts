@@ -1,4 +1,4 @@
-import { type LiveView } from "@ai-me/shared";
+import { type LiveView } from "@realentity/storm-shared";
 import { Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, StreamableFile } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { LiveService, type TakeoverListItem } from "./live.service";

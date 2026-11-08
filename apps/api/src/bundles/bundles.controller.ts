@@ -1,4 +1,4 @@
-import { BundleRequestSchema, type BundleCheckView, type BundleExportView, type BundleRequest } from "@ai-me/shared";
+import { BundleRequestSchema, type BundleCheckView, type BundleExportView, type BundleRequest } from "@realentity/storm-shared";
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";

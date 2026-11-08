@@ -34,7 +34,7 @@ export const UpdatePipelineSchema = z
   .refine((body) => body.enabled !== undefined || body.essential !== undefined, "nothing to update");
 export type UpdatePipelineRequest = z.infer<typeof UpdatePipelineSchema>;
 
-/** One change between two compiled versions (v3 → v4), computed in @ai-me/steps. */
+/** One change between two compiled versions (v3 → v4), computed in @realentity/storm-steps. */
 export type DefinitionChange =
   | { kind: "pipeline"; field: "name" | "description" | "app" | "trigger" | "view"; before: unknown; after: unknown }
   | { kind: "limit"; stepType: string; before?: string; after?: string }

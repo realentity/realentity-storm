@@ -1,5 +1,5 @@
-import { type HealthCheck } from "@ai-me/db";
-import { sendTelegram, type HealthCheckView, type HealthReport, type HealthView, type ServerEnv } from "@ai-me/shared";
+import { type HealthCheck } from "@realentity/storm-db";
+import { sendTelegram, type HealthCheckView, type HealthReport, type HealthView, type ServerEnv } from "@realentity/storm-shared";
 import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
@@ -54,8 +54,8 @@ export class HealthChecks implements OnApplicationBootstrap, OnApplicationShutdo
       });
       if (claimed.count === 0) continue;
       const text = view.problem
-        ? `⚠️ AI ME: ${check.name}: ${view.stale ? `no report since ${utc(check.reportedAt)} (expected every ${check.maxAgeHours} h)` : check.detail || "failed"}`
-        : `✅ AI ME: ${check.name} is fine again${check.detail ? `: ${check.detail}` : ""}`;
+        ? `⚠️ Storm: ${check.name}: ${view.stale ? `no report since ${utc(check.reportedAt)} (expected every ${check.maxAgeHours} h)` : check.detail || "failed"}`
+        : `✅ Storm: ${check.name} is fine again${check.detail ? `: ${check.detail}` : ""}`;
       await this.alert(text).catch((error: Error) => this.logger.warn(`Alert not sent: ${error.message}`));
     }
   }

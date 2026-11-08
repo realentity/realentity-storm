@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   const passwordHash = await hash(password, { type: argon2id });
   const secret = authenticator.generateSecret(20);
   const email = process.env.APP_ADMIN_EMAIL || "me@localhost";
-  const uri = authenticator.keyuri(email, "AI ME", secret);
+  const uri = authenticator.keyuri(email, "Storm", secret);
 
   process.stdout.write("\nScan with your authenticator app:\n\n");
   process.stdout.write(await qrToString(uri, { type: "terminal", small: true }));

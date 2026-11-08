@@ -1,6 +1,6 @@
-import { type Prisma, type PrismaClient, type ScheduledStart } from "@ai-me/db";
-import { type EventJob, type JobQueue } from "@ai-me/queue";
-import { isEventTrigger, type CompiledDefinition, type TriggerEventName } from "@ai-me/shared";
+import { type Prisma, type PrismaClient, type ScheduledStart } from "@realentity/storm-db";
+import { type EventJob, type JobQueue } from "@realentity/storm-queue";
+import { isEventTrigger, type CompiledDefinition, type TriggerEventName } from "@realentity/storm-shared";
 import { valueAt } from "../steps/data-steps";
 
 /** What cancels a scheduled start: an event with these values at these dotted paths of its data. */

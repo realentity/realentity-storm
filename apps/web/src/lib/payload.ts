@@ -1,4 +1,4 @@
-import { canonicalJson, type TargetView } from "@ai-me/shared";
+import { canonicalJson, type TargetView } from "@realentity/storm-shared";
 
 /** Top-level fields whose value differs (as the api records it in the Decision). */
 export function changedFields(before: Record<string, unknown>, after: Record<string, unknown>): string[] {

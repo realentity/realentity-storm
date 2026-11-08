@@ -1,7 +1,7 @@
-import { KeyRing, open } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, type GoogleStatusView } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, open } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, type GoogleStatusView } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHash } from "node:crypto";
 import request from "supertest";
 import type TestAgent from "supertest/lib/agent";
@@ -11,7 +11,7 @@ import { createTestApp, type TestApp } from "./support/test-app";
 const ENV = {
   GOOGLE_CLIENT_ID: "123-abc.apps.googleusercontent.com",
   GOOGLE_CLIENT_SECRET: "GOCSPX-secret-value",
-  APP_ORIGIN: "https://aime.test",
+  APP_ORIGIN: "https://storm.test",
 };
 
 const idToken = (email: string) => `x.${Buffer.from(JSON.stringify({ email })).toString("base64url")}.sig`;
@@ -77,7 +77,7 @@ describe("Google Calendar connection", () => {
     const status = (await agent.get("/api/google").expect(200)).body as GoogleStatusView;
     expect(status).toEqual({
       configured: true,
-      redirectUri: "https://aime.test/api/google/callback",
+      redirectUri: "https://storm.test/api/google/callback",
       connected: false,
       email: null,
       status: null,
@@ -89,7 +89,7 @@ describe("Google Calendar connection", () => {
     expect(`${url.origin}${url.pathname}`).toBe(GOOGLE_AUTH_URL);
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
       client_id: ENV.GOOGLE_CLIENT_ID,
-      redirect_uri: "https://aime.test/api/google/callback",
+      redirect_uri: "https://storm.test/api/google/callback",
       response_type: "code",
       scope: "openid email https://www.googleapis.com/auth/calendar.events",
       access_type: "offline",
@@ -115,7 +115,7 @@ describe("Google Calendar connection", () => {
     expect(exchanges).toHaveLength(1);
     const verifier = exchanges[0].get("code_verifier")!;
     expect(createHash("sha256").update(verifier).digest("base64url")).toBe(url.searchParams.get("code_challenge"));
-    expect(Object.fromEntries(exchanges[0])).toMatchObject({ grant_type: "authorization_code", code: "code-1", redirect_uri: "https://aime.test/api/google/callback" });
+    expect(Object.fromEntries(exchanges[0])).toMatchObject({ grant_type: "authorization_code", code: "code-1", redirect_uri: "https://storm.test/api/google/callback" });
 
     const row = await db.client.googleConnection.findUniqueOrThrow({ where: { userId } });
     expect(row).toMatchObject({ email: "ana@gmail.test", status: "CONNECTED", brokenAt: null });

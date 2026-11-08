@@ -1,4 +1,4 @@
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import {
   type PipelineDetailView,
   type RunDetailView,
@@ -6,8 +6,8 @@ import {
   type ViewPageView,
   type ViewRow,
   type ViewRowView,
-} from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+} from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 

@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { LlmError, type LlmClient, type ModelRouter } from "@ai-me/llm";
+import { type PrismaClient } from "@realentity/storm-db";
+import { LlmError, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { z } from "zod";
 import { learningContext, NO_LEARNING, type ExampleText, type StepLearning } from "../learning/learning";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";

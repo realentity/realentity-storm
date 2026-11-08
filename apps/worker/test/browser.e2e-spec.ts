@@ -1,7 +1,7 @@
-import { KeyRing, seal } from "@ai-me/crypto";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { TestEnvironment } from "@ai-me/testing";
-import { defaultCatalog } from "@ai-me/steps";
+import { KeyRing, seal } from "@realentity/storm-crypto";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { TestEnvironment } from "@realentity/storm-testing";
+import { defaultCatalog } from "@realentity/storm-steps";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -39,7 +39,7 @@ describe("browser", () => {
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     sites = await startFixtureSites();
     keys = KeyRing.fromEnv(process.env);
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-artifacts-"));
     pool = new BrowserPool({ invisible: true });
     artifacts = new ArtifactStore(artifactsDir);
     const vault = new CredentialVault(db.client, keys);
@@ -144,7 +144,7 @@ ${extra
     expect(steps).not.toContain(sid);
     expect(steps).not.toContain(PASSWORD);
     expect(Buffer.from(session.ciphertext).includes(sid)).toBe(false);
-    expect((await readdir(tmpdir())).filter((name) => name.startsWith("aime-trace-"))).toEqual([]);
+    expect((await readdir(tmpdir())).filter((name) => name.startsWith("storm-trace-"))).toEqual([]);
   });
 
   it("M8-S1: never fills a credential on a host outside its allowedHosts (a look-alike host)", async () => {

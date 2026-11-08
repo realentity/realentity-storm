@@ -10,7 +10,7 @@ import {
   type ViewQuery,
   type ViewRow,
   type ViewRowView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";

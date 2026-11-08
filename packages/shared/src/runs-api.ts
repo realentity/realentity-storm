@@ -336,7 +336,7 @@ export const LLM_TASKS = [
 ] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
-/** Models that can be chosen in Settings (each has a price in @ai-me/llm). */
+/** Models that can be chosen in Settings (each has a price in @realentity/storm-llm). */
 export const CLAUDE_MODELS = [
   "claude-haiku-5-5",
   "claude-sonnet-5-5",
@@ -361,7 +361,7 @@ export const SettingsSchema = z
     monthlyBudgetUsd: z.number().positive().max(100_000).nullable().optional(),
     /** Facts for application forms (browser.mapForm); "" clears it. */
     profile: z.string().max(10_000).optional(),
-    /** Approve and Reject on the AI ME bot's messages (M12-T4). */
+    /** Approve and Reject on the Storm bot's messages (M12-T4). */
     telegramApprovals: z.boolean().optional(),
     /** The weekly review on Telegram, Sunday evening (M19-T4). */
     weeklyReview: z.boolean().optional(),

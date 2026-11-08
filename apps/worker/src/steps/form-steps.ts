@@ -1,6 +1,6 @@
-import { type Fact, type JobPosting, type PrismaClient } from "@ai-me/db";
-import { type LlmClient, type ModelRouter } from "@ai-me/llm";
-import { type FormField, type FormFile } from "@ai-me/steps";
+import { type Fact, type JobPosting, type PrismaClient } from "@realentity/storm-db";
+import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { type FormField, type FormFile } from "@realentity/storm-steps";
 import { type Locator, type Page } from "playwright";
 import { z } from "zod";
 import { type ArtifactOwner } from "../browser/artifact-store";

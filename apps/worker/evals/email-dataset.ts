@@ -1,4 +1,4 @@
-import { type EmailMessage } from "@ai-me/steps";
+import { type EmailMessage } from "@realentity/storm-steps";
 
 /**
  * Labeled emails for the M4 evals (README test strategy: LLM eval, run by hand). Written for this purpose: no real
@@ -519,7 +519,7 @@ export const EMAILS: LabeledEmail[] = [
 
 /** An email of the dataset as email.fetch returns it. */
 export function toMessage(email: LabeledEmail, index: number): EmailMessage {
-  const messageId = `<${email.id}@eval.aime>`;
+  const messageId = `<${email.id}@eval.storm>`;
   return {
     uid: index + 1,
     messageId,

@@ -1,4 +1,4 @@
-import { type AppIssue } from "@ai-me/shared";
+import { type AppIssue } from "@realentity/storm-shared";
 
 /** M35: an App's problems, each with a button to its line in the YAML. */
 export function Issues({ issues, onLine, testId }: { issues: AppIssue[]; onLine: (line: number) => void; testId?: string }) {

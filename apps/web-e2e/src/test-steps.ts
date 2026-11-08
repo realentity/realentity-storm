@@ -1,4 +1,4 @@
-import { type StepDefinition } from "@ai-me/steps";
+import { type StepDefinition } from "@realentity/storm-steps";
 import { z } from "zod";
 
 /**

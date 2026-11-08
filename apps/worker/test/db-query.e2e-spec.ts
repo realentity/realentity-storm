@@ -1,8 +1,8 @@
-import { KeyRing, seal } from "@ai-me/crypto";
-import { readAppSource } from "@ai-me/shared";
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { defaultCatalog, PipelineCompiler } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { KeyRing, seal } from "@realentity/storm-crypto";
+import { readAppSource } from "@realentity/storm-shared";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

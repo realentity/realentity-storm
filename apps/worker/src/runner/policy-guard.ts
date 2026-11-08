@@ -1,5 +1,5 @@
-import { hostMatches, type CompiledPolicy, type TargetKind } from "@ai-me/shared";
-import { type StepDefinition } from "@ai-me/steps";
+import { hostMatches, type CompiledPolicy, type TargetKind } from "@realentity/storm-shared";
+import { type StepDefinition } from "@realentity/storm-steps";
 
 export interface TargetCheck {
   field: string;

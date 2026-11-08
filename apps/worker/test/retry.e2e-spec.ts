@@ -1,6 +1,6 @@
-import { payloadHash } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
-import { TestEnvironment } from "@ai-me/testing";
+import { payloadHash } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { RunControls } from "../src/runner/run-controls";
 import { ExecutorRegistry } from "../src/runner/step-executor";

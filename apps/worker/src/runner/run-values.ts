@@ -1,4 +1,4 @@
-import { REFERENCE, WHOLE_REFERENCE, type CompiledStep } from "@ai-me/shared";
+import { REFERENCE, WHOLE_REFERENCE, type CompiledStep } from "@realentity/storm-shared";
 
 /** The current forEach item of the step being resolved. */
 export interface ItemScope {

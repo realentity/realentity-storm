@@ -11,8 +11,8 @@ import {
   type BundleItemView,
   type CompiledDefinition,
   withCurrentNames,
-} from "@ai-me/shared";
-import { diffApps, diffDefinitions } from "@ai-me/steps";
+} from "@realentity/storm-shared";
+import { diffApps, diffDefinitions } from "@realentity/storm-steps";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { parse as parseYaml } from "yaml";
 import { AppsService } from "../apps/apps.service";

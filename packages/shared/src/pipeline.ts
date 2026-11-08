@@ -6,7 +6,7 @@ import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 
 /**
  * Pipeline definition (README §2.2): what a pipeline is authored as (YAML or JSON) before compilation.
- * This schema checks structure only. Step inputs (`with`) are checked by the compiler in @ai-me/steps against the
+ * This schema checks structure only. Step inputs (`with`) are checked by the compiler in @realentity/storm-steps against the
  * step catalog, because they may contain {{references}} to earlier steps.
  */
 
@@ -31,7 +31,7 @@ function isTimeZone(value: string): boolean {
   }
 }
 
-/** What happens in AI ME that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
+/** What happens in Storm that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
 export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later", "view.action", "entity.changed", "entity.action"] as const;
 export type TriggerEventName = (typeof TRIGGER_EVENTS)[number];
 

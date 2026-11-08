@@ -1,8 +1,8 @@
-import { payloadHash } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
-import { emptyUsage } from "@ai-me/llm";
-import { type AppEvent, type TelegramMessage } from "@ai-me/shared";
-import { TestEnvironment } from "@ai-me/testing";
+import { payloadHash } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
+import { emptyUsage } from "@realentity/storm-llm";
+import { type AppEvent, type TelegramMessage } from "@realentity/storm-shared";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { RunControls } from "../src/runner/run-controls";
 import { ExecutorRegistry, type StepExecutor } from "../src/runner/step-executor";
@@ -653,7 +653,7 @@ steps:
     // M19-I2
     it("budget messages: 80% and reached, once a month each; a step that spends tells them", async () => {
       const sent: TelegramMessage[] = [];
-      const controls = new RunControls(db.client, { notify: (m) => (sent.push(m), Promise.resolve()), appOrigin: "https://aime.test" });
+      const controls = new RunControls(db.client, { notify: (m) => (sent.push(m), Promise.resolve()), appOrigin: "https://storm.test" });
       await db.client.userSetting.create({ data: { userId, monthlyBudgetUsd: 10 } });
       const texts = () => sent.map((m) => m.text);
 
@@ -672,9 +672,9 @@ steps:
       runner = new PipelineRunner(db.client, catalog, new ExecutorRegistry([search, summarize]), controls);
       await expect(runner.advance(await runner.start(await version(SUMMARY), { trigger: "manual" }))).resolves.toBe("DONE");
       expect(texts()).toEqual([
-        "AI ME: $8.20 of the $10.00 monthly LLM budget is spent (82%). When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes.",
+        "Storm: $8.20 of the $10.00 monthly LLM budget is spent (82%). When it is reached, non-essential pipelines stop before their LLM steps until next month. Settings shows where the money goes.",
       ]);
-      expect(sent[0]?.buttons).toEqual([[{ text: "Open Settings", url: "https://aime.test/settings" }]]);
+      expect(sent[0]?.buttons).toEqual([[{ text: "Open Settings", url: "https://storm.test/settings" }]]);
 
       await controls.tellBudget(userId);
       expect(sent).toHaveLength(1);
@@ -683,7 +683,7 @@ steps:
       await Promise.all([controls.tellBudget(userId), controls.tellBudget(userId)]);
       expect(sent).toHaveLength(2);
       expect(texts()[1]).toMatch(
-        /^AI ME: the monthly LLM budget \(\$10\.00\) is reached: \$10\.20 spent\. Non-essential pipelines stop before their LLM steps until 1 \w+; essential ones go on\./,
+        /^Storm: the monthly LLM budget \(\$10\.00\) is reached: \$10\.20 spent\. Non-essential pipelines stop before their LLM steps until 1 \w+; essential ones go on\./,
       );
       await controls.tellBudget(userId);
       expect(sent).toHaveLength(2);

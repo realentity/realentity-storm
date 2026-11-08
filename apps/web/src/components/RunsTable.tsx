@@ -1,4 +1,4 @@
-import { type RunSummaryView } from "@ai-me/shared";
+import { type RunSummaryView } from "@realentity/storm-shared";
 import { Link } from "react-router-dom";
 import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
 import { StatusBadge } from "./ui";

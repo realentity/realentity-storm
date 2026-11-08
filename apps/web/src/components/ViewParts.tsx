@@ -1,4 +1,4 @@
-import { fieldOf, safeLink, type PipelineView, type ViewColumn, type ViewRow } from "@ai-me/shared";
+import { fieldOf, safeLink, type PipelineView, type ViewColumn, type ViewRow } from "@realentity/storm-shared";
 import { IconExternalLink } from "@tabler/icons-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

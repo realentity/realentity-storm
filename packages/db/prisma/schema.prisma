@@ -1,4 +1,4 @@
-// packages/db/prisma/schema.prisma — AI ME
+// packages/db/prisma/schema.prisma — Storm
 // Prisma 7: the connection URL lives in prisma.config.ts, the client uses the pg driver adapter.
 // Conventions: primary keys are named `<entity>Id` (uuid), timestamps are
 // `dateCreated` / `dateUpdated`, tables are PascalCase plural (@@map("Users")).
@@ -176,7 +176,7 @@ model UserSetting {
   monthlyBudgetUsd      Decimal?  @db.Decimal(10, 2)
   /// Facts about me for application forms (name, contacts, location, work permit, notice period...), as I write them.
   profile               String?
-  /// Approve and Reject on the AI ME bot's messages (M12-T4); off: they only link to the inbox.
+  /// Approve and Reject on the Storm bot's messages (M12-T4); off: they only link to the inbox.
   telegramApprovals     Boolean   @default(true)
   /// Told on Telegram that 80% of the budget is spent, and that it is reached (M19-T2): once a month each.
   budgetWarnedAt        DateTime?
@@ -185,7 +185,7 @@ model UserSetting {
   weeklyReview          Boolean   @default(true)
   /// The morning brief on Telegram, every day at 07:30 (M25).
   morningBrief          Boolean   @default(true)
-  /// The builder chat my plain messages to the AI ME bot continue (M21); /new clears it.
+  /// The builder chat my plain messages to the Storm bot continue (M21); /new clears it.
   telegramBuilderChatId String?   @db.Uuid
   dateUpdated           DateTime  @updatedAt
 
@@ -427,7 +427,7 @@ model SiteRecipe {
   site            String // host, e.g. "jobs.bg"
   name            String // e.g. "jobs.bg/search"
   version         Int
-  steps           Json // the recipe (@ai-me/steps RecipeSchema): selectors, fields, paging
+  steps           Json // the recipe (@realentity/storm-steps RecipeSchema): selectors, fields, paging
   // Last run that read items with it (browser.extract or teach mode).
   lastVerifiedAt  DateTime?
   // The page stopped matching it; cleared when it works again or a new version is saved.
@@ -562,7 +562,7 @@ model Proposal {
   reasoning          String? // short LLM explanation shown in the UI
   dateCreated        DateTime       @default(now())
   expiresAt          DateTime?
-  /// The AI ME bot told me about it (M12-T4), in this message (edited once it's decided).
+  /// The Storm bot told me about it (M12-T4), in this message (edited once it's decided).
   notifiedAt         DateTime?
   telegramMessageId  Int?
 

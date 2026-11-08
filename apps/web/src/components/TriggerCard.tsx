@@ -1,4 +1,4 @@
-import { APPLICATION_STATUSES, setTrigger, TRIGGER_EVENTS, type CompileIssue } from "@ai-me/shared";
+import { APPLICATION_STATUSES, setTrigger, TRIGGER_EVENTS, type CompileIssue } from "@realentity/storm-shared";
 import { IconBolt } from "@tabler/icons-react";
 import { readCron, WEEKDAYS, writeCron } from "../lib/cron";
 import { type TriggerTypes } from "../lib/step-cards";

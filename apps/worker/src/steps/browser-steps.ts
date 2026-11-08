@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { type TelegramMessage } from "@ai-me/shared";
+import { type PrismaClient } from "@realentity/storm-db";
+import { type TelegramMessage } from "@realentity/storm-shared";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -157,7 +157,7 @@ export class BrowserOpenStep implements StepExecutor {
   /** The Playwright trace, redacted (credential values, cookies and stored tokens masked) or not kept at all. */
   private async trace(context: BrowserContext, secrets: PageSecrets, owner: ArtifactOwner): Promise<void> {
     // tracing.stop writes a file: a private temp folder, removed right after.
-    const dir = await mkdtemp(join(tmpdir(), "aime-trace-"));
+    const dir = await mkdtemp(join(tmpdir(), "storm-trace-"));
     try {
       const path = join(dir, "trace.zip");
       await context.tracing.stop({ path });

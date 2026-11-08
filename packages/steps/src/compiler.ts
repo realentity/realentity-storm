@@ -16,7 +16,7 @@ import {
   hostMatches,
   isEventTrigger,
   isWebhookTrigger,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
 import { defaultCatalog, type EntityContract, type StepCatalog, type StepDefinition } from "./catalog";

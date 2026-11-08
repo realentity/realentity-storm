@@ -1,5 +1,5 @@
 {
-  "name": "@ai-me/queue",
+  "name": "@realentity/storm-queue",
   "version": "0.1.0",
   "private": true,
   "description": "Job queue on pg-boss (runs, triggers, schedule sync) and cron schedule helpers",
@@ -17,13 +17,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ai-me/shared": "workspace:*",
+    "@realentity/storm-shared": "workspace:*",
     "cron-parser": "catalog:",
     "pg": "catalog:",
     "pg-boss": "catalog:"
   },
   "devDependencies": {
-    "@ai-me/config": "workspace:*",
+    "@realentity/storm-config": "workspace:*",
     "@eslint/js": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",

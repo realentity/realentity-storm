@@ -1,4 +1,4 @@
-import { type ViewPageView, type ViewTab } from "@ai-me/shared";
+import { type ViewPageView, type ViewTab } from "@realentity/storm-shared";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";

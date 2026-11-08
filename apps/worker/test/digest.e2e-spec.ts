@@ -1,5 +1,5 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
-import { TestEnvironment } from "@ai-me/testing";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { DigestStep } from "../src/steps/digest-step";
 import { createVersion } from "./support/test-steps";
@@ -98,7 +98,7 @@ describe("notify.digest", () => {
 
     const lines = result.text.split("\n");
     expect(lines.slice(0, -1)).toEqual([
-      "AI ME · last 24 h",
+      "Storm · last 24 h",
       "Runs: 3 (1 failed, 1 done, 1 waiting for me)",
       "Waiting for me: 1 (Recruiter replies: 1)",
       "Failed:",

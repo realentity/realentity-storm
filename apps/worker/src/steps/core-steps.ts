@@ -1,5 +1,5 @@
-import { type PrismaClient } from "@ai-me/db";
-import { type LlmChat, type LlmClient, type ModelRouter } from "@ai-me/llm";
+import { type PrismaClient } from "@realentity/storm-db";
+import { type LlmChat, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { type StepLearning } from "../learning/learning";
 import { type GoogleConnection } from "../google/google-connection";
 import { type MailConnector } from "../mail/mail-connector";

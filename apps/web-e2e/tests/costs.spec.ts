@@ -1,4 +1,4 @@
-import { createPrismaConnection } from "@ai-me/db";
+import { createPrismaConnection } from "@realentity/storm-db";
 import { expect, test } from "@playwright/test";
 import { REPLIES, createPipeline, startRun, unique } from "./support";
 

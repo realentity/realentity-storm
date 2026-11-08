@@ -1,8 +1,8 @@
-import { payloadHash, KeyRing } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@ai-me/db";
-import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@ai-me/llm";
-import { defaultCatalog, type FormField, type FormFile } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { payloadHash, KeyRing } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
+import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
+import { defaultCatalog, type FormField, type FormFile } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,7 +23,7 @@ import { createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
-const PROFILE = "Ana Petrova · ana@aime.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
+const PROFILE = "Ana Petrova · ana@storm.test · +359 88 123 4567 · Sofia · EU citizen · notice period: 1 month";
 const CV = Buffer.from("%PDF-1.4\n% Ana Petrova CV fixture\n%%EOF\n");
 
 /** The mapForm model: values by field key, as a real one would read them from the profile; records the prompts. */
@@ -33,7 +33,7 @@ class FormLlm implements LlmClient {
     this.prompts.push(request.prompt);
     const answers: Record<string, [string | null, string]> = {
       "#name": ["Ana Petrova", "profile"],
-      "#email": ["ana@aime.test", "profile"],
+      "#email": ["ana@storm.test", "profile"],
       "#phone": ["+359 88 123 4567", "profile"],
       "#notice": ["1 month", "profile"],
       "#message": ["I build .NET backends in Sofia and would like to do it at Acme.", "written"],
@@ -41,7 +41,7 @@ class FormLlm implements LlmClient {
       '[name="newsletter"]': ["no", "none"],
       "#qname": ["Ana Petrova", "profile"],
       '[name="your-name"]': ["Ana Petrova", "profile"],
-      '[name="your-email"]': ["ana@aime.test", "profile"],
+      '[name="your-email"]': ["ana@storm.test", "profile"],
       '[name="your-message"]': ["I build .NET backends in Sofia.", "written"],
       '[name="privacy\\[\\]"]': ["yes", "profile"],
     };
@@ -66,8 +66,8 @@ describe("application forms", () => {
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     sites = await startFixtureSites();
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
-    documentsDir = await mkdtemp(join(tmpdir(), "aime-documents-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-artifacts-"));
+    documentsDir = await mkdtemp(join(tmpdir(), "storm-documents-"));
     pool = new BrowserPool({ invisible: true });
     const keys = KeyRing.fromEnv(process.env);
     const vault = new CredentialVault(db.client, keys);
@@ -202,7 +202,7 @@ ${extra}`;
     expect(payload.url).toBe(sites.url("ats", "/jobs/8"));
     expect(payload.fields.map((f) => [f.label, f.value, f.human ?? false])).toEqual([
       ["Име и Фамилия*", "Ana Petrova", false],
-      ["Email*", "ana@aime.test", false],
+      ["Email*", "ana@storm.test", false],
       ["Започни да пишеш тук...", "I build .NET backends in Sofia.", false],
       ["files", null, false],
       ["101-41=", null, true],
@@ -255,7 +255,7 @@ ${extra}`;
     expect(post.path).toBe("/apply/7");
     const part = (name: string) => new RegExp(`name="${name}"(?:; filename="[^"]*")?\\r\\n(?:Content-Type: [^\\r]*\\r\\n)?\\r\\n([\\s\\S]*?)\\r\\n--`).exec(post.body)?.[1];
     expect(part("name")).toBe("Ana Petrova");
-    expect(part("email")).toBe("ana@aime.test");
+    expect(part("email")).toBe("ana@storm.test");
     expect(part("phone")).toBe("+359 88 765 4321");
     expect(part("notice")).toBe("1 month");
     expect(part("message")).toBe("I build .NET backends in Sofia and would like to do it at Acme.");

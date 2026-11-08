@@ -1,5 +1,5 @@
-import { seal, type KeyRing } from "@ai-me/crypto";
-import { type PrismaClient } from "@ai-me/db";
+import { seal, type KeyRing } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
 import { randomUUID } from "node:crypto";
 import { type BrowserContextOptions } from "playwright";
 import { CredentialNotFoundError, type CredentialVault } from "../secrets/credential-vault";

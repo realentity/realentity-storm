@@ -1,6 +1,6 @@
 import "reflect-metadata";
-import { defaultCatalog, StepCatalog } from "@ai-me/steps";
-import { DatabasePreparer, TestEnvironment, TestInfrastructure } from "@ai-me/testing";
+import { defaultCatalog, StepCatalog } from "@realentity/storm-steps";
+import { DatabasePreparer, TestEnvironment, TestInfrastructure } from "@realentity/storm-testing";
 import { type INestApplication, type INestApplicationContext, type Type } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { argon2id, hash } from "argon2";
@@ -44,7 +44,7 @@ export async function startStack(): Promise<Stack> {
     process.env.API_HOST = "127.0.0.1";
     process.env.API_PORT = String(API_PORT);
     // Uploads (Profile → Documents) go to a folder of this run's own.
-    process.env.DOCUMENTS_DIR = await mkdtemp(join(tmpdir(), "aime-e2e-documents-"));
+    process.env.DOCUMENTS_DIR = await mkdtemp(join(tmpdir(), "storm-e2e-documents-"));
     process.env.APP_ADMIN_PASSWORD_HASH = await hash(PASSWORD, { type: argon2id });
     process.env.APP_TOTP_SECRET = authenticator.generateSecret();
     process.env[STACK_ENV.totpSecret] = process.env.APP_TOTP_SECRET;
@@ -100,7 +100,7 @@ export async function stopStack(stack: Stack): Promise<void> {
 /** A session for the seeded user, as the browser would hold it after signing in. */
 async function saveSession(api: INestApplication): Promise<void> {
   const { SessionService } = await dist<{ SessionService: Type }>("api/dist/auth/session.service.js");
-  const { createPrismaConnection } = await import("@ai-me/db");
+  const { createPrismaConnection } = await import("@realentity/storm-db");
   const db = createPrismaConnection();
   const user = await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } });
   await db.close();
@@ -109,7 +109,7 @@ async function saveSession(api: INestApplication): Promise<void> {
   const state = {
     cookies: [
       {
-        name: "aime_session",
+        name: "storm_session",
         value: token,
         domain: "127.0.0.1",
         path: "/",

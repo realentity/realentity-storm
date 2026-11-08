@@ -15,7 +15,7 @@ import {
   VIEW_ICONS,
   type AppIssue,
   type ViewIcon,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { text, type LooseApp, type LooseType } from "../lib/loose-app";

@@ -1,4 +1,4 @@
-import { type PipelineDetailView, type RunDetailView } from "@ai-me/shared";
+import { type PipelineDetailView, type RunDetailView } from "@realentity/storm-shared";
 import { expect, type Page } from "@playwright/test";
 
 /** A name no other test (or earlier run against a reused database) has. */

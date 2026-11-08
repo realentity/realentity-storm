@@ -1,4 +1,4 @@
-import { type RunDetailView, type RunStepView } from "@ai-me/shared";
+import { type RunDetailView, type RunStepView } from "@realentity/storm-shared";
 import { Fragment, useMemo, useState } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import { Link, useParams } from "react-router-dom";

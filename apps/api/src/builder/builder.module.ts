@@ -1,7 +1,7 @@
-import { ClaudeChat, ModelRouter, type LlmChat } from "@ai-me/llm";
+import { ClaudeChat, ModelRouter, type LlmChat } from "@realentity/storm-llm";
 import { AppsModule } from "../apps/apps.module";
-import { type ServerEnv } from "@ai-me/shared";
-import { PipelineCompiler, StepCatalog } from "@ai-me/steps";
+import { type ServerEnv } from "@realentity/storm-shared";
+import { PipelineCompiler, StepCatalog } from "@realentity/storm-steps";
 import { Module } from "@nestjs/common";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";

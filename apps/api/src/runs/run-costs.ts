@@ -1,5 +1,5 @@
-import { fireCount, isScheduled } from "@ai-me/queue";
-import { type CompiledDefinition, type PipelineCostView } from "@ai-me/shared";
+import { fireCount, isScheduled } from "@realentity/storm-queue";
+import { type CompiledDefinition, type PipelineCostView } from "@realentity/storm-shared";
 import { type PrismaService } from "../database/prisma.service";
 
 const DAY_MS = 86_400_000;

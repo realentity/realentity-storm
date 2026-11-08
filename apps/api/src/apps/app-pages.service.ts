@@ -1,4 +1,4 @@
-import { type DataEntity } from "@ai-me/db";
+import { type DataEntity } from "@realentity/storm-db";
 import {
   actionApplies,
   CHART_SERIES,
@@ -26,7 +26,7 @@ import {
   type ResolvedListPage,
   type ViewChart,
   type ViewRow,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 

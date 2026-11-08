@@ -67,12 +67,12 @@ export const HELP = {
   stepInput: "An input of this step.",
 
   // Triggers.
-  triggerKind: "What starts the pipeline: I by hand, a schedule, something that happens in AI ME, or a call from the Internet.",
+  triggerKind: "What starts the pipeline: I by hand, a schedule, something that happens in Storm, or a call from the Internet.",
   scheduleTimes: "The times of day it starts, as 08:00, 18:30.",
   scheduleCron: "The schedule as a cron expression (minute hour day month weekday): what the days and times above write.",
   scheduleTz: "The time zone its times are in.",
   webhookCheck: "How a call proves it is from who I gave the address to: a signature over its body, or a token in its header.",
-  eventOn: "Which happening in AI ME starts it.",
+  eventOn: "Which happening in Storm starts it.",
   eventOption: "Only some of those happenings: leave it empty for all of them.",
   eventLabels: "Only emails with these labels, separated by commas.",
   eventSite: "Only recipes of this site.",

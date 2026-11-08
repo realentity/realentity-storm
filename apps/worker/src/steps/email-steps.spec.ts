@@ -1,5 +1,5 @@
-import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@ai-me/llm";
-import { defaultCatalog, type EmailMessage } from "@ai-me/steps";
+import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
+import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
 import { type z } from "zod";
 import { type MailConnector, type OutgoingMail } from "../mail/mail-connector";
 import { NO_ATTENTION, type StepContext } from "../runner/step-executor";
@@ -44,7 +44,7 @@ const email = (i: number, extra: Partial<EmailMessage> = {}): EmailMessage => ({
   from: `sender${i}@acme.test`,
   fromName: `Sender ${i}`,
   replyTo: `sender${i}@acme.test`,
-  to: ["me@aime.test"],
+  to: ["me@storm.test"],
   cc: [],
   subject: `Subject ${i}`,
   date: "2026-10-31T08:00:00.000Z",
@@ -159,12 +159,12 @@ describe("email steps", () => {
       fetch: () => Promise.reject(new Error("unused")),
       recent: () => Promise.reject(new Error("unused")),
       attachments: () => Promise.reject(new Error("unused")),
-      send: (_user, message) => (sent.push(message), Promise.resolve({ messageId: "<r@aime.test>", accepted: [message.to] })),
+      send: (_user, message) => (sent.push(message), Promise.resolve({ messageId: "<r@storm.test>", accepted: [message.to] })),
     };
     const step = new EmailSendStep(mail);
     const payload = { to: "ana@acme.test", subject: "Re: x", body: "Thanks", inReplyTo: "<b@acme.test>", references: ["<a@acme.test>"] };
     await expect(step.execute(input("email.send", payload), context)).resolves.toEqual({
-      messageId: "<r@aime.test>",
+      messageId: "<r@storm.test>",
       accepted: ["ana@acme.test"],
     });
     expect(sent[0]?.references).toEqual(["<a@acme.test>", "<b@acme.test>"]);
@@ -182,7 +182,7 @@ describe("email steps", () => {
     const messages = [
       email(0),
       email(1, { from: "messaging-digest-noreply@linkedin.com" }),
-      email(2, { from: "me@aime.test" }), // AI ME's own message, to me
+      email(2, { from: "me@storm.test" }), // Storm's own message, to me
       email(3, { from: "no-reply@accounts.google.com" }),
       email(4),
     ];

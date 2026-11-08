@@ -1,7 +1,7 @@
-import { payloadHash, KeyRing } from "@ai-me/crypto";
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@ai-me/db";
-import { defaultCatalog } from "@ai-me/steps";
-import { TestEnvironment } from "@ai-me/testing";
+import { payloadHash, KeyRing } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { defaultCatalog } from "@realentity/storm-steps";
+import { TestEnvironment } from "@realentity/storm-testing";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -38,8 +38,8 @@ describe("file steps", () => {
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     sites = await startFixtureSites();
-    artifactsDir = await mkdtemp(join(tmpdir(), "aime-artifacts-"));
-    documentsDir = await mkdtemp(join(tmpdir(), "aime-documents-"));
+    artifactsDir = await mkdtemp(join(tmpdir(), "storm-artifacts-"));
+    documentsDir = await mkdtemp(join(tmpdir(), "storm-documents-"));
     pool = new BrowserPool({ invisible: true });
     const keys = KeyRing.fromEnv(process.env);
     const vault = new CredentialVault(db.client, keys);

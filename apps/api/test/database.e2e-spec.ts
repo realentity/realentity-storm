@@ -1,4 +1,4 @@
-import { createPrismaConnection, type PrismaConnection } from "@ai-me/db";
+import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 
 /** Tables owned through their parent; every other table must carry userId (README §9, §17). */
 const OWNED_THROUGH_PARENT = ["AppVersions", "BuilderMessages", "DataEntities", "Decisions", "PipelineVersions", "Steps", "Takeovers", "WatchedOffers"];

@@ -5,7 +5,7 @@ import {
   type FactRequest,
   type FactView,
   type QuestionView,
-} from "@ai-me/shared";
+} from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
