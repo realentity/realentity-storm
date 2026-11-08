@@ -1,5 +1,54 @@
 /* AI ME on top of Tabler: only what Tabler doesn't have. */
 
+/*
+ * Brand colours, palette "Pressure front" (logo: public/logo.svg). Navy #0c2a4d to sea cyan #0e9fb5, spark #a5f3fc.
+ * Tabler's primary (buttons, active states, focus rings) and links follow it; the dark theme gets a lighter shade with
+ * navy text on primary buttons. After tabler.css, so these win over its own values.
+ */
+:root,
+[data-bs-theme="light"] {
+  --tblr-primary: #0b7a94;
+  --tblr-primary-rgb: 11, 122, 148;
+  --tblr-primary-fg: #ffffff;
+  --tblr-link-color: #0b7a94;
+  --tblr-link-color-rgb: 11, 122, 148;
+  --tblr-link-hover-color: #08566a;
+  --tblr-link-hover-color-rgb: 8, 86, 106;
+}
+
+[data-bs-theme="dark"] {
+  --tblr-primary: #4fd1e8;
+  --tblr-primary-rgb: 79, 209, 232;
+  --tblr-primary-fg: #0c2a4d;
+  --tblr-link-color: #4fd1e8;
+  --tblr-link-color-rgb: 79, 209, 232;
+  --tblr-link-hover-color: #a5f3fc;
+  --tblr-link-hover-color-rgb: 165, 243, 252;
+
+  /*
+   * Navy-tinted dark: Tabler's greys are neutral (chroma 0) and every dark surface and border is made from them. The
+   * same lightness, a little chroma at the logo navy's hue (255°): more at the dark end, almost none at the light end.
+   */
+  --tblr-gray-50: oklch(98.51% 0.003 255deg);
+  --tblr-gray-100: oklch(97.02% 0.004 255deg);
+  --tblr-gray-200: oklch(92.19% 0.006 255deg);
+  --tblr-gray-300: oklch(86.99% 0.008 255deg);
+  --tblr-gray-400: oklch(71.55% 0.012 255deg);
+  --tblr-gray-500: oklch(55.55% 0.016 255deg);
+  --tblr-gray-600: oklch(43.86% 0.02 255deg);
+  --tblr-gray-700: oklch(37.15% 0.024 255deg);
+  --tblr-gray-800: oklch(26.86% 0.026 255deg);
+  --tblr-gray-900: oklch(20.46% 0.024 255deg);
+  --tblr-gray-950: oklch(14.48% 0.02 255deg);
+  --tblr-dark: oklch(26.86% 0.026 255deg);
+  --tblr-body-bg: oklch(20.46% 0.024 255deg);
+}
+
+/* The dark sidebar in the light theme too: its background is resolved at <html>, where the greys are neutral. */
+.navbar[data-bs-theme="dark"] {
+  --tblr-navbar-bg: oklch(26.86% 0.026 255deg);
+}
+
 /* Tabler's <pre> is dark-on-light inverted; payloads read better as plain text on a light surface. */
 .json-block {
   color: var(--tblr-body-color);

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { ThemeSwitch } from "../components/ThemeSwitch";
 import { useSession } from "../context/use-session";
 import { ApiError, errorMessage } from "../lib/api";
 
@@ -26,6 +27,9 @@ export function LoginPage() {
 
   return (
     <div className="page page-center">
+      <div className="position-absolute top-0 end-0 p-3">
+        <ThemeSwitch />
+      </div>
       <div className="container container-tight py-4">
         <div className="text-center mb-4 fs-1 fw-bold">AI ME</div>
         <form className="card card-md" onSubmit={(e) => void submit(e)} autoComplete="off">

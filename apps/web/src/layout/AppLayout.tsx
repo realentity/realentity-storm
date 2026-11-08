@@ -18,6 +18,7 @@ import {
 import { Fragment, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { KillSwitchButton } from "../components/KillSwitchButton";
+import { ThemeSwitch } from "../components/ThemeSwitch";
 import { useSession } from "../context/use-session";
 import { api } from "../lib/endpoints";
 import { useConnectionState } from "../lib/events";
@@ -134,6 +135,7 @@ export function AppLayout() {
               />
               <KillSwitchButton />
               <span className="text-secondary d-none d-md-inline">{session?.email}</span>
+              <ThemeSwitch />
               <button type="button" className="btn btn-ghost-secondary btn-icon" title="Sign out" onClick={() => void logout()}>
                 <IconLogout size={18} />
               </button>
