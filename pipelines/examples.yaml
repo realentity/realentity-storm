@@ -133,6 +133,17 @@ examples:
       - subscription-review.yaml
       - cancel-subscription.yaml
 
+  - id: car
+    name: Car
+    description: >-
+      Your car's insurance, inspection, vignette, tax and services, added by you, with what runs out soon on the list,
+      a message a month and a week before (or 1 000 km before a service), and each date in your calendar. No LLM.
+    needs:
+      - { kind: entities, type: Paper, label: "Your car's papers, added on its page" }
+      - { kind: telegram, label: "Telegram, to tell you what runs out" }
+      - { kind: google-calendar, label: "Google Calendar, for the dates" }
+    files: [apps/car.yaml, car-papers-due.yaml, paper-in-calendar.yaml]
+
   - id: tables
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.
