@@ -1,0 +1,74 @@
+# Orders from the shops' emails, in the Orders App (pipelines/apps/orders.yaml: save it first): an order confirmation,
+# a shipping or delivery notice, a refund or a cancellation, each read by the LLM and added to its Order (the shop's
+# domain with the order number), whose stage it moves forward. What an earlier email said is kept: each is merged into
+# the Order as it was. A delivered order without a return date in its emails gets 14 days from delivery. Nothing is
+# sent.
+name: Orders
+app: Orders
+description: Order, shipping, delivery and refund emails kept as Orders.
+trigger: { schedule: "*/30 * * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 7 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "order": a shop writes about an order of mine with its order number: a confirmation, a shipping or delivery
+        notice, a return, a refund or a cancellation. "other": everything else, also offers, newsletters, reviews
+        asked for and abandoned carts.
+      labels: [order, other]
+      keep: [order]
+  - id: existing
+    type: data.read
+    with: { type: Order, sort: -ordered, limit: 500 }
+  - id: read
+    type: llm.extract
+    forEach: "{{triage.kept}}"
+    with:
+      content: "{{item}}"
+      fields:
+        number: the order number
+        shop: the shop's name
+        items: what was ordered, short, like "Running shoes, 2 T-shirts"
+        total: the order's total, a number
+        currency: the total's currency code, like EUR
+        ordered: when it was ordered, a date
+        status: one of ordered (a confirmation), shipped, delivered, refunded, cancelled
+        returnBy: the last day to return it, if the email says, a date
+        tracking: the tracking number
+        trackingUrl: the address to track the parcel
+  - id: orders
+    type: data.map
+    with:
+      from: { emails: "{{triage.kept}}", values: "{{read.values}}", existing: "{{existing.items}}" }
+      # Each email merged into its Order as it was: its new values over the old, the stage it reached, the delivery
+      # date (today when the email doesn't say) and a return date 14 days after it when none was given.
+      expression: |-
+        (
+          $today := $fromMillis($toMillis($now()), "[Y0001]-[M01]-[D01]");
+          $site := function($from) { ($p := $split($lowercase($substringAfter($from, "@")), "."); $join($p[[$count($p) - 2 .. $count($p) - 1]], ".")) };
+          $stages := { "ordered": "ordered", "shipped": "shipped", "delivered": "delivered", "refunded": "returned", "cancelled": "cancelled" };
+          $map(values, function($v, $i) {
+            (
+              $key := $site(emails[$i].from) & "/" & $v.number;
+              $old := $sift($$.existing[order = $key][0], function($x, $k) { $not($k in ["status", "keep", "notes"]) });
+              $new := $sift($v, function($x, $k) { $x != "" and $k != "status" });
+              $stage := $lookup($stages, $lowercase($v.status));
+              $merged := $merge([$old, $new, { "order": $key, "from": emails[$i].from, "subject": emails[$i].subject }]);
+              $delivered := $merged.delivered ? $merged.delivered : ($stage = "delivered" ? $today);
+              $returnBy := $merged.returnBy ? $merged.returnBy : ($delivered ? $fromMillis($toMillis($delivered) + 14 * 24 * 60 * 60 * 1000, "[Y0001]-[M01]-[D01]"));
+              $merge([$merged, { "delivered": $delivered, "returnBy": $returnBy, "status": $stage }])
+            )
+          })[number]
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{orders.items}}", type: Order }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{save.changed}}"
+    when: "{{item.item.status}}"
+    with: { text: "{{item.item.shop}} order {{item.item.number}}: {{item.item.status}}. {{item.item.items}}" }

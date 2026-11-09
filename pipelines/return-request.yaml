@@ -1,0 +1,28 @@
+# From a delivered Order's button in the Orders App (pipelines/apps/orders.yaml): a return request to send the shop
+# (through its returns page or a reply to its email), on Telegram, and the Order moves to returning, which ends its
+# return reminder. Storm sends nothing to the shop: the shop's address came from its email, and you send it yourself.
+name: Return request
+app: Orders
+description: A return request to send, from an order's button; the order moves to returning.
+trigger: { on: entity.action, type: Order }
+steps:
+  - id: order
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # The Order as a pipeline writes it: without its stage and your fields.
+      expression: '$sift($, function($v, $k) { $not($k in ["status", "keep", "notes"]) })'
+  - id: draft
+    type: llm.generate
+    with:
+      instruction: >-
+        A short message to the shop asking to return this order, in the language of its email: the order number, what
+        I return, and asking for the return label or address and the refund. Then one line on the return date. No
+        subject line, no other text.
+      context: { order: "{{trigger.item}}" }
+  - id: moved
+    type: data.save
+    with: { items: "{{order.items}}", type: Order, stage: returning }
+  - id: tell
+    type: notify.telegram
+    with: { text: "Returning {{trigger.item.shop}} order {{trigger.item.number}}. A request to send them:\n\n{{draft.text}}" }

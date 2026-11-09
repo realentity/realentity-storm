@@ -1,0 +1,14 @@
+# Started by return-window.yaml a few days before a delivered order's return window closes: what it is and until when,
+# on Telegram.
+name: Return reminder
+app: Orders
+description: A delivered order's return window closes soon.
+trigger: { on: flow.later }
+steps:
+  - id: tell
+    type: notify.telegram
+    with:
+      text: >-
+        Return window: {{trigger.data.order.shop}} order {{trigger.data.order.number}} ({{trigger.data.order.items}})
+        can be returned until {{trigger.data.order.returnBy}}. Keeping it? Mark Keep on its page; returning it? Return
+        it is there too.

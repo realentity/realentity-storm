@@ -1,0 +1,38 @@
+# When an Order of the Orders App changes: a delivered one you haven't marked Keep gets a reminder at 09:00 three days
+# before its return date (return-reminder.yaml), or soon when that is already past and the date isn't; moved with the
+# date, and cancelled once it is returning, returned or cancelled, or you mark it Keep. Save return-reminder.yaml first:
+# this one names it.
+name: Return window
+app: Orders
+description: Schedules a reminder before a delivered order's return window closes.
+trigger: { on: entity.changed, type: Order }
+steps:
+  - id: open
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: |-
+        (
+          $t := $toMillis($now());
+          $end := returnBy ? $toMillis(returnBy) + 24 * 60 * 60 * 1000;
+          $day := $end - 4 * 24 * 60 * 60 * 1000;
+          $at := $day + 9 * 60 * 60 * 1000 > $t ? $fromMillis($day, "[Y0001]-[M01]-[D01]") & "T09:00" : $fromMillis($t + 10 * 60 * 1000);
+          status = "delivered" and $not(keep = true) and $end > $t ? { "remindAt": $at }
+        )
+  - id: later
+    type: flow.later
+    forEach: "{{open.items}}"
+    with:
+      pipeline: Return reminder
+      at: "{{item.remindAt}}"
+      key: "return:{{trigger.key}}"
+      data: { order: "{{trigger.item}}" }
+  - id: closed
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: '(status in ["returning", "returned", "cancelled"] or keep = true) ? { "order": order }'
+  - id: stop
+    type: flow.cancel
+    forEach: "{{closed.items}}"
+    with: { key: "return:{{trigger.key}}" }

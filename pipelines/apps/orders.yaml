@@ -1,0 +1,54 @@
+# The Orders App: what you buy online, from the shops' emails (orders.yaml): ordered, shipped, delivered, returned,
+# each email adding to the same Order. A delivered order's return window is watched (return-window.yaml,
+# return-reminder.yaml) unless you mark it Keep, and Return it on its page drafts the request (return-request.yaml).
+# Save it on the Apps page before its pipelines.
+name: Orders
+description: Online orders from email, and their return windows
+icon: package
+types:
+  Order:
+    key: order                     # the shop's domain and the order number: every email about it is the same Order
+    title: shop
+    stages:
+      field: status
+      initial: ordered
+      states: [ordered, shipped, delivered, returning, returned, cancelled]
+      moves:                       # the emails move it forward, never back
+        - { from: ordered, to: [shipped, delivered, cancelled], by: [me, pipeline] }
+        - { from: shipped, to: [delivered, cancelled], by: [me, pipeline] }
+        - { from: delivered, to: [returning, returned], by: [me, pipeline] }
+        - { from: returning, to: [returned], by: [me, pipeline] }
+        - { from: [returning, returned, cancelled], to: [delivered] }    # a mistake undone
+    fields:
+      order: { type: text, required: true }
+      number: { type: text, required: true, label: Order number }
+      shop: { type: text }
+      items: { type: longtext, label: What }
+      total: { type: money, currency: currency }
+      currency: { type: text }
+      ordered: { type: date }
+      delivered: { type: date }
+      returnBy: { type: date, label: Return by }
+      tracking: { type: text }
+      trackingUrl: { type: url, label: Track }
+      from: { type: email }
+      subject: { type: text }
+      keep: { type: yesno, mine: true, label: Keep }   # no return reminder for it
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Order
+    menu: { label: Orders, icon: package }
+    columns: [shop, items, total, status, { field: returnBy, due: { days: 3, unless: { keep: true } } }, keep]
+    filters: [status, keep]
+    sort: -ordered
+    group: { by: ordered, period: month, totals: [total] }
+    moves: true
+  - view: Order
+    sections:
+      - { title: Order, fields: [shop, number, items, total, ordered] }
+      - { title: Delivery, fields: [tracking, trackingUrl, delivered, returnBy] }
+      - { title: Email, fields: [from, subject] }
+    actions:
+      - { label: Return it, run: Return request, when: { status: delivered }, confirm: "Draft a return request for this order and mark it returning?" }
+  - form: Order
+    fields: [keep, notes]

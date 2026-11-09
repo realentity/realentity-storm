@@ -100,6 +100,22 @@ examples:
       - viewing.yaml
       - compare-favorites.yaml
 
+  - id: orders
+    name: Orders
+    description: >-
+      Online orders from the shops' emails, each email adding to its order as it ships and arrives; a reminder before
+      the return window closes, unless you keep it, and a return request on a button.
+    needs:
+      - { kind: email, label: "An email account, to read the shops' emails from" }
+      - { kind: llm, label: "The LLM, to read each email" }
+      - { kind: telegram, label: "Telegram, for the orders and return reminders" }
+    files:
+      - apps/orders.yaml
+      - orders.yaml
+      - return-reminder.yaml
+      - return-window.yaml
+      - return-request.yaml
+
   - id: tables
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.
