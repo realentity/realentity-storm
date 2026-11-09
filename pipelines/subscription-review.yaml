@@ -1,0 +1,33 @@
+# On the 1st of every month, and from the Subscriptions list's button: what your subscriptions cost a month and a year
+# (summed here, per currency), the dearest, the ones that look like they overlap, and the ones your notes say you
+# hardly use, on Telegram.
+name: Subscription review
+app: Subscriptions
+description: What your subscriptions cost, and which to drop, every month.
+trigger: { schedule: "0 9 1 * *" }
+steps:
+  - id: paying
+    type: data.read
+    with: { type: Subscription, where: [{ field: status, op: in, value: [trial, active] }], sort: -monthly }
+  - id: totals
+    type: data.map
+    with:
+      from: "{{paying.items}}"
+      # A month and a year, per currency.
+      expression: |-
+        (
+          $sums := $[$exists(monthly)]{ currency: $sum(monthly) };
+          $each($sums, function($v, $k) { { "currency": $k, "month": $round($v, 2), "year": $round($v * 12, 2) } })
+        )
+  - id: review
+    type: llm.generate
+    when: "{{paying.items}}"
+    with:
+      instruction: >-
+        A short review of my subscriptions, for Telegram: first the totals exactly as given (a month and a year, per
+        currency), then the three dearest, then any that look like they overlap (two of the same kind), then the ones
+        my notes say I hardly use, and trials that end soon. Short lines, no other text.
+      context: { subscriptions: "{{paying.items}}", totals: "{{totals.items}}" }
+  - id: tell
+    type: notify.telegram
+    with: { text: "Your subscriptions:\n\n{{review.text}}" }

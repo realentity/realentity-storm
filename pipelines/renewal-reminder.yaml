@@ -1,0 +1,14 @@
+# Started by renewal-watch.yaml before a trial ends or a yearly subscription renews: what, when and for how much, on
+# Telegram, while there is still time to cancel.
+name: Renewal reminder
+app: Subscriptions
+description: A trial ends or a yearly subscription renews soon.
+trigger: { on: flow.later }
+steps:
+  - id: tell
+    type: notify.telegram
+    with:
+      text: >-
+        {{trigger.data.subscription.service}}: {{trigger.data.what}} on {{trigger.data.date}}, then
+        {{trigger.data.subscription.price}} {{trigger.data.subscription.currency}} ({{trigger.data.subscription.period}}).
+        Not using it? How to cancel is on its page.

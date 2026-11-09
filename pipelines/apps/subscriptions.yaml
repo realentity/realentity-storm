@@ -1,0 +1,56 @@
+# The Subscriptions App: the services you pay for again and again, from their emails (subscriptions.yaml): trials,
+# receipts, renewals, price changes and cancellations, each adding to the same Subscription, with its price history and
+# what it costs a month. A reminder before a trial ends or a yearly renewal (renewal-watch.yaml, renewal-reminder.yaml),
+# a monthly review (subscription-review.yaml) and, on a button, how to cancel one (cancel-subscription.yaml). Nothing
+# is paid or cancelled for you. Save it on the Apps page before its pipelines.
+name: Subscriptions
+description: What you pay for every month or year, from email
+icon: bell
+types:
+  Subscription:
+    key: id                        # the service's name, in lowercase letters and digits: each email about it is the same Subscription
+    title: service
+    stages:
+      field: status
+      initial: active
+      states: [trial, active, cancelling, cancelled]
+      moves:
+        - { from: trial, to: [active, cancelled], by: [me, pipeline] }
+        - { from: active, to: [cancelling, cancelled], by: [me, pipeline] }
+        - { from: cancelling, to: [cancelled], by: [me, pipeline] }
+        - { from: cancelling, to: [active] }                         # changed your mind
+        - { from: cancelled, to: [trial, active], by: [me, pipeline] }   # subscribed again
+    fields:
+      id: { type: text, required: true }
+      service: { type: text, required: true }
+      plan: { type: text }
+      price: { type: money, currency: currency }
+      currency: { type: text }
+      period: { type: enum, values: [weekly, monthly, yearly, other] }
+      monthly: { type: money, currency: currency, label: A month }
+      lastCharged: { type: date, label: Charged }
+      nextRenewal: { type: date, label: Renews }
+      trialEnds: { type: date, label: Trial ends }
+      from: { type: email }
+      subject: { type: text }
+      notes: { type: longtext, mine: true }        # how much you use it: the review reads it
+pages:
+  - list: Subscription
+    menu: { label: Subscriptions, icon: bell }
+    columns: [service, plan, price, period, monthly, { field: nextRenewal, due: { days: 7, unless: { status: cancelled } } }, status]
+    filters: [status, period]
+    sort: -monthly
+    group: { by: status, totals: [monthly] }
+    moves: true
+    actions:
+      - { label: Review, run: Subscription review }
+  - view: Subscription
+    sections:
+      - { title: Subscription, fields: [service, plan, price, period, monthly] }
+      - { title: Dates, fields: [lastCharged, nextRenewal, trialEnds] }
+      - { title: Email, fields: [from, subject] }
+    history: { collection: subscription-prices, label: Price, stepped: true }
+    actions:
+      - { label: How to cancel, run: Cancel subscription, when: { status: active }, confirm: "Get the steps to cancel this subscription and mark it cancelling?" }
+  - form: Subscription
+    fields: [notes]

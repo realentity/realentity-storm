@@ -1,0 +1,28 @@
+# From an active Subscription's button in the Subscriptions App (pipelines/apps/subscriptions.yaml): how to cancel it
+# and by when to avoid the next charge, on Telegram, and it moves to cancelling (its renewal reminder ends). You cancel
+# it yourself; the email confirming it moves it to cancelled.
+name: Cancel subscription
+app: Subscriptions
+description: How to cancel a subscription, from its button; it moves to cancelling.
+trigger: { on: entity.action, type: Subscription }
+steps:
+  - id: subscription
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # The Subscription as a pipeline writes it: without its stage and your notes.
+      expression: '$sift($, function($v, $k) { $not($k in ["status", "notes"]) })'
+  - id: steps
+    type: llm.generate
+    with:
+      instruction: >-
+        How I cancel this subscription, for Telegram: where it is usually done (the service's account settings, or the
+        app store or payment service that bills it), the steps in short lines, and the date to do it by to avoid the
+        next charge. Say plainly what you aren't sure of. No other text.
+      context: { subscription: "{{trigger.item}}" }
+  - id: moved
+    type: data.save
+    with: { items: "{{subscription.items}}", type: Subscription, stage: cancelling }
+  - id: tell
+    type: notify.telegram
+    with: { text: "Cancelling {{trigger.item.service}}:\n\n{{steps.text}}" }
