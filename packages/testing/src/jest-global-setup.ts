@@ -1,9 +1,9 @@
 import { DatabasePreparer } from "./database-preparer";
 import { TestEnvironment } from "./test-environment";
 import { TestInfrastructure } from "./test-infrastructure";
+import { TEST_TIME_ZONE } from "./time-zone";
 
-/** The server's time zone in the integration tests (the default for schedules, the morning brief, …). */
-export const TEST_TIME_ZONE = "Europe/Sofia";
+export { TEST_TIME_ZONE };
 
 declare global {
   var __STORM_TEST_INFRASTRUCTURE__: TestInfrastructure | undefined;
