@@ -142,7 +142,9 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 
 ### Try it on your machine
 
-With the bundled PostgreSQL, at `http://localhost:7100`. The commands are Bash: on Windows, run them in WSL.
+Only Docker is needed: `STORM_LOCAL=1` in the commands below starts PostgreSQL in a container next to Storm, so there
+is no database to install or create. The app opens at `http://localhost:7100`. The commands are Bash: on Windows, run
+them in WSL.
 
 ```bash
 git clone https://github.com/realentity/realentity-storm.git
@@ -154,25 +156,58 @@ openssl rand -hex 32                                   # your ENCRYPTION_KEY
 Set these in `.env` (no spaces around `=`):
 
 ```
-DATABASE_URL=postgresql://aime:aime@postgres:5432/aime
 ENCRYPTION_KEY=<the 64 characters from openssl>
 ANTHROPIC_API_KEY=<your Claude API key>
 APP_ORIGIN=http://localhost:7100
 TZ=Europe/London
 ```
 
-The folders for run files and your documents, then the login. The second command builds the images the first time (a
-few minutes), asks for a password and prints two lines and a QR code. Scan the code with your authenticator app and
-paste both lines into `.env` as printed: `APP_ADMIN_PASSWORD_HASH='$argon2id$…'` keeps its single quotes.
+The keys are already in the file: change their values, don't add second lines. `APP_ORIGIN` is the address you open
+(7100 is `STORM_PORT`'s default). `DATABASE_URL` already points at the PostgreSQL container (`postgres` is its name on
+the Docker network): leave it as it is.
 
-```bash
-mkdir -p data/artifacts data/documents && sudo chown -R 1000:1000 data
-STORM_LOCAL=1 ./docker/storm run --rm --no-deps api node dist/tools/auth-setup.js
-STORM_LOCAL=1 ./docker/storm up
-```
+**The login, before the first start.** Storm has one user, who signs in with a password and a 6-digit code from an
+authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, …). Both live in `.env`, so they have to
+be there before Storm starts.
 
-Open `http://localhost:7100` and sign in. **Apps → Examples** installs ready-made Apps and pipelines, each with a
-checklist of what it still needs. The **Builder** makes new ones from a description.
+1. Make the folders for run files and your documents:
+
+   ```bash
+   mkdir -p data/artifacts data/documents && sudo chown -R 1000:1000 data
+   ```
+
+2. Run the login setup. The first time, this builds the images (a few minutes). It asks for a password (at least 12
+   characters, not shown as you type) and prints a QR code and two lines:
+
+   ```bash
+   STORM_LOCAL=1 ./docker/storm run --rm --no-deps api node dist/tools/auth-setup.js
+   ```
+
+   ```text
+   APP_ADMIN_PASSWORD_HASH='$argon2id$v=19$…'
+   APP_TOTP_SECRET=<32 capital letters and digits>
+   ```
+
+3. Scan the QR code with your authenticator app (or type in the secret it prints). Storm now appears in the app with
+   a code that changes every 30 seconds.
+
+4. Put the two lines into `.env` in place of the empty `APP_ADMIN_PASSWORD_HASH=` and `APP_TOTP_SECRET=`, exactly as
+   printed: the single quotes keep the `$` signs. Nothing is written for you, and the password itself is stored
+   nowhere, only its hash.
+
+5. Start Storm:
+
+   ```bash
+   STORM_LOCAL=1 ./docker/storm up
+   ```
+
+6. Open `http://localhost:7100` and sign in with the password and the current code from the app.
+
+**Apps → Examples** installs ready-made Apps and pipelines, each with a checklist of what it still needs. The
+**Builder** makes new ones from a description.
+
+Changed `.env` later? `STORM_LOCAL=1 ./docker/storm up` again applies it. A new password or authenticator: run step 2
+again and replace both lines.
 
 ### Run it on a server
 
@@ -184,7 +219,8 @@ Calendar, updates, backups and the restore test.
 ```bash
 # Node 22.12+ or 24, pnpm 10, Docker
 pnpm install
-cp .env.example .env                                   # then set ENCRYPTION_KEY and ANTHROPIC_API_KEY
+cp .env.example .env                                   # then set ENCRYPTION_KEY, ANTHROPIC_API_KEY and
+                                                       # DATABASE_URL to the localhost line above it
 docker compose -f docker/docker-compose.yml up -d postgres
 pnpm db:migrate
 pnpm auth:setup                                        # the login: password + authenticator code, into .env

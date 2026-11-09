@@ -629,8 +629,8 @@ The real setup: [docker/compose.yml](../docker/compose.yml), images from [docker
 
 ```text
 # Database
-DATABASE_URL=postgresql://aime:change-me@postgres:5432/aime
-POSTGRES_PASSWORD=change-me
+DATABASE_URL=postgresql://aime:aime@postgres:5432/aime
+POSTGRES_PASSWORD=aime
 
 # Encryption — 32 random bytes: openssl rand -hex 32 (or -base64 32)
 # BACK THIS UP SEPARATELY. Losing it = losing all stored credentials.
