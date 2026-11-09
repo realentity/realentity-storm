@@ -1,0 +1,23 @@
+# An example list recipe for browser.extract (docs/design.md §2.4): a listing site's apartments to rent, per district.
+# Used by the Apartments example (pipelines/listings.yaml). Change the address and the selectors to your site's, then
+# import it on the Recipes page as "listings.example/rent" (or change the name in the pipeline too), or teach a recipe
+# there in the live browser instead. Check the site's terms and robots.txt first, and keep a person's pace: here one
+# page every 2 s, at most 3 pages per district.
+url: https://listings.example/rent/{district}/
+params:
+  district: { description: "the site's district slug, e.g. center, north" }
+item: .listing-card
+fields:
+  url: { selector: a.listing-link, attr: href, required: true }
+  title: { selector: .listing-title, required: true }
+  price: { selector: .price }       # "1 200 €": read as a number by the pipeline
+  area: { selector: .district }
+  rooms: { selector: .rooms }       # "2 rooms"
+  size: { selector: .size }         # "65 m²"
+  floor: { selector: .floor }
+  agency: { selector: .agency-name }
+key: url
+empty: .no-results
+next: { kind: page, url: "https://listings.example/rent/{district}/?page={page}", start: 2 }
+maxPages: 3
+delayMs: 2000

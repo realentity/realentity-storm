@@ -81,6 +81,25 @@ examples:
       - overdue-invoices.yaml
       - payment-reminder.yaml
 
+  - id: apartments
+    name: Apartments
+    description: >-
+      Listings to rent from a site you choose, marked against what you look for, with their price history; a request
+      for a viewing to an agent you added, the viewing in your calendar, and your favorites compared.
+    needs:
+      - { kind: recipe, name: listings.example/rent, label: "A listing site's recipe, listings.example/rent (Recipes: import or teach)" }
+      - { kind: entities, type: Search, label: "What you look for, added on its page" }
+      - { kind: llm, label: "The LLM, to mark and compare listings" }
+      - { kind: telegram, label: "Telegram, for new matches and price drops" }
+      - { kind: email, label: "An email account, to ask agents for viewings" }
+      - { kind: google-calendar, label: "Google Calendar, for the viewings" }
+    files:
+      - apps/apartments.yaml
+      - listings.yaml
+      - ask-for-viewing.yaml
+      - viewing.yaml
+      - compare-favorites.yaml
+
   - id: tables
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.
