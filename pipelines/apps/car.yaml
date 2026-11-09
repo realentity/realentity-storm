@@ -1,0 +1,44 @@
+# The Car App: your vehicles and the papers and services that run out, all added by you (mine): insurance, the
+# technical inspection, the vignette, the tax, a service due at a date or a mileage. The list shows what is due soon;
+# car-papers-due.yaml tells you once a month before and once a week before, and once when you renew it (a later date);
+# paper-in-calendar.yaml puts each expiry date in your calendar. Save it on the Apps page before its pipelines.
+name: Car
+description: Your car's papers and services, and when they run out
+icon: car
+types:
+  Vehicle:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true }        # "Family car"
+      plate: { type: text }
+      model: { type: text }
+      year: { type: number }
+      mileage: { type: number, label: km }        # update it now and then: a service due at a mileage reads it
+      notes: { type: longtext }
+  Paper:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true }        # "Family car insurance"
+      vehicle: { type: text }                     # the Vehicle's name
+      kind: { type: enum, values: [insurance, inspection, vignette, tax, registration, licence, service, other] }
+      expires: { type: date, label: Until }       # renewed: move it on; the reminders start over
+      dueKm: { type: number, label: Due at km }   # a service due at a mileage
+      cost: { type: money, currency: currency }
+      currency: { type: text }
+      provider: { type: text }
+      notes: { type: longtext }
+pages:
+  - list: Paper
+    menu: { label: Car papers, icon: car }
+    columns: [name, kind, { field: expires, due: { days: 30 } }, dueKm, cost, provider]
+    filters: [kind]
+    sort: expires
+    group: { by: vehicle, totals: [cost] }
+  - view: Paper
+    sections:
+      - { title: Paper, fields: [vehicle, kind, expires, dueKm, cost, provider, notes] }
+  - list: Vehicle
+    menu: { label: Vehicles, icon: car }
+    columns: [name, plate, model, year, mileage]

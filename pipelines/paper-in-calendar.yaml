@@ -1,0 +1,21 @@
+# When you add a car Paper in the Car App or move its date: the day it runs out in your calendar, at 09:00, after you
+# Act at its gate. A date already past does nothing; an event already there (the same title at the same time) isn't
+# made again.
+name: Paper in calendar
+app: Car
+description: A car paper's expiry date goes into your calendar.
+trigger: { on: entity.changed, type: Paper, field: expires }
+steps:
+  - id: ahead
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: 'expires and $toMillis(expires) + 24 * 60 * 60 * 1000 > $toMillis($now()) ? { "start": expires & "T09:00" }'
+  - id: event
+    type: calendar.create
+    forEach: "{{ahead.items}}"
+    with:
+      title: "Runs out: {{trigger.item.name}}"
+      start: "{{item.start}}"
+      durationMinutes: 30
+      description: "{{trigger.item.kind}} {{trigger.item.provider}}"

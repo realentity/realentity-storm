@@ -1,0 +1,62 @@
+# Every morning, the papers of the Car App (pipelines/apps/car.yaml: save it first) against today and your vehicles'
+# mileage: told once when one has 30 days left, once more at 7, once when a service is 1 000 km away, and once when you
+# renew it (move its date on, or its mileage). data.alert remembers what it told, so it is one message each, not one a
+# day. No LLM.
+name: Car papers due
+app: Car
+description: Tells you when a car paper or service runs out soon, and when it's renewed.
+trigger: { schedule: "0 8 * * *" }
+steps:
+  - id: papers
+    type: data.read
+    with: { type: Paper, limit: 200 }
+  - id: vehicles
+    type: data.read
+    with: { type: Vehicle, limit: 50 }
+  - id: left
+    type: data.map
+    with:
+      from: { papers: "{{papers.items}}", vehicles: "{{vehicles.items}}" }
+      # Each paper with the days left until it runs out, and the km left until a service due at a mileage.
+      expression: |-
+        (
+          $t := $toMillis($now());
+          $vehicles := vehicles;
+          papers.(
+            $p := $;
+            $v := $vehicles[name = $p.vehicle][0];
+            {
+              "name": name,
+              "label": vehicle ? name & " (" & vehicle & ")" : name,
+              "expires": expires,
+              "daysLeft": expires ? $floor(($toMillis(expires) - $t) / (24 * 60 * 60 * 1000)),
+              "dueKm": dueKm,
+              "kmLeft": dueKm and $v.mileage ? dueKm - $v.mileage
+            }
+          )
+        )
+  - id: month
+    type: data.alert
+    with: { items: "{{left.items}}", key: name, value: daysLeft, below: 31, label: label }
+  - id: week
+    type: data.alert
+    with: { items: "{{left.items}}", key: name, value: daysLeft, below: 8, label: label }
+  - id: km
+    type: data.alert
+    with: { items: "{{left.items}}", key: name, value: kmLeft, below: 1000, label: label }
+  - id: soon
+    type: notify.telegram
+    forEach: "{{month.crossed}}"
+    with: { text: "{{item.label}} runs out on {{item.expires}}: {{item.daysLeft}} days left." }
+  - id: urgent
+    type: notify.telegram
+    forEach: "{{week.crossed}}"
+    with: { text: "Only {{item.daysLeft}} days left: {{item.label}} runs out on {{item.expires}}." }
+  - id: service
+    type: notify.telegram
+    forEach: "{{km.crossed}}"
+    with: { text: "{{item.label}} is due at {{item.dueKm}} km: {{item.kmLeft}} km to go." }
+  - id: renewed
+    type: notify.telegram
+    forEach: "{{month.cleared}}"
+    with: { text: "{{item.label}} renewed: now until {{item.expires}}." }
