@@ -1,0 +1,25 @@
+# When you add a Trip in the Trips App or change its dates, its briefing (trip-briefing.yaml) is scheduled for 09:00
+# three days before it starts, or moved with it. Save trip-briefing.yaml first: this one names it.
+name: Trip countdown
+app: Trips
+description: Schedules each trip's briefing for three days before it starts.
+trigger: { on: entity.changed, type: Trip }
+steps:
+  - id: ahead
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # 09:00 (the server's time zone) three days before the start, if that is still ahead.
+      expression: |-
+        (
+          $day := $toMillis(start) - 3 * 24 * 60 * 60 * 1000;
+          $day + 9 * 60 * 60 * 1000 > $toMillis($now()) ? { "briefAt": $fromMillis($day, "[Y0001]-[M01]-[D01]") & "T09:00" }
+        )
+  - id: later
+    type: flow.later
+    forEach: "{{ahead.items}}"
+    with:
+      pipeline: Trip briefing
+      at: "{{item.briefAt}}"
+      key: "trip:{{trigger.key}}"
+      data: { trip: "{{trigger.item}}" }

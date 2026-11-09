@@ -1,0 +1,63 @@
+# The Trips App: the trips you add (mine), and the bookings read from your email (trip-bookings.yaml), each matched to
+# a trip and kept until it is cancelled. A booking's reminder the day before (trip-booking-reminders.yaml,
+# trip-booking-reminder.yaml), a briefing three days before a trip with its weather and bookings
+# (trip-countdown.yaml, trip-briefing.yaml), and a packing list on a trip's button (packing-list.yaml). Save it on the
+# Apps page before its pipelines.
+name: Trips
+description: Your trips, with the bookings from your email
+icon: world
+types:
+  Trip:
+    mine: true                     # you add your trips; pipelines read them to match bookings
+    key: name
+    fields:
+      name: { type: text, required: true }        # "Lisbon, May 2027"
+      destination: { type: text, required: true } # a city, for the weather
+      start: { type: date }
+      end: { type: date }
+      notes: { type: longtext }                   # who comes, what it's for: the packing list reads it
+  Booking:
+    key: reference                 # the booking reference: the same booking again (a change) is the same Booking
+    title: title
+    stages:
+      field: status
+      initial: booked
+      states: [booked, cancelled]
+      moves:
+        - { from: booked, to: [cancelled], by: [me, pipeline] }
+        - { from: cancelled, to: [booked], by: [me, pipeline] }
+    fields:
+      reference: { type: text, required: true }
+      title: { type: text, required: true }
+      kind: { type: enum, values: [flight, train, bus, hotel, car, event, other] }
+      provider: { type: text }
+      start: { type: datetime }
+      end: { type: datetime }
+      place: { type: text }        # from → to, or the address
+      trip: { type: text }         # the name of the Trip it belongs to
+      price: { type: money, currency: currency }
+      currency: { type: text }
+      from: { type: email }
+      subject: { type: text }
+      messageId: { type: text }
+pages:
+  - list: Trip
+    menu: { label: Trips, icon: world }
+    columns: [name, destination, start, end]
+    sort: -start
+  - view: Trip
+    sections:
+      - { title: Trip, fields: [destination, start, end, notes] }
+    actions:
+      - { label: Packing list, run: Packing list, confirm: "Send a packing list for this trip to Telegram?" }
+  - list: Booking
+    menu: { label: Bookings, icon: calendar }
+    columns: [title, kind, start, place, price, status]
+    filters: [kind, status]
+    sort: start
+    group: { by: trip, totals: [price] }
+    moves: true
+  - view: Booking
+    sections:
+      - { title: Booking, fields: [kind, provider, reference, start, end, place, price, trip] }
+      - { title: Email, fields: [from, subject] }

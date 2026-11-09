@@ -235,7 +235,7 @@ schema.org type that means the same and, after a dry run, drafts it from what th
 not in the types** on an App's page lists the fields its entities have that their type doesn't name, with *Add to the
 type*.
 
-Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables. Job Search
+Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables, Trips. Job Search
 ([pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml)) is filled by a job-board pipeline of your own
 (`browser.extract` with a recipe like [recipes/example-jobs.yaml](../recipes/example-jobs.yaml), then `data.save` with
 `type: Job`) and by [application-replies.yaml](../pipelines/application-replies.yaml). Save the App before its
@@ -1089,6 +1089,7 @@ What the steps add up to, with the pipeline that does it:
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
 | Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |
+| Keep your trips' bookings from email, with a reminder the day before each, a weather briefing three days before a trip and a packing list on a button | `email.fetch` → `email.classify` → `llm.extract` → `data.map` → `data.save` → `calendar.create`; `entity.changed` → `data.map` → `flow.later` / `flow.cancel`; `http.fetch` (Open-Meteo) → `data.read` → `llm.generate` → `notify.telegram` | the Trips App ([trips.yaml](../pipelines/apps/trips.yaml)) with [trip-bookings.yaml](../pipelines/trip-bookings.yaml), [trip-booking-reminders.yaml](../pipelines/trip-booking-reminders.yaml), [trip-countdown.yaml](../pipelines/trip-countdown.yaml), [trip-briefing.yaml](../pipelines/trip-briefing.yaml), [packing-list.yaml](../pipelines/packing-list.yaml) |
 | Tell you when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../pipelines/prices.yaml) |
 | Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../pipelines/price-watch.yaml), [product-watch.yaml](../pipelines/product-watch.yaml) |
 | New releases of your stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../pipelines/release-watch.yaml), [release-notes.yaml](../pipelines/release-notes.yaml) |

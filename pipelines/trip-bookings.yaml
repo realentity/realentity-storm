@@ -1,0 +1,74 @@
+# Bookings from email, in the Trips App (pipelines/apps/trips.yaml: save it first): flights, trains, hotels, cars and
+# tickets, each read by the LLM, matched to one of your Trips and kept by its booking reference. A cancellation moves
+# its booking to cancelled; a change (a new time) updates it. A new booking also goes into your calendar, after you
+# Act at its gate. trip-booking-reminders.yaml schedules the reminder the day before each.
+name: Trip bookings
+app: Trips
+description: Bookings from your email, matched to your trips, with a calendar event each.
+trigger: { schedule: "*/30 * * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 7 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "booking": a confirmation, change or cancellation of a booking of mine with a booking reference: a flight, a
+        train or bus ticket, a hotel or apartment, a rental car, a ticket for an event. "other": everything else, also
+        offers, newsletters and reminders to book.
+      labels: [booking, other]
+      keep: [booking]
+  - id: trips
+    type: data.read
+    with: { type: Trip, sort: -start, limit: 50 }
+  - id: book
+    type: llm.extract
+    forEach: "{{triage.kept}}"
+    with:
+      content: "{{item}}"
+      instruction: "My trips, to match the booking to: {{trips.items}}"
+      fields:
+        reference: the booking reference or confirmation number
+        title: a short title, like "Flight SOF → LIS" or "Hotel Avenida"
+        kind: one of flight, train, bus, hotel, car, event, other
+        provider: the airline, hotel, company or venue
+        start: when it starts (departure, check-in, pick-up), date and time
+        end: when it ends (arrival, check-out, return), date and time
+        place: from → to, or the address
+        price: the total price, a number
+        currency: the price's currency code, like EUR
+        status: '"cancelled" when the email cancels the booking, else "booked"'
+        trip: the name of the trip in my list it belongs to (its destination and dates fit), exactly as written there; empty when none fits
+  - id: bookings
+    type: data.map
+    with:
+      from: { emails: "{{triage.kept}}", values: "{{book.values}}" }
+      # Each booking with its email's sender and subject; one without a reference isn't kept.
+      expression: |-
+        $map(values, function($v, $i) {
+          $merge([$v, {
+            "kind": $lowercase($v.kind),
+            "status": $contains($lowercase($v.status), "cancel") ? "cancelled" : "booked",
+            "from": emails[$i].from,
+            "subject": emails[$i].subject,
+            "messageId": emails[$i].messageId
+          }])
+        })[reference != ""]
+  - id: save
+    type: data.save
+    with: { items: "{{bookings.items}}", type: Booking }
+  - id: event
+    type: calendar.create
+    forEach: "{{save.added}}"
+    when: "{{item.start}}"
+    with:
+      title: "{{item.title}}"
+      start: "{{item.start}}"
+      location: "{{item.place}}"
+      description: "{{item.provider}}, reference {{item.reference}}"
+  - id: tell
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "New booking: {{item.title}} ({{item.reference}}), {{item.start}}. Trip: {{item.trip}}" }

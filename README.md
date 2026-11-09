@@ -53,7 +53,7 @@ Apps are typed and versioned, so they keep working as they grow:
 - A change to an App that would break one of its pipelines is refused, naming the pipeline.
 - A change to an entity can start another pipeline: a job reaching *interview*, a price falling, a bill arriving.
 
-Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases and Tables.
+Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables and Trips.
 
 ### More of what it handles
 
