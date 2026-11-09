@@ -1,0 +1,40 @@
+# When Database check (database-check.yaml) fails, the database can't be reached or answered with an error: an Incident
+# in the Server ops App, once, until a check works again and resolves it. Save database-check.yaml first: this one
+# names it.
+name: Database down
+app: Server ops
+description: The database check failing opens an incident, once.
+trigger: { on: run.finished, pipeline: Database check, status: [FAILED] }
+steps:
+  - id: open
+    type: data.read
+    with:
+      type: Incident
+      where:
+        - { field: subject, op: eq, value: connection }
+        - { field: status, op: in, value: [open, acknowledged] }
+  - id: incident
+    type: data.map
+    with:
+      from: { open: "{{open.items}}", summary: "{{trigger.summary}}" }
+      # A new one only when none is open: a check every 10 minutes is one Incident, not one each.
+      expression: |-
+        (
+          $at := $now();
+          $count(open) = 0 ? {
+            "id": "database:connection:" & $at,
+            "title": "The database check fails",
+            "source": "database",
+            "subject": "connection",
+            "detail": summary,
+            "startedAt": $at,
+            "status": "open"
+          }
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{incident.items}}", type: Incident }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "The database check fails: {{item.detail}}" }

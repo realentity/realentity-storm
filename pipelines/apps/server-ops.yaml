@@ -1,0 +1,50 @@
+# The Server ops App: incidents on what you run, each open until it is resolved: a monitor that goes down
+# (monitor-alerts.yaml, a webhook), a database check that finds trouble (database-check.yaml), the database that can't be
+# reached (database-down.yaml). Each is resolved by itself when the cause is gone, or by you. Open issue on an open
+# one files it on GitHub, after you approve the request (incident-issue.yaml); every Monday, the week in numbers
+# (ops-week.yaml). No LLM. Save it on the Apps page before its pipelines.
+name: Server ops
+description: Incidents on what you run, from your monitors and database
+icon: cpu
+types:
+  Incident:
+    key: id                        # what it is about and when it started: a monitor down twice is two Incidents
+    title: title
+    stages:
+      field: status
+      initial: open
+      states: [open, acknowledged, resolved]
+      moves:
+        - { from: open, to: [acknowledged], by: [me, pipeline] }       # Open issue acknowledges it
+        - { from: [open, acknowledged], to: [resolved], by: [me, pipeline] }
+        - { from: [acknowledged, resolved], to: [open] }               # not over after all
+    fields:
+      id: { type: text, required: true }
+      title: { type: text, required: true }
+      source: { type: enum, values: [monitor, database] }
+      subject: { type: text, label: About }       # the monitor, the check, or "connection"
+      detail: { type: longtext }
+      url: { type: url }
+      startedAt: { type: datetime, label: Started }
+      resolvedAt: { type: datetime, label: Resolved }
+      minutes: { type: number, label: Minutes }   # how long it lasted
+      issueUrl: { type: url, label: Issue }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Incident
+    menu: { label: Incidents, icon: cpu }
+    columns: [title, source, startedAt, minutes, status]
+    filters: [status, source]
+    sort: -startedAt
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check the database now, run: Database check }
+  - view: Incident
+    sections:
+      - { title: Incident, fields: [source, subject, startedAt, resolvedAt, minutes, url, issueUrl] }
+      - { title: Detail, fields: [detail] }
+    actions:
+      - { label: Open issue, run: Incident issue, when: { status: open }, confirm: "Propose a GitHub issue for this incident? You see the request before it goes." }
+  - form: Incident
+    fields: [notes]

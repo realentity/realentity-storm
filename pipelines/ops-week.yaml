@@ -1,0 +1,31 @@
+# Every Monday morning, the Server ops App's last week in numbers, on Telegram: incidents per source, how long they
+# lasted, the longest, and what is still open. Counted here, no LLM.
+name: Ops week
+app: Server ops
+description: Every Monday, last week's incidents in numbers.
+trigger: { schedule: "0 9 * * 1" }
+steps:
+  - id: incidents
+    type: data.read
+    with: { type: Incident, sort: -startedAt, limit: 500 }
+  - id: week
+    type: data.map
+    with:
+      from: "{{incidents.items}}"
+      expression: |-
+        (
+          $since := $toMillis($now()) - 7 * 24 * 60 * 60 * 1000;
+          $all := $[$toMillis(startedAt) > $since];
+          $open := $[status != "resolved"];
+          $longest := $all[minutes = $max($all.minutes)][0];
+          $lines := [
+            "Incidents last week: " & $string($count($all)) & ($count($all) > 0 ? " (" & $join($each($all{ source: $count(id) }, function($v, $k) { $k & " " & $string($v) }), ", ") & ")" : ""),
+            "Down for " & $string($sum($all.minutes) ? $sum($all.minutes) : 0) & " minutes in all",
+            $longest ? "The longest: " & $longest.title & ", " & $longest.minutes & " minutes",
+            $count($open) > 0 ? $string($count($open)) & " still open: " & $join($open.title, "; ") : "Nothing open"
+          ];
+          { "text": $join($lines, "\n") }
+        )
+  - id: tell
+    type: notify.telegram
+    with: { text: "{{week.value.text}}" }

@@ -1,0 +1,66 @@
+# Every 10 minutes, checks of your database in the Server ops App (pipelines/apps/server-ops.yaml: save it first): each
+# row of `sql` is a check, its name and a number that is fine at 0 (orders stuck for 30 minutes, failed jobs in the last
+# hour). A check above 0 opens an Incident, once, and back at 0 resolves it; a query that works resolves the database's
+# "can't connect" Incident (database-down.yaml). Needs a credential named app-db, kind database:
+# postgresql://reader:…@host:5432/app (a user that may only read), with the database's host as its allowed host. Change
+# `sql` to your tables.
+name: Database check
+app: Server ops
+description: Database checks above 0 open incidents, back at 0 resolve them.
+trigger: { schedule: "*/10 * * * *" }
+steps:
+  - id: checks
+    type: db.query
+    with:
+      connection: "{{cred:app-db}}"
+      sql: |-
+        SELECT 'Orders stuck for 30 minutes' AS name, count(*) AS value FROM orders
+          WHERE status = 'pending' AND created_at < now() - interval '30 minutes'
+        UNION ALL
+        SELECT 'Jobs failed in the last hour', count(*) FROM jobs
+          WHERE status = 'failed' AND finished_at > now() - interval '1 hour'
+  - id: trouble
+    type: data.alert
+    with: { items: "{{checks.items}}", key: name, value: value, above: 0 }
+  - id: open
+    type: data.read
+    with:
+      type: Incident
+      where:
+        - { field: source, op: eq, value: database }
+        - { field: status, op: in, value: [open, acknowledged] }
+  - id: incidents
+    type: data.map
+    with:
+      from: { crossed: "{{trouble.crossed}}", cleared: "{{trouble.cleared}}", open: "{{open.items}}" }
+      # A new Incident for each check that went above 0; the open ones of the checks back at 0, and the connection's,
+      # resolved.
+      expression: |-
+        (
+          $at := $now();
+          $done := function($i) { $merge([$sift($i, function($v, $k) { $not($k in ["status", "notes"]) }), {
+            "resolvedAt": $at,
+            "minutes": $round(($toMillis($at) - $toMillis($i.startedAt)) / 60000),
+            "status": "resolved"
+          }]) };
+          $back := cleared.name;
+          [
+            crossed.{
+              "id": "database:" & name & ":" & $at,
+              "title": name & ": " & value,
+              "source": "database",
+              "subject": name,
+              "detail": name & " is " & value & ", fine at 0.",
+              "startedAt": $at,
+              "status": "open"
+            },
+            open[subject in $back or subject = "connection"].$done($)
+          ]
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{incidents.items}}", type: Incident }
+  - id: tell
+    type: notify.telegram
+    when: "{{trouble.text}}"
+    with: { text: "Database checks:\n{{trouble.text}}" }

@@ -1,0 +1,29 @@
+# From an open Incident's button in the Server ops App (pipelines/apps/server-ops.yaml): a GitHub issue for it, created
+# only when you press Act at its gate (which shows the request); then the Incident is acknowledged, with the issue's
+# address. Needs a credential named github (kind API key, allowed host api.github.com; a fine-grained token with
+# Issues: read and write on the repository) and the repository in the url (replace me/infra with your <owner>/<repo>).
+name: Incident issue
+app: Server ops
+description: A GitHub issue for an incident, after you approve it; the incident is acknowledged.
+trigger: { on: entity.action, type: Incident }
+steps:
+  - id: issue
+    type: http.request
+    with:
+      method: POST
+      url: https://api.github.com/repos/me/infra/issues
+      headers:
+        Authorization: "Bearer {{cred:github}}"
+        Accept: application/vnd.github+json
+      body:
+        title: "{{trigger.item.title}}"
+        body: "{{trigger.item.detail}}\n\nSince {{trigger.item.startedAt}}. {{trigger.item.url}}"
+        labels: [incident]
+  - id: acknowledged
+    type: data.map
+    with:
+      from: { incident: "{{trigger.item}}", issue: "{{issue.json}}" }
+      expression: '$merge([$sift(incident, function($v, $k) { $not($k in ["status", "notes"]) }), { "issueUrl": issue.html_url }])'
+  - id: save
+    type: data.save
+    with: { items: "{{acknowledged.items}}", type: Incident, stage: acknowledged }
