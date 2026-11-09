@@ -21,6 +21,9 @@ export default defineConfig({
     storageState: STORAGE_STATE,
     trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
+    // The browser's zone is a new schedule's default tz: the expectations are written in the unit tests' zone
+    // (TEST_TIME_ZONE, packages/testing), the same on every machine and in CI, whatever its own.
+    timezoneId: "Europe/Sofia",
   },
   webServer: {
     command: `pnpm --filter @realentity/storm-web exec vite --port ${WEB_PORT} --strictPort`,
