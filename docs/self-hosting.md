@@ -44,7 +44,7 @@ The containers reach a PostgreSQL on the host as `host.docker.internal`; allow t
 and `listen_addresses`.
 
 **No PostgreSQL?** Use the container: put `STORM_LOCAL=1` in front of every `./docker/storm` command below (or export
-it), and `DATABASE_URL=postgresql://aime:aime@postgres:5432/aime` in `.env`. Change its password in
+it), and keep `.env.example`'s `DATABASE_URL=postgresql://aime:aime@postgres:5432/aime`. Change its password in
 `compose.local.yml` for anything but a test.
 
 ## 2. Code and `.env`
