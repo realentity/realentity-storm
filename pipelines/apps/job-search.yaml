@@ -1,5 +1,5 @@
-# M30–M33: the Job Search App. Its pipelines say `app: Job Search`: a job-board pipeline (browser.extract with a
-# recipe like recipes/example-jobs.yaml) keeps the jobs it finds as Jobs, the form steps move a job to prepared and
+# M30–M33: the Job Search App. Its pipelines say `app: Job Search`: a job-board pipeline (job-board.yaml:
+# browser.extract with a recipe like recipes/example-jobs.yaml) keeps the jobs it finds as Jobs, the form steps move a job to prepared and
 # applied, application-replies.yaml moves it on from the employer's emails. Insight counts what came of them. Save it
 # on the Apps page before its pipelines, then press "Move them here" on its page to bring the jobs and applications
 # the old Jobs page kept.

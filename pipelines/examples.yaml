@@ -17,6 +17,18 @@ examples:
     needs: []
     files: [examples/releases-to-read-app.yaml, examples/releases-to-read.yaml]
 
+  - id: job-search
+    name: Job Search
+    description: >-
+      New postings from a job board you choose, agencies set aside and the rest scored against what you look for,
+      the best told to you; where you are with each, moved on by the employers' emails.
+    needs:
+      - { kind: recipe, name: jobs.example.com/search, label: "A job board's recipe, jobs.example.com/search (Recipes: import or teach)" }
+      - { kind: llm, label: "The LLM, to score postings and read replies" }
+      - { kind: telegram, label: "Telegram, for the best postings and the replies" }
+      - { kind: email, label: "An email account, to read the employers' replies" }
+    files: [apps/job-search.yaml, job-board.yaml, application-replies.yaml]
+
   - id: releases
     name: Releases
     description: The releases of what runs on your server, summarized for upgrading, with upgrade notes on a button.
