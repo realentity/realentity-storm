@@ -1,0 +1,35 @@
+# When a Booking of the Trips App is added or changes, its reminder a day before it starts (trip-booking-reminder.yaml)
+# is scheduled, or moved with it; a cancelled one's reminder is cancelled. Save trip-booking-reminder.yaml first: this
+# one names it.
+name: Trip booking reminders
+app: Trips
+description: Schedules each booking's reminder for the day before, and cancels it with the booking.
+trigger: { on: entity.changed, type: Booking }
+steps:
+  - id: upcoming
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # A day before it starts, if that is still ahead and it isn't cancelled.
+      expression: |-
+        (
+          $at := $toMillis(start) - 24 * 60 * 60 * 1000;
+          status != "cancelled" and $at > $toMillis($now()) ? { "remindAt": $fromMillis($at) }
+        )
+  - id: later
+    type: flow.later
+    forEach: "{{upcoming.items}}"
+    with:
+      pipeline: Trip booking reminder
+      at: "{{item.remindAt}}"
+      key: "booking:{{trigger.key}}"
+      data: { booking: "{{trigger.item}}" }
+  - id: gone
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: 'status = "cancelled" ? { "reference": reference }'
+  - id: stop
+    type: flow.cancel
+    forEach: "{{gone.items}}"
+    with: { key: "booking:{{trigger.key}}" }

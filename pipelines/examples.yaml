@@ -43,6 +43,26 @@ examples:
       - { kind: telegram, label: "Telegram, to tell you about drops" }
     files: [apps/prices.yaml, prices.yaml]
 
+  - id: trips
+    name: Trips
+    description: >-
+      Bookings read from your email and matched to the trips you add, each in your calendar with a reminder the day
+      before, a briefing with the weather three days before a trip, and a packing list on a button.
+    needs:
+      - { kind: entities, type: Trip, label: "Your trips, added on its page" }
+      - { kind: email, label: "An email account, to read the bookings from" }
+      - { kind: llm, label: "The LLM, to read each booking" }
+      - { kind: google-calendar, label: "Google Calendar, for the bookings" }
+      - { kind: telegram, label: "Telegram, for the reminders and briefings" }
+    files:
+      - apps/trips.yaml
+      - trip-booking-reminder.yaml
+      - trip-booking-reminders.yaml
+      - trip-briefing.yaml
+      - trip-countdown.yaml
+      - trip-bookings.yaml
+      - packing-list.yaml
+
   - id: tables
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.

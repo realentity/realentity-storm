@@ -1,0 +1,46 @@
+# Started by trip-countdown.yaml three days before a trip: the destination's forecast from Open-Meteo (free, no key)
+# and the trip's bookings, as a short briefing on Telegram, with what looks missing (a night without a hotel, no way
+# back). The destination is found by its name, so a city works best.
+name: Trip briefing
+app: Trips
+description: Three days before a trip, its weather and bookings, and what looks missing.
+trigger: { on: flow.later }
+policy:
+  allowedDomains: [geocoding-api.open-meteo.com, api.open-meteo.com]
+steps:
+  - id: place
+    type: http.fetch
+    with:
+      url: https://geocoding-api.open-meteo.com/v1/search
+      query: { name: "{{trigger.data.trip.destination}}", count: "1" }
+      itemsAt: results
+  - id: forecast
+    type: http.fetch
+    forEach: "{{place.items}}"
+    with:
+      url: https://api.open-meteo.com/v1/forecast
+      query:
+        latitude: "{{item.latitude}}"
+        longitude: "{{item.longitude}}"
+        daily: temperature_2m_max,temperature_2m_min,precipitation_probability_max
+        timezone: auto
+        forecast_days: "16"
+  - id: bookings
+    type: data.read
+    with:
+      type: Booking
+      where:
+        - { field: trip, op: eq, value: "{{trigger.data.trip.name}}" }
+        - { field: status, op: eq, value: booked }
+      sort: start
+  - id: brief
+    type: llm.generate
+    with:
+      instruction: >-
+        A short briefing for my trip, for Telegram: the weather for each day of the trip from the forecast (high, low,
+        chance of rain), then the bookings in order with their times and references, then anything that looks missing
+        (a night without a place to stay, no way there or back). No other text.
+      context: { trip: "{{trigger.data.trip}}", forecast: "{{forecast.json}}", bookings: "{{bookings.items}}" }
+  - id: tell
+    type: notify.telegram
+    with: { text: "{{trigger.data.trip.name}} starts in 3 days.\n\n{{brief.text}}" }

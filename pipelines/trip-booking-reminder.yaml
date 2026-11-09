@@ -1,0 +1,12 @@
+# Started by trip-booking-reminders.yaml a day before a booking starts: what it is, on Telegram, with its reference.
+name: Trip booking reminder
+app: Trips
+description: A booking starts tomorrow; its time, place and reference.
+trigger: { on: flow.later }
+steps:
+  - id: tell
+    type: notify.telegram
+    with:
+      text: >-
+        Tomorrow: {{trigger.data.booking.title}}, {{trigger.data.booking.start}}, {{trigger.data.booking.place}}.
+        Reference {{trigger.data.booking.reference}} ({{trigger.data.booking.provider}}). A flight: check in online.

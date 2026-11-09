@@ -1,0 +1,26 @@
+# From a Trip's button in the Trips App (pipelines/apps/trips.yaml): a packing list for it, from where and when it is,
+# its notes and its bookings (a flight's baggage, a hotel), on Telegram.
+name: Packing list
+app: Trips
+description: A packing list for a trip, from its button.
+trigger: { on: entity.action, type: Trip }
+steps:
+  - id: bookings
+    type: data.read
+    with:
+      type: Booking
+      where:
+        - { field: trip, op: eq, value: "{{trigger.item.name}}" }
+        - { field: status, op: eq, value: booked }
+      sort: start
+  - id: list
+    type: llm.generate
+    with:
+      instruction: >-
+        A packing list for this trip, for Telegram: grouped (documents, clothes, toiletries, electronics, other), short
+        lines, for the destination's usual weather in those dates and what the notes and bookings say (a cabin bag
+        only on a flight, a hike, a wedding). Then up to three things to do before leaving. No other text.
+      context: { trip: "{{trigger.item}}", bookings: "{{bookings.items}}" }
+  - id: tell
+    type: notify.telegram
+    with: { text: "Packing list: {{trigger.item.name}}\n\n{{list.text}}" }
