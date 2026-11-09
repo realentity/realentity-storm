@@ -236,8 +236,9 @@ not in the types** on an App's page lists the fields its entities have that thei
 type*.
 
 Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops. Job Search
-([pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml)) is filled by a job-board pipeline of your own
-(`browser.extract` with a recipe like [recipes/example-jobs.yaml](../recipes/example-jobs.yaml), then `data.save` with
+([pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml)) is filled by a job-board pipeline
+([job-board.yaml](../pipelines/job-board.yaml): `browser.extract` with a recipe like
+[recipes/example-jobs.yaml](../recipes/example-jobs.yaml), the agencies skipped, the rest scored, then `data.save` with
 `type: Job`) and by [application-replies.yaml](../pipelines/application-replies.yaml). Save the App before its
 pipelines.
 
@@ -1083,7 +1084,7 @@ What the steps add up to, with the pipeline that does it:
 | Goal | Steps | Example |
 | --- | --- | --- |
 | Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
-| Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) |
+| Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../pipelines/job-board.yaml) up to `data.save` |
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
 | A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |

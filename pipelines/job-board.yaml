@@ -1,0 +1,50 @@
+# Jobs from a job board, in the Job Search App (pipelines/apps/job-search.yaml: save it first): every weekday morning,
+# the board's categories read with a recipe (recipes/example-jobs.yaml: import it on the Recipes page as
+# "jobs.example.com/search", and set the site and the categories here), only the postings not kept before, the agencies
+# set aside as skipped, the rest scored against what you look for (edit `against`; `outcomes` learns from what came of
+# your applications) and kept as Jobs. You're told about the ones scored 70 or more. Nothing is sent.
+name: Job board
+app: Job Search
+description: New postings from a job board, scored and kept as Jobs; the best told on Telegram.
+trigger: { schedule: "0 8 * * 1-5" }
+policy:
+  allowedDomains: [jobs.example.com]
+steps:
+  - id: search
+    type: browser.extract
+    with:
+      recipes: [jobs.example.com/search]
+      params: { category: [back-end, full-stack] }
+      maxItems: 300
+  - id: fresh
+    type: data.dedupe
+    with: { from: "{{search.items}}", key: url, againstType: Job }
+  - id: agencies
+    type: llm.classify
+    when: "{{fresh.items}}"
+    with:
+      items: "{{fresh.items}}"
+      instruction: '"agency": a recruitment agency hiring for a client it doesn''t name. "employer": the company hires for itself.'
+      labels: [employer, agency]
+      keep: [employer]
+  - id: score
+    type: llm.score
+    with:
+      items: "{{agencies.kept}}"
+      against: >-
+        Senior or lead software engineer: back-end or full-stack, TypeScript or Node.js, remote or hybrid, a product
+        company. Not: on-call heavy roles, short contracts.
+      outcomes: true
+  - id: save
+    type: data.save
+    with: { items: "{{score.scored}}", type: Job }
+  - id: skipped
+    type: data.save
+    with: { items: "{{agencies.dropped}}", type: Job, stage: skipped }
+  - id: best
+    type: data.filter
+    with: { items: "{{save.added}}", where: [{ field: score, op: gte, value: 70 }] }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{best.items}}"
+    with: { text: "{{item.score}}: {{item.title}} at {{item.company}}, {{item.location}}.\n{{item.scoreReason}}\n{{item.url}}" }
