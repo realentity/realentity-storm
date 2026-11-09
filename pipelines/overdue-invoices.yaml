@@ -1,0 +1,25 @@
+# Every weekday morning, the sent Invoices of the Clients App past their due date move to overdue, and you are told
+# once: an overdue one isn't sent any more, so it isn't read again. The reminder to the client is on its button
+# (payment-reminder.yaml).
+name: Overdue invoices
+app: Clients
+description: Sent invoices past their due date move to overdue.
+trigger: { schedule: "0 9 * * 1-5" }
+steps:
+  - id: open
+    type: data.read
+    with: { type: Invoice, where: [{ field: status, op: eq, value: sent }] }
+  - id: late
+    type: data.map
+    with:
+      from: "{{open.items}}"
+      # Past due; each as a pipeline writes it, without its stage and the amount you set.
+      expression: |-
+        $filter($, function($i) { $exists($i.due) and $toMillis($i.due) < $toMillis($now()) }).$sift($, function($v, $k) { $not($k in ["status", "amount"]) })
+  - id: save
+    type: data.save
+    with: { items: "{{late.items}}", type: Invoice, stage: overdue }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{late.items}}"
+    with: { text: "Overdue: invoice {{item.number}} to {{item.client}}, due {{item.due}}. Payment reminder is on its page." }

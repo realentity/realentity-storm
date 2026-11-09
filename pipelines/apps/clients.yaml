@@ -1,0 +1,104 @@
+# The Clients App, for freelance work: inquiries from email become Leads (client-inquiries.yaml), scored against the
+# work you take; a qualified one gets a proposal on its button (proposal.yaml), sent to a Client you added; a won one
+# gets an invoice draft (lead-won.yaml); a sent invoice past its due date turns overdue (overdue-invoices.yaml), with a
+# payment reminder on its button (payment-reminder.yaml). Emails only ever go to a Client's address, which you wrote:
+# never to one a pipeline read. Save it on the Apps page before its pipelines.
+name: Clients
+description: Leads from email, proposals and invoices
+icon: briefcase
+types:
+  Client:
+    mine: true                     # you add your clients: their address is the only one Storm writes to
+    key: name
+    fields:
+      name: { type: text, required: true }
+      email: { type: email, required: true }
+      company: { type: text }
+      rate: { type: money, currency: currency }
+      currency: { type: text }
+      notes: { type: longtext }
+  Lead:
+    key: thread                    # the email thread: a reply in it updates the same Lead
+    title: title
+    stages:
+      field: status
+      initial: new
+      states: [new, qualified, proposal, won, lost]
+      moves:
+        - { from: new, to: [qualified, lost] }
+        - { from: qualified, to: [proposal], by: [me, pipeline] }    # the proposal pipeline moves it once sent
+        - { from: [qualified, proposal], to: [won, lost] }
+        - { from: [proposal, won, lost], to: [qualified] }           # a mistake undone
+        - { from: [qualified, lost], to: [new] }
+    fields:
+      thread: { type: text, required: true }
+      title: { type: text, required: true }
+      from: { type: email }
+      fromName: { type: text, label: From }
+      summary: { type: longtext }
+      budget: { type: money, currency: currency }
+      currency: { type: text }
+      deadline: { type: date }
+      knownClient: { type: text, label: Looks like }  # the LLM's guess of which Client it is
+      score: { type: number }
+      scoreReason: { type: longtext, label: Why }
+      messageId: { type: text }
+      client: { type: text, mine: true }               # the Client's name, set by you: proposals go to their address
+      notes: { type: longtext, mine: true }
+  Invoice:
+    key: lead                      # one invoice per won lead
+    title: number
+    stages:
+      field: status
+      initial: draft
+      states: [draft, sent, overdue, paid]
+      moves:
+        - { from: draft, to: [sent] }
+        - { from: sent, to: [overdue], by: [me, pipeline] }
+        - { from: [sent, overdue], to: [paid] }
+        - { from: [sent, overdue, paid], to: [draft, sent] }         # a mistake undone
+    fields:
+      lead: { type: text, required: true }
+      number: { type: text, required: true }
+      client: { type: text }
+      title: { type: text }
+      quoted: { type: money, currency: currency }       # the lead's budget
+      amount: { type: money, currency: currency, mine: true }
+      currency: { type: text }
+      issued: { type: date }
+      due: { type: date }
+pages:
+  - list: Lead
+    menu: { label: Leads, icon: briefcase }
+    columns: [title, fromName, budget, deadline, score, client, status]
+    filters: [status]
+    sort: -score
+    group: { by: status }
+    moves: true
+  - view: Lead
+    sections:
+      - { title: Lead, fields: [title, fromName, from, budget, deadline, knownClient] }
+      - { title: Score, fields: [score, scoreReason] }
+      - { title: Summary, fields: [summary] }
+    actions:
+      - { label: Send proposal, run: Proposal, when: { status: qualified }, confirm: "Draft a proposal to this lead's client? You see it before it goes." }
+  - form: Lead
+    fields: [client, notes]
+  - list: Invoice
+    menu: { label: Invoices, icon: receipt }
+    columns: [number, client, amount, issued, { field: due, due: { days: 3, unless: { status: paid } } }, status]
+    filters: [status]
+    sort: -issued
+    group: { by: issued, period: month, totals: [amount, { field: amount, label: Unpaid, when: { status: overdue } }] }
+    moves: true
+  - view: Invoice
+    sections:
+      - { title: Invoice, fields: [number, client, title, amount, quoted, issued, due] }
+    actions:
+      - { label: Payment reminder, run: Payment reminder, when: { status: overdue }, confirm: "Draft a payment reminder to this client? You see it before it goes." }
+  - form: Invoice
+    fields: [amount]
+  - list: Client
+    menu: { label: Clients, icon: bookmark }
+    columns: [name, company, email, rate]
+    sort: name

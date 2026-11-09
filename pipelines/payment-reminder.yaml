@@ -1,0 +1,27 @@
+# From an overdue Invoice's button in the Clients App (pipelines/apps/clients.yaml): a polite payment reminder to its
+# Client's address (which you wrote), sent after you Act at the gate, where you can edit it.
+name: Payment reminder
+app: Clients
+description: A payment reminder for an overdue invoice, from its button, sent after you approve it.
+trigger: { on: entity.action, type: Invoice }
+limits:
+  email.send: 10/day
+steps:
+  - id: clients
+    type: data.read
+    with: { type: Client, where: [{ field: name, op: eq, value: "{{trigger.item.client}}" }], limit: 1 }
+  - id: draft
+    type: llm.generate
+    forEach: "{{clients.items}}"
+    with:
+      instruction: >-
+        A short, polite payment reminder email body to the client for this invoice: its number, what it was for, the
+        amount and the date it was due, and a request to let me know when it is paid. No subject line, no pressure.
+      context: { invoice: "{{trigger.item}}", client: "{{item}}" }
+  - id: send
+    type: email.send
+    forEach: "{{clients.items}}"
+    with:
+      to: "{{item.email}}"
+      subject: "Payment reminder: invoice {{trigger.item.number}}"
+      body: "{{draft.text}}"

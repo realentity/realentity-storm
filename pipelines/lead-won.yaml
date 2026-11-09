@@ -1,0 +1,32 @@
+# When a Lead of the Clients App moves to won: an Invoice draft for it, due in 14 days, with the lead's budget as what
+# was quoted. You set its amount on its page and mark it sent; overdue-invoices.yaml watches it from there.
+name: Lead won
+app: Clients
+description: A won lead gets an invoice draft.
+trigger: { on: entity.changed, type: Lead, stage: won }
+steps:
+  - id: invoice
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: |-
+        (
+          $today := $toMillis($now());
+          {
+            "lead": thread,
+            "number": "INV-" & $fromMillis($today, "[Y0001][M01][D01]") & "-" & $uppercase($substring($replace(thread, /[^A-Za-z0-9]/, ""), 0, 4)),
+            "client": client,
+            "title": title,
+            "quoted": budget,
+            "currency": currency,
+            "issued": $fromMillis($today, "[Y0001]-[M01]-[D01]"),
+            "due": $fromMillis($today + 14 * 24 * 60 * 60 * 1000, "[Y0001]-[M01]-[D01]")
+          }
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{invoice.items}}", type: Invoice }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "Won: {{trigger.item.title}}. Invoice {{item.number}} drafted, due {{item.due}}: set its amount on its page." }

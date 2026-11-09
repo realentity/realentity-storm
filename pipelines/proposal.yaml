@@ -1,0 +1,41 @@
+# From a qualified Lead's button in the Clients App (pipelines/apps/clients.yaml): a proposal, sent to the Client you
+# set on the Lead (its form), after you Act at the gate, where you can edit it; then the Lead moves to proposal. A Lead
+# without a Client of that name sends nothing: add the Client first. The address is the Client's, which you wrote,
+# never the one the inquiry came from.
+name: Proposal
+app: Clients
+description: A proposal to a lead's client, from its button, sent after you approve it.
+trigger: { on: entity.action, type: Lead }
+limits:
+  email.send: 10/day
+steps:
+  - id: lead
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # The Lead as a pipeline writes it: without its stage and your fields.
+      expression: '$sift($, function($v, $k) { $not($k in ["status", "client", "notes"]) })'
+  - id: clients
+    type: data.read
+    with: { type: Client, where: [{ field: name, op: eq, value: "{{trigger.item.client}}" }], limit: 1 }
+  - id: draft
+    type: llm.generate
+    forEach: "{{clients.items}}"
+    with:
+      instruction: >-
+        A short proposal email body for this lead, to the client: what I understand they need, how I would do it in
+        two or three steps, the time it takes, and my rate from the client's details (or ask theirs when it isn't
+        there). Plain, friendly, no subject line, no promises the lead doesn't support.
+      context: { lead: "{{trigger.item}}", client: "{{item}}" }
+  - id: send
+    type: email.send
+    forEach: "{{clients.items}}"
+    with:
+      to: "{{item.email}}"
+      subject: "Proposal: {{trigger.item.title}}"
+      body: "{{draft.text}}"
+      inReplyTo: "{{trigger.item.messageId}}"
+  - id: moved
+    type: data.save
+    forEach: "{{clients.items}}"
+    with: { items: "{{lead.items}}", type: Lead, stage: proposal }
