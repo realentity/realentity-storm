@@ -116,6 +116,23 @@ examples:
       - return-window.yaml
       - return-request.yaml
 
+  - id: subscriptions
+    name: Subscriptions
+    description: >-
+      What you pay for every month or year, from the services' emails, with what it costs a month and its price
+      history; a reminder before a trial ends or a yearly renewal, a monthly review, and how to cancel on a button.
+    needs:
+      - { kind: email, label: "An email account, to read the services' emails from" }
+      - { kind: llm, label: "The LLM, to read each email and review them" }
+      - { kind: telegram, label: "Telegram, for the reminders and the review" }
+    files:
+      - apps/subscriptions.yaml
+      - subscriptions.yaml
+      - renewal-reminder.yaml
+      - renewal-watch.yaml
+      - subscription-review.yaml
+      - cancel-subscription.yaml
+
   - id: tables
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.

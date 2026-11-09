@@ -1,0 +1,43 @@
+# When a Subscription of the Subscriptions App changes: a reminder (renewal-reminder.yaml) at 09:00 two days before a
+# trial ends, or seven days before a yearly one renews (in a few minutes when that is past and the day isn't); moved
+# with the date, and cancelled once it is cancelling or cancelled. A monthly renewal isn't reminded: the review tells them. Save
+# renewal-reminder.yaml first: this one names it.
+name: Renewal watch
+app: Subscriptions
+description: Schedules a reminder before a trial ends or a yearly subscription renews.
+trigger: { on: entity.changed, type: Subscription }
+steps:
+  - id: ahead
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: |-
+        (
+          $t := $toMillis($now());
+          $day := 24 * 60 * 60 * 1000;
+          $before := function($date, $days) {
+            ($d := $toMillis($date) - $days * $day;
+            $d + 9 * 60 * 60 * 1000 > $t ? $fromMillis($d, "[Y0001]-[M01]-[D01]") & "T09:00" : $toMillis($date) + $day > $t ? $fromMillis($t + 10 * 60 * 1000))
+          };
+          $trial := status = "trial" and trialEnds ? $before(trialEnds, 2);
+          $yearly := status = "active" and period = "yearly" and nextRenewal ? $before(nextRenewal, 7);
+          $trial ? { "remindAt": $trial, "what": "Its trial ends", "date": trialEnds }
+            : $yearly ? { "remindAt": $yearly, "what": "It renews for a year", "date": nextRenewal }
+        )
+  - id: later
+    type: flow.later
+    forEach: "{{ahead.items}}"
+    with:
+      pipeline: Renewal reminder
+      at: "{{item.remindAt}}"
+      key: "renewal:{{trigger.key}}"
+      data: { subscription: "{{trigger.item}}", what: "{{item.what}}", date: "{{item.date}}" }
+  - id: ended
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: 'status in ["cancelling", "cancelled"] ? { "id": id }'
+  - id: stop
+    type: flow.cancel
+    forEach: "{{ended.items}}"
+    with: { key: "renewal:{{trigger.key}}" }

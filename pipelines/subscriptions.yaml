@@ -1,0 +1,80 @@
+# Subscriptions from email, in the Subscriptions App (pipelines/apps/subscriptions.yaml: save it first): a trial, a
+# receipt, a renewal notice, a price change or a cancellation, each read by the LLM and merged into its Subscription
+# (by the service's name) as it was, with what it costs a month. Each price is kept as a history; you're told about a new
+# subscription and about a price that went up. Nothing is paid or cancelled.
+name: Subscriptions
+app: Subscriptions
+description: Subscription emails kept as Subscriptions, with a message when a price goes up.
+trigger: { schedule: "0 */2 * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 31 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "subscription": about a service I pay for again and again (streaming, software, cloud, a gym, a newspaper): a
+        trial started or ending, a receipt or invoice for a period, a renewal notice, a price change, a cancellation.
+        "other": everything else, also one-off purchases, offers and newsletters.
+      labels: [subscription, other]
+      keep: [subscription]
+  - id: existing
+    type: data.read
+    with: { type: Subscription, limit: 500 }
+  - id: read
+    type: llm.extract
+    forEach: "{{triage.kept}}"
+    with:
+      content: "{{item}}"
+      instruction: "The service is the brand I pay, also when a store or a payment service sent the email. My subscriptions so far: {{existing.items}}"
+      fields:
+        service: the service's name, as in my list when it is one of them, else as the brand is called
+        plan: the plan, like "Premium" or "Family"
+        price: the price per period, a number like 9.99
+        currency: the price's currency code, like EUR
+        period: one of weekly, monthly, yearly, other
+        lastCharged: when I was charged, if this is a receipt, a date
+        nextRenewal: when it renews or I'm charged next, a date
+        trialEnds: when the trial ends, if it is a trial, a date
+        status: one of trial, active, cancelled
+  - id: subscriptions
+    type: data.map
+    with:
+      from: { emails: "{{triage.kept}}", values: "{{read.values}}", existing: "{{existing.items}}" }
+      # Each email merged into its Subscription as it was, with the price a month.
+      expression: |-
+        (
+          $id := function($s) { $lowercase($replace($string($s), /[^A-Za-z0-9]/, "")) };
+          $stages := { "trial": "trial", "active": "active", "cancelled": "cancelled" };
+          $map(values, function($v, $i) {
+            (
+              $key := $id($v.service);
+              $old := $sift($$.existing[id = $key][0], function($x, $k) { $not($k in ["status", "notes"]) });
+              $new := $sift($v, function($x, $k) { $x != "" and $not($k in ["status", "period"]) });
+              $period := $lowercase($v.period) in ["weekly", "monthly", "yearly", "other"] ? $lowercase($v.period) : $old.period;
+              $m := $merge([$old, $new, { "id": $key, "period": $period, "from": emails[$i].from, "subject": emails[$i].subject }]);
+              $p := $match($string($m.price), /\d+(\.\d+)?/)[0].match;
+              $monthly := $p ? ($m.period = "yearly" ? $round($number($p) / 12, 2) : $m.period = "weekly" ? $round($number($p) * 52 / 12, 2) : $number($p));
+              $merge([$m, { "monthly": $monthly, "status": $lookup($stages, $lowercase($v.status)) }])
+            )
+          })[id != ""]
+        )
+  - id: prices
+    type: data.history
+    with: { items: "{{subscriptions.items}}", collection: subscription-prices, key: id, value: price }
+  - id: up
+    type: data.filter
+    with: { items: "{{prices.items}}", where: [{ field: history.direction, op: eq, value: up }] }
+  - id: save
+    type: data.save
+    with: { items: "{{subscriptions.items}}", type: Subscription }
+  - id: added
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "New subscription: {{item.service}} {{item.plan}}, {{item.price}} {{item.currency}} ({{item.period}}), {{item.status}}." }
+  - id: dearer
+    type: notify.telegram
+    forEach: "{{up.items}}"
+    with: { text: "{{item.service}} costs more: {{item.history.previous}} → {{item.price}} {{item.currency}} ({{item.period}})." }
