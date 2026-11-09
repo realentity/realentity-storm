@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { defaultCatalog, StepCatalog } from "@realentity/storm-steps";
-import { DatabasePreparer, TestEnvironment, TestInfrastructure } from "@realentity/storm-testing";
+import { DatabasePreparer, TEST_TIME_ZONE, TestEnvironment, TestInfrastructure } from "@realentity/storm-testing";
 import { type INestApplication, type INestApplicationContext, type Type } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { argon2id, hash } from "argon2";
@@ -37,6 +37,8 @@ async function dist<T>(path: string): Promise<T> {
  * in this process; and a signed-in session saved as Playwright storage state (logins would use up TOTP codes).
  */
 export async function startStack(): Promise<Stack> {
+  // The api and the worker run in this process: in the browser's zone (playwright.config.ts), whatever the machine's.
+  process.env.TZ = TEST_TIME_ZONE;
   const infrastructure = TestInfrastructure.fromEnvironment();
   const databaseUrl = await infrastructure.start();
   try {

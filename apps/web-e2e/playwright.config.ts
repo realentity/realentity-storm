@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { TEST_TIME_ZONE } from "@realentity/storm-testing";
 import { STORAGE_STATE, WEB_PORT, WEB_URL, API_PORT } from "./src/stack";
 
 /**
@@ -21,9 +22,8 @@ export default defineConfig({
     storageState: STORAGE_STATE,
     trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
-    // The browser's zone is a new schedule's default tz: the expectations are written in the unit tests' zone
-    // (TEST_TIME_ZONE, packages/testing), the same on every machine and in CI, whatever its own.
-    timezoneId: "Europe/Sofia",
+    // The browser's zone is a new schedule's default tz; the api and the worker run in the same one (src/stack.ts)
+    timezoneId: TEST_TIME_ZONE,
   },
   webServer: {
     command: `pnpm --filter @realentity/storm-web exec vite --port ${WEB_PORT} --strictPort`,
