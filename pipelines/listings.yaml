@@ -1,0 +1,85 @@
+# Listings to rent, in the Apartments App (pipelines/apps/apartments.yaml: save it first): a listing site's districts
+# read with a recipe (recipes/example-listings.yaml: import it on the Recipes page, and set the site and the districts
+# here), each price kept as a history, each new listing marked by the LLM against what you look for (Search) and kept;
+# one that doesn't fit starts rejected. You're told about the new matches, and when one of your favorites gets
+# cheaper. Nothing is sent.
+name: Listings
+app: Apartments
+description: New listings that fit what you look for, and price drops on your favorites.
+trigger: { schedule: "0 8,13,19 * * *" }
+policy:
+  allowedDomains: [listings.example]
+steps:
+  - id: search
+    type: browser.extract
+    with:
+      recipes: [listings.example/rent]
+      params: { district: [center, north] }
+      maxItems: 300
+  - id: prices
+    type: data.history
+    with: { items: "{{search.items}}", collection: listing-prices, key: url, value: price }
+  - id: fresh
+    type: data.dedupe
+    with: { from: "{{search.items}}", key: url, againstType: Listing }
+  - id: wishes
+    type: data.read
+    with: { type: Search, where: [{ field: enabled, op: eq, value: true }] }
+  - id: fit
+    type: llm.classify
+    when: "{{fresh.items}}"
+    with:
+      items: "{{fresh.items}}"
+      instruction: >-
+        How each listing fits what I look for: "match" fits all of it, "maybe" misses something small or doesn't say,
+        "no" misses something I must have. What I look for: {{wishes.items}}
+      labels: [match, maybe, no]
+      keep: [match, maybe]
+  - id: listings
+    type: data.map
+    with:
+      from: { items: "{{fresh.items}}", results: "{{fit.results}}" }
+      # Each new listing with its fit, its price ("1 200 €"), rooms ("2 rooms") and size ("65 m²") as numbers, or
+      # without them when there is none ("Price on request").
+      expression: |-
+        (
+          $num := function($t) { ($m := $match($string($t), /\d+([.,]\d+)?/)[0].match; $m ? $number($replace($m, ",", "."))) };
+          $amount := function($t) { ($d := $replace($replace($string($t), /[^\d.,]/, ""), /[.,](?=\d{3}(?!\d))/, ""); $d ? $number($replace($d, ",", "."))) };
+          $currency := function($t) { $contains($string($t), "€") or $contains($string($t), "EUR") ? "EUR" : $contains($string($t), "£") ? "GBP" : $contains($string($t), "$") ? "USD" : undefined };
+          $map(items, function($v, $i) {
+            (
+              $r := results[index = $i];
+              $merge([$sift($v, function($x, $k) { $not($k in ["price", "rooms", "size"]) }), {
+                "price": $amount($v.price),
+                "currency": $currency($v.price),
+                "rooms": $num($v.rooms),
+                "size": $num($v.size),
+                "fit": $r.label,
+                "fitReason": $r.reason,
+                "status": $r.label = "no" ? "rejected" : "new"
+              }])
+            )
+          })
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{listings.items}}", type: Listing }
+  - id: matches
+    type: data.filter
+    with: { items: "{{save.added}}", where: [{ field: fit, op: eq, value: match }] }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{matches.items}}"
+    with: { text: "New: {{item.title}}, {{item.price}} {{item.currency}}, {{item.area}}.\n{{item.fitReason}}\n{{item.url}}" }
+  - id: watched
+    type: data.read
+    with: { type: Listing, where: [{ field: status, op: in, value: [favorite, contacted, viewing, offer] }] }
+  - id: drops
+    type: data.map
+    with:
+      from: { seen: "{{prices.items}}", watched: "{{watched.items}}" }
+      expression: 'seen[history.direction = "down" and url in $$.watched.url]'
+  - id: cheaper
+    type: notify.telegram
+    forEach: "{{drops.items}}"
+    with: { text: "Cheaper: {{item.title}}, {{item.history.previous}} → {{item.price}}\n{{item.url}}" }

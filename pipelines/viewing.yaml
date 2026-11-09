@@ -1,0 +1,27 @@
+# When you set a Listing's viewing time in the Apartments App (its form): an event in your calendar, after you Act at
+# its gate, and the Listing moves to viewing. A time already past, or one cleared, does nothing.
+name: Viewing
+app: Apartments
+description: A viewing time you set goes into your calendar.
+trigger: { on: entity.changed, type: Listing, field: viewingAt }
+steps:
+  - id: ahead
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # Still ahead: the Listing as a pipeline writes it, without its stage and your fields.
+      expression: |-
+        viewingAt and $toMillis(viewingAt) > $toMillis($now()) ? $sift($, function($v, $k) { $not($k in ["status", "agent", "viewingAt", "notes"]) })
+  - id: event
+    type: calendar.create
+    forEach: "{{ahead.items}}"
+    with:
+      title: "Viewing: {{trigger.item.title}}"
+      start: "{{trigger.item.viewingAt}}"
+      durationMinutes: 45
+      location: "{{trigger.item.area}}"
+      description: "{{trigger.item.url}}"
+  - id: moved
+    type: data.save
+    forEach: "{{ahead.items}}"
+    with: { items: "{{ahead.items}}", type: Listing, stage: viewing }

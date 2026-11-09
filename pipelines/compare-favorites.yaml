@@ -1,0 +1,28 @@
+# From the Apartments list's button (pipelines/apps/apartments.yaml): your favorites side by side against what you look
+# for, ranked, on Telegram.
+name: Compare favorites
+app: Apartments
+description: Your favorite listings compared and ranked, from the list's button.
+steps:
+  - id: favorites
+    type: data.read
+    with:
+      type: Listing
+      where: [{ field: status, op: in, value: [favorite, contacted, viewing, offer] }]
+      sort: price
+      limit: 10
+  - id: wishes
+    type: data.read
+    with: { type: Search, where: [{ field: enabled, op: eq, value: true }] }
+  - id: compare
+    type: llm.generate
+    when: "{{favorites.items}}"
+    with:
+      instruction: >-
+        Compare these apartments for me, for Telegram: a line each with the price, the price per m², the area, the
+        rooms and what speaks for and against it against what I look for and my notes; then rank them, best first, with
+        one sentence why. No other text.
+      context: { favorites: "{{favorites.items}}", lookingFor: "{{wishes.items}}" }
+  - id: tell
+    type: notify.telegram
+    with: { text: "Your favorites, compared:\n\n{{compare.text}}" }

@@ -1,0 +1,40 @@
+# From a favorite Listing's button in the Apartments App (pipelines/apps/apartments.yaml): a request for a viewing,
+# sent to the Agent you set on the Listing (its form), after you Act at the gate, where you can edit it; then the Listing
+# moves to contacted. A Listing without an Agent of that name sends nothing: add the Agent first. The address is the
+# Agent's, which you wrote, never one the listing's page gave.
+name: Ask for a viewing
+app: Apartments
+description: A request for a viewing to a listing's agent, from its button, sent after you approve it.
+trigger: { on: entity.action, type: Listing }
+limits:
+  email.send: 10/day
+steps:
+  - id: listing
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      # The Listing as a pipeline writes it: without its stage and your fields.
+      expression: '$sift($, function($v, $k) { $not($k in ["status", "agent", "viewingAt", "notes"]) })'
+  - id: agents
+    type: data.read
+    with: { type: Agent, where: [{ field: name, op: eq, value: "{{trigger.item.agent}}" }], limit: 1 }
+  - id: draft
+    type: llm.generate
+    forEach: "{{agents.items}}"
+    with:
+      instruction: >-
+        A short email body to the agent asking to see this apartment: which listing (its title and address), that I'm
+        interested, two or three times I can come from the agent's notes (else ask for theirs), and one question the
+        listing leaves open. Plain and friendly, no subject line.
+      context: { listing: "{{trigger.item}}", agent: "{{item}}" }
+  - id: send
+    type: email.send
+    forEach: "{{agents.items}}"
+    with:
+      to: "{{item.email}}"
+      subject: "Viewing: {{trigger.item.title}}"
+      body: "{{draft.text}}"
+  - id: moved
+    type: data.save
+    forEach: "{{agents.items}}"
+    with: { items: "{{listing.items}}", type: Listing, stage: contacted }
