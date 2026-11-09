@@ -63,6 +63,24 @@ examples:
       - trip-bookings.yaml
       - packing-list.yaml
 
+  - id: clients
+    name: Clients
+    description: >-
+      For freelance work: inquiries from email become scored leads, a proposal and a payment reminder on a button,
+      sent only to clients you added, and an invoice draft for each lead you win, watched until it is paid.
+    needs:
+      - { kind: entities, type: Client, label: "Your clients, added on its page" }
+      - { kind: email, label: "An email account, to read inquiries and send proposals" }
+      - { kind: llm, label: "The LLM, to read inquiries and draft emails" }
+      - { kind: telegram, label: "Telegram, for new leads and overdue invoices" }
+    files:
+      - apps/clients.yaml
+      - client-inquiries.yaml
+      - proposal.yaml
+      - lead-won.yaml
+      - overdue-invoices.yaml
+      - payment-reminder.yaml
+
   - id: tables
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.

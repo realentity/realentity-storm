@@ -1,0 +1,62 @@
+# Inquiries from email, in the Clients App (pipelines/apps/clients.yaml: save it first): someone asking you for work
+# becomes a Lead, by its email thread, with what they need, their budget and deadline, and a score against the work you
+# take (edit it in the read step's instruction). A reply in the same thread updates its Lead. Nothing is sent.
+name: Client inquiries
+app: Clients
+description: Inquiries from email become scored Leads.
+trigger: { schedule: "*/15 * * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 7 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "inquiry": someone writes to me personally about paid work: a project, a quote, my availability or rate.
+        "other": everything else, also job alerts, recruiters hiring for a permanent job, newsletters and invoices.
+      labels: [inquiry, other]
+      keep: [inquiry]
+  - id: clients
+    type: data.read
+    with: { type: Client, limit: 200 }
+  - id: read
+    type: llm.extract
+    forEach: "{{triage.kept}}"
+    with:
+      content: "{{item}}"
+      instruction: >-
+        The work I take (edit it): software development and consulting, such as web applications, APIs and
+        integrations, remote, a few weeks or longer, with a budget. Not: unpaid work, equity only, design-only jobs.
+        My clients, to tell which one writes: {{clients.items}}
+      fields:
+        summary: what they need, in two or three sentences
+        budget: the budget they name, a number
+        currency: the budget's currency code, like EUR
+        deadline: when they need it done, a date
+        knownClient: the name of the client in my list who writes (by email address or company), exactly as written there; empty when none fits
+        score: how well it fits the work I take, a number from 0 to 100
+        scoreReason: why that score, in one sentence
+  - id: leads
+    type: data.map
+    with:
+      from: { emails: "{{triage.kept}}", values: "{{read.values}}" }
+      # Each inquiry with its email's thread, sender and subject.
+      expression: |-
+        $map(values, function($v, $i) {
+          $merge([$v, {
+            "thread": emails[$i].threadId ? emails[$i].threadId : emails[$i].messageId,
+            "title": emails[$i].subject,
+            "from": emails[$i].from,
+            "fromName": emails[$i].fromName,
+            "messageId": emails[$i].messageId
+          }])
+        })
+  - id: save
+    type: data.save
+    with: { items: "{{leads.items}}", type: Lead }
+  - id: tell
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "New lead ({{item.score}}): {{item.title}}, from {{item.fromName}}.\n{{item.scoreReason}}" }
