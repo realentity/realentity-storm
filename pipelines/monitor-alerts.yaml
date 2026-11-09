@@ -1,0 +1,63 @@
+# An uptime monitor's alerts, in the Server ops App (pipelines/apps/server-ops.yaml: save it first), by webhook: its
+# address and token are on this pipeline's page (docs/self-hosting.md §5). A monitor that goes down opens an Incident,
+# one that is up again resolves it, with how long it lasted. It reads Uptime Kuma's webhook ({ monitor: { name, url },
+# heartbeat: { status: 0 or 1, msg } }) and a plain one ({ "monitor": "api", "status": "down" or "up", "url", "message" }).
+# The body is only read and kept, never used as an address.
+name: Monitor alerts
+app: Server ops
+description: A monitor down opens an incident, up again resolves it.
+trigger: { webhook: token }
+steps:
+  - id: open
+    type: data.read
+    with:
+      type: Incident
+      where:
+        - { field: source, op: eq, value: monitor }
+        - { field: status, op: in, value: [open, acknowledged] }
+  - id: incident
+    type: data.map
+    with:
+      from: { body: "{{trigger.body}}", open: "{{open.items}}" }
+      # The monitor, whether it is down, and its open Incident: a new one when it goes down, resolved when it is up.
+      expression: |-
+        (
+          $at := $now();
+          $name := $type(body.monitor) = "object" ? body.monitor.name : body.monitor ? body.monitor : body.name;
+          $url := $type(body.monitor) = "object" ? body.monitor.url : body.url;
+          $message := body.heartbeat.msg ? body.heartbeat.msg : body.message ? body.message : body.msg;
+          $down := body.heartbeat ? body.heartbeat.status = 0 : $lowercase($string(body.status)) in ["down", "fail", "failed", "critical", "firing", "alert"];
+          $current := open[subject = $name][0];
+          $kept := $sift($current, function($v, $k) { $not($k in ["status", "notes"]) });
+          $not($exists($name)) ? undefined
+            : $down and $current ? $merge([$kept, { "detail": $message }])
+            : $down ? {
+                "id": "monitor:" & $name & ":" & $at,
+                "title": $name & " is down",
+                "source": "monitor",
+                "subject": $name,
+                "detail": $message,
+                "url": $url,
+                "startedAt": $at,
+                "status": "open"
+              }
+            : $current ? $merge([$kept, {
+                "resolvedAt": $at,
+                "minutes": $round(($toMillis($at) - $toMillis($current.startedAt)) / 60000),
+                "status": "resolved"
+              }])
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{incident.items}}", type: Incident }
+  - id: resolved
+    type: data.filter
+    with: { items: "{{save.changed}}", where: [{ field: item.status, op: eq, value: resolved }] }
+  - id: down
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "Down: {{item.subject}}. {{item.detail}}\n{{item.url}}" }
+  - id: up
+    type: notify.telegram
+    forEach: "{{resolved.items}}"
+    with: { text: "Up again: {{item.item.subject}}, after {{item.item.minutes}} minutes." }

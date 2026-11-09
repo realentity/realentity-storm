@@ -151,3 +151,21 @@ examples:
       - { kind: credential, name: app-db, label: "A database credential named app-db (read-only)" }
       - { kind: telegram, label: "Telegram, for the alerts" }
     files: [apps/tables.yaml, table-growth.yaml]
+
+  - id: server-ops
+    name: Server ops
+    description: >-
+      Incidents on what you run: a monitor down (by webhook), a database check above 0, the database out of reach;
+      each resolved by itself when the cause is gone, a GitHub issue on a button after you approve it, and the week in
+      numbers. No LLM.
+    needs:
+      - { kind: credential, name: app-db, label: "A database credential named app-db (read-only), and your checks in Database check" }
+      - { kind: telegram, label: "Telegram, for the incidents" }
+      - { kind: credential, name: github, label: "A GitHub credential named github, for Open issue (and your repository in Incident issue)" }
+    files:
+      - apps/server-ops.yaml
+      - monitor-alerts.yaml
+      - database-check.yaml
+      - database-down.yaml
+      - incident-issue.yaml
+      - ops-week.yaml
