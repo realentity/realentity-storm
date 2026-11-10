@@ -38,6 +38,12 @@ export interface MailAttachment {
 
 export const SENT_MAILBOX = "\\Sent";
 
+/** An earlier message of a thread (M41-T1); `mine`: the user wrote it (it is from the mailbox's own address). */
+export interface ThreadMessage {
+  message: EmailMessage;
+  mine: boolean;
+}
+
 export interface OutgoingMail {
   to: string;
   subject: string;
@@ -60,6 +66,11 @@ export interface MailConnector {
   recent(userId: string, request: RecentRequest): Promise<EmailMessage[]>;
   /** One message's attachments, read-only; the message whole up to `maxBytes`. */
   attachments(userId: string, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]>;
+  /**
+   * The messages with these Message-IDs (an email's References and In-Reply-To), read-only, oldest first: in All Mail
+   * where the server has it (Gmail), else in INBOX and the Sent folder. Ones no longer there are left out.
+   */
+  thread(userId: string, messageIds: string[]): Promise<ThreadMessage[]>;
   send(userId: string, mail: OutgoingMail): Promise<SentMail>;
 }
 

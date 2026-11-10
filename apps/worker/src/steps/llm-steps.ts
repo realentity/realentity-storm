@@ -46,8 +46,21 @@ export abstract class LlmStep implements StepExecutor {
     cacheSystem = false,
     cachedPrompt?: string,
   ): Promise<z.infer<S>> {
+    return this.callAs(this.type, context, system, prompt, schema, cacheSystem, cachedPrompt);
+  }
+
+  /** `call` with the model of another task key: a step's cheap first pass ("topic.extract.screen"). */
+  protected async callAs<S extends z.ZodObject>(
+    taskKey: string,
+    context: StepContext,
+    system: string,
+    prompt: string,
+    schema: S,
+    cacheSystem = false,
+    cachedPrompt?: string,
+  ): Promise<z.infer<S>> {
     const [choice, rules] = await Promise.all([
-      this.router.choose(context.userId, this.type),
+      this.router.choose(context.userId, taskKey),
       this.learning.rules(context.userId, this.type, context.pipelineId),
     ]);
     try {

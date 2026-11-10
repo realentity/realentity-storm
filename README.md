@@ -64,6 +64,9 @@ Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, R
 - **Replies that sound like you.** It drafts replies to recruiters or clients using your most similar replies that
   you approved before as examples. Every edit you make becomes another example, and a nightly review of your edits
   suggests rules and pipeline changes for you to accept.
+- **Replies that know the subject.** A reply reads its thread, and for a topic you keep (a project, a customer) what
+  is true about it now: facts Storm proposes from the topic's email, each with its source, and keeps only after you
+  approve them. A newer email supersedes an older fact; you edit, correct or undo any of it.
 - **Nobody answered.** It finds emails you sent that got no reply and drafts a follow-up for you to approve.
 - **Sites without an API.** Sign in to a site with a stored credential, read a page, download a statement, upload a
   document, or let an agent fill in an unfamiliar form. The agent can only fill: Storm records what it did, shows you

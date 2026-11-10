@@ -28,6 +28,8 @@ import { BrowserExtractStep } from "./recipe-steps";
 import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
+import { TopicApplyStep, TopicExtractStep } from "./topic-memory-steps";
+import { TopicMatchStep } from "./topic-steps";
 
 export interface CoreStepDependencies {
   llm: LlmClient;
@@ -79,6 +81,9 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new GenerateStep(deps.llm, deps.router, deps.learning),
     new SummarizeStep(deps.llm, deps.router, deps.learning),
     new ExtractStep(deps.llm, deps.router, deps.learning),
+    new TopicMatchStep(deps.llm, deps.router, deps.learning, deps.prisma),
+    new TopicExtractStep(deps.llm, deps.router, deps.learning, deps.prisma),
+    new TopicApplyStep(deps.prisma),
     ...(deps.google ? [new CalendarFindStep({ google: deps.google, appOrigin: deps.appOrigin }), new CalendarCreateStep({ google: deps.google, appOrigin: deps.appOrigin })] : []),
     ...(deps.later ? [new FlowLaterStep(deps.later), new FlowCancelStep(deps.later)] : []),
     telegram,

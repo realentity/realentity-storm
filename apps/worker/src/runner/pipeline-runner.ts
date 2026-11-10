@@ -83,6 +83,25 @@ interface RunState {
 const key = (stepKey: string, itemIndex: number | null): string => `${stepKey}#${itemIndex ?? ""}`;
 
 /** What `when` treats as nothing: no value, false, 0, empty text, an empty list or object. */
+/**
+ * What the text of a side effect drew on (M42-T3, docs/design.md §8.1): the topic facts the draft steps its payload
+ * refers to say they used (their `drewOn`), for the gate's "Why". Null when none did.
+ */
+function drewOn(state: RunState, values: unknown, scope: ItemScope | undefined): string | null {
+  const steps = [...new Set(referencesIn(values).map((path) => path.split(".")[0] ?? ""))].filter(
+    (id) => id && id !== "item" && id !== "trigger",
+  );
+  const lines = steps.flatMap((id) => {
+    try {
+      const used = state.values.lookup(`${id}.drewOn`, scope);
+      return Array.isArray(used) ? used.filter((line): line is string => typeof line === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  return lines.length ? `Drew on what Storm knows about the topic:\n${lines.map((line) => `• ${line}`).join("\n")}` : null;
+}
+
 function isEmpty(value: unknown): boolean {
   if (value === undefined || value === null || value === false || value === 0 || value === "") return true;
   if (Array.isArray(value)) return value.length === 0;
@@ -506,6 +525,7 @@ export class PipelineRunner {
         target: targets.map((t) => t.value).join(", ") || target.type,
         targets: targets as unknown as Prisma.InputJsonValue,
         originalPayload: payload as Prisma.InputJsonValue,
+        reasoning: drewOn(state, target.with, scope),
       },
     });
     await this.proposalCreated(state, proposal);

@@ -452,6 +452,146 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 There's no fine-tuning. Everything learned is visible and editable.
 
+### 8.1 Topics: what Storm knows about a subject (M41–M42; M43–M44 planned)
+
+Examples and rules teach *how* you write, never *what is true*. A reply about a project needs what is true: who is who,
+what was decided, what changed since. Without it a draft is polite and empty, because it may not invent facts. A
+**topic** (a project such as Orion, a customer, a house purchase) is where Storm keeps that: its memory of one subject,
+built from your email and the documents you point it to, and changed only with your approval. A topic's facts are not
+the facts about you (M15): those answer forms; these are what Storm knows about a subject.
+
+**What a topic holds.**
+
+- **Description:** a few lines you write ("Orion: the customer portal rebuild for Client Ltd").
+- **Directions:** what belongs to it. Exact ones are checked by code: a word ("Orion"), a domain (`client.example`), a
+  person, a person about something ("Ivan, about the API"). Ones in plain words ("emails about the payment
+  integration") are judged by the LLM. You write them, or approve one Storm suggests; the text of an email or a
+  document never makes one.
+- **Sources:** links to where its documents live (a GitHub repository and a path, a Drive folder), never copies.
+- **Facts:** what is true about the subject, each with its source and date (below).
+- **People:** who takes part, with the role you give them ("owns the API spec").
+- **Brief:** a view, not a text to keep up: the current facts and the few lines you write yourself (the
+  description).
+
+**An email's topics.** Decided per email, not per thread, and an email has none, one or several:
+
+1. **Exact directions and the thread**, without an LLM. An email in a thread whose earlier emails belong to a topic is
+   a candidate for it.
+2. **The cheap model**, only for mail a pipeline triaged that no direction matched: it gets the email and each active
+   topic's card (description, directions, people, a few emails you confirmed for it) and answers with topics, each with
+   the line that shows it, or none, or "a new subject".
+3. **The link:** an exact direction matched → linked, shown on the email; only the LLM thinks so → *suggested*, waiting
+   for you; nothing → unlinked. Unlinked is normal: such an email is answered as before, in your style, without memory.
+
+A link needs less than a fact: a wrong link puts nothing into memory, since every fact it leads to waits for you, and
+rejecting such a fact as "wrong topic" also removes the link. A thread that drifts is no special case: email 7 of an
+Orion thread is Orion by its thread, and also Billing if it is about the contract; its facts go to each topic they
+concern. Storm keeps an email's ids, sender, subject and date for its links, not its text; the text is read from the
+mailbox when it is needed.
+
+**Sources: linked, never copied.** Nothing in Storm is a second copy you would have to keep up to date.
+
+| Source | What Storm keeps | How it sees a change (no LLM) |
+| --- | --- | --- |
+| GitHub repository | `owner/repo`, a path pattern (`docs/adr/**`), the last commit read; a read-only token as a credential | the commit at the head of the branch |
+| Drive folder | the folder id, Drive's changes token; the Google connection with a read-only Drive scope | Drive's changes list |
+| Email | the emails linked to the topic (ids) | new mail in a linked thread, or newly linked |
+| An email's attachment | its message and part | it never changes |
+
+To find the passage a draft needs, Storm keeps an **index**: passages of the sources with their embeddings, each with
+its path and commit (or Drive revision). The index is a cache: refreshed when its source changes, rebuilt on request,
+and deleted without losing anything. A cited passage says where it is from (`ADR-0012 @ a1b2c3d`), to open the
+original.
+
+**Facts and how they change.** A fact has what it is about, a statement, its source (an email, a file at a commit, a
+Drive document's revision, or you), the date of that source and a status: *current*, *superseded* (by which fact) or
+*in dispute*. New evidence (a new email in the topic, a changed file, your edit of a draft) makes `topic.extract`
+propose changes:
+
+- **New:** "Launch: March (Maria, 12 Nov)".
+- **Change:** "Launch: ~~February~~ → March", with both sources. The old fact stays, *superseded*, linked to the new
+  one: the history of a decision.
+- **Conflict:** two sources disagree ("ADR-0012 says PostgreSQL; Ivan's email of 14 Nov says MySQL"). You decide.
+
+Each proposal waits at a gate; **nothing is written to a topic without your approval**. Evidence counts by the date of
+its source, not the order it was read in, so a backfill that reads email N+100 before email N doesn't bring the old
+fact back. A fact you confirmed (written, or approved with your edit) is pinned: later evidence can only suggest a
+change. By default an accepted decision record outranks an email that mentions the subject in passing; a topic can
+rank its sources otherwise.
+
+You keep full control of a topic's facts, and each change says why, because the why is what Storm learns from
+(M42: on the Topics page, each topic's facts with their history and every change, with Undo):
+
+| Change | Meaning | What follows |
+| --- | --- | --- |
+| Edit | the wording or value was off | the fact keeps its source and is pinned |
+| No longer true | it was, things changed | *superseded*, kept in the history |
+| Wrong | it never was | removed, and "not from this source" remembered, so the next read doesn't propose it again; extraction learns from it (the latest wrong ones are shown to it as "never again"); what it had superseded is current again |
+| Move | it belongs to another topic | moved with its source; recognition learns that its email concerns that topic too |
+
+When sources disagree, the facts are *in dispute* until you say which one holds: it becomes current and pinned, the
+others superseded by it. Every change records each fact before and after it; undo puts them back, only while no later
+change builds on them (that one is undone first).
+
+A topic is **split** by naming the new one and saying what goes there: Storm proposes which facts, links, sources and
+directions move, you adjust, then apply. Two topics are **merged** into one: facts on which they disagree come up as
+conflicts. Every change to a topic is recorded and can be undone.
+
+**Using a topic.** Steps that write for you (`email.draftReply`, `email.draftFollowUp`, `llm.generate`, `llm.summarize`)
+take `topic: auto | none | <a topic>`; `auto` uses the email's links that aren't waiting for you (a follow-up, the
+user's own email, its thread's). Within a fixed token budget the step gets the thread's earlier messages (with or
+without a topic), the brief (cached), the card of the person it writes to, and the passages of the sources closest to
+the email. Only current facts are used. The draft names the facts it relied on, and the gate shows them, each with its
+source, so stale or wrong memory is seen where it matters. The drafting rules stay: a fact the context doesn't hold is a
+placeholder. (M42: the two drafting steps, with the brief and the facts; people's cards wait for a topic's people, the
+passages for M43, `llm.generate` and `llm.summarize` for later.)
+
+**Learning for topics.** It follows the pattern of rules:
+
+- Every link you confirm, move or reject is an example: decisions on emails from the same sender or domain, and the
+  latest per topic, go into the LLM check (by sender, subject and topic: Storm keeps no email text).
+- The nightly reflection also suggests **directions** ("You moved 6 emails from `ivan@client.example` about invoices to
+  Billing: add the direction?") and **topics** (a group of unlinked triaged emails over several days and people: "a new
+  subject: API migration?").
+- It sorts your edits of drafts: a change of style becomes a rule suggestion, as before; a new or corrected statement
+  becomes a fact proposal for the email's topic.
+
+Nothing suggested is active before you approve it. The **Topics** page holds one queue (suggested links, directions,
+topics, fact proposals) and each topic: its brief, facts with their history, people, sources, emails and cost (M41:
+the queue of suggested links and each topic's emails, to confirm, move or take out; M42: each topic's facts and
+history, while fact proposals wait at their run's gate in the Inbox); an email's page shows its topics
+("Orion ✓ · Billing?").
+
+**Cost.** Seeing a change costs nothing; only new content is read by an LLM, never everything again:
+
+- Exact directions need no LLM; the cheap model checks only triaged mail they didn't match.
+- Only what changed is read: a commit's changed files under the path, Drive's changed documents, an email without the
+  quoted thread under it.
+- Extraction in two steps: the cheap model first asks whether the new content states anything worth remembering (most
+  emails don't); only the rest go to the writing model.
+- A topic's card and facts are a stable prefix, cached.
+- The first read of a topic's history (backfill) shows an estimate first, goes only as far back as you choose, and
+  runs through the Batch API at night.
+- Topic pipelines are non-essential, so the monthly budget pauses them; the topic's page shows what it cost.
+
+**Built from what exists.** A topic's upkeep is a pipeline: a source's change or a new linked email starts it,
+`topic.extract` proposes, a gate takes your decisions, `topic.apply` writes them; runs, gates, decisions and costs come
+with it. The gate is `gate.review`: you pick which proposals go in, and `topic.apply` writes only what a gate of the
+same run approved. A proposal is not edited at the gate; a fact is edited after it is in, which pins it.
+[pipelines/topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) is the email upkeep (M42): your new and sent mail. The
+Topics page's **Keep topics up to date** card sets it up: an ordinary pipeline of yours, off until you have tried it,
+then a checklist of what is left (an email account, the LLM, a topic with a direction, a dry run, switching it on) and
+how it is doing (its last run, the proposals waiting). You edit, copy or delete it like any other; deleted, the card
+offers it again. Storm doesn't keep pipelines of its own that you can't delete: an update of one would clash with your
+edits. New steps: `topic.match` (an email's topics), `topic.extract`, `topic.apply`, `topic.index` (the passages of
+what changed), `git.changes` and `drive.changes` (the files changed since the last read). Each goes into
+[capabilities.md](capabilities.md) when it is built.
+
+**Safety.** Email and document text is data: it can lead to a proposed fact or a suggested direction, never write
+either, and a passage reaches a prompt delimited like any untrusted text. Something that looks like a secret (a
+password, a key, a token) is never proposed as a fact. Source credentials are credentials like any other (§7), and the
+Drive scope is read-only.
+
 ---
 
 ## 9. Data model
@@ -468,6 +608,7 @@ The schema is [packages/db/prisma/schema.prisma](../packages/db/prisma/schema.pr
 | Pipelines | `Pipeline` (`enabled`: on its schedule; `essential`: exempt from the budget), `PipelineVersion` (`definition`, compiled `policy`, the `builderChatId` it came from), `BuilderChat` (model, tokens used), `BuilderMessage` (transcript, proposal, cost), `SiteRecipe` |
 | Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Takeover` (the live browser waiting for you), `Artifact` (screenshots, traces, downloads) |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
+| Topics (§8.1; sources and passages planned) | `Topic`, `TopicDirection`, `TopicSource` (a link and the last commit or changes token read), `TopicPassage` (the index: a cache, `embedding vector(1024)`), `TopicLink` (an email and a topic: how it was found, suggested or confirmed), `TopicFact` (statement, source, source date, status, what superseded it), `TopicChange` (every change to a topic, for its history and undo) |
 | Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
 | Jobs | `JobPosting`, `Application`, `Document` (your CV and cover letters, under `DOCUMENTS_DIR`; replaced by name, old files kept for approved payloads) |
 
@@ -749,6 +890,8 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] `shop.product` reads like `http.fetch`, and its browser pages go only to allowed hosts
 - [ ] Google Calendar's refresh token is sealed like a credential (AAD: the user id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
 - [ ] Facts about you are written only by your approvals, your answers and the Profile page, never by a page or the LLM alone; a fact the LLM cites must be one of yours, with your answer
+- [ ] A topic's facts and directions are written only by your approvals and your edits, never by an email's or a document's text or the LLM alone; something that looks like a secret is never proposed as a fact, nor written by you (§8.1)
+- [ ] Topic sources are read with read-only access (a read-only repository token, Drive's read-only scope), and their passages reach prompts delimited as untrusted data (planned, §8.1)
 - [ ] `calendar.create`'s guests can't come from LLM output (they are recipient targets), and Google emails them only after Act
 - [ ] Browser pages that explore or act (agent, upload, submit, shop.product) go only to allowed sites, every redirect checked before it is followed
 - [ ] `data.map` runs only a JSONata expression over its input (no network or code), with a time, depth and length limit

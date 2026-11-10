@@ -62,7 +62,9 @@ export function ProposalPage() {
             <div className="card card-sm">
               <div className="card-body">
                 <div className="fw-bold mb-1">Why</div>
-                {p.reasoning}
+                <div style={{ whiteSpace: "pre-wrap" }} data-testid="reasoning">
+                  {p.reasoning}
+                </div>
               </div>
             </div>
           )}

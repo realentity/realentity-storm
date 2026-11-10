@@ -15,7 +15,7 @@ import { ExecutorRegistry, NO_ATTENTION } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { coreSteps } from "../src/steps/core-steps";
 import { EmailFetchStep } from "../src/steps/email-steps";
-import { EmailAwaitingStep } from "../src/steps/follow-up-steps";
+import { DraftFollowUpStep, EmailAwaitingStep } from "../src/steps/follow-up-steps";
 import { APP_PASSWORD, MAILBOX, OTHER_MAILBOX, OTHER_PASSWORD, startMailServer, type TestMailServer } from "./support/greenmail";
 import { createVersion } from "./support/test-steps";
 
@@ -318,7 +318,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       const pipelineVersionId = await freshPipeline();
       await server.deliver({ from: "ana@acme.test", subject: "Interview", text: "When can we talk?" });
       let sends = 0;
-      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), recent: (u, r) => connector.recent(u, r), attachments: (u, r) => connector.attachments(u, r), send: (u, m) => (sends++, connector.send(u, m)) };
+      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), recent: (u, r) => connector.recent(u, r), attachments: (u, r) => connector.attachments(u, r), send: (u, m) => (sends++, connector.send(u, m)), thread: (u, ids) => connector.thread(u, ids) };
       const run = runner(new FakeLlm(), counting);
       const runId = await run.start(pipelineVersionId, { trigger: "manual" });
       await run.advance(runId);
@@ -439,6 +439,40 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       // Two follow-ups in a row allowed: E's second is due.
       const more = await awaiting(true, { maxFollowUps: 2 });
       expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]]]);
+    });
+
+    // M42: topic upkeep reads the user's sent mail too
+    it('email.fetch reads "Sent": the server\'s Sent folder, whatever its name, read-only', async () => {
+      const read = await connector.fetch(userId, { mailbox: "sent", after: null, since: ago(30), limit: 50 });
+      expect(read.messages.map((m) => m.messageId)).toEqual(
+        expect.arrayContaining(["<a1@storm.test>", "<b1@storm.test>", "<e2@storm.test>"]),
+      );
+      expect(read.messages.map((m) => m.messageId)).not.toContain("<b2@corp.test>");
+      expect(await seenFlags()).not.toContain(true);
+    });
+
+    // M41-T1
+    it("a thread's earlier messages, read-only, from INBOX and Sent, oldest first; the user's marked; ones gone left out", async () => {
+      const thread = await connector.thread(userId, ["<b1@storm.test>", "<b2@corp.test>", "<gone@corp.test>"]);
+      expect(thread.map((t) => [t.message.messageId, t.message.subject, t.mine])).toEqual([
+        ["<b1@storm.test>", "Invoice question", true],
+        ["<b2@corp.test>", "Re: Invoice question", false],
+      ]);
+      // A Message-ID that is only part of another one isn't it.
+      expect(await connector.thread(userId, ["<b1@storm"])).toEqual([]);
+      expect(await connector.thread(userId, [])).toEqual([]);
+      expect(await seenFlags()).not.toContain(true);
+
+      // The follow-up to E's second email sees the first.
+      const llm = new FakeLlm(() => "Hi Eve, any news on the quote? Best");
+      const e2 = (await connector.thread(userId, ["<e2@storm.test>"]))[0].message;
+      await new DraftFollowUpStep(llm, new ModelRouter(() => Promise.resolve(null)), undefined, connector).execute(
+        { message: e2, instruction: "A short nudge" },
+        { ...baseContext(userId, randomUUID()), runId: randomUUID(), dryRun: true },
+      );
+      expect(llm.requests[0]?.prompt).toMatch(
+        /^<thread>\n<email mine="true">\nFrom: me@storm.test\n[\s\S]*Subject: Quote\n[\s\S]*<\/thread>\n\n<email>\n/,
+      );
     });
 
     it("the follow-ups pipeline: a draft in the thread, to whom the user's email went, waiting at the gate", async () => {

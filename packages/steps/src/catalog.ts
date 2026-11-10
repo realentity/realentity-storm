@@ -231,6 +231,31 @@ export type EmailMessage = z.infer<typeof EmailMessageSchema>;
 
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
+/** A fact topic.extract proposes for one of the user's topics (M42-T2); topic.apply writes it once approved at a gate. */
+export const TopicProposalSchema = z.object({
+  /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
+  title: z.string(),
+  quote: z.string().max(500),
+  kind: z.enum(["new", "change", "conflict"]),
+  topic: z.string(),
+  topicId: z.string(),
+  about: z.string().min(1).max(120),
+  statement: z.string().min(1).max(1000),
+  replaces: z.object({ topicFactId: z.string(), about: z.string(), statement: z.string() }).nullable(),
+  source: z.object({ messageId: z.string(), from: z.string(), subject: z.string(), date: z.string() }),
+});
+export type TopicProposal = z.infer<typeof TopicProposalSchema>;
+
+/** Which topic's memory a draft uses (M42-T3): auto (the email's topics not waiting for the user), none, or one by name. */
+const Topic = z
+  .string()
+  .min(1)
+  .max(80)
+  .default("auto")
+  .describe('"auto": the email\'s (or its thread\'s) linked or confirmed topics; "none"; or a topic\'s name');
+/** What a draft drew on, for the gate: the facts it used, with their sources. */
+const DrewOn = z.array(z.string()).describe("the topic facts the text relies on, each with its source; empty without a topic");
+
 const FilterCondition = z.object({
   field: z.string().min(1),
   op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"]),
@@ -747,7 +772,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.fetch",
     description:
       "Reads the emails that arrived since this pipeline's last run (its first run looks back `sinceDays`), oldest first, " +
-      "so each email is read once; read-only (IMAP), nothing is marked or moved.",
+      "so each email is read once; read-only (IMAP), nothing is marked or moved. `mailbox: Sent` reads the server's Sent " +
+      "folder, whatever it is called there (the user's own emails).",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -782,8 +808,84 @@ export const CORE_STEPS: StepDefinition[] = [
     }),
   },
   {
+    type: "topic.match",
+    description:
+      "Which of the user's topics (M41, docs/design.md §8.1) each email belongs to: their exact directions and the thread " +
+      "first, without an LLM; the cheap model only for emails no direction settles. An email may have several topics; " +
+      "none is normal. Found by a direction or the thread: LINKED; only by the LLM: SUGGESTED, waiting for the user on the " +
+      "Topics page; the user's own decisions stay. Use it after triage (email.classify's kept), not on all mail. `linked`: " +
+      "the emails with a LINKED or CONFIRMED topic. `more`: emails that need no triage, like the user's own sent ones " +
+      "(email.fetch with mailbox Sent), matched the same way. A dry run links nothing.",
+    sideEffect: false,
+    llm: true,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      more: Messages.optional().describe("more emails, untriaged: the user's own sent ones"),
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics, by name; default: every active one"),
+    }),
+    output: z.object({
+      results: z.array(
+        z.object({
+          messageId: z.string(),
+          topics: z.array(z.object({ topic: z.string(), status: z.string(), via: z.string(), evidence: z.string() })),
+        }),
+      ),
+      linked: Messages,
+      unlinked: Messages,
+    }),
+  },
+  {
+    type: "topic.extract",
+    description:
+      "What `messages` state that is worth remembering about the topics they belong to (M42, docs/design.md §8.1): " +
+      "decisions, dates, numbers, owners, requirements, and changes to them. Only emails linked to a topic (topic.match's " +
+      "`linked`; suggested links wait for the user) are read, without their quoted thread. The cheap model first asks " +
+      "whether an email states anything at all (most don't); only those go to the writing model, which compares them with " +
+      "the topic's current facts. `proposals`: new facts, changes (the old one superseded) and conflicts (sources " +
+      "disagree), each with its source and the line that shows it; for gate.review (items: proposals, when: proposals), " +
+      "then topic.apply. " +
+      "Nothing is written here. Something that looks like a secret is never proposed, nor a fact the user said a source " +
+      "was wrong about; a fact the user wrote or confirmed is only ever disputed, not replaced.",
+    sideEffect: false,
+    llm: true,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics, by name; default: every active one"),
+      matches: z
+        .array(z.object({ messageId: z.string(), topics: z.array(z.object({ topic: z.string(), status: z.string() }).loose()) }).loose())
+        .optional()
+        .describe("topic.match's results: their linked topics count too (a dry run stores no link)"),
+    }),
+    output: z.object({
+      proposals: z.array(TopicProposalSchema),
+      title: z.string().describe('for the gate: "3 facts for Orion"'),
+    }),
+  },
+  {
+    type: "topic.apply",
+    description:
+      "Writes fact proposals the user approved at a gate.review of the same run (topic.extract's proposals; M42): a new " +
+      "fact, a change (the old one superseded, kept as history) or a conflict (both in dispute, for the user to settle). " +
+      "Evidence counts by its source's date: a change older than the fact it replaces goes into the history. Each is a " +
+      "change on the topic's page, which the user can undo. A proposal not approved at a gate is not written; a dry run " +
+      "writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({ proposals: z.array(TopicProposalSchema) }),
+    output: z.object({
+      applied: z.number().int(),
+      skipped: z.array(z.object({ line: z.string(), reason: z.string() })),
+    }),
+  },
+  {
     type: "email.draftReply",
-    description: "Drafts a reply to `message` in the user's voice, in the email's language, without inventing facts.",
+    description:
+      "Drafts a reply to `message` in the user's voice, in the email's language, without inventing facts. It reads the " +
+      "thread's earlier messages from the mailbox (its References) to know what was said before, and with `topic` " +
+      "(default auto: the email's linked or confirmed topics) what the user's approved memory of the topic says is true " +
+      "now; `drewOn` lists the facts it used, which the gate shows.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -795,9 +897,10 @@ export const CORE_STEPS: StepDefinition[] = [
       /** What the reply may draw on besides the email (the user's availability, rates, links). */
       context: z.unknown().optional(),
       signature: z.string().max(500).optional(),
+      topic: Topic,
     }),
     // No recipient: it always comes from the fetched email, never from the LLM.
-    output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
+    output: z.object({ subject: z.string(), body: z.string(), language: z.string(), drewOn: DrewOn }),
   },
   {
     type: "email.awaiting",
@@ -836,7 +939,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.draftFollowUp",
     description:
       "Drafts a short, polite follow-up to `message`, the user's own email that got no answer: in its language, asking " +
-      "whether they had a chance to look, without new facts or pressure.",
+      "whether they had a chance to look, without new facts or pressure. It reads the thread's earlier messages too, and " +
+      "the memory of its thread's topics (`topic`, as email.draftReply).",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -847,8 +951,9 @@ export const CORE_STEPS: StepDefinition[] = [
       instruction: z.string().min(1).default("A short, friendly nudge: two or three sentences."),
       daysWaiting: z.number().int().optional(),
       signature: z.string().max(500).optional(),
+      topic: Topic,
     }),
-    output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
+    output: z.object({ subject: z.string(), body: z.string(), language: z.string(), drewOn: DrewOn }),
   },
   {
     type: "price.watch",

@@ -14,6 +14,7 @@ import { EventsModule } from "./events/events.module";
 import { PrismaService } from "./database/prisma.service";
 import { HealthModule } from "./health/health.module";
 import { FactsModule } from "./facts/facts.module";
+import { TopicsModule } from "./topics/topics.module";
 import { GoogleModule } from "./google/google.module";
 import { HooksModule } from "./hooks/hooks.module";
 import { JobsModule } from "./jobs/jobs.module";
@@ -60,6 +61,7 @@ export class CoreModule {}
     PricesModule,
     GoogleModule,
     FactsModule,
+    TopicsModule,
     HealthModule,
     ViewsModule,
     AppsModule,

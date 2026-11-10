@@ -1,0 +1,41 @@
+# M42: what is true about your topics (the Topics page: make a topic and give it directions first), kept from your email
+# with your approval. Every 15 minutes the new email is triaged (newsletters and notifications set aside) and sorted into
+# your topics, with the emails you sent (what you decided counts too); what the topics' emails state that is worth
+# remembering is proposed, and you pick at the gate what goes into memory. Nothing is written without you, and every
+# change can be undone on the Topics page. Your drafts (email.draftReply, email.draftFollowUp: topic auto) then use what
+# the memory says is true now. The Topics page sets it up for you (Keep topics up to date).
+name: Topic upkeep
+description: New email sorted into your topics, and what it states proposed for their memory.
+trigger: { schedule: "*/15 * * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 2 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "person": written by a person to me, or to a few people with me, about something we work on, decide or arrange.
+        "other": newsletters, notifications, receipts, marketing and other automated mail.
+      labels: [person, other]
+      keep: [person]
+      answerable: false
+  - id: sent
+    type: email.fetch
+    with: { mailbox: Sent, sinceDays: 2 }
+  - id: topics
+    type: topic.match
+    with: { messages: "{{triage.kept}}", more: "{{sent.messages}}" }
+  - id: facts
+    type: topic.extract
+    when: "{{topics.linked}}"
+    with: { messages: "{{topics.linked}}", matches: "{{topics.results}}" }
+  - id: review
+    type: gate.review
+    when: "{{facts.proposals}}"
+    with: { items: "{{facts.proposals}}", title: "{{facts.title}}" }
+  - id: remember
+    type: topic.apply
+    when: "{{facts.proposals}}"
+    with: { proposals: "{{review.selected}}" }

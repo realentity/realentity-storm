@@ -8,5 +8,6 @@ import { ExamplesService } from "./examples.service";
   imports: [AppsModule],
   controllers: [ExamplesController],
   providers: [ExamplesService],
+  exports: [ExamplesService],
 })
 export class ExamplesModule {}

@@ -6,9 +6,11 @@ import { type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock } from "./email-block";
+import { readThread, THREAD_RULE } from "./email-thread";
 import { BillReadStep, BillSaveStep } from "./bill-steps";
 import { DraftFollowUpStep, EmailAwaitingStep } from "./follow-up-steps";
 import { DATA_ONLY, EXAMPLES_RULE, LlmStep } from "./llm-steps";
+import { drewOn, MEMORY_RULE, topicMemory, UsedFacts } from "./topic-context";
 
 export { emailBlock };
 
@@ -100,11 +102,22 @@ export class EmailClassifyStep extends LlmStep {
 }
 
 /**
- * email.draftReply: a reply to one email (Sonnet by default). Only a body: the subject is the original's with "Re:",
- * and the recipient is never the LLM's to choose (it comes from the fetched email at email.send).
+ * email.draftReply: a reply to one email (Sonnet by default), with the thread's earlier messages read from the mailbox
+ * (M41-T1). Only a body: the subject is the original's with "Re:", and the recipient is never the LLM's to choose (it
+ * comes from the fetched email at email.send).
  */
 export class DraftReplyStep extends LlmStep {
   readonly type = "email.draftReply";
+
+  constructor(
+    llm: LlmClient,
+    router: ModelRouter,
+    learning?: StepLearning,
+    private readonly mail?: MailConnector,
+    private readonly prisma?: PrismaClient,
+  ) {
+    super(llm, router, learning);
+  }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const {
@@ -112,16 +125,19 @@ export class DraftReplyStep extends LlmStep {
       instruction,
       context: background,
       signature,
+      topic = "auto",
     } = input as {
       message: EmailMessage;
       instruction: string;
       context?: unknown;
       signature?: string;
+      topic?: string;
     };
+    const memory = await topicMemory(this.prisma, context.userId, message, topic);
     const system = [
       "You draft email replies for the user, to be reviewed and sent by them. Rules:",
       "- Reply in the language the email is written in.",
-      "- Use only facts from the email, the instruction and the user's background. Never invent dates, prices, rates, " +
+      "- Reply to <email>, the latest message. Use only facts from it, its thread, <memory>, the instruction and the user's background. Never invent dates, prices, rates, " +
         "availability, names, links or commitments; where one is needed and unknown, write a placeholder like [date] " +
         "for the user to fill in.",
       "- Never accept, confirm or propose a date, time, rate or term on the user's behalf (not even one the sender " +
@@ -130,6 +146,8 @@ export class DraftReplyStep extends LlmStep {
         "their background, and don't promise follow-ups with a deadline.",
       "- Plain text, no subject line, no quoted original. Start with the greeting.",
       signature ? "- End with the user's signature exactly as given." : "- End with a short sign-off, without a name.",
+      `- ${THREAD_RULE}`,
+      ...(memory.block ? [`- ${MEMORY_RULE}`] : []),
       `- ${EXAMPLES_RULE}`,
       DATA_ONLY,
       `<instruction>${instruction}</instruction>`,
@@ -141,11 +159,19 @@ export class DraftReplyStep extends LlmStep {
     const schema = z.object({
       body: z.string().min(1),
       language: z.string().min(2).max(16).describe("ISO 639-1 code of the reply's language, e.g. en, bg"),
+      ...(memory.block ? { used: UsedFacts } : {}),
     });
     const email = emailBlock(message);
-    const examples = await this.examplesFor(context, email);
-    const draft = await this.call(context, system, `${examples}${email}`, schema, true);
-    return { subject: replySubject(message.subject), body: draft.body.trim(), language: draft.language.toLowerCase() };
+    // Examples are found by the email alone: the thread is what was said, not what kind of reply it needs.
+    const [examples, thread] = await Promise.all([this.examplesFor(context, email), readThread(this.mail, context.userId, message)]);
+    // The topic's memory changes less often than the email: a cached start of the prompt.
+    const draft = await this.call(context, system, `${examples}${thread}${email}`, schema, true, memory.block || undefined);
+    return {
+      subject: replySubject(message.subject),
+      body: draft.body.trim(),
+      language: draft.language.toLowerCase(),
+      drewOn: drewOn(memory, (draft as { used?: string[] }).used ?? []),
+    };
   }
 }
 
@@ -189,9 +215,9 @@ export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
   return [
     new EmailFetchStep(deps.mail, deps.prisma),
     new EmailClassifyStep(deps.llm, deps.router, deps.learning),
-    new DraftReplyStep(deps.llm, deps.router, deps.learning),
+    new DraftReplyStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma),
     new EmailAwaitingStep(deps.mail, deps.prisma),
-    new DraftFollowUpStep(deps.llm, deps.router, deps.learning),
+    new DraftFollowUpStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma),
     new BillReadStep(deps.mail, deps.llm, deps.router, deps.learning),
     new BillSaveStep(deps.prisma),
     new EmailSendStep(deps.mail),

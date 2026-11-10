@@ -13,6 +13,7 @@ import {
   IconMenu2,
   IconRoute,
   IconSettings,
+  IconTags,
   type Icon as TablerIcon,
 } from "@tabler/icons-react";
 import { Fragment, useState, type ReactNode } from "react";
@@ -32,6 +33,7 @@ const NAVIGATION = [
   { to: "/apps", label: "Apps", icon: IconApps },
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/rules", label: "Rules", icon: IconBulb },
+  { to: "/topics", label: "Topics", icon: IconTags },
   { to: "/recipes", label: "Recipes", icon: IconListSearch },
   { to: "/profile", label: "Profile", icon: IconId },
   { to: "/credentials", label: "Credentials", icon: IconKey },
