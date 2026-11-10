@@ -450,8 +450,9 @@ steps:
       const text = readFileSync(join(PIPELINES, file), "utf8");
       const app = apps.find((a) => /^app: (.+)$/m.exec(text)?.[1]?.trim() === a.name);
       const result = ok(compiler.compileText(text, app ? { app } : {}));
-      if (file === "recruiter-replies.yaml") {
-        expect(ids(result.definition)).toEqual(["fetch", "triage", "draft", "sendGate", "send"]);
+      // M44: both reply pipelines sort by topic first, and gate the send.
+      if (file === "recruiter-replies.yaml" || file === "topic-replies.yaml") {
+        expect(ids(result.definition)).toEqual(["fetch", "triage", "topics", "draft", "sendGate", "send"]);
         expect(result.policy).toEqual({
           allowedDomains: [],
           allowedRecipients: [],

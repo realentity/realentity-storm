@@ -40,7 +40,8 @@ export const TopicUpdateSchema = TopicSchema.extend({ status: z.enum(TOPIC_STATU
 export type TopicUpdateRequest = z.input<typeof TopicUpdateSchema>;
 
 const DOMAIN = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
-const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// The domain's labels hold no dot, so the pattern has one way to match (no slow backtracking on odd input).
+const ADDRESS = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 /**
  * A direction as stored: a domain and an address lowercase (a domain without "@" or "*."), `about` only for a person.
@@ -66,7 +67,7 @@ export function normalizeDirection(input: {
     }
     case "PERSON": {
       const address = value.toLowerCase();
-      if (!ADDRESS.test(address)) return { error: "Not an email address" };
+      if (address.length > 254 || !ADDRESS.test(address)) return { error: "Not an email address" };
       return { kind: "PERSON", value: address, about };
     }
     case "TEXT":
@@ -278,12 +279,19 @@ export const TopicSourceSchema = z
   .strict();
 export type TopicSourceRequest = z.input<typeof TopicSourceSchema>;
 
+/** "docs/adr///" → "docs/adr", by a loop: a regular expression for it is slow on long runs of "/". */
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === "/") end--;
+  return path.slice(0, end);
+}
+
 /**
  * Whether a file's path is under a source's pattern: `**` any folders, `*` any characters but "/", `?` one, `{a,b}`
  * either. A pattern without a wildcard is a folder or a file: "docs/adr" holds docs/adr/0001.md.
  */
 export function pathMatches(pattern: string, path: string): boolean {
-  const glob = /[*?{]/.test(pattern) ? pattern : `${pattern.replace(/\/+$/, "")}{,/**}`;
+  const glob = /[*?{]/.test(pattern) ? pattern : `${withoutTrailingSlashes(pattern)}{,/**}`;
   let source = "";
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i];

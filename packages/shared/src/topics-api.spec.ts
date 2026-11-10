@@ -5,6 +5,7 @@ import {
   matchWords,
   MEMORY_TEXT,
   memoryLine,
+  normalizeDirection,
   pathMatches,
   TopicFactSchema,
   TopicSourceSchema,
@@ -106,5 +107,28 @@ describe("a draft's room for facts", () => {
 
   it("words: four letters or digits or more, any language, lowercase", () => {
     expect([...matchWords("The API launch: März 2027, in Sofia — Пловдив too")]).toEqual(["launch", "märz", "2027", "sofia", "пловдив"]);
+  });
+});
+
+// CodeQL: no slow regular expression on what a user or a source sends
+describe("odd input is answered quickly", () => {
+  it("an address: the same answers, and a long run of '!.' after '@' rejected at once", () => {
+    const person = (value: string) => normalizeDirection({ kind: "PERSON", value });
+    expect(person("ivan@client.example")).toMatchObject({ kind: "PERSON", value: "ivan@client.example" });
+    expect(person("ivan@mail.client.example")).toMatchObject({ value: "ivan@mail.client.example" });
+    expect(person("ivan@client")).toEqual({ error: "Not an email address" });
+    expect(person("ivan@client..example")).toEqual({ error: "Not an email address" });
+    const start = Date.now();
+    expect(person(`!@!.${"!.".repeat(5_000)}`)).toEqual({ error: "Not an email address" });
+    // Longer than an address can be.
+    expect(person(`a@b${".c".repeat(130)}`)).toEqual({ error: "Not an email address" });
+    expect(Date.now() - start).toBeLessThan(100);
+  });
+
+  it("a pattern: trailing slashes trimmed by a loop, also thousands of them", () => {
+    expect(pathMatches("docs/adr///", "docs/adr/0001.md")).toBe(true);
+    const start = Date.now();
+    expect(pathMatches(`docs${"/".repeat(20_000)}x`, "docs/x.md")).toBe(false);
+    expect(Date.now() - start).toBeLessThan(100);
   });
 });
