@@ -878,7 +878,7 @@ the unpaid ones due within three days. *Move them here* on the App's page brings
 
 ### 4.7 Google Calendar
 
-Needs Google Calendar connected in Settings (see [google-calendar-setup.md](google-calendar-setup.md)).
+Needs Google Calendar connected in Settings (see [google-setup.md](google-setup.md)).
 
 #### `calendar.find`
 Your events between `from` and `to` (default: the next 7 days), optionally matching `query`. `durationMinutes` gives a

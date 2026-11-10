@@ -167,7 +167,7 @@ buttons don't. Everything the bot does: [telegram.md](telegram.md).
 |---|---|
 | **Mail** (`email.*` steps) | `IMAP_HOST`, `SMTP_HOST` (and ports) in `.env`; the address and password (for Gmail an [app password](https://myaccount.google.com/apppasswords)) as a credential named `mail` on **Credentials**, allowed hosts = both servers. Then `./docker/storm check` says it opens |
 | **Live browser** (watch and take over browser steps) | `printf 'VNC_PASSWORD=%s\nVNC_VIEW_PASSWORD=%s\n' "$(openssl rand -base64 6)" "$(openssl rand -base64 6)" >> .env`, then `./docker/storm up --force-recreate`. The view goes through the app's `/vnc` (signed in), never a port of its own. [pipelines/live-view-check.yaml](../pipelines/live-view-check.yaml) tests it |
-| **Google Calendar** (`calendar.*` steps) | [google-calendar-setup.md](google-calendar-setup.md): an OAuth client, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then **Settings → Connect** |
+| **Google Calendar** (`calendar.*` steps) | [google-setup.md](google-setup.md): an OAuth client, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then **Settings → Connect** |
 | **Drafts with examples**, topics by meaning | `OPENAI_API_KEY`: embeds the emails you replied to, so new drafts get your most similar approved replies as examples; and your topics' document passages and facts, so a draft gets the ones closest to the email in meaning, in any language ([topics.md](topics.md)). That text then also goes to OpenAI. Without it, examples are left out and topics match by words |
 | **Documents** (forms attach a CV) | **Profile → Documents**; they live in `STORM_DATA_DIR/documents` |
 | **Health reports** | below |

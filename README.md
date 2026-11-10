@@ -273,7 +273,7 @@ to start with an invalid value and names the key, never the value.
 | `VNC_PASSWORD`, `VNC_VIEW_PASSWORD` | Watching and taking over browser runs live. Empty: browser runs still work, unwatched | Browser steps |
 | `IMAP_HOST`, `SMTP_HOST` and ports | Your mail servers; Gmail's are the default. The address and password go on the **Credentials** page, not here | Email steps |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `HOOKS_PUBLIC_URL` | The bot, your Telegram user id, and the webhook address ([docs/telegram.md](docs/telegram.md)) | Telegram, webhooks |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Calendar steps |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-setup.md](docs/google-setup.md) | Calendar steps |
 | `OPENAI_API_KEY` | Embeddings: your most similar replies as examples in drafts, and the passages and facts of your topics closest to an email (without it, by their words) | Optional |
 | `HEALTH_REPORT_TOKEN` | Lets the server's own jobs (backups, disk checks) report to the Health page | Optional |
 
@@ -289,7 +289,7 @@ the ports and folders themselves.
 | [docs/design.md](docs/design.md) | How it works: principles, pipelines, gates, architecture, security, data model |
 | [docs/self-hosting.md](docs/self-hosting.md) | Install, HTTPS, webhooks and Telegram, updates, backups |
 | [docs/telegram.md](docs/telegram.md) | What the bot does |
-| [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Connecting Google Calendar |
+| [docs/google-setup.md](docs/google-setup.md) | Connecting Google: Calendar (and Drive, planned) |
 | [pipelines/](pipelines) | Example pipelines and Apps |
 
 Comments and commits cite milestone ids such as `M12-T5`: they come from the project's development plan and mark
