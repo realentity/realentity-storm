@@ -160,7 +160,28 @@ export class TopicMatchStep extends LlmStep {
         }
       }
     }
+    if (!context.dryRun) await this.keepUnlinked(userId, emails, found);
     return output(messages, found, topics);
+  }
+
+  /**
+   * M44-T2: the triaged emails that belong to no topic, not even as a suggestion: what the nightly reflection looks at
+   * for a new subject. Ids, sender, subject and date only; older than 30 days they go.
+   */
+  private async keepUnlinked(userId: string, emails: EmailMessage[], found: Map<string, Map<string, Found>>): Promise<void> {
+    const unlinked = emails.filter((m) => (found.get(m.messageId)?.size ?? 0) === 0);
+    await this.prisma.unlinkedEmail.deleteMany({ where: { userId, dateCreated: { lt: new Date(Date.now() - UNLINKED_DAYS * DAY_MS) } } });
+    if (unlinked.length === 0) return;
+    await this.prisma.unlinkedEmail.createMany({
+      data: unlinked.map((m) => ({
+        userId,
+        messageId: m.messageId,
+        from: m.from,
+        subject: m.subject.slice(0, 500),
+        date: new Date(m.date),
+      })),
+      skipDuplicates: true,
+    });
   }
 
   /**
@@ -194,6 +215,10 @@ export class TopicMatchStep extends LlmStep {
     return `<decisions>\n${lines.join("\n")}\n</decisions>\n\n`;
   }
 }
+
+/** Unlinked emails are kept this long (M44-T2). */
+const UNLINKED_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** At most this many of the user's decisions go into the prompt. */
 const DECISIONS = 20;

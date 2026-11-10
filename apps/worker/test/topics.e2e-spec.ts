@@ -90,6 +90,7 @@ describe("topic.match", () => {
 
   afterEach(async () => {
     await db.client.topic.deleteMany();
+    await db.client.unlinkedEmail.deleteMany();
   });
 
   afterAll(async () => {
@@ -201,6 +202,21 @@ describe("topic.match", () => {
       [theirs.messageId, ["Orion"]],
       [mine.messageId, ["Orion"]],
     ]);
+  });
+
+  // M44-T2
+  it("what no topic took, not even as a suggestion, is kept for suggested topics (ids, sender, subject, date); a dry run keeps none", async () => {
+    const llm = new TopicLlm((block) => (block.includes("Contract") ? [{ topic: "Billing", line: "the contract" }] : []));
+    const kickoff = email({ from: "maria@client.example", subject: "Kickoff" });
+    const contract = email({ from: "x@y.test", subject: "Contract", text: "About the contract." });
+    const lunch = email({ from: "cat@x.test", subject: "Lunch?" });
+    await run(llm, [kickoff, contract, lunch], true);
+    expect(await db.client.unlinkedEmail.count()).toBe(0);
+    await run(llm, [kickoff, contract, lunch]);
+    expect(await db.client.unlinkedEmail.findMany({ select: { messageId: true, from: true, subject: true } })).toEqual([
+      { messageId: lunch.messageId, from: "cat@x.test", subject: "Lunch?" },
+    ]);
+    await db.client.unlinkedEmail.deleteMany();
   });
 
   // M41-S1

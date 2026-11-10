@@ -452,7 +452,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 There's no fine-tuning. Everything learned is visible and editable.
 
-### 8.1 Topics: what Storm knows about a subject (M41–M44; Drive, suggested topics and facts from edits planned)
+### 8.1 Topics: what Storm knows about a subject (M41–M44; Drive planned)
 
 Examples and rules teach *how* you write, never *what is true*. A reply about a project needs what is true: who is who,
 what was decided, what changed since. Without it a draft is polite and empty, because it may not invent facts. A
@@ -561,9 +561,13 @@ passages for M43, `llm.generate` and `llm.summarize` for later.)
   subject: API migration?"). (M44: directions are counted from your decisions, with no LLM: a person whose emails you
   confirmed or moved into a topic three times, or a domain's people four times, none rejected and none for another
   topic, not covered already; never a free mail domain. They wait under Suggested on the Topics page; a No isn't asked
-  again.)
+  again. Topics come from the nightly reflection: topic.match keeps the triaged emails no topic took, their sender,
+  subject and date only, for 30 days; the reflection sees the last 30 days of them, and its suggestion counts only when
+  the emails it names are at least three, over two days, from two people, under a name no topic has.)
 - It sorts your edits of drafts: a change of style becomes a rule suggestion, as before; a new or corrected statement
-  becomes a fact proposal for the email's topic.
+  becomes a fact proposal for the email's topic. (M44: the reflection gets each edited reply's topics with their current
+  facts; a statement you added is a fact suggestion under Suggested, never a rule, and accepted it is yours, pinned,
+  replacing even one you wrote before.)
 
 Nothing suggested is active before you approve it. The **Topics** page holds one queue (suggested links, directions,
 topics, fact proposals) and each topic: its brief, facts with their history, people, sources, emails and cost (M41:

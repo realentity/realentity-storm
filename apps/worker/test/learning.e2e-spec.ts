@@ -1,4 +1,4 @@
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { applyProposal, createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import {
   EMBEDDING_DIMENSIONS,
   emptyUsage,
@@ -9,7 +9,7 @@ import {
   type LlmBatches,
   type LlmUsage,
 } from "@realentity/storm-llm";
-import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@realentity/storm-steps";
+import { defaultCatalog, PipelineCompiler, TopicProposalSchema, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -322,6 +322,148 @@ describe("learning from the user's decisions (M6)", () => {
       await db.client.step.updateMany({ where: { type: "email.draftReply" }, data: { llmUsage: { costUsd: 6 }, startedAt: new Date() } });
       await expect(reflector(5).submit(userId)).resolves.toBeNull();
       expect(batches.submitted).toEqual([]);
+    });
+
+    // M44-T3, M44-V1 (with a stand-in model)
+    it("an edit adding a statement about the reply's topic becomes a fact suggestion for it, not a rule", async () => {
+      const orion = await db.client.topic.create({
+        data: { userId, name: "Orion", directions: { create: [{ kind: "DOMAIN", value: "client.example" }] } },
+      });
+      try {
+        const message = {
+          ...email(7, "Which database?", "Which database do we use for the portal?"),
+          from: "maria@client.example",
+          replyTo: "maria@client.example",
+        };
+        await db.client.topicLink.create({
+          data: {
+            userId,
+            topicId: orion.topicId,
+            messageId: message.messageId,
+            threadId: message.threadId,
+            from: message.from,
+            subject: message.subject,
+            date: new Date(message.date),
+            status: "LINKED",
+            via: "DIRECTION",
+            evidence: "client.example",
+          },
+        });
+        await db.client.topicFact.create({
+          data: {
+            userId,
+            topicId: orion.topicId,
+            about: "Database",
+            statement: "MySQL",
+            source: "EMAIL",
+            sourceId: "<old@client.example>",
+            sourceLabel: "ivan",
+            sourceDate: new Date("2026-09-01"),
+          },
+        });
+        const { proposalId } = await decided("EDITED", {
+          message,
+          draft: "Hi Maria, we use [database].",
+          approved: "Hi Maria, per ADR-0012 we use PostgreSQL.",
+        });
+
+        const id = (await reflector().submit(userId))!;
+        const prompt = batches.submitted[0].request.prompt;
+        expect(prompt).toContain('<decision index="0" kind="EDITED"');
+        expect(prompt).toContain('<topics>\n<topic name="Orion">\n- Database: MySQL\n</topic>\n</topics>');
+        expect(batches.submitted[0].request.system).toContain("that is a fact for the topic, not a rule");
+
+        batches.done = true;
+        batches.answer = ok({
+          rules: [],
+          pipelineSuggestions: [],
+          facts: [
+            {
+              decision: 0,
+              topic: "Orion",
+              about: "Database",
+              statement: "PostgreSQL, per ADR-0012",
+              quote: "per ADR-0012 we use PostgreSQL",
+            },
+            { decision: 0, topic: "Billing", about: "Rate", statement: "100 EUR", quote: "x" },
+            { decision: 5, topic: "Orion", about: "Launch", statement: "March", quote: "x" },
+            { decision: 0, topic: "Orion", about: "Staging", statement: "password: hunter2", quote: "x" },
+          ],
+        });
+        await reflector().check(id);
+        expect(await db.client.rule.count()).toBe(0);
+        const suggestions = await db.client.topicSuggestion.findMany({ where: { topicId: orion.topicId } });
+        expect(suggestions.map((sg) => [sg.kind, sg.reason, (sg.payload as { title: string }).title])).toEqual([
+          ["FACT", 'you wrote it in your reply "Which database?"', "Orion: Database: MySQL → PostgreSQL, per ADR-0012 (your edit)"],
+        ]);
+        expect(suggestions[0]?.key).toBe(`FACT:edit:${proposalId}:${orion.topicId}:database`);
+
+        // Accepted (the Topics page): the user's own fact, pinned, the old one its history.
+        await applyProposal(db.client, userId, TopicProposalSchema.parse(suggestions[0].payload), null);
+        const facts = await db.client.topicFact.findMany({ where: { topicId: orion.topicId }, orderBy: { sourceDate: "desc" } });
+        expect(facts.map((f) => [f.statement, f.status, f.source, f.pinned])).toEqual([
+          ["PostgreSQL, per ADR-0012", "CURRENT", "USER", true],
+          ["MySQL", "SUPERSEDED", "EMAIL", false],
+        ]);
+        expect(facts[0]?.sourceLabel).toBe('you, in your reply "Which database?"');
+      } finally {
+        await db.client.topic.delete({ where: { topicId: orion.topicId } });
+      }
+    });
+
+    // M44-T2
+    it("unlinked emails alone start a reflection; a topic is suggested only on several emails, days and people", async () => {
+      const day = (d: number) => new Date(Date.now() - d * 24 * 60 * 60 * 1000);
+      const unlinked = [
+        { from: "ana@migrate.example", subject: "API migration: plan", date: day(5) },
+        { from: "bob@migrate.example", subject: "API migration: endpoints", date: day(3) },
+        { from: "ana@migrate.example", subject: "Re: API migration: endpoints", date: day(2) },
+        { from: "news@shop.example", subject: "50% off", date: day(1) },
+      ];
+      await db.client.unlinkedEmail.createMany({ data: unlinked.map((u, i) => ({ userId, messageId: `<u${i}@x.test>`, ...u })) });
+      const existing = await db.client.topic.create({ data: { userId, name: "Orion" } });
+      try {
+        const id = (await reflector().submit(userId))!;
+        expect(id).not.toBeNull();
+        const prompt = batches.submitted[0].request.prompt;
+        expect(prompt).toContain("<topics_now>\n- Orion\n</topics_now>");
+        expect(prompt).toMatch(/<unlinked>\n\[0\] \d{4}-\d\d-\d\d · news@shop.example · 50% off\n/);
+
+        batches.done = true;
+        batches.answer = ok({
+          rules: [],
+          pipelineSuggestions: [],
+          topics: [
+            {
+              name: "API migration",
+              description: "Moving the client's API to v2",
+              directions: [
+                { kind: "DOMAIN", value: "migrate.example" },
+                { kind: "DOMAIN", value: "gmail.com" },
+              ],
+              emails: [1, 2, 3],
+            },
+            { name: "Orion", description: "again", directions: [], emails: [1, 2, 3] },
+            { name: "Sales", description: "one sender", directions: [], emails: [0, 0] },
+          ],
+        });
+        await reflector().check(id);
+        const suggestions = await db.client.topicSuggestion.findMany({ where: { kind: "TOPIC" } });
+        expect(suggestions.map((sg) => [sg.payload, sg.reason])).toEqual([
+          [
+            {
+              name: "API migration",
+              description: "Moving the client's API to v2",
+              directions: [{ kind: "DOMAIN", value: "migrate.example", about: null }],
+            },
+            '3 emails from 2 people over 3 days, like "Re: API migration: endpoints", "API migration: endpoints"',
+          ],
+        ]);
+      } finally {
+        await db.client.topicSuggestion.deleteMany();
+        await db.client.unlinkedEmail.deleteMany();
+        await db.client.topic.delete({ where: { topicId: existing.topicId } });
+      }
     });
 
     it("saves what it suggests as SUGGESTED only, after checking step types, pipelines and duplicates", async () => {

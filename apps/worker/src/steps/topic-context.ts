@@ -169,7 +169,7 @@ async function closestPassages(
   );
 }
 
-async function linkedTopics(prisma: PrismaClient, userId: string, message: EmailMessage) {
+export async function linkedTopics(prisma: PrismaClient, userId: string, message: EmailMessage) {
   const settled = { userId, status: { in: ["LINKED" as const, "CONFIRMED" as const] } };
   const own = await prisma.topicLink.findMany({ where: { ...settled, messageId: message.messageId }, include: { topic: true } });
   // The user's own email (a follow-up) isn't linked itself: its thread is.

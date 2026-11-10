@@ -730,7 +730,8 @@ topic belongs to it too. The cheap model looks only at emails no direction settl
 case the conversation moved to another subject), with each topic's description and directions. An email can belong to
 several topics, and to none, which is normal. Found by a direction or the thread: linked; only by the model: suggested,
 waiting for you. Your own decisions stay: a topic you rejected for an email isn't suggested for it again. Use it after
-triage, not on all mail. A dry run links nothing.
+triage, not on all mail. An email no topic took is kept for 30 days (its sender, subject and date, never its text), for
+the nightly reflection to suggest a new topic from several of them. A dry run links and keeps nothing.
 - In: `messages`, `more` (emails that need no triage, like your own sent ones: `email.fetch` with `mailbox: Sent`),
   `topics` (only these, by name; default: every active topic).
 - Out: `results` (per email: messageId, topics with status, how found and the line that shows it), `linked` (the emails

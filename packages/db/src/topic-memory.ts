@@ -515,7 +515,7 @@ export interface FactProposal {
   /** The fact it changes or disputes. */
   replaces: { topicFactId: string } | null;
   /** An email, or a file of a topic's source (M43: messageId "owner/repo:path", from the repository, subject the path). */
-  source: { kind?: "email" | "file"; messageId: string; from: string; subject: string; date: string; commit?: string };
+  source: { kind?: "email" | "file" | "edit"; messageId: string; from: string; subject: string; date: string; commit?: string };
   /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
   title: string;
 }
@@ -549,11 +549,15 @@ export async function applyProposal(
     topicId: proposal.topicId,
     about: proposal.about,
     statement: proposal.statement,
-    source: proposal.source.kind === "file" ? ("FILE" as const) : ("EMAIL" as const),
-    sourceId: proposal.source.messageId,
+    // The user's own edit of a draft (M44-T3): theirs, pinned, like a fact they wrote.
+    source: proposal.source.kind === "file" ? ("FILE" as const) : proposal.source.kind === "edit" ? ("USER" as const) : ("EMAIL" as const),
+    sourceId: proposal.source.kind === "edit" ? null : proposal.source.messageId,
+    pinned: proposal.source.kind === "edit",
     sourceLabel: (proposal.source.kind === "file"
       ? `${proposal.source.from} ${proposal.source.subject}${proposal.source.commit ? ` @ ${proposal.source.commit.slice(0, 7)}` : ""}`
-      : `${proposal.source.from}: ${proposal.source.subject || "(no subject)"}`
+      : proposal.source.kind === "edit"
+        ? `you, in your reply "${proposal.source.subject}"`
+        : `${proposal.source.from}: ${proposal.source.subject || "(no subject)"}`
     ).slice(0, 300),
     sourceDate: Number.isNaN(sourceDate.getTime()) ? new Date() : sourceDate,
     quote: proposal.quote.slice(0, 500),
@@ -569,7 +573,9 @@ export async function applyProposal(
         const created = await r.create({ ...fact, status: "CURRENT" });
         return { applied: true as const, topicFactId: created.topicFactId };
       }
-      if (proposal.kind === "conflict" || target.pinned || target.status === "DISPUTED") {
+      // The user's own correction replaces even a pinned fact; anything else only disputes it.
+      const yours = proposal.source.kind === "edit";
+      if (proposal.kind === "conflict" || (target.pinned && !yours) || target.status === "DISPUTED") {
         const created = await r.create({ ...fact, status: "DISPUTED" });
         if (target.status !== "DISPUTED") await r.update(target, { status: "DISPUTED" });
         return { applied: true as const, topicFactId: created.topicFactId };

@@ -151,6 +151,7 @@ model User {
   topicBackfills   TopicBackfill[]
   topicSuggestions TopicSuggestion[]
   topicCosts       TopicCost[]
+  unlinkedEmails   UnlinkedEmail[]
   scheduled        ScheduledStart[]
 
   @@map("Users")
@@ -670,6 +671,10 @@ model Reflection {
   since        DateTime
   until        DateTime
   decisions    Int
+  /// The edited replies shown with their topics (M44-T3): [{ index, proposalId, subject, decidedAt, topics: [{ topicId, name }] }].
+  edits        Json             @default("[]")
+  /// The unlinked emails shown (M44-T2), by index: [{ messageId, from, subject, date }].
+  unlinked     Json             @default("[]")
   llmUsage     Json?
   error        String?
   startedAt    DateTime         @default(now())
@@ -1497,4 +1502,23 @@ model TopicCost {
   @@unique([topicId, day, source])
   @@index([userId, day])
   @@map("TopicCosts")
+}
+
+/**
+ * A triaged email that belonged to no topic (M44-T2, docs/design.md §8.1): what the nightly reflection looks at for a
+ * subject the user may want a topic for. Its ids, sender, subject and date only, never its text; kept 30 days.
+ */
+model UnlinkedEmail {
+  unlinkedEmailId String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  user            User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  messageId       String
+  from            String
+  subject         String
+  date            DateTime
+  dateCreated     DateTime @default(now())
+
+  @@unique([userId, messageId])
+  @@index([userId, date])
+  @@map("UnlinkedEmails")
 }

@@ -270,7 +270,7 @@ export const TopicProposalSchema = z.object({
   replaces: z.object({ topicFactId: z.string(), about: z.string(), statement: z.string() }).nullable(),
   /** An email (messageId: its Message-ID), or a file of a topic's source (M43: messageId "owner/repo:path"). */
   source: z.object({
-    kind: z.enum(["email", "file"]).default("email"),
+    kind: z.enum(["email", "file", "edit"]).default("email"),
     messageId: z.string(),
     from: z.string(),
     subject: z.string(),
