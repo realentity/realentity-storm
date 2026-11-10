@@ -184,6 +184,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           prisma: db.client,
           learning,
           vault,
+          embeddings: env.OPENAI_API_KEY ? new OpenAiEmbeddings(env.OPENAI_API_KEY, env.EMBEDDINGS_MODEL) : null,
         });
       },
     },

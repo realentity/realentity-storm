@@ -125,7 +125,7 @@ export interface TopicFactView {
   topicId: string;
   about: string;
   statement: string;
-  source: "EMAIL" | "USER";
+  source: "EMAIL" | "USER" | "FILE";
   sourceId: string | null;
   sourceLabel: string;
   sourceDate: string;
@@ -217,4 +217,91 @@ export interface TopicUpkeepView {
   llm: boolean;
   /** Active topics with at least one direction: without one, no email is linked. */
   topicsWithDirections: number;
+}
+
+export const TOPIC_SOURCE_KINDS = ["GITHUB"] as const;
+export type TopicSourceKindName = (typeof TOPIC_SOURCE_KINDS)[number];
+
+/** Where a topic's documents live (M43, docs/design.md §8.1): linked, never copied; its passages are a cache. */
+export interface TopicSourceView {
+  topicSourceId: string;
+  topicId: string;
+  kind: TopicSourceKindName;
+  /** GITHUB: owner/repo. */
+  location: string;
+  branch: string | null;
+  path: string;
+  credential: string | null;
+  /** The last commit indexed, short; null until it is read. */
+  cursor: string | null;
+  readAt: string | null;
+  passages: number;
+  /** Where to open it: the repository's files under the path. */
+  url: string;
+}
+
+const REPOSITORY = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
+const BRANCH = /^[A-Za-z0-9._/-]{1,200}$/;
+const GLOB = /^[A-Za-z0-9._/*?{},@ -]{1,300}$/;
+
+export const TopicSourceSchema = z
+  .object({
+    kind: z.enum(TOPIC_SOURCE_KINDS),
+    location: z
+      .string()
+      .trim()
+      .transform((value) => value.replace(/^https:\/\/github\.com\//i, "").replace(/\.git$|\/$/g, ""))
+      .refine((value) => REPOSITORY.test(value), "A GitHub repository: owner/repo"),
+    branch: z
+      .string()
+      .trim()
+      .transform((value) => value || null)
+      .refine((value) => value === null || BRANCH.test(value), "Not a branch name")
+      .nullish(),
+    path: z
+      .string()
+      .trim()
+      .transform((value) => value.replace(/^\/+/, "") || "**")
+      .refine((value) => GLOB.test(value) && !value.split("/").includes(".."), "A path like docs/adr/** or **/*.md")
+      .default("**"),
+    credential: z
+      .string()
+      .trim()
+      .transform((value) => value || null)
+      .nullish(),
+  })
+  .strict();
+export type TopicSourceRequest = z.input<typeof TopicSourceSchema>;
+
+/**
+ * Whether a file's path is under a source's pattern: `**` any folders, `*` any characters but "/", `?` one, `{a,b}`
+ * either. A pattern without a wildcard is a folder or a file: "docs/adr" holds docs/adr/0001.md.
+ */
+export function pathMatches(pattern: string, path: string): boolean {
+  const glob = /[*?{]/.test(pattern) ? pattern : `${pattern.replace(/\/+$/, "")}{,/**}`;
+  let source = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*") {
+      // "**/" matches no folder too.
+      if (glob[i + 2] === "/") {
+        source += "(?:.*/)?";
+        i += 2;
+      } else {
+        source += ".*";
+        i += 1;
+      }
+    } else if (c === "*") source += "[^/]*";
+    else if (c === "?") source += "[^/]";
+    else if (c === "{") source += "(?:";
+    else if (c === "}") source += ")";
+    else if (c === "," && glob.lastIndexOf("{", i) > glob.lastIndexOf("}", i)) source += "|";
+    else source += c.replace(/[.+^$()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${source}$`).test(path);
+}
+
+/** The files a source indexes: text, by their extension. */
+export function isTextFile(path: string): boolean {
+  return /\.(md|markdown|mdx|txt|text|adoc|asciidoc|rst|org)$/i.test(path);
 }

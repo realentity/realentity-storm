@@ -3,6 +3,7 @@ import { IconArchive, IconArchiveOff, IconCheck, IconPencil, IconPlus, IconTrash
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
 import { TopicFacts } from "../components/TopicFacts";
+import { TopicSources } from "../components/TopicSources";
 import { TopicUpkeepCard } from "../components/TopicUpkeepCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
@@ -168,6 +169,7 @@ function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; top
         )}
         <DirectionForm topicId={topic.topicId} onAdded={onChange} />
         <TopicFacts topic={topic} topics={topics} />
+        <TopicSources topicId={topic.topicId} />
         <TopicEmails topicId={topic.topicId} decided={decided} />
       </div>
     </div>

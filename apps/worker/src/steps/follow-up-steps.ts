@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { type Embeddings, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
 import { type StepLearning } from "../learning/learning";
@@ -118,6 +118,7 @@ export class DraftFollowUpStep extends LlmStep {
     learning?: StepLearning,
     private readonly mail?: MailConnector,
     private readonly prisma?: PrismaClient,
+    private readonly embeddings?: Embeddings | null,
   ) {
     super(llm, router, learning);
   }
@@ -130,7 +131,10 @@ export class DraftFollowUpStep extends LlmStep {
       signature?: string;
       topic?: string;
     };
-    const memory = await topicMemory(this.prisma, context.userId, message, topic);
+    const memory = await topicMemory(this.prisma, context.userId, message, topic, {
+      embeddings: this.embeddings,
+      recordUsage: (usage) => context.recordUsage(usage),
+    });
     const system = [
       "You draft a follow-up for the user: <email> is an email they sent that got no answer. The follow-up goes in the " +
         "same thread to its recipient, to be reviewed and sent by the user. Rules:",
@@ -156,7 +160,7 @@ export class DraftFollowUpStep extends LlmStep {
     });
     const email = emailBlock(message);
     const [examples, thread] = await Promise.all([this.examplesFor(context, email), readThread(this.mail, context.userId, message)]);
-    const draft = await this.call(context, system, `${examples}${thread}${email}`, schema, true, memory.block || undefined);
+    const draft = await this.call(context, system, `${examples}${thread}${memory.passages}${email}`, schema, true, memory.block || undefined);
     return {
       subject: replySubject(message.subject),
       body: draft.body.trim(),

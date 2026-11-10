@@ -172,3 +172,24 @@ test("Keep topics up to date: set up from the Topics page, a checklist until it 
   await page.goto("/topics");
   await expect(page.getByTestId("topic-upkeep").getByRole("button", { name: "Set up" })).toBeVisible();
 });
+
+// M43: a topic's GitHub source, linked and never copied
+test("a topic's source: a repository added from its address, shown not read yet, then removed", async ({ page }) => {
+  const name = unique("Orion");
+  await newTopic(page, name);
+  await page.goto("/topics");
+  const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
+  await sources.getByTestId("source-add").click();
+  const form = sources.getByTestId("source-form");
+  await form.getByLabel("GitHub repository").fill("https://github.com/acme/orion");
+  await form.getByLabel("Files").fill("docs/adr/**");
+  await form.getByRole("button", { name: "Add" }).click();
+  const row = sources.getByTestId("source-acme/orion");
+  await expect(row).toContainText("docs/adr/**");
+  await expect(row).toContainText("not read yet");
+  await expect(row.getByRole("link", { name: "acme/orion" })).toHaveAttribute("href", "https://github.com/acme/orion/tree/HEAD/docs/adr");
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await row.getByRole("button", { name: "Remove source" }).click();
+  await expect(sources.getByTestId("source-acme/orion")).toHaveCount(0);
+});

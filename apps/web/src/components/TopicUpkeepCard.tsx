@@ -34,7 +34,8 @@ export function TopicUpkeepCard() {
           <h3 className="card-title mb-1">Keep topics up to date</h3>
           <p className="text-secondary mb-2">
             Topics sort your email, but nothing reaches their memory until a pipeline reads it. Topic upkeep reads your new and sent email
-            every 15 minutes, sorts it into your topics and proposes what it states; you approve each fact at its gate. It sends nothing.
+            and your topics' changed documents every 15 minutes, sorts it into your topics and proposes what it states; you approve each
+            fact at its gate. It sends nothing.
           </p>
           <ErrorAlert error={action.error} title="Not set up" />
           <button type="button" className="btn btn-primary" disabled={action.busy || !UPKEEP} onClick={() => void install()}>

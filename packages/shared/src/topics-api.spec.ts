@@ -1,4 +1,4 @@
-import { looksSecret, TopicFactSchema } from "./topics-api";
+import { isTextFile, looksSecret, pathMatches, TopicFactSchema, TopicSourceSchema } from "./topics-api";
 
 // M42-S1 (part): a topic's fact never holds a secret
 describe("looksSecret", () => {
@@ -32,5 +32,38 @@ describe("looksSecret", () => {
     const result = TopicFactSchema.safeParse({ about: "Staging", statement: "password: hunter2" });
     expect(result.success).toBe(false);
     expect(JSON.stringify(result.error?.issues)).not.toContain("hunter2");
+  });
+});
+
+// M43-T1: a source's path pattern
+describe("pathMatches", () => {
+  it.each([
+    ["docs/adr/**", "docs/adr/0012-use-postgresql.md", true],
+    ["docs/adr/**", "docs/adr/old/0001.md", true],
+    ["docs/adr/**", "docs/other/0001.md", false],
+    ["docs/adr", "docs/adr/0001.md", true],
+    ["docs/adr", "docs/adrs/0001.md", false],
+    ["**/*.md", "README.md", true],
+    ["**/*.md", "docs/spec/api.md", true],
+    ["**/*.md", "docs/spec/api.txt", false],
+    ["docs/*.md", "docs/a/b.md", false],
+    ["docs/{adr,spec}/**", "docs/spec/api.md", true],
+    ["docs/{adr,spec}/**", "docs/notes/x.md", false],
+    ["**", "anything/at/all.md", true],
+    ["docs/0?.md", "docs/01.md", true],
+  ])("%s, %s: %s", (pattern, path, expected) => {
+    expect(pathMatches(pattern, path)).toBe(expected);
+  });
+
+  it("a source: a repository from its address, the path cleaned, nothing outside the repository", () => {
+    expect(TopicSourceSchema.parse({ kind: "GITHUB", location: "https://github.com/acme/orion.git", path: "/docs/adr/**" })).toEqual({
+      kind: "GITHUB",
+      location: "acme/orion",
+      path: "docs/adr/**",
+    });
+    expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme" }).success).toBe(false);
+    expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme/orion", path: "../secrets/**" }).success).toBe(false);
+    expect(isTextFile("docs/adr/0012.md")).toBe(true);
+    expect(isTextFile("docs/diagram.png")).toBe(false);
   });
 });

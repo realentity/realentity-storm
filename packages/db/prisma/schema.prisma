@@ -146,6 +146,8 @@ model User {
   topicLinks    TopicLink[]
   topicFacts    TopicFact[]
   topicChanges  TopicChange[]
+  topicSources  TopicSource[]
+  topicPassages TopicPassage[]
   scheduled     ScheduledStart[]
 
   @@map("Users")
@@ -1130,6 +1132,8 @@ model Topic {
   links       TopicLink[]
   facts       TopicFact[]
   changes     TopicChange[]
+  sources     TopicSource[]
+  passages    TopicPassage[]
   dateCreated DateTime         @default(now())
   dateUpdated DateTime         @updatedAt
 
@@ -1217,6 +1221,8 @@ enum TopicFactSource {
   EMAIL
   /// The user wrote it.
   USER
+  /// A file of a topic's source (sourceId: "owner/repo:path@commit").
+  FILE
 }
 
 /**
@@ -1291,4 +1297,68 @@ model TopicChange {
   @@index([topicId, dateCreated])
   @@index([userId, otherTopicId])
   @@map("TopicChanges")
+}
+
+enum TopicSourceKind {
+  /// A GitHub repository: files under a path, read at the branch's head.
+  GITHUB
+}
+
+/**
+ * Where a topic's documents live (M43, docs/design.md §8.1): linked, never copied. Storm keeps where it is and how far
+ * it has read; the passages it indexes from it are a cache.
+ */
+model TopicSource {
+  topicSourceId String          @id @default(uuid()) @db.Uuid
+  userId        String          @db.Uuid
+  user          User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId       String          @db.Uuid
+  topic         Topic           @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  kind          TopicSourceKind
+  /// GITHUB: owner/repo.
+  location      String
+  /// GITHUB: the branch; null: the repository's default.
+  branch        String?
+  /// Which files: a glob ("docs/adr/**", "**/*.md").
+  path          String          @default("**")
+  /// A credential's name: a read-only token for the host (allowedHosts api.github.com); null for a public repository.
+  credential    String?
+  /// The last commit indexed: the next read continues from it. Null: not read yet (everything under the path).
+  cursor        String?
+  readAt        DateTime?
+  passages      TopicPassage[]
+  dateCreated   DateTime        @default(now())
+
+  @@index([topicId])
+  @@map("TopicSources")
+}
+
+/**
+ * A passage of a source's file (M43-T3): the index, a cache. Refreshed when its file changes, rebuilt on request,
+ * deleted without losing anything.
+ */
+model TopicPassage {
+  topicPassageId String                       @id @default(uuid()) @db.Uuid
+  userId         String                       @db.Uuid
+  user           User                         @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId        String                       @db.Uuid
+  topic          Topic                        @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  topicSourceId  String                       @db.Uuid
+  source         TopicSource                  @relation(fields: [topicSourceId], references: [topicSourceId], onDelete: Cascade)
+  path           String
+  /// The commit it was read at.
+  ref            String
+  /// When that commit was made: the passage's date as evidence.
+  refDate        DateTime
+  /// The headings it is under: "Decision > Database".
+  heading        String                       @default("")
+  ordinal        Int
+  text           String
+  embedding      Unsupported("vector(1024)")?
+  embeddingModel String?
+  dateCreated    DateTime                     @default(now())
+
+  @@index([topicSourceId, path])
+  @@index([topicId])
+  @@map("TopicPassages")
 }

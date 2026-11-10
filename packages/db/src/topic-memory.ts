@@ -367,7 +367,8 @@ export interface FactProposal {
   quote: string;
   /** The fact it changes or disputes. */
   replaces: { topicFactId: string } | null;
-  source: { messageId: string; from: string; subject: string; date: string };
+  /** An email, or a file of a topic's source (M43: messageId "owner/repo:path", from the repository, subject the path). */
+  source: { kind?: "email" | "file"; messageId: string; from: string; subject: string; date: string; commit?: string };
   /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
   title: string;
 }
@@ -401,9 +402,12 @@ export async function applyProposal(
     topicId: proposal.topicId,
     about: proposal.about,
     statement: proposal.statement,
-    source: "EMAIL" as const,
+    source: proposal.source.kind === "file" ? ("FILE" as const) : ("EMAIL" as const),
     sourceId: proposal.source.messageId,
-    sourceLabel: `${proposal.source.from}: ${proposal.source.subject || "(no subject)"}`.slice(0, 300),
+    sourceLabel: (proposal.source.kind === "file"
+      ? `${proposal.source.from} ${proposal.source.subject}${proposal.source.commit ? ` @ ${proposal.source.commit.slice(0, 7)}` : ""}`
+      : `${proposal.source.from}: ${proposal.source.subject || "(no subject)"}`
+    ).slice(0, 300),
     sourceDate: Number.isNaN(sourceDate.getTime()) ? new Date() : sourceDate,
     quote: proposal.quote.slice(0, 500),
     runId,

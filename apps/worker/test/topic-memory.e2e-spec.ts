@@ -22,7 +22,7 @@ class MemoryLlm implements LlmClient {
   structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<{ output: z.infer<S>; usage: LlmUsage }> {
     this.requests.push(request);
     if (request.system.startsWith("You screen")) {
-      const blocks = request.prompt.split(/(?=<email index=")/).filter((b) => b.startsWith("<email"));
+      const blocks = request.prompt.split(/(?=<(?:email|document) index=")/).filter((b) => /^<(email|document)/.test(b));
       const results = blocks.map((block) => ({ index: Number(/index="(\d+)"/.exec(block)![1]), worth: this.worth(block) }));
       return Promise.resolve({ output: request.schema.parse({ results }), usage: emptyUsage() });
     }
@@ -301,7 +301,7 @@ steps:
       statement,
       quote: statement,
       replaces: replaces ? { topicFactId: replaces, about: "Launch date", statement: "" } : null,
-      source: { messageId: `<${statement}@client.example>`, from: "maria@client.example", subject: "Plan", date },
+      source: { kind: "email", messageId: `<${statement}@client.example>`, from: "maria@client.example", subject: "Plan", date },
       title: `Launch date: ${statement}`,
     });
     const newer = await applyProposal(db.client, userId, proposal("April", "2026-12-20T09:00:00Z", null), null);
@@ -410,5 +410,55 @@ steps:
       ["Database", "MySQL", "DISPUTED"],
       ["Database", "PostgreSQL", "DISPUTED"],
     ]);
+  });
+  // M43-T4: a changed file of a topic's source is evidence too
+  it("a changed decision record proposes a change, kept as a fact from the file at its commit; a first read only indexes", async () => {
+    await fact("Database", "PostgreSQL");
+    const file = (path: string, text: string, firstRead = false) => ({
+      topic: "Orion",
+      topicId: orion,
+      sourceId: randomUUID(),
+      repo: "acme/orion",
+      path,
+      status: "modified" as const,
+      commit: "b2c3d4e5f6a7b8c9",
+      commitDate: "2026-11-20T10:00:00.000Z",
+      url: `https://github.com/acme/orion/blob/b2c3d4e5f6a7b8c9/${path}`,
+      text,
+      firstRead,
+    });
+    const llm = new MemoryLlm(
+      (block) => block.includes("ADR-0012"),
+      () => [{ topic: "Orion", kind: "change", about: "Database", statement: "MySQL 8", replaces: "F1", quote: "We use MySQL 8." }],
+    );
+    const result = (await new TopicExtractStep(llm, router, undefined, db.client).execute(
+      {
+        messages: [],
+        documents: [
+          file("docs/adr/0012-database.md", "# ADR-0012: The database\n\nStatus: accepted\n\nWe use MySQL 8."),
+          file("docs/adr/0001-start.md", "# ADR-0001\n\nEverything else.", true),
+        ],
+      },
+      context(),
+    )) as { proposals: TopicProposal[] };
+    expect(llm.screens()[0]?.prompt).toContain(
+      '<document index="0" source="acme/orion docs/adr/0012-database.md @ b2c3d4e" date="2026-11-20T10:00:00.000Z">',
+    );
+    expect(llm.screens()[0]?.prompt).not.toContain("ADR-0001");
+    expect(result.proposals.map((p) => [p.title, p.source.kind, p.source.messageId])).toEqual([
+      [
+        "Orion: Database: PostgreSQL → MySQL 8 (docs/adr/0012-database.md @ b2c3d4e, 2026-11-20)",
+        "file",
+        "acme/orion:docs/adr/0012-database.md",
+      ],
+    ]);
+    await applyProposal(db.client, userId, result.proposals[0], null);
+    const kept = await db.client.topicFact.findFirstOrThrow({ where: { topicId: orion, status: "CURRENT" } });
+    expect(kept).toMatchObject({
+      statement: "MySQL 8",
+      source: "FILE",
+      sourceId: "acme/orion:docs/adr/0012-database.md",
+      sourceLabel: "acme/orion docs/adr/0012-database.md @ b2c3d4e",
+    });
   });
 });

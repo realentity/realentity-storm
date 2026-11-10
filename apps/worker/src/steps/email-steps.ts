@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { type Embeddings, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { isNoReplyAddress, unanswerable, type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
 import { type MailConnector } from "../mail/mail-connector";
@@ -115,6 +115,7 @@ export class DraftReplyStep extends LlmStep {
     learning?: StepLearning,
     private readonly mail?: MailConnector,
     private readonly prisma?: PrismaClient,
+    private readonly embeddings?: Embeddings | null,
   ) {
     super(llm, router, learning);
   }
@@ -133,7 +134,10 @@ export class DraftReplyStep extends LlmStep {
       signature?: string;
       topic?: string;
     };
-    const memory = await topicMemory(this.prisma, context.userId, message, topic);
+    const memory = await topicMemory(this.prisma, context.userId, message, topic, {
+      embeddings: this.embeddings,
+      recordUsage: (usage) => context.recordUsage(usage),
+    });
     const system = [
       "You draft email replies for the user, to be reviewed and sent by them. Rules:",
       "- Reply in the language the email is written in.",
@@ -165,7 +169,7 @@ export class DraftReplyStep extends LlmStep {
     // Examples are found by the email alone: the thread is what was said, not what kind of reply it needs.
     const [examples, thread] = await Promise.all([this.examplesFor(context, email), readThread(this.mail, context.userId, message)]);
     // The topic's memory changes less often than the email: a cached start of the prompt.
-    const draft = await this.call(context, system, `${examples}${thread}${email}`, schema, true, memory.block || undefined);
+    const draft = await this.call(context, system, `${examples}${thread}${memory.passages}${email}`, schema, true, memory.block || undefined);
     return {
       subject: replySubject(message.subject),
       body: draft.body.trim(),
@@ -209,15 +213,17 @@ export interface EmailStepDependencies {
   llm: LlmClient;
   router: ModelRouter;
   learning?: StepLearning;
+  /** Drafts' passages closest to the email (M43-T4); without them, by its words. */
+  embeddings?: Embeddings | null;
 }
 
 export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
   return [
     new EmailFetchStep(deps.mail, deps.prisma),
     new EmailClassifyStep(deps.llm, deps.router, deps.learning),
-    new DraftReplyStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma),
+    new DraftReplyStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
     new EmailAwaitingStep(deps.mail, deps.prisma),
-    new DraftFollowUpStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma),
+    new DraftFollowUpStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
     new BillReadStep(deps.mail, deps.llm, deps.router, deps.learning),
     new BillSaveStep(deps.prisma),
     new EmailSendStep(deps.mail),

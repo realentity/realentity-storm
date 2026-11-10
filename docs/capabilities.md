@@ -19,7 +19,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
-| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval | `topic.match`, `topic.extract`, `topic.apply` |
+| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `git.changes`, `topic.index` |
 | Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
@@ -660,7 +660,8 @@ messages from your mailbox (the email's References, up to 10, without their quot
 before. With a topic it also knows what your approved memory of the topic says is true now (only current facts), and
 the gate's "Why" lists the facts the draft used, each with its source. `topic`: `auto` (the default: the email's topics
 that aren't waiting for you, else its thread's), `none`, or a topic's name. What neither the memory nor the email says
-is still a placeholder. It never decides the recipient. Edits you make at the gate teach it your style.
+is still a placeholder. With a topic that has sources, the passages closest to the email go in too, and a passage it
+used is cited at the gate (`docs/adr/0012-database.md @ a1b2c3d`). It never decides the recipient. Edits you make at the gate teach it your style.
 - In: `message`, `instruction`, `context` (what it may draw on: availability, rates, links), `signature`, `topic`.
 - Out: `subject`, `body`, `language`, `drewOn` (the facts it used; empty without a topic).
 
@@ -747,11 +748,12 @@ requirements, and changes to them. It reads only emails linked to a topic (topic
 waits for you, and so does memory from it), each without the quoted thread under it. Two passes keep it cheap: the
 cheap model first asks whether an email states anything worth remembering (most don't); only those go to the writing
 model, which compares them with what the topic knows. Each proposal is new, a change (the old fact will be superseded)
-or a conflict (two sources disagree), with its source and the line that shows it. It writes nothing. Something that
-looks like a secret is never proposed, nor what you said an email was wrong about; a fact you wrote or confirmed is only
-ever disputed, never replaced.
+or a conflict (two sources disagree), with its source and the line that shows it. With `documents` (topic.index's `files`) it also
+reads the changed files of your topics' sources, a decision record or a spec, the same way; a source's first read is
+only indexed. It writes nothing. Something that looks like a secret is never proposed, nor what you said an email or a
+file was wrong about; a fact you wrote or confirmed is only ever disputed, never replaced.
 - In: `messages`, `topics` (only these, by name; default: every active topic), `matches` (topic.match's `results`:
-  the topics it linked count too, also in a dry run, where it stores no link).
+  the topics it linked count too, also in a dry run, where it stores no link), `documents` (topic.index's changed `files`).
 - Out: `proposals` (for gate.review, then topic.apply), `title` ("2 facts for Orion", for the gate).
 
 #### `topic.apply`
@@ -763,10 +765,35 @@ written; a dry run writes nothing.
 - In: `proposals` (the gate's `selected`).
 - Out: `applied` (how many), `skipped` (each with why: already known, you said it was wrong, not approved).
 
+#### `git.changes`
+The files changed in your topics' GitHub sources (on the Topics page: a repository, a path like `docs/adr/**`, a branch)
+since each was last indexed, at its branch's head: text files under its path only (Markdown, AsciiDoc, plain text). The
+first read lists every one. Seeing that nothing changed is one call to GitHub, no LLM. A private repository needs a
+read-only token, kept as a credential allowed for `api.github.com` only. It only reads: `topic.index` moves each source on
+once its files are indexed, so a failed index is read again next time.
+- In: `topics` (only these, by name; default: every active topic).
+- Out: `changes` (topic, repo, path, added / modified / removed, commit, its date, link), `sources` (each source read,
+  from which commit to which), `problems`.
+
+#### `topic.index`
+Indexes git.changes' files into their topics' passages: each file split at its headings, with its path and commit and,
+with OpenAI embeddings set up, a vector; a removed file's passages go. Then each source is marked read at its commit. The
+passages are a cache, never a copy you keep up to date: the topic's page rebuilds them, and deleting them loses nothing.
+Drafts get the passages closest to the email (by embedding, else by its words), each cited with its file and commit. A
+dry run reads the files and writes nothing.
+- In: `changes`, `sources` (git.changes').
+- Out: `files` (the changed files with their text, for topic.extract), `passages`, `removed`, `problems`.
+
 ```yaml
+- id: repos
+  type: git.changes
+  with: {}
+- id: indexed
+  type: topic.index
+  with: { changes: "{{repos.changes}}", sources: "{{repos.sources}}" }
 - id: facts
   type: topic.extract
-  with: { messages: "{{topics.linked}}", matches: "{{topics.results}}" }
+  with: { messages: "{{topics.linked}}", matches: "{{topics.results}}", documents: "{{indexed.files}}" }
 - id: review
   type: gate.review
   when: "{{facts.proposals}}"
@@ -1149,7 +1176,7 @@ What the steps add up to, with the pipeline that does it:
 | Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../pipelines/job-board.yaml) up to `data.save` |
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
 | A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
-| Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) |
+| Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match`; `git.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
 | Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |

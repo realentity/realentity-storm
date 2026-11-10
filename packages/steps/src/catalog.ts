@@ -231,6 +231,32 @@ export type EmailMessage = z.infer<typeof EmailMessageSchema>;
 
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
+/** A file of a topic's source that changed (M43): git.changes' output, topic.index's input. */
+const SourceChangeSchema = z.object({
+  topic: z.string(),
+  topicId: z.string(),
+  sourceId: z.string(),
+  repo: z.string(),
+  path: z.string(),
+  status: z.enum(["added", "modified", "removed"]),
+  commit: z.string(),
+  commitDate: z.string(),
+  url: z.string(),
+});
+const SourceReadSchema = z.object({
+  sourceId: z.string(),
+  topic: z.string(),
+  repo: z.string(),
+  from: z.string().nullable(),
+  to: z.string(),
+  date: z.string(),
+});
+/** A changed file with its text, as topic.index hands it on to topic.extract. */
+const SourceFileSchema = SourceChangeSchema.extend({
+  text: z.string(),
+  firstRead: z.boolean().default(false).describe("the source's first read: indexed, not read for facts"),
+});
+
 /** A fact topic.extract proposes for one of the user's topics (M42-T2); topic.apply writes it once approved at a gate. */
 export const TopicProposalSchema = z.object({
   /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
@@ -242,7 +268,16 @@ export const TopicProposalSchema = z.object({
   about: z.string().min(1).max(120),
   statement: z.string().min(1).max(1000),
   replaces: z.object({ topicFactId: z.string(), about: z.string(), statement: z.string() }).nullable(),
-  source: z.object({ messageId: z.string(), from: z.string(), subject: z.string(), date: z.string() }),
+  /** An email (messageId: its Message-ID), or a file of a topic's source (M43: messageId "owner/repo:path"). */
+  source: z.object({
+    kind: z.enum(["email", "file"]).default("email"),
+    messageId: z.string(),
+    from: z.string(),
+    subject: z.string(),
+    date: z.string(),
+    url: z.string().optional(),
+    commit: z.string().optional(),
+  }),
 });
 export type TopicProposal = z.infer<typeof TopicProposalSchema>;
 
@@ -851,8 +886,12 @@ export const CORE_STEPS: StepDefinition[] = [
     llm: true,
     saasSafe: true,
     input: z.object({
-      messages: Messages,
+      messages: Messages.default([]),
       topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics, by name; default: every active one"),
+      documents: z
+        .array(SourceFileSchema)
+        .optional()
+        .describe("topic.index's `files`, the changed files: read as evidence too (a source's first read is only indexed)"),
       matches: z
         .array(z.object({ messageId: z.string(), topics: z.array(z.object({ topic: z.string(), status: z.string() }).loose()) }).loose())
         .optional()
@@ -877,6 +916,42 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({
       applied: z.number().int(),
       skipped: z.array(z.object({ line: z.string(), reason: z.string() })),
+    }),
+  },
+  {
+    type: "git.changes",
+    description:
+      "The files changed in the user's topics' GitHub sources since each was last indexed (M43, docs/design.md §8.1): at " +
+      "each source's branch head, only text files under its path; the first read lists every one. Seeing that nothing " +
+      "changed is one API call, no LLM. A private repository's token is a credential for api.github.com only. Reads " +
+      "only: topic.index (with: changes, sources) indexes them and moves each source on, so a failed index is read again.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics' sources, by name; default: every active one"),
+    }),
+    output: z.object({
+      changes: z.array(SourceChangeSchema),
+      sources: z.array(SourceReadSchema).describe("each source read, from which commit to which: for topic.index"),
+      problems: z.array(z.string()),
+    }),
+  },
+  {
+    type: "topic.index",
+    description:
+      "Indexes git.changes' files into their topics' passages (M43): each file split at its headings, with its path and " +
+      "commit and, with an embeddings provider, its embedding; a removed file's passages go. Each source is then marked " +
+      "read at its commit. The index is a cache: deleted (the topic's page: Rebuild), the next read makes the same " +
+      "passages. Drafts get the passages closest to the email. `files`: the changed files with their text, for " +
+      "topic.extract (documents: ...). A dry run reads the files and writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({ changes: z.array(SourceChangeSchema), sources: z.array(SourceReadSchema) }),
+    output: z.object({
+      files: z.array(SourceFileSchema),
+      passages: z.number().int(),
+      removed: z.number().int(),
+      problems: z.array(z.string()),
     }),
   },
   {

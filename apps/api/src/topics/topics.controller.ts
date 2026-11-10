@@ -5,10 +5,12 @@ import {
   TopicFactNoLongerTrueSchema,
   TopicFactSchema,
   TopicSchema,
+  TopicSourceSchema,
   TopicUpdateSchema,
   type TopicChangeView,
   type TopicFactView,
   type TopicLinkView,
+  type TopicSourceView,
   type TopicUpkeepView,
   type TopicView,
 } from "@realentity/storm-shared";
@@ -18,6 +20,7 @@ import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { TopicFactsService } from "./topic-facts.service";
 import { TopicLinksService } from "./topic-links.service";
+import { TopicSourcesService } from "./topic-sources.service";
 import { TopicUpkeepService } from "./topic-upkeep.service";
 import { TopicsService } from "./topics.service";
 
@@ -29,6 +32,7 @@ export class TopicsController {
     private readonly topicLinks: TopicLinksService,
     private readonly facts: TopicFactsService,
     private readonly upkeep: TopicUpkeepService,
+    private readonly sources: TopicSourcesService,
   ) {}
 
   @Get()
@@ -40,6 +44,20 @@ export class TopicsController {
   @Get("upkeep")
   upkeepStatus(@CurrentUser() user: AuthenticatedUser): Promise<TopicUpkeepView> {
     return this.upkeep.status(user.userId);
+  }
+
+  @Get(":topicId/sources")
+  topicSources(@CurrentUser() user: AuthenticatedUser, @Param("topicId", ParseUUIDPipe) topicId: string): Promise<TopicSourceView[]> {
+    return this.sources.list(user.userId, topicId);
+  }
+
+  @Post(":topicId/sources")
+  addSource(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicId", ParseUUIDPipe) topicId: string,
+    @Body(new ZodBodyPipe(TopicSourceSchema)) body: z.output<typeof TopicSourceSchema>,
+  ): Promise<TopicSourceView> {
+    return this.sources.add(user.userId, topicId, body);
   }
 
   @Get(":topicId/links")
@@ -202,5 +220,23 @@ export class TopicChangesController {
   @HttpCode(204)
   undo(@CurrentUser() user: AuthenticatedUser, @Param("topicChangeId", ParseUUIDPipe) topicChangeId: string): Promise<void> {
     return this.facts.undo(user.userId, topicChangeId);
+  }
+}
+
+/** A topic's sources (M43): removed, or its index rebuilt. */
+@Controller("topic-sources")
+export class TopicSourcesController {
+  constructor(private readonly sources: TopicSourcesService) {}
+
+  @Delete(":topicSourceId")
+  @HttpCode(204)
+  remove(@CurrentUser() user: AuthenticatedUser, @Param("topicSourceId", ParseUUIDPipe) topicSourceId: string): Promise<void> {
+    return this.sources.remove(user.userId, topicSourceId);
+  }
+
+  @Post(":topicSourceId/rebuild")
+  @HttpCode(200)
+  rebuild(@CurrentUser() user: AuthenticatedUser, @Param("topicSourceId", ParseUUIDPipe) topicSourceId: string): Promise<TopicSourceView> {
+    return this.sources.rebuild(user.userId, topicSourceId);
   }
 }

@@ -5,6 +5,8 @@ import {
   type TopicFactView,
   type TopicDirectionRequest,
   type TopicLinkView,
+  type TopicSourceRequest,
+  type TopicSourceView,
   type TopicUpkeepView,
   type TopicRequest,
   type TopicUpdateRequest,
@@ -176,6 +178,8 @@ export const api = {
     addFact: (topicId: string, body: TopicFactRequest) => request<TopicFactView>("POST", `/topics/${topicId}/facts`, body),
     changes: (topicId: string) => request<TopicChangeView[]>("GET", `/topics/${topicId}/changes`),
     upkeep: () => request<TopicUpkeepView>("GET", "/topics/upkeep"),
+    sources: (topicId: string) => request<TopicSourceView[]>("GET", `/topics/${topicId}/sources`),
+    addSource: (topicId: string, body: TopicSourceRequest) => request<TopicSourceView>("POST", `/topics/${topicId}/sources`, body),
   },
   topicFacts: {
     edit: (topicFactId: string, body: TopicFactRequest) => request<TopicFactView>("PUT", `/topic-facts/${topicFactId}`, body),
@@ -185,6 +189,10 @@ export const api = {
     settle: (topicFactId: string) => request<TopicFactView>("POST", `/topic-facts/${topicFactId}/settle`),
     move: (topicFactId: string, topicId: string) => request<TopicFactView>("POST", `/topic-facts/${topicFactId}/move`, { topicId }),
     undo: (topicChangeId: string) => request<void>("POST", `/topic-changes/${topicChangeId}/undo`),
+  },
+  topicSources: {
+    remove: (topicSourceId: string) => request<void>("DELETE", `/topic-sources/${topicSourceId}`),
+    rebuild: (topicSourceId: string) => request<TopicSourceView>("POST", `/topic-sources/${topicSourceId}/rebuild`),
   },
   topicLinks: {
     waiting: () => request<TopicLinkView[]>("GET", "/topic-links/waiting"),

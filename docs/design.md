@@ -452,7 +452,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 There's no fine-tuning. Everything learned is visible and editable.
 
-### 8.1 Topics: what Storm knows about a subject (M41–M42; M43–M44 planned)
+### 8.1 Topics: what Storm knows about a subject (M41–M43; Drive, backfill and M44 planned)
 
 Examples and rules teach *how* you write, never *what is true*. A reply about a project needs what is true: who is who,
 what was decided, what changed since. Without it a draft is polite and empty, because it may not invent facts. A
@@ -494,14 +494,16 @@ mailbox when it is needed.
 | Source | What Storm keeps | How it sees a change (no LLM) |
 | --- | --- | --- |
 | GitHub repository | `owner/repo`, a path pattern (`docs/adr/**`), the last commit read; a read-only token as a credential | the commit at the head of the branch |
-| Drive folder | the folder id, Drive's changes token; the Google connection with a read-only Drive scope | Drive's changes list |
+| Drive folder (planned) | the folder id, Drive's changes token; the Google connection with a read-only Drive scope | Drive's changes list |
 | Email | the emails linked to the topic (ids) | new mail in a linked thread, or newly linked |
 | An email's attachment | its message and part | it never changes |
 
 To find the passage a draft needs, Storm keeps an **index**: passages of the sources with their embeddings, each with
 its path and commit (or Drive revision). The index is a cache: refreshed when its source changes, rebuilt on request,
 and deleted without losing anything. A cited passage says where it is from (`ADR-0012 @ a1b2c3d`), to open the
-original.
+original. (M43: a GitHub source is a repository, a branch and a path pattern, text files only; its passages are split
+at headings, embedded when OpenAI is set up and otherwise found by their words; a source's first read is indexed but not
+read for facts, which is the backfill's job.)
 
 **Facts and how they change.** A fact has what it is about, a statement, its source (an email, a file at a commit, a
 Drive document's revision, or you), the date of that source and a status: *current*, *superseded* (by which fact) or
@@ -608,7 +610,7 @@ The schema is [packages/db/prisma/schema.prisma](../packages/db/prisma/schema.pr
 | Pipelines | `Pipeline` (`enabled`: on its schedule; `essential`: exempt from the budget), `PipelineVersion` (`definition`, compiled `policy`, the `builderChatId` it came from), `BuilderChat` (model, tokens used), `BuilderMessage` (transcript, proposal, cost), `SiteRecipe` |
 | Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Takeover` (the live browser waiting for you), `Artifact` (screenshots, traces, downloads) |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
-| Topics (§8.1; sources and passages planned) | `Topic`, `TopicDirection`, `TopicSource` (a link and the last commit or changes token read), `TopicPassage` (the index: a cache, `embedding vector(1024)`), `TopicLink` (an email and a topic: how it was found, suggested or confirmed), `TopicFact` (statement, source, source date, status, what superseded it), `TopicChange` (every change to a topic, for its history and undo) |
+| Topics (§8.1) | `Topic`, `TopicDirection`, `TopicSource` (a link and the last commit or changes token read), `TopicPassage` (the index: a cache, `embedding vector(1024)`), `TopicLink` (an email and a topic: how it was found, suggested or confirmed), `TopicFact` (statement, source, source date, status, what superseded it), `TopicChange` (every change to a topic, for its history and undo) |
 | Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
 | Jobs | `JobPosting`, `Application`, `Document` (your CV and cover letters, under `DOCUMENTS_DIR`; replaced by name, old files kept for approved payloads) |
 
@@ -891,7 +893,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Google Calendar's refresh token is sealed like a credential (AAD: the user id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
 - [ ] Facts about you are written only by your approvals, your answers and the Profile page, never by a page or the LLM alone; a fact the LLM cites must be one of yours, with your answer
 - [ ] A topic's facts and directions are written only by your approvals and your edits, never by an email's or a document's text or the LLM alone; something that looks like a secret is never proposed as a fact, nor written by you (§8.1)
-- [ ] Topic sources are read with read-only access (a read-only repository token, Drive's read-only scope), and their passages reach prompts delimited as untrusted data (planned, §8.1)
+- [ ] Topic sources are read with read-only access (a read-only repository token, opened for api.github.com only; Drive's read-only scope, planned), and their passages reach prompts delimited as untrusted data (§8.1)
 - [ ] `calendar.create`'s guests can't come from LLM output (they are recipient targets), and Google emails them only after Act
 - [ ] Browser pages that explore or act (agent, upload, submit, shop.product) go only to allowed sites, every redirect checked before it is followed
 - [ ] `data.map` runs only a JSONata expression over its input (no network or code), with a time, depth and length limit
