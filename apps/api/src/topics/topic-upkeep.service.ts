@@ -3,10 +3,23 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ExamplesService } from "../examples/examples.service";
 
+/** The pipelines the Topics page offers (docs/design.md §8.1). */
+export type TopicPipelineKind = "upkeep" | "replies";
+
+/** How each is recognized among the user's pipelines, whatever its name. */
+const IS: Record<TopicPipelineKind, (definition: CompiledDefinition) => boolean> = {
+  // M42: it writes to the topics' memory.
+  upkeep: (d) => d.steps.some((s) => s.type === "topic.extract"),
+  // M44: it drafts replies to the emails topic.match linked.
+  replies: (d) =>
+    d.steps.some((s) => s.type === "topic.match") &&
+    d.steps.some((s) => s.type === "email.draftReply" && typeof s.forEach === "string" && s.forEach.includes(".linked}}")),
+};
+
 /**
- * Topic upkeep (M42, docs/design.md §8.1): whether a pipeline keeps the topics' memory up to date, and what is left
- * before it does. It is an ordinary pipeline of the user's, installed from the Topics page: edited, copied or deleted
- * like any other; deleted, the card offers it again.
+ * Topic upkeep (M42) and Topic replies (M44), docs/design.md §8.1: whether a pipeline keeps the topics' memory up to
+ * date, or answers their email, and what is left before it does. Each is an ordinary pipeline of the user's, installed
+ * from the Topics page: edited, copied or deleted like any other; deleted, the card offers it again.
  */
 @Injectable()
 export class TopicUpkeepService {
@@ -15,7 +28,7 @@ export class TopicUpkeepService {
     private readonly examples: ExamplesService,
   ) {}
 
-  async status(userId: string): Promise<TopicUpkeepView> {
+  async status(userId: string, kind: TopicPipelineKind = "upkeep"): Promise<TopicUpkeepView> {
     const [pipelines, setup, topicsWithDirections] = await Promise.all([
       this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { dateCreated: "desc" } }),
       this.examples.setup(userId),
@@ -28,7 +41,7 @@ export class TopicUpkeepService {
     const upkeeps = pipelines.filter((p) => {
       const definition = versions.find((v) => v.pipelineVersionId === p.currentVersionId)?.definition as unknown as
         CompiledDefinition | undefined;
-      return definition?.steps.some((s) => s.type === "topic.extract") ?? false;
+      return definition ? IS[kind](definition) : false;
     });
     // An enabled one first: that is the one keeping memory up to date.
     const pipeline = upkeeps.find((p) => p.enabled) ?? upkeeps[0] ?? null;

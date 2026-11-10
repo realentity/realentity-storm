@@ -607,7 +607,11 @@ Topics page's **Keep topics up to date** card sets it up: an ordinary pipeline o
 then a checklist of what is left (an email account, the LLM, a topic with a direction, a dry run, switching it on) and
 how it is doing (its last run, the proposals waiting). You edit, copy or delete it like any other; deleted, the card
 offers it again. Storm doesn't keep pipelines of its own that you can't delete: an update of one would clash with your
-edits. New steps: `topic.match` (an email's topics), `topic.extract`, `topic.apply`, `topic.index` (the passages of
+edits. A second card, **Answer your topics' email**, sets up [pipelines/topic-replies.yaml](../pipelines/topic-replies.yaml)
+the same way (M44): the new email that expects a reply is sorted into your topics by its own `topic.match` (so a new
+conversation has its topic before it is drafted), and each email of a topic gets a draft with `topic: auto`, waiting
+for your Act. Email of no topic is left alone; Recruiter and client replies drafts only the email no topic took
+(`topic.match`'s `unlinked`), so no email is drafted twice. New steps: `topic.match` (an email's topics), `topic.extract`, `topic.apply`, `topic.index` (the passages of
 what changed), `git.changes` and `drive.changes` (the files changed since the last read). Each goes into
 [capabilities.md](capabilities.md) when it is built.
 

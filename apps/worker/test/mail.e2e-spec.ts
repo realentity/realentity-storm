@@ -5,6 +5,7 @@ import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type z } from "zod";
@@ -27,8 +28,9 @@ class FakeLlm implements LlmClient {
     this.requests.push(request);
     const indexes = [...request.prompt.matchAll(/<email index="(\d+)">/g)].map((m) => Number(m[1]));
     const answer = indexes.length
-      ? { results: indexes.map((index) => ({ index, label: "reply", reason: "a recruiter" })) }
-      : { body: this.draft(request.prompt), language: "en" };
+      ? // A triage (label) or topic.match (topics: none beyond the directions) answer.
+        { results: indexes.map((index) => ({ index, label: "reply", reason: "a recruiter", topics: [] })) }
+      : { body: this.draft(request.prompt), language: "en", ...("used" in request.schema.shape ? { used: [] } : {}) };
     return Promise.resolve({ output: request.schema.parse(answer), usage: { ...emptyUsage(), calls: 1, costUsd: 0.001 } });
   }
 }
@@ -277,8 +279,8 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     }
 
     /** Only mail delivered after this point (each test starts from a fresh cursor anyway). */
-    async function freshPipeline(): Promise<string> {
-      const pipelineVersionId = await createVersion(db.client, userId, REPLIES);
+    async function freshPipeline(source = REPLIES): Promise<string> {
+      const pipelineVersionId = await createVersion(db.client, userId, source);
       const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
       const mailbox = await connector.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
       await db.client.mailCursor.create({
@@ -292,6 +294,31 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       });
       return pipelineVersionId;
     }
+
+    // M44: the shipped pipelines: an email of a topic is answered by Topic replies only, any other by Recruiter replies
+    it("Topic replies drafts for a topic's email, Recruiter replies for the rest: none twice", async () => {
+      const shipped = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+      const topic = await db.client.topic.create({
+        data: { userId, name: "Acme project", directions: { create: { kind: "DOMAIN", value: "acme.test" } } },
+      });
+      try {
+        const topicReplies = await freshPipeline(shipped("topic-replies.yaml"));
+        const recruiterReplies = await freshPipeline(shipped("recruiter-replies.yaml"));
+        await server.deliver({ from: "ana@acme.test", subject: "The project plan", text: "Can we move the review?" });
+        await server.deliver({ from: "bob@hiring.test", subject: "A role", text: "Are you open to a new role?" });
+        const proposed = async (pipelineVersionId: string) => {
+          const run = runner(new FakeLlm());
+          const runId = await run.start(pipelineVersionId, { trigger: "manual" });
+          await expect(run.advance(runId)).resolves.toBe("WAITING_FOR_USER");
+          return (await db.client.proposal.findMany({ where: { runId } })).map((p) => (p.originalPayload as { to: string }).to);
+        };
+        expect(await proposed(topicReplies)).toEqual(["ana@acme.test"]);
+        expect(await proposed(recruiterReplies)).toEqual(["bob@hiring.test"]);
+      } finally {
+        await db.client.topic.delete({ where: { topicId: topic.topicId } });
+        await db.client.unlinkedEmail.deleteMany();
+      }
+    });
 
     // M4-S1
     it("an email telling the LLM to mail an attacker: the proposal still targets only the sender", async () => {

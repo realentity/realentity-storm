@@ -196,6 +196,20 @@ test("Keep topics up to date: set up from the Topics page, a checklist until it 
   await expect(page.getByTestId("topic-upkeep").getByRole("button", { name: "Set up" })).toBeVisible();
 });
 
+// M44
+test("Answer your topics' email: set up from the Topics page, off, an ordinary pipeline", async ({ page }) => {
+  await page.goto("/topics");
+  const card = page.getByTestId("topic-replies");
+  await expect(card).toContainText("nothing is sent without you");
+  await card.getByRole("button", { name: "Set up" }).click();
+  await expect(card.getByTestId("topic-replies-status")).toContainText("Topic replies: off");
+  await expect(card.getByTestId("topic-replies-checklist")).toContainText("Try it: a dry run");
+  await card.getByRole("link", { name: "Topic replies" }).click();
+  await expect(page).toHaveURL(/\/pipelines\/[0-9a-f-]{36}$/);
+  const pipelineId = page.url().split("/").at(-1)!;
+  expect((await page.request.delete(`/api/pipelines/${pipelineId}`)).status()).toBe(204);
+});
+
 // M43: a topic's GitHub source, linked and never copied
 test("a topic's source: a repository added from its address, shown not read yet, then removed", async ({ page }) => {
   const name = unique("Orion");

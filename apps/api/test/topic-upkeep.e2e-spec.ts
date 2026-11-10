@@ -6,6 +6,8 @@ import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const UPKEEP = readFileSync(join(__dirname, "../../../pipelines/topic-upkeep.yaml"), "utf8");
+const TOPIC_REPLIES = readFileSync(join(__dirname, "../../../pipelines/topic-replies.yaml"), "utf8");
+const RECRUITER_REPLIES = readFileSync(join(__dirname, "../../../pipelines/recruiter-replies.yaml"), "utf8");
 
 // M42: the Topics page's card: is a pipeline keeping the topics' memory up to date, and what does it still need
 describe("topic upkeep", () => {
@@ -49,5 +51,19 @@ describe("topic upkeep", () => {
     expect((await status()).topicsWithDirections).toBe(0);
     await agent.post(`/api/topics/${topic.topicId}/directions`).send({ kind: "DOMAIN", value: "client.example" }).expect(201);
     expect((await status()).topicsWithDirections).toBe(1);
+  });
+
+  // M44: the second card: is a pipeline answering the topics' email
+  it("Topic replies: recognized by what it drafts (the emails a topic took); upkeep and Recruiter replies aren't it", async () => {
+    const replies = async () => (await agent.get("/api/topics/replies").expect(200)).body as TopicUpkeepView;
+    expect((await replies()).pipeline).toBeNull();
+    await agent.post("/api/pipelines").send({ source: UPKEEP }).expect(201);
+    // It drafts for the emails no topic took.
+    await agent.post("/api/pipelines").send({ source: RECRUITER_REPLIES }).expect(201);
+    expect((await replies()).pipeline).toBeNull();
+
+    const { pipelineId } = (await agent.post("/api/pipelines").send({ source: TOPIC_REPLIES }).expect(201)).body as { pipelineId: string };
+    expect(await replies()).toMatchObject({ pipeline: { pipelineId, name: "Topic replies", enabled: false }, tried: false });
+    expect((await status()).pipeline?.name).toBe("Topic upkeep");
   });
 });

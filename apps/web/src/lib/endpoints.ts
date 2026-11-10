@@ -184,12 +184,14 @@ export const api = {
     addFact: (topicId: string, body: TopicFactRequest) => request<TopicFactView>("POST", `/topics/${topicId}/facts`, body),
     changes: (topicId: string) => request<TopicChangeView[]>("GET", `/topics/${topicId}/changes`),
     upkeep: () => request<TopicUpkeepView>("GET", "/topics/upkeep"),
+    replies: () => request<TopicUpkeepView>("GET", "/topics/replies"),
     split: (topicId: string, body: SplitTopicRequest) => request<{ topicId: string }>("POST", `/topics/${topicId}/split`, body),
     merge: (topicId: string, body: MergeTopicRequest) => request<{ disputed: number }>("POST", `/topics/${topicId}/merge`, body),
     sources: (topicId: string) => request<TopicSourceView[]>("GET", `/topics/${topicId}/sources`),
     addSource: (topicId: string, body: TopicSourceRequest) => request<TopicSourceView>("POST", `/topics/${topicId}/sources`, body),
     backfill: (topicId: string) => request<TopicBackfillView | null>("GET", `/topics/${topicId}/backfill`),
-    estimateBackfill: (topicId: string, body: TopicBackfillRequest) => request<TopicBackfillView>("POST", `/topics/${topicId}/backfill`, body),
+    estimateBackfill: (topicId: string, body: TopicBackfillRequest) =>
+      request<TopicBackfillView>("POST", `/topics/${topicId}/backfill`, body),
   },
   topicFacts: {
     edit: (topicFactId: string, body: TopicFactRequest) => request<TopicFactView>("PUT", `/topic-facts/${topicFactId}`, body),

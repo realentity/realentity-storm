@@ -7,7 +7,7 @@ import { TopicHistory } from "../components/TopicHistory";
 import { MergeInto, SplitForm } from "../components/TopicSplitMerge";
 import { TopicSources } from "../components/TopicSources";
 import { TopicSuggestions } from "../components/TopicSuggestions";
-import { TopicUpkeepCard } from "../components/TopicUpkeepCard";
+import { TopicRepliesCard, TopicUpkeepCard } from "../components/TopicUpkeepCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime, formatUsd } from "../lib/format";
@@ -52,6 +52,7 @@ export function TopicsPage() {
       </p>
       <ErrorAlert error={topics.error} />
       <TopicUpkeepCard />
+      <TopicRepliesCard />
       <TopicSuggestions onAccepted={topics.reload} />
       {topics.data && topics.data.length > 0 && <Waiting topics={topics.data} onDecided={() => setDecided((n) => n + 1)} />}
       {adding && (

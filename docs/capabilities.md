@@ -1183,7 +1183,8 @@ What the steps add up to, with the pipeline that does it:
 
 | Goal | Steps | Example |
 | --- | --- | --- |
-| Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
+| Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `topic.match` (the email of your topics is left to Topic replies) → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
+| Draft replies to the email of your topics with what Storm knows about them, send after you approve | `email.fetch` → `email.classify` → `topic.match` → `email.draftReply` (`topic: auto`, on `linked`) → `email.send` | [topic-replies.yaml](../pipelines/topic-replies.yaml) |
 | Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../pipelines/job-board.yaml) up to `data.save` |
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
 | A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |

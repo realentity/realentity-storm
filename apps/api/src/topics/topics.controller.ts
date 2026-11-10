@@ -55,6 +55,12 @@ export class TopicsController {
     return this.upkeep.status(user.userId);
   }
 
+  /** M44: the pipeline that answers the topics' email, like upkeep's. */
+  @Get("replies")
+  repliesStatus(@CurrentUser() user: AuthenticatedUser): Promise<TopicUpkeepView> {
+    return this.upkeep.status(user.userId, "replies");
+  }
+
   @Get(":topicId/sources")
   topicSources(@CurrentUser() user: AuthenticatedUser, @Param("topicId", ParseUUIDPipe) topicId: string): Promise<TopicSourceView[]> {
     return this.sources.list(user.userId, topicId);
