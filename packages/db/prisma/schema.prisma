@@ -1263,6 +1263,11 @@ model TopicFact {
   supersedes     TopicFact[]     @relation("TopicFactSuperseded")
   /// The user wrote, edited or settled it: later evidence can only propose a conflict.
   pinned         Boolean         @default(false)
+  /// M44-T9: made when a draft first needs it (more facts than fit), by embeddingModel, of embeddingOf ("about: statement"):
+  /// a fact whose text changed since is embedded again.
+  embedding      Unsupported("vector(1024)")?
+  embeddingModel String?
+  embeddingOf    String?
   runId          String?         @db.Uuid
   dateCreated    DateTime        @default(now())
   dateUpdated    DateTime        @updatedAt

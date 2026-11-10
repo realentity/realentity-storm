@@ -1,5 +1,13 @@
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
-import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
+import {
+  EMBEDDING_DIMENSIONS,
+  emptyUsage,
+  ModelRouter,
+  type Embeddings,
+  type LlmClient,
+  type LlmUsage,
+  type StructuredRequest,
+} from "@realentity/storm-llm";
 import { EmailMessageSchema, PipelineCompiler, type EmailMessage, type StepDefinition } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
@@ -22,6 +30,23 @@ class DraftLlm implements LlmClient {
       ...("used" in request.schema.shape ? { used: this.used } : {}),
     };
     return Promise.resolve({ output: request.schema.parse(answer), usage: emptyUsage() });
+  }
+}
+
+/** A stand-in embeddings model that knows one concept, in two languages: paying invoices; everything else is another. */
+class ConceptEmbeddings implements Embeddings {
+  readonly model = "concepts";
+  texts: string[] = [];
+  failing = false;
+  embed(texts: string[]): Promise<{ vectors: number[][]; usage: LlmUsage }> {
+    if (this.failing) return Promise.reject(new Error("OpenAI could not be reached"));
+    this.texts.push(...texts);
+    const vectors = texts.map((text) => {
+      const v = new Array<number>(EMBEDDING_DIMENSIONS).fill(0);
+      v[/invoice|paid|фактур|плащ/i.test(text) ? 0 : 1] = 1;
+      return v;
+    });
+    return Promise.resolve({ vectors, usage: emptyUsage() });
   }
 }
 
@@ -184,6 +209,67 @@ describe("drafting with a topic", () => {
     // Newest first, as always, whatever chose them.
     expect(memory.indexOf("Note 29:")).toBeLessThan(memory.indexOf("Invoice terms:"));
     expect(memory.indexOf("Invoice terms:")).toBeLessThan(memory.indexOf("Tone:"));
+  });
+
+  // M44-T9
+  it("with embeddings, by meaning in any language; each fact embedded once, again when it changed; failing, by words", async () => {
+    // As long as a note: it gets in by its rank, never into the room the notes leave.
+    const TERMS = "As agreed in the contract review with the client's finance team, quarter by quarter. ".repeat(3).trim();
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      userId,
+      topicId: orion,
+      about: `Note ${i}`,
+      statement: `${"Routine detail of the weekly status meeting. ".repeat(5)}${i}`,
+      source: "EMAIL" as const,
+      sourceLabel: "maria@client.example: Status",
+      sourceDate: new Date(Date.UTC(2026, 10, 13, i)),
+    }));
+    await db.client.topicFact.createMany({
+      data: [
+        ...many,
+        {
+          ...many[0],
+          about: "Invoice terms",
+          statement: `Invoices are paid within 45 days. ${TERMS}`,
+          sourceDate: new Date("2026-01-05T09:00:00Z"),
+        },
+      ],
+    });
+    const embeddings = new ConceptEmbeddings();
+    const question = email({ subject: "Фактури", text: "До колко дни плащате фактурите?" });
+    await link(question);
+    const draft = async () => {
+      const llm = new DraftLlm();
+      await new DraftReplyStep(llm, router, undefined, undefined, db.client, embeddings).execute(
+        { message: question, instruction: "Answer the question." },
+        context(),
+      );
+      return llm.requests[0]?.cachedPrompt ?? "";
+    };
+
+    // No word in common, the same meaning.
+    expect(await draft()).toContain("Invoice terms: Invoices are paid within 45 days.");
+    // The 32 facts (with the launch date), then the email.
+    expect(embeddings.texts).toHaveLength(33);
+    expect(await db.client.topicFact.count({ where: { topicId: orion, embeddingModel: "concepts" } })).toBe(32);
+
+    // The next draft embeds only its email; a changed fact is embedded again.
+    embeddings.texts = [];
+    await draft();
+    expect(embeddings.texts).toEqual([`Фактури\nДо колко дни плащате фактурите?`]);
+    await db.client.topicFact.updateMany({
+      where: { topicId: orion, about: "Invoice terms" },
+      data: { statement: `Invoices are paid within 60 days. ${TERMS}` },
+    });
+    embeddings.texts = [];
+    expect(await draft()).toContain("Invoices are paid within 60 days.");
+    expect(embeddings.texts[0]).toBe(`Invoice terms: Invoices are paid within 60 days. ${TERMS}`);
+
+    // Embeddings failing: by words, and Bulgarian shares none with the English fact.
+    embeddings.failing = true;
+    const memory = await draft();
+    expect(memory).not.toContain("Invoice terms");
+    expect(memory).toContain("Note 29:");
   });
 
   it("auto uses no topic waiting for the user; none uses none; a topic by name; an unknown name fails", async () => {

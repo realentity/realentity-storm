@@ -71,7 +71,8 @@ export async function topicMemory(
     where: { userId, topicId: { in: topics.map((t) => t.topicId) }, status: "CURRENT" },
     orderBy: [{ sourceDate: "desc" }, { topicFactId: "asc" }],
   });
-  const chosen = chooseFacts(facts, message, budget);
+  const email = emailVector(message, options);
+  const chosen = fitAll(facts, budget) ? facts : chooseFacts(facts, budget, await factCloseness(prisma, facts, message, options, email));
   topics.forEach((t, i) => {
     const lines: string[] = [];
     for (const fact of chosen.filter((f) => f.topicId === t.topicId)) {
@@ -81,7 +82,7 @@ export async function topicMemory(
     }
     cards.push([`<topic name="${t.name}">`, descriptions[i], ...(lines.length ? lines : ["(no facts yet)"]), "</topic>"].join("\n"));
   });
-  const passages = await closestPassages(prisma, userId, topics, message, options);
+  const passages = await closestPassages(prisma, userId, topics, message, options, email);
   const lines: string[] = [];
   let room = PASSAGES_TEXT;
   for (const p of passages) {
@@ -107,19 +108,89 @@ export async function topicMemory(
 }
 
 type MemoryFact = Parameters<typeof memoryLine>[0] & { pinned: boolean };
+type StoredFact = MemoryFact & { topicFactId: string; embeddingModel: string | null; embeddingOf: string | null };
+
+const lineLength = (f: MemoryFact) => memoryLine(f).length + 8;
+const fitAll = (facts: MemoryFact[], budget: number) => facts.reduce((n, f) => n + lineLength(f), 0) <= budget;
+
+/** The email as it is matched to facts and passages: its subject and start. */
+const emailText = (message: EmailMessage) => `${message.subject}\n${message.text.slice(0, 3_000)}`;
+
+/** The email's embedding, made once and only when asked for (null without a provider or when it fails). */
+function emailVector(message: EmailMessage, options: MemoryOptions): () => Promise<number[] | null> {
+  let made: Promise<number[] | null> | undefined;
+  return () =>
+    (made ??= (async () => {
+      if (!options.embeddings) return null;
+      try {
+        const { vectors, usage } = await options.embeddings.embed([emailText(message)]);
+        options.recordUsage?.(usage);
+        return vectors[0] ?? null;
+      } catch {
+        return null;
+      }
+    })());
+}
+
+/** A fact as it is embedded. */
+const factText = (f: MemoryFact) => `${f.about}: ${f.statement}`;
 
 /**
- * The facts a draft gets (M44-T7), newest first: all of them while they fit (the same block for every email, cached);
- * else the pinned ones first, then those sharing the most words with the email, the newer first among equals, as many as
- * fit.
+ * How close each fact is to the email, higher is closer (M44-T9): by meaning when there is an embeddings provider (any
+ * language: a Bulgarian question finds an English fact), each fact embedded the first time it is needed and again only
+ * when its text changed; else, or when that fails, by the words they share (M44-T7).
  */
-export function chooseFacts<F extends MemoryFact>(facts: F[], message: EmailMessage, budget: number): F[] {
-  const length = (f: F) => memoryLine(f).length + 8;
-  if (facts.reduce((n, f) => n + length(f), 0) <= budget) return facts;
-  const words = matchWords(`${message.subject}\n${message.text.slice(0, 3_000)}`);
-  const shared = (f: F) => [...matchWords(`${f.about} ${f.statement}`)].filter((w) => words.has(w)).length;
+async function factCloseness<F extends StoredFact>(
+  prisma: PrismaClient,
+  facts: F[],
+  message: EmailMessage,
+  options: MemoryOptions,
+  email: () => Promise<number[] | null>,
+): Promise<(fact: F) => number> {
+  const words = matchWords(emailText(message));
+  const byWords = (f: F) => [...matchWords(`${f.about} ${f.statement}`)].filter((w) => words.has(w)).length;
+  const embeddings = options.embeddings;
+  if (!embeddings) return byWords;
+  try {
+    const stale = facts.filter((f) => f.embeddingModel !== embeddings.model || f.embeddingOf !== factText(f));
+    for (let start = 0; start < stale.length; start += FACT_EMBED_BATCH) {
+      const batch = stale.slice(start, start + FACT_EMBED_BATCH);
+      const { vectors, usage } = await embeddings.embed(batch.map(factText));
+      options.recordUsage?.(usage);
+      await prisma.$transaction(
+        batch.map(
+          (f, i) => prisma.$executeRaw`
+            UPDATE "TopicFacts" SET "embedding" = ${`[${vectors[i].join(",")}]`}::vector, "embeddingModel" = ${embeddings.model},
+              "embeddingOf" = ${factText(f)}
+            WHERE "topicFactId" = ${f.topicFactId}::uuid`,
+        ),
+      );
+    }
+    const vector = await email();
+    if (!vector) return byWords;
+    const rows = await prisma.$queryRaw<{ topicFactId: string; distance: number }[]>`
+      SELECT "topicFactId", ("embedding" <=> ${`[${vector.join(",")}]`}::vector)::float8 AS "distance"
+      FROM "TopicFacts"
+      WHERE "topicFactId" = ANY(${facts.map((f) => f.topicFactId)}::uuid[]) AND "embeddingModel" = ${embeddings.model}`;
+    const distance = new Map(rows.map((r) => [r.topicFactId, Number(r.distance)]));
+    if (facts.some((f) => !distance.has(f.topicFactId))) return byWords;
+    return (f) => -distance.get(f.topicFactId)!;
+  } catch {
+    return byWords;
+  }
+}
+
+/** Facts embedded in one call at most. */
+const FACT_EMBED_BATCH = 100;
+
+/**
+ * The facts a draft gets when they don't all fit (M44-T7), newest first: the pinned ones first, then the closest to the
+ * email, the newer first among equals, as many as fit.
+ */
+export function chooseFacts<F extends MemoryFact>(facts: F[], budget: number, closeness: (fact: F) => number): F[] {
+  const length = lineLength;
   const ranked = facts
-    .map((fact, i) => ({ fact, i, score: shared(fact) }))
+    .map((fact, i) => ({ fact, i, score: closeness(fact) }))
     .sort((a, b) => Number(b.fact.pinned) - Number(a.fact.pinned) || b.score - a.score || a.i - b.i);
   const keep = new Set<F>();
   let room = budget;
@@ -152,20 +223,20 @@ async function closestPassages(
   topics: { topicId: string; name: string }[],
   message: EmailMessage,
   options: MemoryOptions,
+  email: () => Promise<number[] | null>,
 ): Promise<FoundPassage[]> {
   const ids = topics.map((t) => t.topicId);
   const name = new Map(topics.map((t) => [t.topicId, t.name]));
-  const about = `${message.subject}\n${message.text.slice(0, 3_000)}`;
+  const about = emailText(message);
   type Row = { topicId: string; kind: string; title: string; location: string; path: string; ref: string; heading: string; text: string };
   const named = (rows: Row[]) => rows.map((r) => ({ ...r, topic: name.get(r.topicId) ?? "" }));
   const model = options.embeddings?.model;
   if (options.embeddings && model) {
     const embedded = await prisma.topicPassage.count({ where: { userId, topicId: { in: ids }, embeddingModel: model } });
-    if (embedded > 0) {
+    const made = embedded > 0 ? await email() : null;
+    if (made) {
       try {
-        const { vectors, usage } = await options.embeddings.embed([about]);
-        options.recordUsage?.(usage);
-        const vector = `[${vectors[0].join(",")}]`;
+        const vector = `[${made.join(",")}]`;
         return named(
           await prisma.$queryRaw<Row[]>`
           SELECT p."topicId", s."kind"::text AS "kind", s."title", s."location", p."path", p."ref", p."heading", p."text"
