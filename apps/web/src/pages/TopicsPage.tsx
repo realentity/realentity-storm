@@ -48,7 +48,7 @@ export function TopicsPage() {
       />
       <p className="text-secondary">
         A topic is a subject your email is about: a project, a customer, a house purchase. Its directions say which emails belong to it; an
-        email can belong to none, one or several. Most email needs no topic.
+        email can belong to none, one or several. Most email needs no topic. How it works: docs/topics.md.
       </p>
       <ErrorAlert error={topics.error} />
       <TopicUpkeepCard />

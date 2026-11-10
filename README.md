@@ -55,6 +55,28 @@ Apps are typed and versioned, so they keep working as they grow:
 
 Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car and Server ops.
 
+### Topics: replies that know the subject
+
+Storm's drafts never invent facts, so a reply about a project is only as good as what Storm knows about the project. A
+**topic** (a project, a customer, a house purchase) is where it keeps that knowledge, built from your email and your
+documents, and **nothing goes into it without your approval**.
+
+1. **Say what belongs to it.** A word ("Orion"), a domain, a person, or a description in plain words. Storm sorts
+   your new and sent email into your topics. When only the LLM thinks an email belongs to one, the email waits for your
+   Yes.
+2. **It proposes what is true.** From a topic's new email, its GitHub repository (decision records, specs) and the
+   attachments of its email, Storm proposes facts: "Launch date: ~~February~~ → March", each with its source and the
+   quote that shows it. You pick the ones that go in. Where sources disagree, you decide.
+3. **Its replies use it.** A draft to a topic's email gets the topic's current facts and the passages of its documents
+   closest to the question, and the gate shows what it drew on. A fact it doesn't have stays a placeholder.
+4. **You stay in charge.** Edit a fact, mark it no longer true or wrong, move it, split or merge topics, and undo any
+   change. An old email read late never overwrites a newer fact.
+5. **It learns.** Your edits of drafts become suggested facts, your decisions become suggested directions, and a group
+   of emails no topic took becomes a suggested topic.
+
+Two cards on the **Topics** page set it up: one keeps the topics up to date, one answers their email. A new topic can
+also read its past email, after showing what that would cost. The guide: [docs/topics.md](docs/topics.md).
+
 ### More of what it handles
 
 - **Bills from PDFs.** Bills arrive by email, often only as a PDF attachment. Storm reads issuer, amount, due date,
@@ -64,9 +86,6 @@ Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, R
 - **Replies that sound like you.** It drafts replies to recruiters or clients using your most similar replies that
   you approved before as examples. Every edit you make becomes another example, and a nightly review of your edits
   suggests rules and pipeline changes for you to accept.
-- **Replies that know the subject.** A reply reads its thread, and for a topic you keep (a project, a customer) what
-  is true about it now: facts Storm proposes from the topic's email, each with its source, and keeps only after you
-  approve them. A newer email supersedes an older fact; you edit, correct or undo any of it.
 - **Nobody answered.** It finds emails you sent that got no reply and drafts a follow-up for you to approve.
 - **Sites without an API.** Sign in to a site with a stored credential, read a page, download a statement, upload a
   document, or let an agent fill in an unfamiliar form. The agent can only fill: Storm records what it did, shows you
@@ -107,6 +126,9 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
   **Rules** page. From then on it goes into every LLM step it applies to.
 - **Your pipelines improve.** The same review can suggest a change to a pipeline, such as a tighter filter or a
   different threshold. The builder turns it into a change for you to approve.
+- **Your topics remember what is true.** Facts about your projects and customers are proposed from their email and
+  documents and kept only after you approve them. A statement you add to a draft becomes a suggested fact for the
+  topic, and your decisions on which email belongs where become suggested directions ([docs/topics.md](docs/topics.md)).
 - **Your answers become facts.** A question it asked you while filling a form ("notice period?", "work permit?") is
   answered once and kept on your **Profile**, for every form after it.
 - **Outcomes calibrate its judgement.** Scores for job postings take into account what happened to your past
@@ -252,7 +274,7 @@ to start with an invalid value and names the key, never the value.
 | `IMAP_HOST`, `SMTP_HOST` and ports | Your mail servers; Gmail's are the default. The address and password go on the **Credentials** page, not here | Email steps |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `HOOKS_PUBLIC_URL` | The bot, your Telegram user id, and the webhook address ([docs/telegram.md](docs/telegram.md)) | Telegram, webhooks |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Calendar steps |
-| `OPENAI_API_KEY` | Embeddings for examples in drafts | Optional |
+| `OPENAI_API_KEY` | Embeddings: your most similar replies as examples in drafts, and the passages and facts of your topics closest to an email (without it, by their words) | Optional |
 | `HEALTH_REPORT_TOKEN` | Lets the server's own jobs (backups, disk checks) report to the Health page | Optional |
 
 The rest can stay as it is: the models have defaults (changeable per step type in Settings), and the containers set
@@ -263,6 +285,7 @@ the ports and folders themselves.
 | | |
 |---|---|
 | [docs/capabilities.md](docs/capabilities.md) | Apps, every step type, trigger and event, with examples |
+| [docs/topics.md](docs/topics.md) | Topics: what Storm knows about your projects and customers, and how your replies use it |
 | [docs/design.md](docs/design.md) | How it works: principles, pipelines, gates, architecture, security, data model |
 | [docs/self-hosting.md](docs/self-hosting.md) | Install, HTTPS, webhooks and Telegram, updates, backups |
 | [docs/telegram.md](docs/telegram.md) | What the bot does |
