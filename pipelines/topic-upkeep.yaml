@@ -2,7 +2,7 @@
 # email and your topics' sources with your approval. Every 15 minutes the new email is triaged (newsletters and
 # notifications set aside) and sorted into your topics, with the emails you sent (what you decided counts too); each
 # topic's GitHub sources are checked for changed files (one call each when nothing changed), which are indexed for your
-# drafts to quote. What the emails and changed files state that is worth remembering is proposed, and you pick at the
+# drafts to quote, like the attachments (PDFs, text files) of your topics' emails. What the emails and changed files state that is worth remembering is proposed, and you pick at the
 # gate what goes into memory. Nothing is written without you, and every change can be undone on the Topics page. Your
 # drafts (email.draftReply, email.draftFollowUp: topic auto) then use what the memory says is true now, and the passages
 # closest to the email. The Topics page sets it up for you (Keep topics up to date).
@@ -29,6 +29,9 @@ steps:
   - id: topics
     type: topic.match
     with: { messages: "{{triage.kept}}", more: "{{sent.messages}}" }
+  - id: attachments
+    type: topic.attachments
+    with: { messages: "{{triage.kept}}", matches: "{{topics.results}}" }
   - id: repos
     type: git.changes
     with: {}

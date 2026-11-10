@@ -6,7 +6,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { GitHubClient } from "../src/sources/github";
-import { GitChangesStep, TopicIndexStep, type SourceChange, type SourceRead } from "../src/steps/topic-source-steps";
+import { type EmailMessage } from "@realentity/storm-steps";
+import { type MailConnector } from "../src/mail/mail-connector";
+import { DraftReplyStep } from "../src/steps/email-steps";
+import { GitChangesStep, TopicAttachmentsStep, TopicIndexStep, type SourceChange, type SourceRead } from "../src/steps/topic-source-steps";
+import { ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
+import { type z } from "zod";
 
 /** A repository on a stand-in GitHub: commits, each with its files; the head moves as commits are added. */
 class FakeGitHub {
@@ -235,5 +240,134 @@ describe("git.changes and topic.index", () => {
     expect(refused.changed.problems).toHaveLength(1);
     expect(refused.changed.problems[0]).toContain("Orion, acme/orion");
     expect(JSON.stringify(refused)).not.toContain("SecretToken");
+  });
+});
+
+// M43-T4: an email's attachments as a topic's sources, by reference
+describe("topic.attachments", () => {
+  let db: PrismaConnection;
+  let userId: string;
+  let orion: string;
+  const SPEC = "# Orion API\n\n## Rate limits\n\n100 requests a minute per client.\n";
+  let reads: { mailbox: string; uid: number }[];
+  const mail: MailConnector = {
+    fetch: () => Promise.reject(new Error("unused")),
+    recent: () => Promise.reject(new Error("unused")),
+    send: () => Promise.reject(new Error("unused")),
+    thread: () => Promise.resolve([]),
+    attachments: (_user, request) => {
+      reads.push({ mailbox: request.mailbox, uid: request.uid });
+      return Promise.resolve([
+        { filename: "api-spec.md", contentType: "text/markdown", content: Buffer.from(SPEC) },
+        { filename: "logo.png", contentType: "image/png", content: Buffer.from("png") },
+      ]);
+    },
+  };
+  const message = (extra: Partial<EmailMessage> = {}): EmailMessage => ({
+    uid: 42,
+    messageId: `<${randomUUID()}@client.example>`,
+    threadId: "<t@client.example>",
+    inReplyTo: null,
+    references: [],
+    from: "maria@client.example",
+    fromName: "Maria",
+    replyTo: "maria@client.example",
+    to: ["me@storm.test"],
+    cc: [],
+    subject: "The API spec",
+    date: "2026-11-12T09:00:00.000Z",
+    text: "Attached.",
+    attachments: [
+      { filename: "api-spec.md", contentType: "text/markdown", size: SPEC.length },
+      { filename: "logo.png", contentType: "image/png", size: 3 },
+    ],
+    ...extra,
+  });
+
+  beforeAll(async () => {
+    db = createPrismaConnection();
+    userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
+  });
+
+  beforeEach(async () => {
+    reads = [];
+    orion = (await db.client.topic.create({ data: { userId, name: "Orion" } })).topicId;
+  });
+
+  afterEach(async () => {
+    await db.client.topic.deleteMany();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  const context = (dryRun = false): StepContext => ({
+    runId: randomUUID(),
+    userId,
+    pipelineId: randomUUID(),
+    stepId: "s",
+    stepKey: "s",
+    itemIndex: null,
+    dryRun,
+    recordUsage: () => undefined,
+    attention: NO_ATTENTION,
+  });
+  const run = (messages: EmailMessage[], dryRun = false, matches: unknown[] = []) =>
+    new TopicAttachmentsStep(db.client, mail, null).execute({ messages, mailbox: "INBOX", matches }, context(dryRun)) as Promise<{
+      added: number;
+      passages: number;
+      problems: string[];
+    }>;
+
+  it("a linked email's readable attachment becomes a source, indexed once; an unlinked one and a dry run add nothing", async () => {
+    const linked = message();
+    const unlinked = message({ uid: 43 });
+    // topic.match's results say it is Orion's (a dry run stores no link; a real run has one too).
+    const matches = [{ messageId: linked.messageId, topics: [{ topic: "Orion", status: "LINKED" }] }];
+    expect(await run([linked, unlinked], true, matches)).toEqual({ added: 0, passages: 0, problems: [] });
+    expect(reads).toEqual([]);
+
+    expect(await run([linked, unlinked], false, matches)).toEqual({ added: 1, passages: 1, problems: [] });
+    expect(reads).toEqual([{ mailbox: "INBOX", uid: 42 }]);
+    const [source] = await db.client.topicSource.findMany({ where: { topicId: orion } });
+    expect(source).toMatchObject({
+      kind: "ATTACHMENT",
+      location: linked.messageId,
+      path: "api-spec.md",
+      mailbox: "INBOX",
+      uid: 42,
+      title: "Maria <maria@client.example>: The API spec",
+      cursor: "read",
+    });
+    expect(await db.client.topicPassage.findMany({ select: { heading: true, text: true } })).toEqual([
+      { heading: "Orion API > Rate limits", text: "100 requests a minute per client." },
+    ]);
+
+    // Read once: the same email again reads nothing; a rebuild reads it again.
+    expect(await run([linked], false, matches)).toEqual({ added: 0, passages: 0, problems: [] });
+    expect(reads).toHaveLength(1);
+    await db.client.topicSource.update({ where: { topicSourceId: source.topicSourceId }, data: { cursor: null } });
+    await db.client.topicPassage.deleteMany();
+    expect(await run([], false)).toEqual({ added: 0, passages: 1, problems: [] });
+  });
+
+  it("a draft cites an attachment by its email", async () => {
+    const linked = message({ subject: "The API spec" });
+    await run([linked], false, [{ messageId: linked.messageId, topics: [{ topic: "Orion", status: "LINKED" }] }]);
+    const question = message({ subject: "Rate limits?", text: "What are the rate limits per client?", attachments: [] });
+    const requests: StructuredRequest<z.ZodObject>[] = [];
+    const llm: LlmClient = {
+      structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<{ output: z.infer<S>; usage: LlmUsage }> {
+        requests.push(request);
+        return Promise.resolve({ output: request.schema.parse({ body: "Hi", language: "en", used: ["P1"] }), usage: emptyUsage() });
+      },
+    };
+    const draft = (await new DraftReplyStep(llm, new ModelRouter(() => Promise.resolve(null)), undefined, undefined, db.client).execute(
+      { message: question, instruction: "Answer.", topic: "Orion" },
+      context(),
+    )) as { drewOn: string[] };
+    expect(requests[0]?.prompt).toContain('<passage ref="P1" source="api-spec.md, attached to Maria <maria@client.example>: The API spec"');
+    expect(draft.drewOn).toEqual(["Orion: api-spec.md, attached to Maria <maria@client.example>: The API spec"]);
   });
 });

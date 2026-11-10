@@ -1,5 +1,5 @@
 import { type TopicSourceView } from "@realentity/storm-shared";
-import { IconBrandGithub, IconPlus, IconRefresh, IconX } from "@tabler/icons-react";
+import { IconBrandGithub, IconPaperclip, IconPlus, IconRefresh, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/endpoints";
@@ -40,7 +40,7 @@ export function TopicSources({ topicId }: { topicId: string }) {
       {sources.data?.length === 0 && !adding && (
         <p className="text-secondary small">
           None yet. A GitHub repository (its decision records, specs) is read where it is: Storm keeps passages to quote, never a copy to
-          keep up to date.
+          keep up to date. The attachments of the topic's emails (PDFs, text files) are added here by topic upkeep.
         </p>
       )}
       {!!sources.data?.length && (
@@ -77,20 +77,34 @@ function SourceRow({
 }) {
   return (
     <div className="list-group-item d-flex align-items-center gap-2 py-2" data-testid={`source-${source.location}`}>
-      <IconBrandGithub size={18} className="text-secondary flex-shrink-0" />
+      {source.kind === "ATTACHMENT" ? (
+        <IconPaperclip size={18} className="text-secondary flex-shrink-0" />
+      ) : (
+        <IconBrandGithub size={18} className="text-secondary flex-shrink-0" />
+      )}
       <div className="flex-fill overflow-hidden">
-        <div className="text-truncate">
-          <a href={source.url} target="_blank" rel="noreferrer">
-            {source.location}
-          </a>{" "}
-          <code>{source.path}</code>
-          {source.branch && <span className="text-secondary"> on {source.branch}</span>}
-          {source.credential && <span className="badge bg-secondary-lt ms-2">{source.credential}</span>}
-        </div>
+        {source.kind === "ATTACHMENT" ? (
+          <div className="text-truncate">
+            {source.path} <span className="text-secondary">attached to {source.title}</span>
+          </div>
+        ) : (
+          <div className="text-truncate">
+            <a href={source.url} target="_blank" rel="noreferrer">
+              {source.location}
+            </a>{" "}
+            <code>{source.path}</code>
+            {source.branch && <span className="text-secondary"> on {source.branch}</span>}
+            {source.credential && <span className="badge bg-secondary-lt ms-2">{source.credential}</span>}
+          </div>
+        )}
         <div className="small text-secondary">
-          {source.cursor
-            ? `read at ${source.cursor}${source.readAt ? `, ${formatDateTime(source.readAt)}` : ""} · ${source.passages} passages`
-            : "not read yet: the next run of a pipeline with git.changes reads it"}
+          {source.kind === "ATTACHMENT"
+            ? source.cursor
+              ? `${source.passages} passages`
+              : "not read yet"
+            : source.cursor
+              ? `read at ${source.cursor}${source.readAt ? `, ${formatDateTime(source.readAt)}` : ""} · ${source.passages} passages`
+              : "not read yet: the next run of a pipeline with git.changes reads it"}
         </div>
       </div>
       <button

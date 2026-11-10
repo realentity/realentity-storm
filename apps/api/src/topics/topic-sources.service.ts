@@ -85,6 +85,7 @@ function sourceView(source: TopicSource, passages: number): TopicSourceView {
     topicSourceId: source.topicSourceId,
     topicId: source.topicId,
     kind: source.kind,
+    title: source.title,
     location: source.location,
     branch: source.branch,
     path: source.path,
@@ -92,6 +93,6 @@ function sourceView(source: TopicSource, passages: number): TopicSourceView {
     cursor: source.cursor?.slice(0, 7) ?? null,
     readAt: source.readAt?.toISOString() ?? null,
     passages,
-    url: `https://github.com/${source.location}${folder ? `/tree/${source.branch ?? "HEAD"}/${folder}` : ""}`,
+    url: source.kind === "ATTACHMENT" ? "" : `https://github.com/${source.location}${folder ? `/tree/${source.branch ?? "HEAD"}/${folder}` : ""}`,
   };
 }

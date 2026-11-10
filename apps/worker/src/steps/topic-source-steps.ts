@@ -1,8 +1,11 @@
 import { type PrismaClient, type TopicSource } from "@realentity/storm-db";
 import { type Embeddings } from "@realentity/storm-llm";
 import { isTextFile, pathMatches } from "@realentity/storm-shared";
+import { type EmailMessage } from "@realentity/storm-steps";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { passagesOf } from "../sources/chunk";
+import { type MailConnector } from "../mail/mail-connector";
+import { textOf } from "./file-steps";
 import { FILE_BYTES, type ChangedFile, type GitHubClient } from "../sources/github";
 
 /** Files one read of a source takes at most: a larger first read needs a narrower path. */
@@ -175,7 +178,17 @@ export class TopicIndexStep implements StepExecutor {
           continue;
         }
         files.push({ ...change, text: text.slice(0, FILE_TEXT), firstRead: firstRead(change.sourceId) });
-        if (!context.dryRun) passages += await this.keep(source, change, text, context);
+        if (!context.dryRun)
+          passages += await indexPassages(
+            this.prisma,
+            this.embeddings,
+            source,
+            change.path,
+            change.commit,
+            new Date(change.commitDate),
+            text,
+            context,
+          );
       } catch (error) {
         failed.add(change.sourceId);
         problems.push(`${change.repo} ${change.path}: ${error instanceof Error ? error.message : String(error)}`);
@@ -202,34 +215,188 @@ export class TopicIndexStep implements StepExecutor {
   private async forget(topicSourceId: string, path: string): Promise<number> {
     return (await this.prisma.topicPassage.deleteMany({ where: { topicSourceId, path } })).count;
   }
+}
 
-  /** A file's passages instead of the ones it had. */
-  private async keep(source: TopicSource, change: SourceChange, text: string, context: StepContext): Promise<number> {
-    const pieces = passagesOf(text);
-    const vectors: (number[] | null)[] = pieces.map(() => null);
-    if (this.embeddings && pieces.length) {
-      for (let start = 0; start < pieces.length; start += EMBED_BATCH) {
-        const batch = pieces.slice(start, start + EMBED_BATCH);
-        try {
-          const { vectors: made, usage } = await this.embeddings.embed(batch.map((p) => `${change.path}\n${p.heading}\n\n${p.text}`));
-          context.recordUsage(usage);
-          made.forEach((v, i) => (vectors[start + i] = v));
-        } catch {
-          // Without vectors the passages are still found by their words.
+/**
+ * A file's passages instead of the ones it had (M43-T3): split at its headings and, with an embeddings provider,
+ * embedded with its path and heading. Shared by repository files and email attachments.
+ */
+export async function indexPassages(
+  prisma: PrismaClient,
+  embeddings: Embeddings | null,
+  source: TopicSource,
+  path: string,
+  ref: string,
+  refDate: Date,
+  text: string,
+  context: StepContext,
+): Promise<number> {
+  const pieces = passagesOf(text);
+  const vectors: (number[] | null)[] = pieces.map(() => null);
+  if (embeddings && pieces.length) {
+    for (let start = 0; start < pieces.length; start += EMBED_BATCH) {
+      const batch = pieces.slice(start, start + EMBED_BATCH);
+      try {
+        const { vectors: made, usage } = await embeddings.embed(batch.map((p) => `${path}\n${p.heading}\n\n${p.text}`));
+        context.recordUsage(usage);
+        made.forEach((v, i) => (vectors[start + i] = v));
+      } catch {
+        // Without vectors the passages are still found by their words.
+      }
+    }
+  }
+  const model = embeddings?.model ?? null;
+  await prisma.$transaction([
+    prisma.topicPassage.deleteMany({ where: { topicSourceId: source.topicSourceId, path } }),
+    ...pieces.map(
+      (p, ordinal) => prisma.$executeRaw`
+        INSERT INTO "TopicPassages" ("topicPassageId", "userId", "topicId", "topicSourceId", "path", "ref", "refDate", "heading", "ordinal", "text", "embedding", "embeddingModel")
+        VALUES (gen_random_uuid(), ${source.userId}::uuid, ${source.topicId}::uuid, ${source.topicSourceId}::uuid, ${path}, ${ref},
+                ${refDate}, ${p.heading}, ${ordinal}, ${p.text},
+                ${vectors[ordinal] ? `[${vectors[ordinal].join(",")}]` : null}::vector, ${vectors[ordinal] ? model : null})`,
+    ),
+  ]);
+  return pieces.length;
+}
+
+/** An attachment's text at most, indexed: a long report is cut, not skipped. */
+const ATTACHMENT_TEXT = 200_000;
+/** An email read for its attachments at most. */
+const ATTACHMENT_MESSAGE_BYTES = 25 * 1_048_576;
+
+/** Attachments that are read: PDFs (their text layer) and text files. */
+export function readableAttachment(a: { filename: string | null; contentType: string }): boolean {
+  return (
+    a.contentType === "application/pdf" ||
+    a.contentType.startsWith("text/") ||
+    /\.(pdf|txt|md|markdown|adoc|rst|csv)$/i.test(a.filename ?? "")
+  );
+}
+
+/**
+ * topic.attachments (M43-T4, docs/design.md §8.1): the readable attachments (PDFs, text files) of emails linked to a
+ * topic become its sources, by reference (the email's Message-ID, its mailbox and UID, the file's name), and their
+ * passages are indexed for drafts to quote. An attachment never changes: it is read once, and again only after a
+ * rebuild. `mailbox` must be where `messages` were read from (a UID means something only there). A dry run reads and
+ * writes nothing.
+ */
+export class TopicAttachmentsStep implements StepExecutor {
+  readonly type = "topic.attachments";
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly mail: MailConnector,
+    private readonly embeddings: Embeddings | null,
+  ) {}
+
+  async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
+    const {
+      messages,
+      mailbox,
+      matches = [],
+    } = input as {
+      messages: EmailMessage[];
+      mailbox: string;
+      matches?: { messageId: string; topics: { topic: string; status: string }[] }[];
+    };
+    const { userId } = context;
+    const withFiles = messages.filter((m) => m.messageId && m.attachments.some(readableAttachment));
+    let added = 0;
+    if (withFiles.length && !context.dryRun) {
+      const [links, topics] = await Promise.all([
+        this.prisma.topicLink.findMany({
+          where: {
+            userId,
+            messageId: { in: withFiles.map((m) => m.messageId) },
+            status: { in: ["LINKED", "CONFIRMED"] },
+            topic: { status: "ACTIVE" },
+          },
+          select: { messageId: true, topicId: true },
+        }),
+        this.prisma.topic.findMany({ where: { userId, status: "ACTIVE" }, select: { topicId: true, name: true } }),
+      ]);
+      for (const message of withFiles) {
+        const matched = matches
+          .filter((m) => m.messageId === message.messageId)
+          .flatMap((m) => m.topics.filter((t) => t.status === "LINKED" || t.status === "CONFIRMED"))
+          .flatMap((t) => topics.find((topic) => topic.name.toLowerCase() === t.topic.toLowerCase())?.topicId ?? []);
+        const topicIds = new Set([...links.filter((l) => l.messageId === message.messageId).map((l) => l.topicId), ...matched]);
+        for (const topicId of topicIds) {
+          for (const file of message.attachments.filter(readableAttachment)) {
+            const path = file.filename ?? "attachment";
+            const known = await this.prisma.topicSource.findFirst({
+              where: { topicId, kind: "ATTACHMENT", location: message.messageId, path },
+            });
+            if (known) continue;
+            await this.prisma.topicSource.create({
+              data: {
+                userId,
+                topicId,
+                kind: "ATTACHMENT",
+                location: message.messageId,
+                path,
+                mailbox,
+                uid: message.uid,
+                title:
+                  `${message.fromName ? `${message.fromName} <${message.from}>` : message.from}: ${message.subject || "(no subject)"}`.slice(
+                    0,
+                    300,
+                  ),
+              },
+            });
+            added++;
+          }
         }
       }
     }
-    const model = this.embeddings?.model ?? null;
-    await this.prisma.$transaction([
-      this.prisma.topicPassage.deleteMany({ where: { topicSourceId: source.topicSourceId, path: change.path } }),
-      ...pieces.map(
-        (p, ordinal) => this.prisma.$executeRaw`
-          INSERT INTO "TopicPassages" ("topicPassageId", "userId", "topicId", "topicSourceId", "path", "ref", "refDate", "heading", "ordinal", "text", "embedding", "embeddingModel")
-          VALUES (gen_random_uuid(), ${source.userId}::uuid, ${source.topicId}::uuid, ${source.topicSourceId}::uuid, ${change.path}, ${change.commit},
-                  ${new Date(change.commitDate)}, ${p.heading}, ${ordinal}, ${p.text},
-                  ${vectors[ordinal] ? `[${vectors[ordinal].join(",")}]` : null}::vector, ${vectors[ordinal] ? model : null})`,
-      ),
-    ]);
-    return pieces.length;
+
+    // Every attachment not read yet: just added, or rebuilt.
+    const unread = context.dryRun
+      ? []
+      : await this.prisma.topicSource.findMany({ where: { userId, kind: "ATTACHMENT", cursor: null, topic: { status: "ACTIVE" } } });
+    const byEmail = new Map<string, TopicSource[]>();
+    for (const source of unread) {
+      const key = `${source.mailbox ?? ""}\n${source.uid ?? ""}`;
+      byEmail.set(key, [...(byEmail.get(key) ?? []), source]);
+    }
+    let passages = 0;
+    const problems: string[] = [];
+    for (const sources of byEmail.values()) {
+      const [first] = sources;
+      if (!first?.mailbox || first.uid === null) continue;
+      let files: { filename: string | null; contentType: string; content: Buffer }[];
+      try {
+        files = await this.mail.attachments(userId, { mailbox: first.mailbox, uid: first.uid, maxBytes: ATTACHMENT_MESSAGE_BYTES });
+      } catch (error) {
+        problems.push(`${first.title}: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      for (const source of sources) {
+        const file = files.find((f) => (f.filename ?? "attachment") === source.path);
+        let text = "";
+        try {
+          text = file ? (await textOf(file.contentType, file.content, source.path)).replace(/\r\n/g, "\n").trim() : "";
+        } catch (error) {
+          problems.push(`${source.path}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (!file) problems.push(`${source.path}: no longer in its email`);
+        passages += await indexPassages(
+          this.prisma,
+          this.embeddings,
+          source,
+          source.path,
+          "attachment",
+          source.dateCreated,
+          text.slice(0, ATTACHMENT_TEXT),
+          context,
+        );
+        // Read: an attachment never changes. One that couldn't be read isn't tried again until a rebuild.
+        await this.prisma.topicSource.update({
+          where: { topicSourceId: source.topicSourceId },
+          data: { cursor: "read", readAt: new Date() },
+        });
+      }
+    }
+    return { added, passages, problems };
   }
 }

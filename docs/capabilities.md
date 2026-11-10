@@ -19,7 +19,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
-| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `git.changes`, `topic.index` |
+| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `git.changes`, `topic.index`, `topic.attachments` |
 | Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
@@ -775,6 +775,15 @@ once its files are indexed, so a failed index is read again next time.
 - Out: `changes` (topic, repo, path, added / modified / removed, commit, its date, link), `sources` (each source read,
   from which commit to which), `problems`.
 
+#### `topic.attachments`
+The readable attachments (PDFs, text files) of emails linked to a topic become its sources, by reference: the email, its
+mailbox and UID, and the file's name, never a copy. Their passages are indexed like a repository's files, for drafts to
+quote ("api-spec.md, attached to Maria: The API spec"). An attachment never changes: it is read once, and again only
+after a rebuild on the Topics page. Give it the inbox's triaged emails with `mailbox` where they were read: a UID means
+something only in its own folder. A dry run reads and writes nothing.
+- In: `messages`, `mailbox` [INBOX], `matches` (topic.match's `results`).
+- Out: `added` (new sources), `passages`, `problems`.
+
 #### `topic.index`
 Indexes git.changes' files into their topics' passages: each file split at its headings, with its path and commit and,
 with OpenAI embeddings set up, a vector; a removed file's passages go. Then each source is marked read at its commit. The
@@ -1176,7 +1185,7 @@ What the steps add up to, with the pipeline that does it:
 | Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../pipelines/job-board.yaml) up to `data.save` |
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
 | A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
-| Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match`; `git.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) |
+| Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.attachments`; `git.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
 | Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |

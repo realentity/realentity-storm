@@ -226,7 +226,10 @@ export type TopicSourceKindName = (typeof TOPIC_SOURCE_KINDS)[number];
 export interface TopicSourceView {
   topicSourceId: string;
   topicId: string;
-  kind: TopicSourceKindName;
+  /** ATTACHMENT: an email's attachment, added by topic.attachments (location: the email's Message-ID). */
+  kind: TopicSourceKindName | "ATTACHMENT";
+  /** ATTACHMENT: its email, "Maria <maria@client.example>: Kickoff". */
+  title: string;
   /** GITHUB: owner/repo. */
   location: string;
   branch: string | null;
@@ -236,7 +239,7 @@ export interface TopicSourceView {
   cursor: string | null;
   readAt: string | null;
   passages: number;
-  /** Where to open it: the repository's files under the path. */
+  /** Where to open it: the repository's files under the path; "" for an attachment. */
   url: string;
 }
 

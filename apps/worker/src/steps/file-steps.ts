@@ -181,7 +181,7 @@ export class FileReadStep implements StepExecutor {
 }
 
 /** Text files as they are; PDFs' text layer (a scan without one reads as nothing). Other types can't be read. */
-async function textOf(mime: string, content: Buffer, filename: string): Promise<string> {
+export async function textOf(mime: string, content: Buffer, filename: string): Promise<string> {
   if (mime.startsWith("text/") || /\.(txt|md|csv|json)$/i.test(filename)) return content.toString("utf8");
   if (mime === "application/pdf" || content.subarray(0, 5).toString("latin1") === "%PDF-") return pdfText(content);
   throw new Error(`${filename} is a ${mime} file: only text files and PDFs can be read`);

@@ -503,7 +503,8 @@ its path and commit (or Drive revision). The index is a cache: refreshed when it
 and deleted without losing anything. A cited passage says where it is from (`ADR-0012 @ a1b2c3d`), to open the
 original. (M43: a GitHub source is a repository, a branch and a path pattern, text files only; its passages are split
 at headings, embedded when OpenAI is set up and otherwise found by their words; a source's first read is indexed but not
-read for facts, which is the backfill's job.)
+read for facts, which is the backfill's job. An email's attachment, a PDF or a text file, is a source too: added by
+`topic.attachments` for the inbox's linked emails, read once from the mailbox and cited with the email it came with.)
 
 **Facts and how they change.** A fact has what it is about, a statement, its source (an email, a file at a commit, a
 Drive document's revision, or you), the date of that source and a status: *current*, *superseded* (by which fact) or

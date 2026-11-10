@@ -1302,6 +1302,8 @@ model TopicChange {
 enum TopicSourceKind {
   /// A GitHub repository: files under a path, read at the branch's head.
   GITHUB
+  /// An email's attachment (location: the Message-ID; path: the file name): read once, it never changes.
+  ATTACHMENT
 }
 
 /**
@@ -1323,7 +1325,12 @@ model TopicSource {
   path          String          @default("**")
   /// A credential's name: a read-only token for the host (allowedHosts api.github.com); null for a public repository.
   credential    String?
-  /// The last commit indexed: the next read continues from it. Null: not read yet (everything under the path).
+  /// ATTACHMENT: where its email is, to read it again (a rebuild).
+  mailbox       String?
+  uid           Int?
+  /// ATTACHMENT: what to show, "Maria <maria@client.example>: Kickoff".
+  title         String          @default("")
+  /// The last commit indexed (ATTACHMENT: "read"): the next read continues from it. Null: not read yet.
   cursor        String?
   readAt        DateTime?
   passages      TopicPassage[]

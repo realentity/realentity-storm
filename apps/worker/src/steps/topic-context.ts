@@ -89,11 +89,14 @@ export async function topicMemory(
     if (p.text.length > room) continue;
     room -= p.text.length;
     const ref = `P${lines.length + 1}`;
-    const cite = `${p.path} @ ${p.ref.slice(0, 7)}`;
+    // A repository's file at its commit; an email's attachment by the email it came with.
+    const attached = p.kind === "ATTACHMENT";
+    const cite = attached ? `${p.path}, attached to ${p.title}` : `${p.path} @ ${p.ref.slice(0, 7)}`;
+    const where = attached ? cite : `${p.location} ${cite}`;
     lines.push(
-      `<passage ref="${ref}" source="${p.location} ${cite}"${p.heading ? ` heading="${p.heading.replace(/"/g, "'")}"` : ""}>\n${p.text}\n</passage>`,
+      `<passage ref="${ref}" source="${where.replace(/"/g, "'")}"${p.heading ? ` heading="${p.heading.replace(/"/g, "'")}"` : ""}>\n${p.text}\n</passage>`,
     );
-    refs.set(ref, `${p.topic}: ${cite} (${p.location})`);
+    refs.set(ref, attached ? `${p.topic}: ${cite}` : `${p.topic}: ${cite} (${p.location})`);
     if (lines.length === PASSAGES) break;
   }
   return {
@@ -106,6 +109,8 @@ export async function topicMemory(
 
 interface FoundPassage {
   topic: string;
+  kind: string;
+  title: string;
   location: string;
   path: string;
   ref: string;
@@ -127,7 +132,7 @@ async function closestPassages(
   const ids = topics.map((t) => t.topicId);
   const name = new Map(topics.map((t) => [t.topicId, t.name]));
   const about = `${message.subject}\n${message.text.slice(0, 3_000)}`;
-  type Row = { topicId: string; location: string; path: string; ref: string; heading: string; text: string };
+  type Row = { topicId: string; kind: string; title: string; location: string; path: string; ref: string; heading: string; text: string };
   const named = (rows: Row[]) => rows.map((r) => ({ ...r, topic: name.get(r.topicId) ?? "" }));
   const model = options.embeddings?.model;
   if (options.embeddings && model) {
@@ -139,7 +144,7 @@ async function closestPassages(
         const vector = `[${vectors[0].join(",")}]`;
         return named(
           await prisma.$queryRaw<Row[]>`
-          SELECT p."topicId", s."location", p."path", p."ref", p."heading", p."text"
+          SELECT p."topicId", s."kind"::text AS "kind", s."title", s."location", p."path", p."ref", p."heading", p."text"
           FROM "TopicPassages" p JOIN "TopicSources" s ON s."topicSourceId" = p."topicSourceId"
           WHERE p."userId" = ${userId}::uuid AND p."topicId" = ANY(${ids}::uuid[]) AND p."embeddingModel" = ${model}
           ORDER BY p."embedding" <=> ${vector}::vector
@@ -155,7 +160,7 @@ async function closestPassages(
   const query = words.join(" | ");
   return named(
     await prisma.$queryRaw<Row[]>`
-    SELECT p."topicId", s."location", p."path", p."ref", p."heading", p."text"
+    SELECT p."topicId", s."kind"::text AS "kind", s."title", s."location", p."path", p."ref", p."heading", p."text"
     FROM "TopicPassages" p JOIN "TopicSources" s ON s."topicSourceId" = p."topicSourceId"
     WHERE p."userId" = ${userId}::uuid AND p."topicId" = ANY(${ids}::uuid[])
       AND to_tsvector('simple', p."heading" || ' ' || p."text") @@ to_tsquery('simple', ${query})

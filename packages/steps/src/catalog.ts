@@ -937,6 +937,26 @@ export const CORE_STEPS: StepDefinition[] = [
     }),
   },
   {
+    type: "topic.attachments",
+    description:
+      "The readable attachments (PDFs, text files) of emails linked to a topic become its sources, by reference (the " +
+      "email, its mailbox and UID, the file's name: never a copy), and their passages are indexed for drafts to quote " +
+      "(M43, docs/design.md §8.1). An attachment never changes: it is read once, again only after a rebuild on the " +
+      "Topics page. `mailbox` must be the one `messages` were read from (email.fetch's; a UID means something only " +
+      "there): give it the inbox's triaged emails, not the Sent folder's. A dry run reads and writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      mailbox: z.string().min(1).max(200).default("INBOX"),
+      matches: z
+        .array(z.object({ messageId: z.string(), topics: z.array(z.object({ topic: z.string(), status: z.string() }).loose()) }).loose())
+        .optional()
+        .describe("topic.match's results: their linked topics count too"),
+    }),
+    output: z.object({ added: z.number().int(), passages: z.number().int(), problems: z.array(z.string()) }),
+  },
+  {
     type: "topic.index",
     description:
       "Indexes git.changes' files into their topics' passages (M43): each file split at its headings, with its path and " +

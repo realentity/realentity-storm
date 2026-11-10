@@ -29,7 +29,7 @@ import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
 import { TopicApplyStep, TopicExtractStep } from "./topic-memory-steps";
-import { GitChangesStep, TopicIndexStep } from "./topic-source-steps";
+import { GitChangesStep, TopicAttachmentsStep, TopicIndexStep } from "./topic-source-steps";
 import { GitHubClient } from "../sources/github";
 import { TopicMatchStep } from "./topic-steps";
 
@@ -92,6 +92,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new TopicApplyStep(deps.prisma),
     new GitChangesStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault)),
     new TopicIndexStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault), deps.embeddings ?? null),
+    new TopicAttachmentsStep(deps.prisma, deps.mail, deps.embeddings ?? null),
     ...(deps.google ? [new CalendarFindStep({ google: deps.google, appOrigin: deps.appOrigin }), new CalendarCreateStep({ google: deps.google, appOrigin: deps.appOrigin })] : []),
     ...(deps.later ? [new FlowLaterStep(deps.later), new FlowCancelStep(deps.later)] : []),
     telegram,
