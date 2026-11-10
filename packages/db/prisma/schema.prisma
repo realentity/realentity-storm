@@ -112,43 +112,44 @@ model User {
   dateCreated DateTime @default(now())
   dateUpdated DateTime @updatedAt
 
-  sessions      UserSession[]
-  settings      UserSetting?
-  followUps     FollowUp[]
-  bills         Bill[]
-  watched       WatchedProduct[]
-  pipelines     Pipeline[]
-  builderChats  BuilderChat[]
-  siteRecipes   SiteRecipe[]
-  runs          Run[]
-  proposals     Proposal[]
-  rules         Rule[]
-  examples      Example[]
-  credentials   Credential[]
-  modelSettings ModelSetting[]
-  artifacts     Artifact[]
-  jobPostings   JobPosting[]
-  applications  Application[]
-  documents     Document[]
-  mailCursors   MailCursor[]
-  reflections   Reflection[]
-  suggestions   PipelineSuggestion[]
-  webhooks      Webhook[]
-  dataRecords   DataRecord[]
-  apps          App[]
-  dataPoints    DataPoint[]
-  httpCaches    HttpCache[]
-  alertStates   AlertState[]
-  google        GoogleConnection?
-  facts         Fact[]
-  questions     Question[]
-  topics        Topic[]
-  topicLinks    TopicLink[]
-  topicFacts    TopicFact[]
-  topicChanges  TopicChange[]
-  topicSources  TopicSource[]
-  topicPassages TopicPassage[]
-  scheduled     ScheduledStart[]
+  sessions       UserSession[]
+  settings       UserSetting?
+  followUps      FollowUp[]
+  bills          Bill[]
+  watched        WatchedProduct[]
+  pipelines      Pipeline[]
+  builderChats   BuilderChat[]
+  siteRecipes    SiteRecipe[]
+  runs           Run[]
+  proposals      Proposal[]
+  rules          Rule[]
+  examples       Example[]
+  credentials    Credential[]
+  modelSettings  ModelSetting[]
+  artifacts      Artifact[]
+  jobPostings    JobPosting[]
+  applications   Application[]
+  documents      Document[]
+  mailCursors    MailCursor[]
+  reflections    Reflection[]
+  suggestions    PipelineSuggestion[]
+  webhooks       Webhook[]
+  dataRecords    DataRecord[]
+  apps           App[]
+  dataPoints     DataPoint[]
+  httpCaches     HttpCache[]
+  alertStates    AlertState[]
+  google         GoogleConnection?
+  facts          Fact[]
+  questions      Question[]
+  topics         Topic[]
+  topicLinks     TopicLink[]
+  topicFacts     TopicFact[]
+  topicChanges   TopicChange[]
+  topicSources   TopicSource[]
+  topicPassages  TopicPassage[]
+  topicBackfills TopicBackfill[]
+  scheduled      ScheduledStart[]
 
   @@map("Users")
 }
@@ -1134,6 +1135,7 @@ model Topic {
   changes     TopicChange[]
   sources     TopicSource[]
   passages    TopicPassage[]
+  backfills   TopicBackfill[]
   dateCreated DateTime         @default(now())
   dateUpdated DateTime         @updatedAt
 
@@ -1368,4 +1370,58 @@ model TopicPassage {
   @@index([topicSourceId, path])
   @@index([topicId])
   @@map("TopicPassages")
+}
+
+enum TopicBackfillStatus {
+  /// Finding the topic's past emails and documents, and what reading them would cost.
+  ESTIMATING
+  /// Waiting for the user to start it.
+  ESTIMATED
+  /// The cheap model's batch: which of them state anything worth remembering.
+  SCREENING
+  /// The writing model's batch: the proposals.
+  PROPOSING
+  /// The proposals wait for the user.
+  REVIEW
+  DONE
+  FAILED
+  CANCELLED
+}
+
+/**
+ * Reading a topic's history for facts (M43-T5, docs/design.md §8.1): its past emails (found by its exact directions and
+ * threads) and its sources' indexed documents. An estimate first; then, once the user starts it, two Batch API passes
+ * at half the price; the proposals wait for the user. Emails by their ids only: their text is read from the mailbox
+ * when the batch is built.
+ */
+model TopicBackfill {
+  topicBackfillId String              @id @default(uuid()) @db.Uuid
+  userId          String              @db.Uuid
+  user            User                @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId         String              @db.Uuid
+  topic           Topic               @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  /// How far back, in months.
+  months          Int
+  /// The documents indexed from the topic's sources too.
+  documents       Boolean             @default(true)
+  status          TopicBackfillStatus @default(ESTIMATING)
+  /// The emails found: [{ messageId, date }].
+  emails          Json                @default("[]")
+  /// The documents: [{ topicSourceId, path }].
+  files           Json                @default("[]")
+  estimateUsd     Float?
+  /// The screen's answer: which of emails, then files (by index), are worth the writing model.
+  worth           Json?
+  batchId         String?
+  /// The proposals (TopicProposal), for the user to pick.
+  proposals       Json                @default("[]")
+  applied         Int                 @default(0)
+  llmUsage        Json?
+  error           String?
+  dateCreated     DateTime            @default(now())
+  finishedAt      DateTime?
+
+  @@index([topicId, dateCreated])
+  @@index([userId, status])
+  @@map("TopicBackfills")
 }

@@ -193,3 +193,58 @@ test("a topic's source: a repository added from its address, shown not read yet,
   await row.getByRole("button", { name: "Remove source" }).click();
   await expect(sources.getByTestId("source-acme/orion")).toHaveCount(0);
 });
+
+// M43-T5
+test("a topic's history: the estimate shown before anything is read, then its proposals picked and kept", async ({ page }) => {
+  const name = unique("Orion");
+  const topicId = await newTopic(page, name);
+  const db = createPrismaConnection();
+  try {
+    const { userId } = await db.client.topic.findUniqueOrThrow({ where: { topicId } });
+    const backfill = await db.client.topicBackfill.create({
+      data: {
+        userId,
+        topicId,
+        months: 6,
+        status: "ESTIMATED",
+        estimateUsd: 0.12,
+        emails: [{ messageId: "<a@x.test>", date: "2026-10-01" }],
+      },
+    });
+    await page.goto("/topics");
+    const history = page.getByTestId(`topic-${name}`).getByTestId("topic-history");
+    await expect(history.getByTestId("history-estimate")).toContainText("Found 1 email and 0 documents from the last 6 months");
+    await expect(history.getByTestId("history-estimate")).toContainText("$0.12");
+
+    const proposal = (about: string, statement: string, date: string) => ({
+      title: `${name}: ${about}: ${statement}`,
+      quote: statement,
+      kind: "new",
+      topic: name,
+      topicId,
+      about,
+      statement,
+      replaces: null,
+      source: { kind: "email", messageId: `<${statement}@client.example>`, from: "maria@client.example", subject: "Plan", date },
+    });
+    await db.client.topicBackfill.update({
+      where: { topicBackfillId: backfill.topicBackfillId },
+      data: {
+        status: "REVIEW",
+        proposals: [
+          proposal("Launch date", "March", "2026-10-02T09:00:00.000Z"),
+          proposal("Database", "PostgreSQL", "2026-10-04T09:00:00.000Z"),
+        ],
+      },
+    });
+    await page.reload();
+    const review = history.getByTestId("history-review");
+    await review.getByText("Database: PostgreSQL").click();
+    await review.getByRole("button", { name: "Keep 1" }).click();
+    await expect(page.getByTestId(`topic-${name}`).getByTestId("fact-Launch date")).toContainText("Launch date: March");
+    await expect(page.getByTestId(`topic-${name}`).getByTestId("fact-Database")).toHaveCount(0);
+    await expect(history).toContainText("1 fact kept");
+  } finally {
+    await db.close();
+  }
+});

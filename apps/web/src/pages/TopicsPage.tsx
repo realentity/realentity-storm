@@ -3,6 +3,7 @@ import { IconArchive, IconArchiveOff, IconCheck, IconPencil, IconPlus, IconTrash
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
 import { TopicFacts } from "../components/TopicFacts";
+import { TopicHistory } from "../components/TopicHistory";
 import { TopicSources } from "../components/TopicSources";
 import { TopicUpkeepCard } from "../components/TopicUpkeepCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
@@ -72,6 +73,7 @@ export function TopicsPage() {
 
 function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; topics: TopicView[]; decided: number; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
+  const [kept, setKept] = useState(0);
   const action = useAction();
   const archived = topic.status === "ARCHIVED";
 
@@ -168,8 +170,10 @@ function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; top
           </div>
         )}
         <DirectionForm topicId={topic.topicId} onAdded={onChange} />
-        <TopicFacts topic={topic} topics={topics} />
+        {/* Remounted when the history adds facts. */}
+        <TopicFacts key={kept} topic={topic} topics={topics} />
         <TopicSources topicId={topic.topicId} />
+        <TopicHistory topicId={topic.topicId} onApplied={() => setKept((n) => n + 1)} />
         <TopicEmails topicId={topic.topicId} decided={decided} />
       </div>
     </div>

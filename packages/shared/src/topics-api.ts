@@ -308,3 +308,43 @@ export function pathMatches(pattern: string, path: string): boolean {
 export function isTextFile(path: string): boolean {
   return /\.(md|markdown|mdx|txt|text|adoc|asciidoc|rst|org)$/i.test(path);
 }
+
+export const TOPIC_BACKFILL_STATUSES = ["ESTIMATING", "ESTIMATED", "SCREENING", "PROPOSING", "REVIEW", "DONE", "FAILED", "CANCELLED"] as const;
+export type TopicBackfillStatusName = (typeof TOPIC_BACKFILL_STATUSES)[number];
+
+/**
+ * Reading a topic's history for facts (M43-T5): what was found and what reading it costs, then the proposals for the
+ * user to pick.
+ */
+export interface TopicBackfillView {
+  topicBackfillId: string;
+  topicId: string;
+  months: number;
+  documents: boolean;
+  status: TopicBackfillStatusName;
+  /** Past emails found (by the topic's exact directions and their threads). */
+  emails: number;
+  /** Documents of its sources, from the index. */
+  files: number;
+  estimateUsd: number | null;
+  /** What it cost so far. */
+  costUsd: number | null;
+  /** REVIEW: the proposals, in order; picked by their place. */
+  proposals: { title: string; quote: string; kind: string }[];
+  applied: number;
+  error: string | null;
+  dateCreated: string;
+  finishedAt: string | null;
+}
+
+/** How far back a backfill reads: up to two years. */
+export const TopicBackfillSchema = z
+  .object({
+    months: z.number().int().min(1).max(24),
+    documents: z.boolean().default(true),
+  })
+  .strict();
+export type TopicBackfillRequest = z.input<typeof TopicBackfillSchema>;
+
+export const ApplyTopicBackfillSchema = z.object({ picked: z.array(z.number().int().min(0)).max(1000) }).strict();
+export type ApplyTopicBackfillRequest = z.input<typeof ApplyTopicBackfillSchema>;

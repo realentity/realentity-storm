@@ -452,7 +452,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 There's no fine-tuning. Everything learned is visible and editable.
 
-### 8.1 Topics: what Storm knows about a subject (M41–M43; Drive, backfill and M44 planned)
+### 8.1 Topics: what Storm knows about a subject (M41–M43; Drive and M44 planned)
 
 Examples and rules teach *how* you write, never *what is true*. A reply about a project needs what is true: who is who,
 what was decided, what changed since. Without it a draft is polite and empty, because it may not invent facts. A
@@ -574,7 +574,12 @@ history, while fact proposals wait at their run's gate in the Inbox); an email's
   emails don't); only the rest go to the writing model.
 - A topic's card and facts are a stable prefix, cached.
 - The first read of a topic's history (backfill) shows an estimate first, goes only as far back as you choose, and
-  runs through the Batch API at night.
+  runs through the Batch API at night. (M43: on the topic's card, **Its history**. The estimate finds the past emails by
+  the topic's exact directions and their threads, the inbox's and the Sent folder's newest 1 000 each, and its sources'
+  documents from the index, with no LLM; nothing is read by an LLM until you start it. Then the cheap model screens and
+  the writing model proposes, two batches at half the price, answered within a day rather than waiting for the night;
+  the proposals wait on the card, oldest first, and only the ones you keep are written. Its cost counts toward the
+  month's budget and shows on the Costs page as "topic backfill".)
 - Topic pipelines are non-essential, so the monthly budget pauses them; the topic's page shows what it cost.
 
 **Built from what exists.** A topic's upkeep is a pipeline: a source's change or a new linked email starts it,

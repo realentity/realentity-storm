@@ -1,4 +1,7 @@
 import {
+  type ApplyTopicBackfillRequest,
+  type TopicBackfillRequest,
+  type TopicBackfillView,
   type TopicChangeView,
   type TopicFactNoLongerTrueRequest,
   type TopicFactRequest,
@@ -180,6 +183,8 @@ export const api = {
     upkeep: () => request<TopicUpkeepView>("GET", "/topics/upkeep"),
     sources: (topicId: string) => request<TopicSourceView[]>("GET", `/topics/${topicId}/sources`),
     addSource: (topicId: string, body: TopicSourceRequest) => request<TopicSourceView>("POST", `/topics/${topicId}/sources`, body),
+    backfill: (topicId: string) => request<TopicBackfillView | null>("GET", `/topics/${topicId}/backfill`),
+    estimateBackfill: (topicId: string, body: TopicBackfillRequest) => request<TopicBackfillView>("POST", `/topics/${topicId}/backfill`, body),
   },
   topicFacts: {
     edit: (topicFactId: string, body: TopicFactRequest) => request<TopicFactView>("PUT", `/topic-facts/${topicFactId}`, body),
@@ -189,6 +194,11 @@ export const api = {
     settle: (topicFactId: string) => request<TopicFactView>("POST", `/topic-facts/${topicFactId}/settle`),
     move: (topicFactId: string, topicId: string) => request<TopicFactView>("POST", `/topic-facts/${topicFactId}/move`, { topicId }),
     undo: (topicChangeId: string) => request<void>("POST", `/topic-changes/${topicChangeId}/undo`),
+  },
+  topicBackfills: {
+    start: (id: string) => request<TopicBackfillView>("POST", `/topic-backfills/${id}/start`),
+    cancel: (id: string) => request<TopicBackfillView>("POST", `/topic-backfills/${id}/cancel`),
+    apply: (id: string, body: ApplyTopicBackfillRequest) => request<TopicBackfillView>("POST", `/topic-backfills/${id}/apply`, body),
   },
   topicSources: {
     remove: (topicSourceId: string) => request<void>("DELETE", `/topic-sources/${topicSourceId}`),

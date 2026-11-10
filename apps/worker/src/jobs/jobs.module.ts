@@ -1,4 +1,5 @@
 import { ClaudeBatches, ClaudeChat, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmChat, type LlmClient } from "@realentity/storm-llm";
+import { TopicBackfills } from "../sources/backfill";
 import { JobQueue, publishEvent } from "@realentity/storm-queue";
 import { KeyRing } from "@realentity/storm-crypto";
 import { sendTelegramMessage, type ServerEnv, type TelegramMessage } from "@realentity/storm-shared";
@@ -253,7 +254,22 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: JobHandlers,
-      inject: [PrismaService, PipelineRunner, JobQueue, Learning, Reflector, TakeoverDesk, ArtifactStore, SERVER_ENV, KeyRing, LaterStarts, RunControls, GoogleConnection],
+      inject: [
+        PrismaService,
+        PipelineRunner,
+        JobQueue,
+        Learning,
+        Reflector,
+        TakeoverDesk,
+        ArtifactStore,
+        SERVER_ENV,
+        KeyRing,
+        LaterStarts,
+        RunControls,
+        GoogleConnection,
+        CredentialVault,
+        ModelRouter,
+      ],
       useFactory: (
         db: PrismaService,
         runner: PipelineRunner,
@@ -267,6 +283,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         later: LaterStarts,
         controls: RunControls,
         google: GoogleConnection,
+        vault: CredentialVault,
+        router: ModelRouter,
       ) =>
         new JobHandlers(
           db.client,
@@ -281,6 +299,24 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             notifier: new ProposalNotifier(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
             review: new WeeklyReview(db.client, controls, notifier(env), env.APP_ORIGIN),
             brief: new MorningBrief(db.client, notifier(env), calendarEvents(db, google), env.APP_ORIGIN),
+            backfills: new TopicBackfills(
+              db.client,
+              new ImapSmtpConnector(
+                {
+                  imapHost: env.IMAP_HOST,
+                  imapPort: env.IMAP_PORT,
+                  smtpHost: env.SMTP_HOST,
+                  smtpPort: env.SMTP_PORT,
+                  tls: env.MAIL_TLS,
+                  credential: env.MAIL_CREDENTIAL,
+                },
+                vault,
+              ),
+              env.ANTHROPIC_API_KEY ? ClaudeBatches.fromApiKey(env.ANTHROPIC_API_KEY) : null,
+              router,
+              controls,
+              (topicBackfillId, startAfter) => queue.enqueueBackfill(topicBackfillId, startAfter),
+            ),
           },
         ),
     },

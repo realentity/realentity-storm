@@ -19,7 +19,7 @@ const FACTS = 60;
 /** What the user said was wrong, shown so the model learns from it. */
 const WRONG = 10;
 
-interface TopicCard {
+export interface TopicCard {
   topicId: string;
   name: string;
   description: string;
@@ -98,71 +98,92 @@ export class TopicExtractStep extends LlmStep {
     const screened = await this.perItem(
       read.map((e, index) => ({ index, id: e.source.messageId })),
       (chunk) => this.callAs("topic.extract.screen", context, SCREEN, chunk, SCREEN_SCHEMA, true),
-      (index) =>
-        `${read[index].block(index)}\n<topics index="${index}">${read[index].topics
-          .map((t) => `${t.name}: ${t.description || "(no description)"}`)
-          .join("\n")}</topics>`,
+      (index) => screenBlock(read[index], index),
     );
     const worth = screened.filter((s) => s.worth).map((s) => read[s.index]);
     if (worth.length === 0) return output([]);
 
-    const cards = await this.cards(userId, [...new Map(worth.flatMap((w) => w.topics).map((t) => [t.topicId, t])).values()]);
+    const cards = await topicCards(this.prisma, userId, [...new Map(worth.flatMap((w) => w.topics).map((t) => [t.topicId, t])).values()]);
     const proposals: TopicProposal[] = [];
     for (const evidence of worth) {
-      const { topics } = evidence;
-      const mine = topics.map((t) => cards.get(t.topicId)!);
-      // Facts by a short reference: the model never handles ids.
-      const refs = new Map<string, TopicFact>();
-      for (const card of mine) for (const fact of card.facts) refs.set(`F${refs.size + 1}`, fact);
-      const names = mine.map((c) => c.name) as [string, ...string[]];
-      const schema = z.object({
-        proposals: z
-          .array(
-            z.object({
-              topic: z.enum(names),
-              kind: z.enum(["new", "change", "conflict"]),
-              about: z.string().max(120),
-              statement: z.string().max(1000),
-              replaces: z.string().max(10).nullable(),
-              quote: z.string().max(500),
-            }),
-          )
-          .max(PROPOSALS),
-      });
-      const answer = await this.call(context, EXTRACT, `${topicsBlock(mine, refs)}\n\n${evidence.block()}`, schema, true);
-      for (const raw of answer.proposals) {
-        const card = mine.find((c) => c.name === raw.topic)!;
-        const proposal = checked(raw, card, refs, evidence);
-        if (
-          proposal &&
-          !proposals.some((p) => p.topicId === proposal.topicId && sameAbout(p.about, proposal.about) && p.statement === proposal.statement)
-        ) {
-          proposals.push(proposal);
-        }
-      }
+      const request = extractRequest(evidence, cards);
+      const answer = await this.call(context, request.system, request.prompt, request.schema, true);
+      addProposals(proposals, request.read(answer));
     }
     return output(proposals);
   }
 
-  /** Each topic's current and disputed facts, and the latest the user said were wrong. */
-  private async cards(userId: string, topics: { topicId: string; name: string; description: string }[]): Promise<Map<string, TopicCard>> {
-    const cards = new Map<string, TopicCard>();
-    for (const topic of topics) {
-      const [facts, wrong] = await Promise.all([
-        this.prisma.topicFact.findMany({
-          where: { userId, topicId: topic.topicId, status: { in: ["CURRENT", "DISPUTED"] } },
-          orderBy: [{ about: "asc" }, { sourceDate: "desc" }],
-          take: FACTS,
+}
+
+/** Each topic's current and disputed facts, and the latest the user said were wrong (shared with the backfill). */
+export async function topicCards(
+  prisma: PrismaClient,
+  userId: string,
+  topics: { topicId: string; name: string; description: string }[],
+): Promise<Map<string, TopicCard>> {
+  const cards = new Map<string, TopicCard>();
+  for (const topic of topics) {
+    const [facts, wrong] = await Promise.all([
+      prisma.topicFact.findMany({
+        where: { userId, topicId: topic.topicId, status: { in: ["CURRENT", "DISPUTED"] } },
+        orderBy: [{ about: "asc" }, { sourceDate: "desc" }],
+        take: FACTS,
+      }),
+      prisma.topicFact.findMany({ where: { userId, topicId: topic.topicId, status: "WRONG" }, orderBy: { dateUpdated: "desc" }, take: WRONG }),
+    ]);
+    cards.set(topic.topicId, { ...topic, facts, wrong });
+  }
+  return cards;
+}
+
+/** One piece of evidence as the screen sees it: its block and its topics. */
+export function screenBlock(evidence: Evidence, index: number): string {
+  return `${evidence.block(index)}\n<topics index="${index}">${evidence.topics
+    .map((t) => `${t.name}: ${t.description || "(no description)"}`)
+    .join("\n")}</topics>`;
+}
+
+/**
+ * The writing model's request for one piece of evidence, with the facts by short references (the model never handles
+ * ids), and how its answer becomes proposals. Shared by topic.extract and the backfill (M43-T5).
+ */
+export function extractRequest(evidence: Evidence, cards: Map<string, TopicCard>) {
+  const mine = evidence.topics.flatMap((t) => cards.get(t.topicId) ?? []);
+  const refs = new Map<string, TopicFact>();
+  for (const card of mine) for (const fact of card.facts) refs.set(`F${refs.size + 1}`, fact);
+  const names = mine.map((c) => c.name) as [string, ...string[]];
+  const schema = z.object({
+    proposals: z
+      .array(
+        z.object({
+          topic: z.enum(names),
+          kind: z.enum(["new", "change", "conflict"]),
+          about: z.string().max(120),
+          statement: z.string().max(1000),
+          replaces: z.string().max(10).nullable(),
+          quote: z.string().max(500),
         }),
-        this.prisma.topicFact.findMany({
-          where: { userId, topicId: topic.topicId, status: "WRONG" },
-          orderBy: { dateUpdated: "desc" },
-          take: WRONG,
-        }),
-      ]);
-      cards.set(topic.topicId, { ...topic, facts, wrong });
+      )
+      .max(PROPOSALS),
+  });
+  return {
+    system: EXTRACT,
+    prompt: `${topicsBlock(mine, refs)}\n\n${evidence.block()}`,
+    schema,
+    read: (answer: z.infer<typeof schema>): TopicProposal[] =>
+      answer.proposals.flatMap((raw) => {
+        const card = mine.find((c) => c.name === raw.topic);
+        return (card && checked(raw, card, refs, evidence)) || [];
+      }),
+  };
+}
+
+/** Proposals added, each once: the same statement about the same thing in a topic is proposed once. */
+export function addProposals(into: TopicProposal[], more: TopicProposal[]): void {
+  for (const proposal of more) {
+    if (!into.some((p) => p.topicId === proposal.topicId && sameAbout(p.about, proposal.about) && p.statement === proposal.statement)) {
+      into.push(proposal);
     }
-    return cards;
   }
 }
 
@@ -212,7 +233,7 @@ function checked(
 }
 
 /** What topic.extract reads (M42, M43-T4): an email, or a changed file of a topic's source. */
-interface Evidence {
+export interface Evidence {
   source: TopicProposal["source"];
   /** Who or what says it, for the gate: "Maria", "docs/adr/0012-database.md @ a1b2c3d". */
   who: string;
@@ -228,7 +249,7 @@ export interface SourceFile extends SourceChange {
   firstRead: boolean;
 }
 
-function emailEvidence(message: EmailMessage, topics: Evidence["topics"]): Evidence {
+export function emailEvidence(message: EmailMessage, topics: Evidence["topics"]): Evidence {
   // Its own text, without the quoted thread under it.
   const own = { ...message, text: withoutQuoted(message.text) };
   return {
@@ -239,7 +260,7 @@ function emailEvidence(message: EmailMessage, topics: Evidence["topics"]): Evide
   };
 }
 
-function fileEvidence(file: SourceFile, topics: Evidence["topics"]): Evidence {
+export function fileEvidence(file: SourceFile, topics: Evidence["topics"]): Evidence {
   const at = `${file.path} @ ${file.commit.slice(0, 7)}`;
   const text = file.text.length > EXTRACT_TEXT ? `${file.text.slice(0, EXTRACT_TEXT)}\n[…]` : file.text;
   return {
@@ -260,7 +281,7 @@ function fileEvidence(file: SourceFile, topics: Evidence["topics"]): Evidence {
   };
 }
 
-function output(proposals: TopicProposal[]): { proposals: TopicProposal[]; title: string } {
+export function output(proposals: TopicProposal[]): { proposals: TopicProposal[]; title: string } {
   const topics = [...new Set(proposals.map((p) => p.topic))];
   const title =
     proposals.length === 0
@@ -295,9 +316,9 @@ function topicsBlock(cards: TopicCard[], refs: Map<string, TopicFact>): string {
   ].join("\n");
 }
 
-const SCREEN_SCHEMA = z.object({ results: z.array(z.object({ index: z.number().int(), worth: z.boolean() })) });
+export const SCREEN_SCHEMA = z.object({ results: z.array(z.object({ index: z.number().int(), worth: z.boolean() })) });
 
-const SCREEN = [
+export const SCREEN = [
   "You screen the user's emails and documents (a <document> is a changed file of a topic's source: a decision record, a " +
     "spec) for what is worth remembering about the topics each belongs to (listed in <topics> after it). For each (by its " +
     "index) answer worth: true only if it states something that stays true for " +

@@ -1,12 +1,15 @@
 import {
+  ApplyTopicBackfillSchema,
   MoveTopicFactSchema,
   MoveTopicLinkSchema,
   TopicDirectionSchema,
   TopicFactNoLongerTrueSchema,
   TopicFactSchema,
+  TopicBackfillSchema,
   TopicSchema,
   TopicSourceSchema,
   TopicUpdateSchema,
+  type TopicBackfillView,
   type TopicChangeView,
   type TopicFactView,
   type TopicLinkView,
@@ -18,6 +21,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Pu
 import { type z } from "zod";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
+import { TopicBackfillsService } from "./topic-backfills.service";
 import { TopicFactsService } from "./topic-facts.service";
 import { TopicLinksService } from "./topic-links.service";
 import { TopicSourcesService } from "./topic-sources.service";
@@ -33,6 +37,7 @@ export class TopicsController {
     private readonly facts: TopicFactsService,
     private readonly upkeep: TopicUpkeepService,
     private readonly sources: TopicSourcesService,
+    private readonly backfills: TopicBackfillsService,
   ) {}
 
   @Get()
@@ -58,6 +63,21 @@ export class TopicsController {
     @Body(new ZodBodyPipe(TopicSourceSchema)) body: z.output<typeof TopicSourceSchema>,
   ): Promise<TopicSourceView> {
     return this.sources.add(user.userId, topicId, body);
+  }
+
+  /** The topic's latest backfill (M43-T5), or null. */
+  @Get(":topicId/backfill")
+  backfill(@CurrentUser() user: AuthenticatedUser, @Param("topicId", ParseUUIDPipe) topicId: string): Promise<TopicBackfillView | null> {
+    return this.backfills.latest(user.userId, topicId);
+  }
+
+  @Post(":topicId/backfill")
+  estimateBackfill(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicId", ParseUUIDPipe) topicId: string,
+    @Body(new ZodBodyPipe(TopicBackfillSchema)) body: z.output<typeof TopicBackfillSchema>,
+  ): Promise<TopicBackfillView> {
+    return this.backfills.estimate(user.userId, topicId, body);
   }
 
   @Get(":topicId/links")
@@ -238,5 +258,39 @@ export class TopicSourcesController {
   @HttpCode(200)
   rebuild(@CurrentUser() user: AuthenticatedUser, @Param("topicSourceId", ParseUUIDPipe) topicSourceId: string): Promise<TopicSourceView> {
     return this.sources.rebuild(user.userId, topicSourceId);
+  }
+}
+
+/** A topic's backfill (M43-T5): started after its estimate, cancelled, its proposals applied. */
+@Controller("topic-backfills")
+export class TopicBackfillsController {
+  constructor(private readonly backfills: TopicBackfillsService) {}
+
+  @Post(":topicBackfillId/start")
+  @HttpCode(200)
+  start(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicBackfillId", ParseUUIDPipe) topicBackfillId: string,
+  ): Promise<TopicBackfillView> {
+    return this.backfills.start(user.userId, topicBackfillId);
+  }
+
+  @Post(":topicBackfillId/cancel")
+  @HttpCode(200)
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicBackfillId", ParseUUIDPipe) topicBackfillId: string,
+  ): Promise<TopicBackfillView> {
+    return this.backfills.cancel(user.userId, topicBackfillId);
+  }
+
+  @Post(":topicBackfillId/apply")
+  @HttpCode(200)
+  apply(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicBackfillId", ParseUUIDPipe) topicBackfillId: string,
+    @Body(new ZodBodyPipe(ApplyTopicBackfillSchema)) body: z.output<typeof ApplyTopicBackfillSchema>,
+  ): Promise<TopicBackfillView> {
+    return this.backfills.apply(user.userId, topicBackfillId, body.picked);
   }
 }

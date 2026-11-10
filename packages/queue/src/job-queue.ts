@@ -4,6 +4,7 @@ import {
   QUEUES,
   type EventJob,
   type LaterJob,
+  type TopicBackfillJob,
   type LearningJob,
   type ReflectionJob,
   type ReflectionPollJob,
@@ -79,6 +80,12 @@ export class JobQueue {
   }
 
   /** A flow.later start, woken at its time (M14-T3). */
+  /** A topic's backfill moves on (M43-T5): now, or once its batch may have ended. */
+  async enqueueBackfill(topicBackfillId: string, startAfter?: Date): Promise<void> {
+    const data: TopicBackfillJob = { topicBackfillId };
+    await this.boss.send(QUEUES.topicBackfill, data, startAfter ? { startAfter } : {});
+  }
+
   async enqueueLater(job: LaterJob, startAfter: Date): Promise<void> {
     await this.boss.send(QUEUES.later, job, { startAfter });
   }
