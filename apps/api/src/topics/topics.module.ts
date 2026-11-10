@@ -4,6 +4,7 @@ import { TopicBackfillsService } from "./topic-backfills.service";
 import { TopicFactsService } from "./topic-facts.service";
 import { TopicLinksService } from "./topic-links.service";
 import { TopicSourcesService } from "./topic-sources.service";
+import { TopicSuggestionsService } from "./topic-suggestions.service";
 import { TopicUpkeepService } from "./topic-upkeep.service";
 import {
   TopicBackfillsController,
@@ -12,6 +13,7 @@ import {
   TopicLinksController,
   TopicsController,
   TopicSourcesController,
+  TopicSuggestionsController,
 } from "./topics.controller";
 import { TopicsService } from "./topics.service";
 
@@ -24,8 +26,17 @@ import { TopicsService } from "./topics.service";
     TopicChangesController,
     TopicSourcesController,
     TopicBackfillsController,
+    TopicSuggestionsController,
   ],
-  providers: [TopicsService, TopicLinksService, TopicFactsService, TopicUpkeepService, TopicSourcesService, TopicBackfillsService],
+  providers: [
+    TopicsService,
+    TopicLinksService,
+    TopicFactsService,
+    TopicUpkeepService,
+    TopicSourcesService,
+    TopicBackfillsService,
+    TopicSuggestionsService,
+  ],
   exports: [TopicsService],
 })
 export class TopicsModule {}

@@ -248,3 +248,52 @@ test("a topic's history: the estimate shown before anything is read, then its pr
     await db.close();
   }
 });
+
+// M44-T1, T4
+test("a direction suggested from the user's decisions, accepted; a topic split from its card", async ({ page }) => {
+  const name = unique("Billing");
+  const topicId = await newTopic(page, name);
+  const sender = `${unique("ivan")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")}@client.example`;
+  const db = createPrismaConnection();
+  try {
+    const { userId } = await db.client.topic.findUniqueOrThrow({ where: { topicId } });
+    await db.client.topicLink.createMany({
+      data: [1, 2, 3].map((i) => ({
+        userId,
+        topicId,
+        messageId: `<${sender}-${i}>`,
+        threadId: `<${sender}-${i}>`,
+        from: sender,
+        subject: `Invoice ${i}`,
+        date: new Date(),
+        status: "CONFIRMED" as const,
+        via: "USER" as const,
+        evidence: "you",
+      })),
+    });
+  } finally {
+    await db.close();
+  }
+  await page.goto("/topics");
+  const suggestion = page.getByTestId("topic-suggestions").getByTestId("suggestion-DIRECTION").filter({ hasText: sender });
+  await expect(suggestion).toContainText(`${name}: add the person ${sender} as a direction?`);
+  await suggestion.getByRole("button", { name: "Yes" }).click();
+  await expect(page.getByTestId(`topic-${name}`).getByTestId("directions")).toContainText(sender);
+
+  // Split: the fact and the direction go to a new topic.
+  expect((await page.request.post(`/api/topics/${topicId}/facts`, { data: { about: "Terms", statement: "30 days" } })).status()).toBe(201);
+  await page.reload();
+  const card = page.getByTestId(`topic-${name}`);
+  await card.getByRole("button", { name: "Split" }).click();
+  const form = page.getByTestId("split-form");
+  const split = unique("Invoices");
+  await form.getByLabel("New topic").fill(split);
+  await form.getByText("Terms: 30 days").click();
+  await form.getByLabel(sender, { exact: true }).check();
+  await form.getByRole("button", { name: "Split" }).click();
+  await expect(page.getByTestId(`topic-${split}`).getByTestId("fact-Terms")).toContainText("Terms: 30 days");
+  await expect(page.getByTestId(`topic-${split}`).getByTestId("directions")).toContainText(sender);
+  await expect(page.getByTestId(`topic-${name}`).getByTestId("fact-Terms")).toHaveCount(0);
+});

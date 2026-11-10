@@ -112,44 +112,46 @@ model User {
   dateCreated DateTime @default(now())
   dateUpdated DateTime @updatedAt
 
-  sessions       UserSession[]
-  settings       UserSetting?
-  followUps      FollowUp[]
-  bills          Bill[]
-  watched        WatchedProduct[]
-  pipelines      Pipeline[]
-  builderChats   BuilderChat[]
-  siteRecipes    SiteRecipe[]
-  runs           Run[]
-  proposals      Proposal[]
-  rules          Rule[]
-  examples       Example[]
-  credentials    Credential[]
-  modelSettings  ModelSetting[]
-  artifacts      Artifact[]
-  jobPostings    JobPosting[]
-  applications   Application[]
-  documents      Document[]
-  mailCursors    MailCursor[]
-  reflections    Reflection[]
-  suggestions    PipelineSuggestion[]
-  webhooks       Webhook[]
-  dataRecords    DataRecord[]
-  apps           App[]
-  dataPoints     DataPoint[]
-  httpCaches     HttpCache[]
-  alertStates    AlertState[]
-  google         GoogleConnection?
-  facts          Fact[]
-  questions      Question[]
-  topics         Topic[]
-  topicLinks     TopicLink[]
-  topicFacts     TopicFact[]
-  topicChanges   TopicChange[]
-  topicSources   TopicSource[]
-  topicPassages  TopicPassage[]
-  topicBackfills TopicBackfill[]
-  scheduled      ScheduledStart[]
+  sessions         UserSession[]
+  settings         UserSetting?
+  followUps        FollowUp[]
+  bills            Bill[]
+  watched          WatchedProduct[]
+  pipelines        Pipeline[]
+  builderChats     BuilderChat[]
+  siteRecipes      SiteRecipe[]
+  runs             Run[]
+  proposals        Proposal[]
+  rules            Rule[]
+  examples         Example[]
+  credentials      Credential[]
+  modelSettings    ModelSetting[]
+  artifacts        Artifact[]
+  jobPostings      JobPosting[]
+  applications     Application[]
+  documents        Document[]
+  mailCursors      MailCursor[]
+  reflections      Reflection[]
+  suggestions      PipelineSuggestion[]
+  webhooks         Webhook[]
+  dataRecords      DataRecord[]
+  apps             App[]
+  dataPoints       DataPoint[]
+  httpCaches       HttpCache[]
+  alertStates      AlertState[]
+  google           GoogleConnection?
+  facts            Fact[]
+  questions        Question[]
+  topics           Topic[]
+  topicLinks       TopicLink[]
+  topicFacts       TopicFact[]
+  topicChanges     TopicChange[]
+  topicSources     TopicSource[]
+  topicPassages    TopicPassage[]
+  topicBackfills   TopicBackfill[]
+  topicSuggestions TopicSuggestion[]
+  topicCosts       TopicCost[]
+  scheduled        ScheduledStart[]
 
   @@map("Users")
 }
@@ -1122,13 +1124,13 @@ enum TopicDirectionKind {
 
 /// A subject Storm keeps a memory of (M41, docs/design.md §8.1): what belongs to it is said by its directions.
 model Topic {
-  topicId     String           @id @default(uuid()) @db.Uuid
-  userId      String           @db.Uuid
-  user        User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  name        String           @db.Citext
+  topicId     String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  user        User              @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name        String            @db.Citext
   /// A few lines the user writes: what the subject is.
-  description String           @default("")
-  status      TopicStatus      @default(ACTIVE)
+  description String            @default("")
+  status      TopicStatus       @default(ACTIVE)
   directions  TopicDirection[]
   links       TopicLink[]
   facts       TopicFact[]
@@ -1136,8 +1138,10 @@ model Topic {
   sources     TopicSource[]
   passages    TopicPassage[]
   backfills   TopicBackfill[]
-  dateCreated DateTime         @default(now())
-  dateUpdated DateTime         @updatedAt
+  suggestions TopicSuggestion[]
+  costs       TopicCost[]
+  dateCreated DateTime          @default(now())
+  dateUpdated DateTime          @updatedAt
 
   @@unique([userId, name])
   @@map("Topics")
@@ -1272,6 +1276,10 @@ enum TopicChangeKind {
   SETTLE
   /// A proposal approved at a gate (topic.apply).
   APPLY
+  /// Part of a topic moved to a new one (M44-T4); otherTopicId: the new one.
+  SPLIT
+  /// A topic merged into this one (M44-T4); otherTopicId: the one merged (archived).
+  MERGE
 }
 
 /**
@@ -1292,6 +1300,8 @@ model TopicChange {
   summary       String
   facts         Json
   links         Json            @default("[]")
+  /// SPLIT, MERGE: [{ table: direction | source | link | topic, id, from, to }] (a topic id, or a topic's status).
+  moves         Json            @default("[]")
   runId         String?         @db.Uuid
   undoneAt      DateTime?
   dateCreated   DateTime        @default(now())
@@ -1424,4 +1434,67 @@ model TopicBackfill {
   @@index([topicId, dateCreated])
   @@index([userId, status])
   @@map("TopicBackfills")
+}
+
+enum TopicSuggestionKind {
+  /// A direction for a topic (payload: { kind, value, about }).
+  DIRECTION
+  /// A new topic (payload: { name, description, directions }).
+  TOPIC
+  /// A fact for a topic (payload: a TopicProposal).
+  FACT
+}
+
+enum TopicSuggestionStatus {
+  OPEN
+  ACCEPTED
+  /// The user said no: the same suggestion isn't made again.
+  DISMISSED
+}
+
+/**
+ * What Storm suggests from the user's decisions and edits (M44, docs/design.md §8.1): a direction, a topic, a fact.
+ * Nothing suggested is active before the user accepts it; a dismissed one isn't suggested again (its `key`).
+ */
+model TopicSuggestion {
+  topicSuggestionId String                @id @default(uuid()) @db.Uuid
+  userId            String                @db.Uuid
+  user              User                  @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// DIRECTION, FACT: the topic it is for.
+  topicId           String?               @db.Uuid
+  topic             Topic?                @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  kind              TopicSuggestionKind
+  /// What makes it the same suggestion again: "DIRECTION:<topicId>:PERSON:ivan@client.example".
+  key               String
+  payload           Json
+  /// Why, in one line: "you confirmed 6 of their emails for Billing".
+  reason            String
+  status            TopicSuggestionStatus @default(OPEN)
+  dateCreated       DateTime              @default(now())
+  decidedAt         DateTime?
+
+  @@unique([userId, key])
+  @@index([userId, status])
+  @@map("TopicSuggestions")
+}
+
+/**
+ * What a topic's upkeep cost (M44-T5), by day and step type: the topic steps' LLM and embedding calls shared out among
+ * the topics they were for. Only to show where the money went (its page, the weekly review): the budget counts the
+ * steps themselves.
+ */
+model TopicCost {
+  topicCostId String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId     String   @db.Uuid
+  topic       Topic    @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  day         DateTime @db.Date
+  /// The step type: topic.match, topic.extract, topic.index, topic.attachments.
+  source      String
+  costUsd     Float    @default(0)
+
+  @@unique([topicId, day, source])
+  @@index([userId, day])
+  @@map("TopicCosts")
 }

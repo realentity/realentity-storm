@@ -22,6 +22,8 @@ export interface TopicView {
   description: string;
   status: TopicStatusName;
   directions: TopicDirectionView[];
+  /** What its upkeep and backfills cost in the last 30 days (M44-T5): shared out from the topic steps. */
+  costUsd30: number;
   dateCreated: string;
   dateUpdated: string;
 }
@@ -116,7 +118,7 @@ export type MoveTopicLinkRequest = z.input<typeof MoveTopicLinkSchema>;
 export const TOPIC_FACT_STATUSES = ["CURRENT", "SUPERSEDED", "DISPUTED", "WRONG"] as const;
 export type TopicFactStatusName = (typeof TOPIC_FACT_STATUSES)[number];
 
-export const TOPIC_CHANGE_KINDS = ["ADD", "EDIT", "NO_LONGER_TRUE", "WRONG", "MOVE", "SETTLE", "APPLY"] as const;
+export const TOPIC_CHANGE_KINDS = ["ADD", "EDIT", "NO_LONGER_TRUE", "WRONG", "MOVE", "SETTLE", "APPLY", "SPLIT", "MERGE"] as const;
 export type TopicChangeKindName = (typeof TOPIC_CHANGE_KINDS)[number];
 
 /** What is true about a topic (M42-T1, docs/design.md §8.1), with its source and that source's date. */
@@ -348,3 +350,66 @@ export type TopicBackfillRequest = z.input<typeof TopicBackfillSchema>;
 
 export const ApplyTopicBackfillSchema = z.object({ picked: z.array(z.number().int().min(0)).max(1000) }).strict();
 export type ApplyTopicBackfillRequest = z.input<typeof ApplyTopicBackfillSchema>;
+
+/** What Storm suggests for topics (M44): a direction, a topic, a fact; nothing is active before the user accepts it. */
+export interface TopicSuggestionView {
+  topicSuggestionId: string;
+  topicId: string | null;
+  topicName: string | null;
+  kind: "DIRECTION" | "TOPIC" | "FACT";
+  /** DIRECTION: { kind, value, about }; TOPIC: { name, description, directions }; FACT: a proposal ({ title, quote, ... }). */
+  payload: Record<string, unknown>;
+  reason: string;
+  status: "OPEN" | "ACCEPTED" | "DISMISSED";
+  dateCreated: string;
+}
+
+/** Free mail providers: a domain direction there would take in everyone. */
+const FREE_MAIL = [
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "pm.me",
+  "gmx.com",
+  "gmx.de",
+  "gmx.net",
+  "web.de",
+  "yandex.com",
+  "yandex.ru",
+  "mail.ru",
+  "abv.bg",
+  "mail.bg",
+  "dir.bg",
+  "zoho.com",
+  "fastmail.com",
+  "hey.com",
+];
+
+/** Whether a domain is a free mail provider's (or one of its country domains, like yahoo.co.uk). */
+export function isFreeMailDomain(domain: string): boolean {
+  const d = domain.toLowerCase();
+  return FREE_MAIL.includes(d) || /^(yahoo|hotmail|outlook|live|gmx|yandex)\.[a-z.]{2,6}$/.test(d);
+}
+
+/** Split (M44-T4): what moves to the new topic, by id; at least one thing. */
+export const SplitTopicSchema = TopicSchema.extend({
+  facts: z.array(z.string().uuid()).max(1000).default([]),
+  directions: z.array(z.string().uuid()).max(200).default([]),
+  sources: z.array(z.string().uuid()).max(200).default([]),
+  links: z.array(z.string().uuid()).max(1000).default([]),
+}).strict();
+export type SplitTopicRequest = z.input<typeof SplitTopicSchema>;
+
+/** Merge (M44-T4): this topic into another. */
+export const MergeTopicSchema = z.object({ into: z.string().uuid() }).strict();
+export type MergeTopicRequest = z.input<typeof MergeTopicSchema>;

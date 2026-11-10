@@ -1,5 +1,7 @@
 import {
   ApplyTopicBackfillSchema,
+  MergeTopicSchema,
+  SplitTopicSchema,
   MoveTopicFactSchema,
   MoveTopicLinkSchema,
   TopicDirectionSchema,
@@ -14,6 +16,7 @@ import {
   type TopicFactView,
   type TopicLinkView,
   type TopicSourceView,
+  type TopicSuggestionView,
   type TopicUpkeepView,
   type TopicView,
 } from "@realentity/storm-shared";
@@ -25,6 +28,7 @@ import { TopicBackfillsService } from "./topic-backfills.service";
 import { TopicFactsService } from "./topic-facts.service";
 import { TopicLinksService } from "./topic-links.service";
 import { TopicSourcesService } from "./topic-sources.service";
+import { TopicSuggestionsService } from "./topic-suggestions.service";
 import { TopicUpkeepService } from "./topic-upkeep.service";
 import { TopicsService } from "./topics.service";
 
@@ -97,6 +101,25 @@ export class TopicsController {
     @Body(new ZodBodyPipe(TopicFactSchema)) body: z.output<typeof TopicFactSchema>,
   ): Promise<TopicFactView> {
     return this.facts.add(user.userId, topicId, body);
+  }
+
+  @Post(":topicId/split")
+  split(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicId", ParseUUIDPipe) topicId: string,
+    @Body(new ZodBodyPipe(SplitTopicSchema)) body: z.output<typeof SplitTopicSchema>,
+  ): Promise<{ topicId: string }> {
+    return this.facts.split(user.userId, topicId, body);
+  }
+
+  @Post(":topicId/merge")
+  @HttpCode(200)
+  merge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("topicId", ParseUUIDPipe) topicId: string,
+    @Body(new ZodBodyPipe(MergeTopicSchema)) body: z.output<typeof MergeTopicSchema>,
+  ): Promise<{ disputed: number }> {
+    return this.facts.merge(user.userId, topicId, body.into);
   }
 
   @Get(":topicId/changes")
@@ -292,5 +315,28 @@ export class TopicBackfillsController {
     @Body(new ZodBodyPipe(ApplyTopicBackfillSchema)) body: z.output<typeof ApplyTopicBackfillSchema>,
   ): Promise<TopicBackfillView> {
     return this.backfills.apply(user.userId, topicBackfillId, body.picked);
+  }
+}
+
+/** What Storm suggests for topics (M44): accepted or dismissed by the user. */
+@Controller("topic-suggestions")
+export class TopicSuggestionsController {
+  constructor(private readonly suggestions: TopicSuggestionsService) {}
+
+  @Get()
+  open(@CurrentUser() user: AuthenticatedUser): Promise<TopicSuggestionView[]> {
+    return this.suggestions.open(user.userId);
+  }
+
+  @Post(":topicSuggestionId/accept")
+  @HttpCode(200)
+  accept(@CurrentUser() user: AuthenticatedUser, @Param("topicSuggestionId", ParseUUIDPipe) id: string): Promise<TopicSuggestionView> {
+    return this.suggestions.accept(user.userId, id);
+  }
+
+  @Post(":topicSuggestionId/dismiss")
+  @HttpCode(200)
+  dismiss(@CurrentUser() user: AuthenticatedUser, @Param("topicSuggestionId", ParseUUIDPipe) id: string): Promise<TopicSuggestionView> {
+    return this.suggestions.dismiss(user.userId, id);
   }
 }

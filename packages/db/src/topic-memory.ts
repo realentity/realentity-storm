@@ -7,6 +7,7 @@ import {
   type TopicFactStatus,
   type TopicLinkStatus,
   type TopicLinkVia,
+  type TopicStatus,
 } from "./generated/prisma/client";
 
 /**
@@ -46,6 +47,14 @@ interface FactEntry {
   after: FactSnapshot | null;
 }
 
+/** A row that a split or merge moved to another topic (or, `topic`, a topic's status it changed). */
+interface MoveEntry {
+  table: "direction" | "source" | "link" | "topic";
+  id: string;
+  from: string;
+  to: string;
+}
+
 interface LinkEntry {
   topicLinkId: string;
   before: { status: TopicLinkStatus; via: TopicLinkVia; evidence: string } | null;
@@ -57,6 +66,7 @@ type Tx = Prisma.TransactionClient;
 class Recorder {
   readonly facts: FactEntry[] = [];
   readonly links: LinkEntry[] = [];
+  readonly moves: MoveEntry[] = [];
 
   constructor(readonly tx: Tx) {}
 
@@ -74,6 +84,17 @@ class Recorder {
 
   link(topicLinkId: string, before: LinkEntry["before"]): void {
     this.links.push({ topicLinkId, before });
+  }
+
+  /** Moves a direction, a source (with its passages) or an email's link to another topic. */
+  async move(table: "direction" | "source" | "link", id: string, from: string, to: string): Promise<void> {
+    await moveRow(this.tx, table, id, to);
+    this.moves.push({ table, id, from, to });
+  }
+
+  async topicStatus(topicId: string, from: TopicStatus, to: TopicStatus): Promise<void> {
+    await this.tx.topic.update({ where: { topicId }, data: { status: to } });
+    this.moves.push({ table: "topic", id: topicId, from, to });
   }
 }
 
@@ -105,6 +126,7 @@ async function recordChange(tx: Tx, meta: ChangeMeta, recorder: Recorder): Promi
       summary: meta.summary.slice(0, 500),
       facts: recorder.facts as unknown as Prisma.InputJsonValue,
       links: recorder.links as unknown as Prisma.InputJsonValue,
+      moves: recorder.moves as unknown as Prisma.InputJsonValue,
       runId: meta.runId ?? null,
     },
   });
@@ -305,6 +327,10 @@ export async function undoChange(prisma: PrismaClient, userId: string, topicChan
     if (found.undoneAt) throw new TopicMemoryError("conflict", "It is undone already");
     const facts = found.facts as unknown as FactEntry[];
     const links = found.links as unknown as LinkEntry[];
+    const moves = found.moves as unknown as MoveEntry[];
+    for (const move of moves) {
+      if (!(await isAt(tx, move))) throw new TopicMemoryError("conflict", "Something it moved has changed since: undo that first");
+    }
 
     // Each fact's state now is what the change's last touch of it left.
     const last = new Map<string, FactEntry>();
@@ -349,7 +375,128 @@ export async function undoChange(prisma: PrismaClient, userId: string, topicChan
       if (link.before) await tx.topicLink.update({ where: { topicLinkId: link.topicLinkId }, data: link.before });
       else await tx.topicLink.delete({ where: { topicLinkId: link.topicLinkId } });
     }
+    for (const move of [...moves].reverse()) {
+      if (move.table === "topic") await tx.topic.update({ where: { topicId: move.id }, data: { status: move.from as TopicStatus } });
+      else await moveRow(tx, move.table, move.id, move.from);
+    }
     await tx.topicChange.update({ where: { topicChangeId }, data: { undoneAt: new Date() } });
+    // A split undone: the topic it made goes, if nothing else is in it now.
+    if (found.kind === "SPLIT" && found.otherTopicId) {
+      const made = await tx.topic.findUnique({
+        where: { topicId: found.otherTopicId },
+        include: { _count: { select: { facts: true, links: true, sources: true, directions: true } } },
+      });
+      if (made && Object.values(made._count).every((n) => n === 0)) await tx.topic.delete({ where: { topicId: made.topicId } });
+    }
+  });
+}
+
+async function moveRow(tx: Tx, table: "direction" | "source" | "link", id: string, topicId: string): Promise<void> {
+  if (table === "direction") await tx.topicDirection.update({ where: { topicDirectionId: id }, data: { topicId } });
+  else if (table === "link") await tx.topicLink.update({ where: { topicLinkId: id }, data: { topicId } });
+  else {
+    await tx.topicSource.update({ where: { topicSourceId: id }, data: { topicId } });
+    await tx.topicPassage.updateMany({ where: { topicSourceId: id }, data: { topicId } });
+  }
+}
+
+/** Whether a moved row is still where the move left it. */
+async function isAt(tx: Tx, move: MoveEntry): Promise<boolean> {
+  switch (move.table) {
+    case "direction":
+      return (await tx.topicDirection.count({ where: { topicDirectionId: move.id, topicId: move.to } })) === 1;
+    case "source":
+      return (await tx.topicSource.count({ where: { topicSourceId: move.id, topicId: move.to } })) === 1;
+    case "link":
+      return (await tx.topicLink.count({ where: { topicLinkId: move.id, topicId: move.to } })) === 1;
+    case "topic":
+      return (await tx.topic.count({ where: { topicId: move.id, status: move.to as TopicStatus } })) === 1;
+  }
+}
+
+/**
+ * Split (M44-T4, docs/design.md §8.1): the chosen facts, directions, sources and emails of a topic move to a new one.
+ * One change: undone, they go back and the new topic goes if nothing else is in it.
+ */
+export async function splitTopic(
+  prisma: PrismaClient,
+  userId: string,
+  topicId: string,
+  request: { name: string; description: string; facts: string[]; directions: string[]; sources: string[]; links: string[] },
+): Promise<{ topicId: string }> {
+  const topic = await prisma.topic.findFirst({ where: { topicId, userId } });
+  if (!topic) throw new TopicMemoryError("not_found", "No such topic");
+  if (await prisma.topic.findUnique({ where: { userId_name: { userId, name: request.name } } })) {
+    throw new TopicMemoryError("conflict", `There is a topic "${request.name}" already`);
+  }
+  const moving = request.facts.length + request.directions.length + request.sources.length + request.links.length;
+  if (moving === 0) throw new TopicMemoryError("invalid", "Choose what moves to the new topic");
+  const meta: ChangeMeta = { userId, topicId, kind: "SPLIT", summary: `Split into ${request.name}: ${moving} moved` };
+  return change(prisma, meta, async (r) => {
+    const made = await r.tx.topic.create({ data: { userId, name: request.name, description: request.description } });
+    meta.otherTopicId = made.topicId;
+    const facts = await r.tx.topicFact.findMany({ where: { topicFactId: { in: request.facts }, topicId, status: { not: "WRONG" } } });
+    for (const fact of facts) await r.update(fact, { topicId: made.topicId });
+    for (const d of await r.tx.topicDirection.findMany({ where: { topicDirectionId: { in: request.directions }, topicId } })) {
+      await r.move("direction", d.topicDirectionId, topicId, made.topicId);
+    }
+    for (const s of await r.tx.topicSource.findMany({ where: { topicSourceId: { in: request.sources }, topicId } })) {
+      await r.move("source", s.topicSourceId, topicId, made.topicId);
+    }
+    for (const l of await r.tx.topicLink.findMany({ where: { topicLinkId: { in: request.links }, topicId } })) {
+      await r.move("link", l.topicLinkId, topicId, made.topicId);
+    }
+    return { topicId: made.topicId };
+  });
+}
+
+/**
+ * Merge (M44-T4): everything of `fromId` moves into `intoId`. Facts about the same thing that say something else are
+ * put in dispute, for the user to settle; ones that say the same are kept as history. A direction, source or email the
+ * other topic has already stays where it was; the merged topic is archived. One change: undone, all of it goes back.
+ */
+export async function mergeTopics(prisma: PrismaClient, userId: string, fromId: string, intoId: string): Promise<{ disputed: number }> {
+  if (fromId === intoId) throw new TopicMemoryError("invalid", "A topic can't be merged into itself");
+  const [from, into] = await Promise.all([
+    prisma.topic.findFirst({ where: { topicId: fromId, userId }, include: { directions: true, sources: true } }),
+    prisma.topic.findFirst({ where: { topicId: intoId, userId }, include: { directions: true, sources: true } }),
+  ]);
+  if (!from || !into) throw new TopicMemoryError("not_found", "No such topic");
+  const meta: ChangeMeta = { userId, topicId: intoId, otherTopicId: fromId, kind: "MERGE", summary: "" };
+  return change(prisma, meta, async (r) => {
+    const live = { in: ["CURRENT", "DISPUTED"] as TopicFactStatus[] };
+    const theirs = new Map((await r.tx.topicFact.findMany({ where: { topicId: intoId, status: live } })).map((f) => [f.topicFactId, f]));
+    let disputed = 0;
+    for (const fact of await r.tx.topicFact.findMany({ where: { topicId: fromId, status: { not: "WRONG" } } })) {
+      const other = fact.status === "SUPERSEDED" ? undefined : [...theirs.values()].find((t) => sameAbout(t.about, fact.about));
+      if (!other) {
+        await r.update(fact, { topicId: intoId });
+      } else if (other.statement.trim() === fact.statement.trim()) {
+        await r.update(fact, { topicId: intoId, status: "SUPERSEDED", supersededById: other.topicFactId });
+      } else {
+        await r.update(fact, { topicId: intoId, status: "DISPUTED" });
+        if (other.status !== "DISPUTED") theirs.set(other.topicFactId, await r.update(other, { status: "DISPUTED" }));
+        disputed++;
+      }
+    }
+    for (const d of from.directions) {
+      const twin = into.directions.some((t) => t.kind === d.kind && t.value === d.value && (t.about ?? "") === (d.about ?? ""));
+      if (!twin) await r.move("direction", d.topicDirectionId, fromId, intoId);
+    }
+    for (const s of from.sources) {
+      if (!into.sources.some((t) => t.kind === s.kind && t.location === s.location && t.path === s.path)) {
+        await r.move("source", s.topicSourceId, fromId, intoId);
+      }
+    }
+    const theirEmails = new Set(
+      (await r.tx.topicLink.findMany({ where: { topicId: intoId }, select: { messageId: true } })).map((l) => l.messageId),
+    );
+    for (const l of await r.tx.topicLink.findMany({ where: { topicId: fromId } })) {
+      if (!theirEmails.has(l.messageId)) await r.move("link", l.topicLinkId, fromId, intoId);
+    }
+    await r.topicStatus(fromId, from.status, "ARCHIVED");
+    meta.summary = `Merged ${from.name} into ${into.name}${disputed ? `: ${disputed} fact${disputed === 1 ? "" : "s"} in dispute` : ""}`;
+    return { disputed };
   });
 }
 

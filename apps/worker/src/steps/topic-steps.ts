@@ -1,4 +1,4 @@
-import { type PrismaClient, type TopicLinkStatus, type TopicLinkVia } from "@realentity/storm-db";
+import { addTopicCosts, share, type PrismaClient, type TopicLinkStatus, type TopicLinkVia } from "@realentity/storm-db";
 import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { matchDirections } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
@@ -7,6 +7,7 @@ import { type StepLearning } from "../learning/learning";
 import { type StepContext } from "../runner/step-executor";
 import { emailBlock } from "./email-block";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
+import { costed } from "./topic-costs";
 
 /** Per email in the prompt: its opening says what it is about. */
 const MATCH_TEXT = 3_000;
@@ -37,11 +38,7 @@ export class TopicMatchStep extends LlmStep {
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const {
-      messages: triaged,
-      more = [],
-      topics: only,
-    } = input as { messages: EmailMessage[]; more?: EmailMessage[]; topics?: string[] };
+    const { messages: triaged, more = [], topics: only } = input as { messages: EmailMessage[]; more?: EmailMessage[]; topics?: string[] };
     // The user's own sent emails come untriaged; one read in both lists counts once.
     const messages = [...new Map([...triaged, ...more].map((m) => [m.messageId || `${m.uid}:${m.date}`, m])).values()];
     const { userId } = context;
@@ -67,6 +64,9 @@ export class TopicMatchStep extends LlmStep {
       }),
     ]);
 
+    // What its check costs, shared among the topics it offered (M44-T5).
+    const costs = new Map<string, number>();
+    const counted = costed(context, (cost) => share(costs, topicIds, cost));
     const found = new Map<string, Map<string, Found>>();
     const rejected = new Set(stored.filter((l) => l.status === "REJECTED").map((l) => `${l.messageId}\n${l.topicId}`));
     const asks: { message: EmailMessage; hints: string[]; threadTopics: string[] }[] = [];
@@ -112,7 +112,7 @@ export class TopicMatchStep extends LlmStep {
       });
       const answered = await this.perItem(
         asks.map(({ message }, index) => ({ index, messageId: message.messageId })),
-        (chunk) => this.call(context, system(topics), `${decisions}${chunk}`, schema, true),
+        (chunk) => this.call(counted, system(topics), `${decisions}${chunk}`, schema, true),
         (index) => {
           const { message, hints, threadTopics } = asks[index];
           return [
@@ -134,6 +134,7 @@ export class TopicMatchStep extends LlmStep {
     }
 
     if (!context.dryRun) {
+      await addTopicCosts(this.prisma, userId, this.type, costs);
       for (const message of emails) {
         for (const [topicId, link] of found.get(message.messageId) ?? []) {
           if (link.stored) continue;

@@ -1,4 +1,4 @@
-import { type PrismaClient, type TopicSource } from "@realentity/storm-db";
+import { addTopicCosts, type PrismaClient, type TopicSource } from "@realentity/storm-db";
 import { type Embeddings } from "@realentity/storm-llm";
 import { isTextFile, pathMatches } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
@@ -188,6 +188,7 @@ export class TopicIndexStep implements StepExecutor {
             new Date(change.commitDate),
             text,
             context,
+            this.type,
           );
       } catch (error) {
         failed.add(change.sourceId);
@@ -230,8 +231,10 @@ export async function indexPassages(
   refDate: Date,
   text: string,
   context: StepContext,
+  costSource: string,
 ): Promise<number> {
   const pieces = passagesOf(text);
+  let spent = 0;
   const vectors: (number[] | null)[] = pieces.map(() => null);
   if (embeddings && pieces.length) {
     for (let start = 0; start < pieces.length; start += EMBED_BATCH) {
@@ -239,6 +242,7 @@ export async function indexPassages(
       try {
         const { vectors: made, usage } = await embeddings.embed(batch.map((p) => `${path}\n${p.heading}\n\n${p.text}`));
         context.recordUsage(usage);
+        spent += usage.costUsd;
         made.forEach((v, i) => (vectors[start + i] = v));
       } catch {
         // Without vectors the passages are still found by their words.
@@ -256,6 +260,8 @@ export async function indexPassages(
                 ${vectors[ordinal] ? `[${vectors[ordinal].join(",")}]` : null}::vector, ${vectors[ordinal] ? model : null})`,
     ),
   ]);
+  // The embeddings are this topic's (M44-T5).
+  await addTopicCosts(prisma, source.userId, costSource, new Map([[source.topicId, spent]]));
   return pieces.length;
 }
 
@@ -389,6 +395,7 @@ export class TopicAttachmentsStep implements StepExecutor {
           source.dateCreated,
           text.slice(0, ATTACHMENT_TEXT),
           context,
+          this.type,
         );
         // Read: an attachment never changes. One that couldn't be read isn't tried again until a rebuild.
         await this.prisma.topicSource.update({

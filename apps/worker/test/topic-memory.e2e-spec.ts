@@ -461,4 +461,50 @@ steps:
       sourceLabel: "acme/orion docs/adr/0012-database.md @ b2c3d4e",
     });
   });
+  // M44-T5: what keeping a topic up to date cost, shared out among the topics
+  it("the screen's cost is shared over what it read, a writing call's over its email's topics; a dry run records none", async () => {
+    const billing = (await db.client.topic.create({ data: { userId, name: "Billing" } })).topicId;
+    const both = email({ subject: "Invoice for the launch", text: "The launch invoice is 2 000 EUR." });
+    const only = email({ subject: "Kickoff", text: "Hi." });
+    await link(both);
+    await link(both, "LINKED", billing);
+    await link(only);
+    const costly: LlmClient = {
+      structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<{ output: z.infer<S>; usage: LlmUsage }> {
+        const screen = request.system.startsWith("You screen");
+        const output = screen
+          ? {
+              results: request.prompt
+                .split(/(?=<email index=")/)
+                .filter((b) => b.startsWith("<email"))
+                .map((b) => ({ index: Number(/index="(\d+)"/.exec(b)![1]), worth: b.includes("invoice") })),
+            }
+          : {
+              proposals: [
+                {
+                  topic: "Orion",
+                  kind: "new",
+                  about: "Launch invoice",
+                  statement: "2 000 EUR",
+                  replaces: null,
+                  quote: "The launch invoice is 2 000 EUR.",
+                },
+              ],
+            };
+        return Promise.resolve({ output: request.schema.parse(output), usage: { ...emptyUsage(), costUsd: screen ? 0.04 : 0.1 } });
+      },
+    };
+    await extract(costly, [both, only]);
+    const costs = await db.client.topicCost.findMany({ select: { topicId: true, source: true, costUsd: true } });
+    const of = (topicId: string) => costs.filter((c) => c.topicId === topicId).reduce((sum, c) => sum + c.costUsd, 0);
+    // The screen ($0.04) over two emails: Orion's half of the first and all of the second, Billing's half of the first;
+    // the writing call ($0.10) about the first email: half each.
+    expect(of(orion)).toBeCloseTo(0.01 + 0.02 + 0.05, 6);
+    expect(of(billing)).toBeCloseTo(0.01 + 0.05, 6);
+    expect(new Set(costs.map((c) => c.source))).toEqual(new Set(["topic.extract"]));
+
+    await db.client.topicCost.deleteMany();
+    await new TopicExtractStep(costly, router, undefined, db.client).execute({ messages: [both] }, context(true));
+    expect(await db.client.topicCost.count()).toBe(0);
+  });
 });

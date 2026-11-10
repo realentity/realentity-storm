@@ -2,9 +2,11 @@ import {
   addFact,
   editFact,
   markWrong,
+  mergeTopics,
   moveFact,
   noLongerTrue,
   settleFact,
+  splitTopic,
   TopicMemoryError,
   undoChange,
   type TopicChange,
@@ -68,6 +70,20 @@ export class TopicFactsService {
 
   move(userId: string, topicFactId: string, topicId: string): Promise<TopicFactView> {
     return mapped(async () => factView(await moveFact(this.prisma.client, userId, topicFactId, topicId)));
+  }
+
+  /** Split (M44-T4): the chosen facts, directions, sources and emails move to a new topic. */
+  split(
+    userId: string,
+    topicId: string,
+    request: { name: string; description: string; facts: string[]; directions: string[]; sources: string[]; links: string[] },
+  ): Promise<{ topicId: string }> {
+    return mapped(() => splitTopic(this.prisma.client, userId, topicId, request));
+  }
+
+  /** Merge (M44-T4): this topic into another; facts they disagree on put in dispute. */
+  merge(userId: string, topicId: string, into: string): Promise<{ disputed: number }> {
+    return mapped(() => mergeTopics(this.prisma.client, userId, topicId, into));
   }
 
   undo(userId: string, topicChangeId: string): Promise<void> {

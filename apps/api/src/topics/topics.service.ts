@@ -1,4 +1,4 @@
-import { type Topic, type TopicDirection } from "@realentity/storm-db";
+import { topicCostsSince, type Topic, type TopicDirection } from "@realentity/storm-db";
 import { type TopicDirectionView, type TopicView } from "@realentity/storm-shared";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
@@ -19,11 +19,13 @@ export class TopicsService {
       include: { directions: { orderBy: { dateCreated: "asc" } } },
       orderBy: [{ status: "asc" }, { name: "asc" }],
     });
-    return topics.map(topicView);
+    const costs = await topicCostsSince(this.prisma.client, userId, new Date(Date.now() - COST_DAYS * DAY_MS));
+    return topics.map((t) => topicView(t, costs.find((c) => c.topicId === t.topicId)?.costUsd ?? 0));
   }
 
   async get(userId: string, topicId: string): Promise<TopicView> {
-    return topicView(await this.own(userId, topicId));
+    const costs = await topicCostsSince(this.prisma.client, userId, new Date(Date.now() - COST_DAYS * DAY_MS));
+    return topicView(await this.own(userId, topicId), costs.find((c) => c.topicId === topicId)?.costUsd ?? 0);
   }
 
   async create(userId: string, request: { name: string; description: string }): Promise<TopicView> {
@@ -88,13 +90,18 @@ function sameDirection(a: Direction, b: Direction): boolean {
   );
 }
 
-export function topicView(topic: Topic & { directions: TopicDirection[] }): TopicView {
+/** A topic's cost on its card: the last 30 days. */
+const COST_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function topicView(topic: Topic & { directions: TopicDirection[] }, costUsd30 = 0): TopicView {
   return {
     topicId: topic.topicId,
     name: topic.name,
     description: topic.description,
     status: topic.status,
     directions: topic.directions.map(directionView),
+    costUsd30: Math.round(costUsd30 * 10_000) / 10_000,
     dateCreated: topic.dateCreated.toISOString(),
     dateUpdated: topic.dateUpdated.toISOString(),
   };

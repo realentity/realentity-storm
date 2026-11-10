@@ -1,4 +1,4 @@
-import { applyProposal, sameAbout, type PrismaClient, type TopicFact } from "@realentity/storm-db";
+import { addTopicCosts, applyProposal, sameAbout, share, type PrismaClient, type TopicFact } from "@realentity/storm-db";
 import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { canonicalJson, looksSecret } from "@realentity/storm-shared";
 import { type EmailMessage, type TopicProposal } from "@realentity/storm-steps";
@@ -8,6 +8,7 @@ import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { emailBlock } from "./email-block";
 import { withoutQuoted } from "./email-thread";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
+import { costed } from "./topic-costs";
 import { type SourceChange } from "./topic-source-steps";
 
 /** Per email: its own text, without the quoted thread under it. */
@@ -95,21 +96,31 @@ export class TopicExtractStep extends LlmStep {
       .sort((a, b) => a.source.date.localeCompare(b.source.date));
     if (read.length === 0) return output([]);
 
+    // What it costs, shared among the topics it was for (M44-T5).
+    const costs = new Map<string, number>();
+    let screenCost = 0;
+    const screening = costed(context, (cost) => (screenCost += cost));
     const screened = await this.perItem(
       read.map((e, index) => ({ index, id: e.source.messageId })),
-      (chunk) => this.callAs("topic.extract.screen", context, SCREEN, chunk, SCREEN_SCHEMA, true),
+      (chunk) => this.callAs("topic.extract.screen", screening, SCREEN, chunk, SCREEN_SCHEMA, true),
       (index) => screenBlock(read[index], index),
     );
+    for (const piece of read) share(costs, piece.topics.map((t) => t.topicId), screenCost / read.length);
     const worth = screened.filter((s) => s.worth).map((s) => read[s.index]);
-    if (worth.length === 0) return output([]);
+    if (worth.length === 0) {
+      if (!context.dryRun) await addTopicCosts(this.prisma, userId, this.type, costs);
+      return output([]);
+    }
 
     const cards = await topicCards(this.prisma, userId, [...new Map(worth.flatMap((w) => w.topics).map((t) => [t.topicId, t])).values()]);
     const proposals: TopicProposal[] = [];
     for (const evidence of worth) {
       const request = extractRequest(evidence, cards);
-      const answer = await this.call(context, request.system, request.prompt, request.schema, true);
+      const writing = costed(context, (cost) => share(costs, evidence.topics.map((t) => t.topicId), cost));
+      const answer = await this.call(writing, request.system, request.prompt, request.schema, true);
       addProposals(proposals, request.read(answer));
     }
+    if (!context.dryRun) await addTopicCosts(this.prisma, userId, this.type, costs);
     return output(proposals);
   }
 

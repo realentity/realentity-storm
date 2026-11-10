@@ -4,11 +4,13 @@ import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
 import { TopicFacts } from "../components/TopicFacts";
 import { TopicHistory } from "../components/TopicHistory";
+import { MergeInto, SplitForm } from "../components/TopicSplitMerge";
 import { TopicSources } from "../components/TopicSources";
+import { TopicSuggestions } from "../components/TopicSuggestions";
 import { TopicUpkeepCard } from "../components/TopicUpkeepCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
-import { formatDateTime } from "../lib/format";
+import { formatDateTime, formatUsd } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /** How each kind of direction reads, and what to type for it. */
@@ -50,6 +52,7 @@ export function TopicsPage() {
       </p>
       <ErrorAlert error={topics.error} />
       <TopicUpkeepCard />
+      <TopicSuggestions onAccepted={topics.reload} />
       {topics.data && topics.data.length > 0 && <Waiting topics={topics.data} onDecided={() => setDecided((n) => n + 1)} />}
       {adding && (
         <TopicForm
@@ -74,6 +77,7 @@ export function TopicsPage() {
 function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; topics: TopicView[]; decided: number; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [kept, setKept] = useState(0);
+  const [splitting, setSplitting] = useState(false);
   const action = useAction();
   const archived = topic.status === "ARCHIVED";
 
@@ -96,6 +100,16 @@ function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; top
     if (saved) onChange();
   };
 
+  if (splitting)
+    return (
+      <SplitForm
+        topic={topic}
+        onDone={(split) => {
+          setSplitting(false);
+          if (split) onChange();
+        }}
+      />
+    );
   if (editing)
     return (
       <TopicForm
@@ -112,8 +126,22 @@ function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; top
         <h3 className="card-title">
           {topic.name}
           {archived && <span className="badge bg-secondary-lt ms-2">archived</span>}
+          {topic.costUsd30 > 0 && (
+            <span className="badge bg-azure-lt ms-2" title="Its upkeep and history reads, the last 30 days" data-testid="topic-cost">
+              {formatUsd(topic.costUsd30)} in 30 days
+            </span>
+          )}
         </h3>
         <div className="card-actions d-flex gap-1">
+          <MergeInto topic={topic} topics={topics} onMerged={onChange} />
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost-secondary"
+            title="Split: part of it becomes a new topic"
+            onClick={() => setSplitting(true)}
+          >
+            Split
+          </button>
           <button type="button" className="btn btn-sm btn-ghost-secondary" aria-label="Edit" onClick={() => setEditing(true)}>
             <IconPencil size={16} />
           </button>

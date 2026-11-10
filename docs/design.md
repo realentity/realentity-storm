@@ -452,7 +452,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 There's no fine-tuning. Everything learned is visible and editable.
 
-### 8.1 Topics: what Storm knows about a subject (M41–M43; Drive and M44 planned)
+### 8.1 Topics: what Storm knows about a subject (M41–M44; Drive, suggested topics and facts from edits planned)
 
 Examples and rules teach *how* you write, never *what is true*. A reply about a project needs what is true: who is who,
 what was decided, what changed since. Without it a draft is polite and empty, because it may not invent facts. A
@@ -538,7 +538,10 @@ change builds on them (that one is undone first).
 
 A topic is **split** by naming the new one and saying what goes there: Storm proposes which facts, links, sources and
 directions move, you adjust, then apply. Two topics are **merged** into one: facts on which they disagree come up as
-conflicts. Every change to a topic is recorded and can be undone.
+conflicts. Every change to a topic is recorded and can be undone. (M44: Split on the topic's card, where you tick what
+goes; Merge into another topic, where a fact the other says the same about is kept as history, one that says something
+else puts both in dispute, and the merged topic is archived. Each is one change on both topics' history; Undo puts
+everything back, and a split's new topic goes if nothing else is in it.)
 
 **Using a topic.** Steps that write for you (`email.draftReply`, `email.draftFollowUp`, `llm.generate`, `llm.summarize`)
 take `topic: auto | none | <a topic>`; `auto` uses the email's links that aren't waiting for you (a follow-up, the
@@ -555,7 +558,10 @@ passages for M43, `llm.generate` and `llm.summarize` for later.)
   latest per topic, go into the LLM check (by sender, subject and topic: Storm keeps no email text).
 - The nightly reflection also suggests **directions** ("You moved 6 emails from `ivan@client.example` about invoices to
   Billing: add the direction?") and **topics** (a group of unlinked triaged emails over several days and people: "a new
-  subject: API migration?").
+  subject: API migration?"). (M44: directions are counted from your decisions, with no LLM: a person whose emails you
+  confirmed or moved into a topic three times, or a domain's people four times, none rejected and none for another
+  topic, not covered already; never a free mail domain. They wait under Suggested on the Topics page; a No isn't asked
+  again.)
 - It sorts your edits of drafts: a change of style becomes a rule suggestion, as before; a new or corrected statement
   becomes a fact proposal for the email's topic.
 
@@ -580,7 +586,9 @@ history, while fact proposals wait at their run's gate in the Inbox); an email's
   the writing model proposes, two batches at half the price, answered within a day rather than waiting for the night;
   the proposals wait on the card, oldest first, and only the ones you keep are written. Its cost counts toward the
   month's budget and shows on the Costs page as "topic backfill".)
-- Topic pipelines are non-essential, so the monthly budget pauses them; the topic's page shows what it cost.
+- Topic pipelines are non-essential, so the monthly budget pauses them; the topic's page shows what it cost. (M44: the
+  topic steps share each call's cost among the topics it was for, the screen's over the emails it read; a topic's card
+  shows its last 30 days with its backfills, and the weekly review lists the topics' costs.)
 
 **Built from what exists.** A topic's upkeep is a pipeline: a source's change or a new linked email starts it,
 `topic.extract` proposes, a gate takes your decisions, `topic.apply` writes them; runs, gates, decisions and costs come
