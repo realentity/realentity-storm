@@ -1,4 +1,4 @@
-import { type TopicChangeView, type TopicFactView, type TopicView } from "@realentity/storm-shared";
+import { factsThatFit, type TopicChangeView, type TopicFactView, type TopicView } from "@realentity/storm-shared";
 import { IconArrowBackUp, IconCheck, IconHistory, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../lib/endpoints";
@@ -58,8 +58,22 @@ export function TopicFacts({ topic, topics }: { topic: TopicView; topics: TopicV
           ))}
         </div>
       )}
+      <RoomNote topic={topic} facts={now} />
       {history && <History before={before} changes={changes.data ?? []} onChange={reload} />}
     </div>
+  );
+}
+
+/** When not all current facts fit in a draft (M44-T7): which ones it takes, and what the user can do. */
+function RoomNote({ topic, facts }: { topic: TopicView; facts: TopicFactView[] }) {
+  const current = facts.filter((f) => f.status === "CURRENT");
+  const fit = factsThatFit(topic.description, current);
+  if (fit >= current.length) return null;
+  return (
+    <p className="text-secondary small" data-testid="facts-room">
+      A draft has room for about {fit} of these {current.length} facts. It takes the ones you wrote or confirmed first, then those closest
+      to the email it answers. To keep more of them in every draft, say which are no longer true, or split the topic.
+    </p>
   );
 }
 

@@ -154,6 +154,29 @@ test("a topic's facts: written, no longer true with what is true now, wrong, and
   await expect(facts.getByTestId("fact-Database")).toContainText("Database: MySQL");
 });
 
+// M44-T7
+test("a topic with more facts than a draft has room for says so, and which ones a draft takes", async ({ page }) => {
+  const name = unique("Orion");
+  const topicId = await newTopic(page, name);
+  const add = async (i: number) =>
+    expect(
+      (
+        await page.request.post(`/api/topics/${topicId}/facts`, {
+          data: { about: `Note ${i}`, statement: "Routine detail of the weekly meeting. ".repeat(23).trim() },
+        })
+      ).status(),
+    ).toBe(201);
+  await add(0);
+  await page.goto("/topics");
+  const facts = page.getByTestId(`topic-${name}`).getByTestId("topic-facts");
+  await expect(facts.getByTestId("fact-Note 0")).toBeVisible();
+  await expect(facts.getByTestId("facts-room")).toHaveCount(0);
+  for (let i = 1; i < 8; i++) await add(i);
+  await page.reload();
+  await expect(facts.getByTestId("facts-room")).toContainText("A draft has room for about 6 of these 8 facts");
+  await expect(facts.getByTestId("facts-room")).toContainText("the ones you wrote or confirmed first");
+});
+
 // M42: topic upkeep offered on the Topics page, installed off, with what is left; deleted, offered again
 test("Keep topics up to date: set up from the Topics page, a checklist until it runs, offered again once deleted", async ({ page }) => {
   await page.goto("/topics");

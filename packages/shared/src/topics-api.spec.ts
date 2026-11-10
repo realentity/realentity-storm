@@ -1,4 +1,14 @@
-import { isTextFile, looksSecret, pathMatches, TopicFactSchema, TopicSourceSchema } from "./topics-api";
+import {
+  factsThatFit,
+  isTextFile,
+  looksSecret,
+  matchWords,
+  MEMORY_TEXT,
+  memoryLine,
+  pathMatches,
+  TopicFactSchema,
+  TopicSourceSchema,
+} from "./topics-api";
 
 // M42-S1 (part): a topic's fact never holds a secret
 describe("looksSecret", () => {
@@ -65,5 +75,36 @@ describe("pathMatches", () => {
     expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme/orion", path: "../secrets/**" }).success).toBe(false);
     expect(isTextFile("docs/adr/0012.md")).toBe(true);
     expect(isTextFile("docs/diagram.png")).toBe(false);
+  });
+});
+
+// M44-T7
+describe("a draft's room for facts", () => {
+  const fact = (about: string, statement: string) => ({
+    about,
+    statement,
+    source: "EMAIL",
+    sourceLabel: "maria@client.example: Plan",
+    sourceDate: "2026-11-12T09:00:00.000Z",
+  });
+
+  it("a fact's line: who said it and when, the user's own as the user's", () => {
+    expect(memoryLine(fact("Launch date", "March"))).toBe("Launch date: March (maria@client.example: Plan, 2026-11-12)");
+    expect(memoryLine({ ...fact("Launch date", "March"), source: "USER", sourceDate: new Date("2026-11-12T09:00:00Z") })).toBe(
+      "Launch date: March (the user, 2026-11-12)",
+    );
+  });
+
+  it("all fit, or as many as the room holds after the description", () => {
+    expect(factsThatFit("The portal", [fact("Launch date", "March")])).toBe(1);
+    const long = Array.from({ length: 20 }, (_, i) => fact(`Item ${i}`, "x".repeat(500)));
+    const fit = factsThatFit("", long);
+    expect(fit).toBeGreaterThan(5);
+    expect(fit).toBeLessThan(20);
+    expect(factsThatFit("d".repeat(MEMORY_TEXT), long)).toBeLessThan(fit);
+  });
+
+  it("words: four letters or digits or more, any language, lowercase", () => {
+    expect([...matchWords("The API launch: März 2027, in Sofia — Пловдив too")]).toEqual(["launch", "märz", "2027", "sofia", "пловдив"]);
   });
 });

@@ -137,6 +137,55 @@ describe("drafting with a topic", () => {
     expect(draft.drewOn).toEqual(["Orion: Launch date: March (maria@client.example: Plan)"]);
   });
 
+  // M44-T7
+  it("facts that don't all fit: the pinned ones first, then those closest to the email; the description stays", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      userId,
+      topicId: orion,
+      about: `Note ${i}`,
+      statement: `${"Routine detail of the weekly status meeting. ".repeat(5)}${i}`,
+      source: "EMAIL" as const,
+      sourceLabel: "maria@client.example: Status",
+      sourceDate: new Date(Date.UTC(2026, 10, 13, i)),
+    }));
+    await db.client.topicFact.createMany({
+      data: [
+        ...many,
+        // The oldest, but about what the email asks.
+        {
+          ...many[0],
+          about: "Invoice terms",
+          statement: "Invoices are paid within 45 days.",
+          sourceDate: new Date("2026-01-05T09:00:00Z"),
+        },
+        // Old and unrelated, but the user's own.
+        {
+          ...many[0],
+          about: "Tone",
+          statement: "Maria prefers short emails.",
+          source: "USER" as const,
+          pinned: true,
+          sourceDate: new Date("2026-01-01T09:00:00Z"),
+        },
+      ],
+    });
+    const question = email({ subject: "Invoice", text: "Within how many days are invoices paid?" });
+    await link(question);
+    const llm = new DraftLlm();
+    await reply(llm, question);
+    const memory = llm.requests[0]?.cachedPrompt ?? "";
+    expect(memory).toContain("The customer portal rebuild");
+    expect(memory).toContain("Tone: Maria prefers short emails. (the user, 2026-01-01)");
+    expect(memory).toContain("Invoice terms: Invoices are paid within 45 days.");
+    expect(memory.length).toBeLessThan(6_200);
+    // The newest of the rest fill the room; the oldest of them don't fit.
+    expect(memory).toContain("Note 29:");
+    expect(memory).not.toContain("Note 0:");
+    // Newest first, as always, whatever chose them.
+    expect(memory.indexOf("Note 29:")).toBeLessThan(memory.indexOf("Invoice terms:"));
+    expect(memory.indexOf("Invoice terms:")).toBeLessThan(memory.indexOf("Tone:"));
+  });
+
   it("auto uses no topic waiting for the user; none uses none; a topic by name; an unknown name fails", async () => {
     const maybe = email();
     await link(maybe, "SUGGESTED");

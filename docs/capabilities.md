@@ -657,7 +657,8 @@ is on when `keep` has `reply`; set `answerable` to choose.
 #### `email.draftReply` 🧠
 Drafts a reply in your voice, in the email's language, without inventing facts. It reads the thread's earlier
 messages from your mailbox (the email's References, up to 10, without their quoted text), so it knows what was said
-before. With a topic it also knows what your approved memory of the topic says is true now (only current facts), and
+before. With a topic it also knows what your approved memory of the topic says is true now (only current facts; when there are more than fit, yours first, then those closest to the
+email), and
 the gate's "Why" lists the facts the draft used, each with its source. `topic`: `auto` (the default: the email's topics
 that aren't waiting for you, else its thread's), `none`, or a topic's name. What neither the memory nor the email says
 is still a placeholder. With a topic that has sources, the passages closest to the email go in too, and a passage it

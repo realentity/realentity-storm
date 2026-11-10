@@ -1,10 +1,8 @@
 import { type PrismaClient } from "@realentity/storm-db";
 import { type Embeddings, type LlmUsage } from "@realentity/storm-llm";
+import { DESCRIPTION_TEXT, matchWords, MEMORY_TEXT, memoryLine } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
-
-/** A topic's memory in a draft's prompt, at most (M42-T3): the description and current facts, newest first when cut. */
-export const MEMORY_TEXT = 6_000;
 
 /** Facts, by the short reference the model answers with ("F3"), as the gate shows them. */
 export type MemoryRefs = Map<string, string>;
@@ -14,7 +12,7 @@ export const PASSAGES = 4;
 export const PASSAGES_TEXT = 5_000;
 
 export interface TopicMemory {
-  /** The <memory> block ("" without a topic): the topics' cards and current facts, the same for every email (cached). */
+  /** The <memory> block ("" without a topic): the topics' cards and current facts, cached (the same for every email while they fit). */
   block: string;
   /** The <passages> block: the sources' passages closest to this email ("" when none). */
   passages: string;
@@ -64,24 +62,25 @@ export async function topicMemory(
   const refs: MemoryRefs = new Map();
   const cards: string[] = [];
   let budget = MEMORY_TEXT;
-  for (const t of topics) {
-    const facts = await prisma.topicFact.findMany({
-      where: { userId, topicId: t.topicId, status: "CURRENT" },
-      orderBy: { sourceDate: "desc" },
-    });
+  const descriptions = topics.map((t) => {
+    const description = t.description.slice(0, Math.min(DESCRIPTION_TEXT, Math.max(0, budget)));
+    budget -= description.length;
+    return description;
+  });
+  const facts = await prisma.topicFact.findMany({
+    where: { userId, topicId: { in: topics.map((t) => t.topicId) }, status: "CURRENT" },
+    orderBy: [{ sourceDate: "desc" }, { topicFactId: "asc" }],
+  });
+  const chosen = chooseFacts(facts, message, budget);
+  topics.forEach((t, i) => {
     const lines: string[] = [];
-    for (const fact of facts) {
+    for (const fact of chosen.filter((f) => f.topicId === t.topicId)) {
       const ref = `F${refs.size + 1}`;
-      const line = `- ${ref}: ${fact.about}: ${fact.statement} (${fact.source === "USER" ? "the user" : fact.sourceLabel}, ${fact.sourceDate.toISOString().slice(0, 10)})`;
-      if (line.length > budget) break;
-      budget -= line.length;
-      lines.push(line);
+      lines.push(`- ${ref}: ${memoryLine(fact)}`);
       refs.set(ref, `${t.name}: ${fact.about}: ${fact.statement} (${fact.source === "USER" ? "yours" : fact.sourceLabel})`);
     }
-    const description = t.description.slice(0, Math.max(0, budget));
-    budget -= description.length;
-    cards.push([`<topic name="${t.name}">`, description, ...(lines.length ? lines : ["(no facts yet)"]), "</topic>"].join("\n"));
-  }
+    cards.push([`<topic name="${t.name}">`, descriptions[i], ...(lines.length ? lines : ["(no facts yet)"]), "</topic>"].join("\n"));
+  });
   const passages = await closestPassages(prisma, userId, topics, message, options);
   const lines: string[] = [];
   let room = PASSAGES_TEXT;
@@ -105,6 +104,31 @@ export async function topicMemory(
     refs,
     topics: topics.map((t) => t.name),
   };
+}
+
+type MemoryFact = Parameters<typeof memoryLine>[0] & { pinned: boolean };
+
+/**
+ * The facts a draft gets (M44-T7), newest first: all of them while they fit (the same block for every email, cached);
+ * else the pinned ones first, then those sharing the most words with the email, the newer first among equals, as many as
+ * fit.
+ */
+export function chooseFacts<F extends MemoryFact>(facts: F[], message: EmailMessage, budget: number): F[] {
+  const length = (f: F) => memoryLine(f).length + 8;
+  if (facts.reduce((n, f) => n + length(f), 0) <= budget) return facts;
+  const words = matchWords(`${message.subject}\n${message.text.slice(0, 3_000)}`);
+  const shared = (f: F) => [...matchWords(`${f.about} ${f.statement}`)].filter((w) => words.has(w)).length;
+  const ranked = facts
+    .map((fact, i) => ({ fact, i, score: shared(fact) }))
+    .sort((a, b) => Number(b.fact.pinned) - Number(a.fact.pinned) || b.score - a.score || a.i - b.i);
+  const keep = new Set<F>();
+  let room = budget;
+  for (const { fact } of ranked) {
+    if (length(fact) > room) continue;
+    room -= length(fact);
+    keep.add(fact);
+  }
+  return facts.filter((f) => keep.has(f));
 }
 
 interface FoundPassage {

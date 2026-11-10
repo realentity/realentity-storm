@@ -547,7 +547,9 @@ everything back, and a split's new topic goes if nothing else is in it.)
 take `topic: auto | none | <a topic>`; `auto` uses the email's links that aren't waiting for you (a follow-up, the
 user's own email, its thread's). Within a fixed token budget the step gets the thread's earlier messages (with or
 without a topic), the brief (cached), the card of the person it writes to, and the passages of the sources closest to
-the email. Only current facts are used. The draft names the facts it relied on, and the gate shows them, each with its
+the email. Only current facts are used, all of them while they fit (about 6,000 characters with the topics'
+descriptions); when they don't, the ones you wrote or confirmed go first, then those sharing the most words with the
+email, and the topic's page says how many a draft has room for (M44). The draft names the facts it relied on, and the gate shows them, each with its
 source, so stale or wrong memory is seen where it matters. The drafting rules stay: a fact the context doesn't hold is a
 placeholder. (M42: the two drafting steps, with the brief and the facts; people's cards wait for a topic's people, the
 passages for M43, `llm.generate` and `llm.summarize` for later.)

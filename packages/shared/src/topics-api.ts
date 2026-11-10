@@ -311,7 +311,57 @@ export function isTextFile(path: string): boolean {
   return /\.(md|markdown|mdx|txt|text|adoc|asciidoc|rst|org)$/i.test(path);
 }
 
-export const TOPIC_BACKFILL_STATUSES = ["ESTIMATING", "ESTIMATED", "SCREENING", "PROPOSING", "REVIEW", "DONE", "FAILED", "CANCELLED"] as const;
+/** A draft's topic memory, at most (M42-T3): the topics' descriptions and current facts, in characters. */
+export const MEMORY_TEXT = 6_000;
+/** Of which a topic's description, at most (M44-T7): the facts matter more. */
+export const DESCRIPTION_TEXT = 1_000;
+
+/** A fact as a draft's <memory> lists it (M42-T3), after its reference ("- F3: "). */
+export function memoryLine(fact: {
+  about: string;
+  statement: string;
+  source: string;
+  sourceLabel: string;
+  sourceDate: Date | string;
+}): string {
+  const date = new Date(fact.sourceDate).toISOString().slice(0, 10);
+  return `${fact.about}: ${fact.statement} (${fact.source === "USER" ? "the user" : fact.sourceLabel}, ${date})`;
+}
+
+/** "- F12: " and the line's end. */
+const REF_LENGTH = 8;
+
+/**
+ * How many of a topic's current facts fit in a draft at most (M44-T7), after its description. When not all of them do,
+ * a draft takes the pinned ones first, then those closest to its email.
+ */
+export function factsThatFit(description: string, facts: Parameters<typeof memoryLine>[0][]): number {
+  let room = MEMORY_TEXT - Math.min(description.length, DESCRIPTION_TEXT);
+  let fit = 0;
+  for (const fact of [...facts].sort((a, b) => memoryLine(a).length - memoryLine(b).length)) {
+    const length = memoryLine(fact).length + REF_LENGTH;
+    if (length > room) break;
+    room -= length;
+    fit++;
+  }
+  return fit;
+}
+
+/** The words a fact or an email is matched by (M44-T7): letters and digits, four or more, lowercase. */
+export function matchWords(text: string): Set<string> {
+  return new Set(text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []);
+}
+
+export const TOPIC_BACKFILL_STATUSES = [
+  "ESTIMATING",
+  "ESTIMATED",
+  "SCREENING",
+  "PROPOSING",
+  "REVIEW",
+  "DONE",
+  "FAILED",
+  "CANCELLED",
+] as const;
 export type TopicBackfillStatusName = (typeof TOPIC_BACKFILL_STATUSES)[number];
 
 /**
