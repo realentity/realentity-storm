@@ -24,8 +24,21 @@ export interface TopicView {
   directions: TopicDirectionView[];
   /** What its upkeep and backfills cost in the last 30 days (M44-T5): shared out from the topic steps. */
   costUsd30: number;
+  /** For the list of topics: how much it holds. */
+  counts: TopicCounts;
   dateCreated: string;
   dateUpdated: string;
+}
+
+export interface TopicCounts {
+  /** Current facts, and how many of them fit in a draft (M44-T7: when fewer, the tidy-up reads it). */
+  facts: number;
+  fit: number;
+  /** Facts in dispute: the user settles them. */
+  disputed: number;
+  sources: number;
+  /** Emails linked or confirmed. */
+  emails: number;
 }
 
 export const TopicSchema = z
@@ -220,6 +233,8 @@ export interface TopicUpkeepView {
   llm: boolean;
   /** Active topics with at least one direction: without one, no email is linked. */
   topicsWithDirections: number;
+  /** Active topics with more current facts than fit in a draft: what the tidy-up reads (M44-T8). */
+  topicsOverRoom: number;
 }
 
 export const TOPIC_SOURCE_KINDS = ["GITHUB", "DRIVE"] as const;

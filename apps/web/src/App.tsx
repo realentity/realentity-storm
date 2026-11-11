@@ -18,6 +18,7 @@ import { PipelinePage } from "./pages/PipelinePage";
 import { PipelinesPage } from "./pages/PipelinesPage";
 import { PricesPage } from "./pages/PricesPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { TopicPage } from "./pages/TopicPage";
 import { ProposalPage } from "./pages/ProposalPage";
 import { RecipePage, RecipesPage } from "./pages/RecipesPage";
 import { AppEditorPage } from "./pages/AppEditorPage";
@@ -62,6 +63,7 @@ export function App() {
             <Route path="history" element={<HistoryPage />} />
             <Route path="rules" element={<RulesPage />} />
             <Route path="topics" element={<TopicsPage />} />
+            <Route path="topics/:topicId" element={<TopicPage />} />
             <Route path="bills" element={<BillsPage />} />
             <Route path="prices" element={<PricesPage />} />
             <Route path="recipes" element={<RecipesPage />} />

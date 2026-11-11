@@ -1506,7 +1506,7 @@ model TopicCost {
   topicId     String   @db.Uuid
   topic       Topic    @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
   day         DateTime @db.Date
-  /// The step type: topic.match, topic.extract, topic.index, topic.attachments.
+  /// The step type: topic.match, topic.extract, topic.index, topic.attachments, topic.tidy.
   source      String
   costUsd     Float    @default(0)
 

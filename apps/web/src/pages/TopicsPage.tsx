@@ -1,39 +1,29 @@
-import { TOPIC_DIRECTION_KINDS, type TopicDirectionKindName, type TopicLinkView, type TopicView } from "@realentity/storm-shared";
-import { IconArchive, IconArchiveOff, IconCheck, IconPencil, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
+import { type TopicLinkView, type TopicView } from "@realentity/storm-shared";
+import { IconCheck, IconPlus } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { TopicFacts } from "../components/TopicFacts";
-import { TopicHistory } from "../components/TopicHistory";
-import { MergeInto, SplitForm } from "../components/TopicSplitMerge";
-import { TopicSources } from "../components/TopicSources";
 import { TopicSuggestions } from "../components/TopicSuggestions";
-import { TopicRepliesCard, TopicUpkeepCard } from "../components/TopicUpkeepCard";
+import { TopicRepliesCard, TopicTidyCard, TopicUpkeepCard } from "../components/TopicUpkeepCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime, formatUsd } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
-/** How each kind of direction reads, and what to type for it. */
-const KIND: Record<TopicDirectionKindName, { label: string; placeholder: string; hint: string }> = {
-  WORD: { label: "A word", placeholder: "Orion", hint: "In the subject or the text, as a whole word, any case." },
-  DOMAIN: { label: "A domain", placeholder: "client.example", hint: "Anyone writing from it or its subdomains." },
-  PERSON: { label: "A person", placeholder: "ivan@client.example", hint: "Their emails; with “about”, only those about that." },
-  TEXT: {
-    label: "In plain words",
-    placeholder: "emails about the payment integration",
-    hint: "Storm's LLM judges whether an email is about it.",
-  },
-};
+/** From this many topics, the list can be filtered. */
+const FILTER_FROM = 8;
 
 /**
- * Topics (M41-T2, docs/design.md §8.1): the subjects Storm keeps a memory of, and the directions that say which email
- * belongs to one. Only the user writes them.
+ * Topics (M41-T2, docs/design.md §8.1): the subjects Storm keeps a memory of. This page lists them, with the pipelines
+ * that keep them and what waits for the user; each topic's directions, facts, sources and emails are on its own page.
  */
 export function TopicsPage() {
   const topics = useLoad(() => api.topics.list(), []);
   const [adding, setAdding] = useState(false);
-  // A decision in the queue changes the topics' email lists.
-  const [decided, setDecided] = useState(0);
+  const [filter, setFilter] = useState("");
+  const navigate = useNavigate();
+  const words = filter.trim().toLowerCase();
+  const shown = (topics.data ?? []).filter((t) => !words || `${t.name} ${t.description}`.toLowerCase().includes(words));
   return (
     <>
       <PageHeader
@@ -51,230 +41,109 @@ export function TopicsPage() {
         email can belong to none, one or several. Most email needs no topic. How it works: docs/topics.md.
       </p>
       <ErrorAlert error={topics.error} />
-      <TopicUpkeepCard />
-      <TopicRepliesCard />
+      <div className="row row-cards mb-3">
+        <div className="col-lg-4">
+          <TopicUpkeepCard />
+        </div>
+        <div className="col-lg-4">
+          <TopicRepliesCard />
+        </div>
+        <div className="col-lg-4">
+          <TopicTidyCard />
+        </div>
+      </div>
       <TopicSuggestions onAccepted={topics.reload} />
-      {topics.data && topics.data.length > 0 && <Waiting topics={topics.data} onDecided={() => setDecided((n) => n + 1)} />}
+      {topics.data && topics.data.length > 0 && <Waiting topics={topics.data} onDecided={topics.reload} />}
       {adding && (
         <TopicForm
           topic={null}
-          onDone={() => {
+          onDone={(saved) => {
             setAdding(false);
-            topics.reload();
+            if (saved) void navigate(`/topics/${saved.topicId}?tab=directions`);
           }}
         />
       )}
       {!topics.data && topics.loading && <Loading />}
       {topics.data?.length === 0 && !adding && <Empty>No topics yet. Make one for a subject you write a lot about.</Empty>}
-      <div className="d-flex flex-column gap-3">
-        {topics.data?.map((topic) => (
-          <TopicCard key={topic.topicId} topic={topic} topics={topics.data ?? []} decided={decided} onChange={topics.reload} />
-        ))}
-      </div>
+      {topics.data && topics.data.length > 0 && (
+        <div className="card" data-testid="topics-list">
+          {topics.data.length >= FILTER_FROM && (
+            <div className="card-body border-bottom py-2">
+              <input
+                className="form-control"
+                placeholder="Find a topic"
+                aria-label="Find a topic"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            </div>
+          )}
+          <div className="table-responsive">
+            <table className="table table-vcenter card-table">
+              <thead>
+                <tr>
+                  <th>Topic</th>
+                  <th className="text-end">Facts</th>
+                  <th className="text-end">Sources</th>
+                  <th className="text-end">Emails</th>
+                  <th className="text-end">30 days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((topic) => (
+                  <TopicRow key={topic.topicId} topic={topic} />
+                ))}
+                {shown.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-secondary">
+                      No topic matches.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
-function TopicCard({ topic, topics, decided, onChange }: { topic: TopicView; topics: TopicView[]; decided: number; onChange: () => void }) {
-  const [editing, setEditing] = useState(false);
-  const [kept, setKept] = useState(0);
-  const [splitting, setSplitting] = useState(false);
-  const action = useAction();
+function TopicRow({ topic }: { topic: TopicView }) {
+  const { counts } = topic;
   const archived = topic.status === "ARCHIVED";
-
-  const setStatus = async () => {
-    const saved = await action.run(() =>
-      api.topics.update(topic.topicId, { name: topic.name, description: topic.description, status: archived ? "ACTIVE" : "ARCHIVED" }),
-    );
-    if (saved) onChange();
-  };
-  const remove = async () => {
-    if (!window.confirm(`Delete ${topic.name}, its directions and what it knows?`)) return;
-    const done = await action.run(async () => {
-      await api.topics.remove(topic.topicId);
-      return true;
-    });
-    if (done) onChange();
-  };
-  const removeDirection = async (directionId: string) => {
-    const saved = await action.run(() => api.topics.removeDirection(topic.topicId, directionId));
-    if (saved) onChange();
-  };
-
-  if (splitting)
-    return (
-      <SplitForm
-        topic={topic}
-        onDone={(split) => {
-          setSplitting(false);
-          if (split) onChange();
-        }}
-      />
-    );
-  if (editing)
-    return (
-      <TopicForm
-        topic={topic}
-        onDone={() => {
-          setEditing(false);
-          onChange();
-        }}
-      />
-    );
   return (
-    <div className={`card ${archived ? "opacity-75" : ""}`} data-testid={`topic-${topic.name}`}>
-      <div className="card-header">
-        <h3 className="card-title">
+    <tr className={archived ? "opacity-75" : ""} data-testid={`topic-row-${topic.name}`}>
+      <td style={{ maxWidth: "32rem" }}>
+        <Link to={`/topics/${topic.topicId}`} className="fw-bold">
           {topic.name}
-          {archived && <span className="badge bg-secondary-lt ms-2">archived</span>}
-          {topic.costUsd30 > 0 && (
-            <span className="badge bg-azure-lt ms-2" title="Its upkeep and history reads, the last 30 days" data-testid="topic-cost">
-              {formatUsd(topic.costUsd30)} in 30 days
-            </span>
-          )}
-        </h3>
-        <div className="card-actions d-flex gap-1">
-          <MergeInto topic={topic} topics={topics} onMerged={onChange} />
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost-secondary"
-            title="Split: part of it becomes a new topic"
-            onClick={() => setSplitting(true)}
-          >
-            Split
-          </button>
-          <button type="button" className="btn btn-sm btn-ghost-secondary" aria-label="Edit" onClick={() => setEditing(true)}>
-            <IconPencil size={16} />
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost-secondary"
-            aria-label={archived ? "Reactivate" : "Archive"}
-            title={archived ? "Reactivate: match new email again" : "Archive: match no new email, keep what it knows"}
-            disabled={action.busy}
-            onClick={() => void setStatus()}
-          >
-            {archived ? <IconArchiveOff size={16} /> : <IconArchive size={16} />}
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost-danger"
-            aria-label="Delete"
-            disabled={action.busy}
-            onClick={() => void remove()}
-          >
-            <IconTrash size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="card-body">
-        <ErrorAlert error={action.error} />
-        {topic.description ? (
-          <p style={{ whiteSpace: "pre-wrap" }}>{topic.description}</p>
-        ) : (
-          <p className="text-secondary">No description.</p>
+        </Link>
+        {archived && <span className="badge bg-secondary-lt ms-2">archived</span>}
+        {topic.directions.length === 0 && !archived && (
+          <span className="badge bg-yellow-lt ms-2" title="Without a direction, no email is linked to it">
+            no directions
+          </span>
         )}
-        <h4 className="mb-2">Directions</h4>
-        {topic.directions.length === 0 && <p className="text-secondary small">None yet: without a direction, no email is linked to it.</p>}
-        {topic.directions.length > 0 && (
-          <div className="list-group mb-3" data-testid="directions">
-            {topic.directions.map((d) => (
-              <div key={d.topicDirectionId} className="list-group-item d-flex align-items-center gap-2 py-2">
-                <span className="badge bg-azure-lt">{KIND[d.kind].label}</span>
-                <span className="flex-fill">
-                  {d.kind === "TEXT" ? d.value : <code>{d.value}</code>}
-                  {d.about && <span className="text-secondary"> about {d.about}</span>}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost-danger"
-                  aria-label="Remove direction"
-                  disabled={action.busy}
-                  onClick={() => void removeDirection(d.topicDirectionId)}
-                >
-                  <IconX size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
+        {topic.description && <div className="small text-secondary text-truncate">{topic.description}</div>}
+      </td>
+      <td className="text-end text-nowrap">
+        {counts.facts}
+        {counts.facts > counts.fit && (
+          <span className="badge bg-orange-lt ms-2" title={`A draft has room for about ${counts.fit} of them`}>
+            {counts.fit} fit
+          </span>
         )}
-        <DirectionForm topicId={topic.topicId} onAdded={onChange} />
-        {/* Remounted when the history adds facts. */}
-        <TopicFacts key={kept} topic={topic} topics={topics} />
-        <TopicSources topicId={topic.topicId} />
-        <TopicHistory topicId={topic.topicId} onApplied={() => setKept((n) => n + 1)} />
-        <TopicEmails topicId={topic.topicId} decided={decided} />
-      </div>
-    </div>
+        {counts.disputed > 0 && <span className="badge bg-red-lt ms-2">{counts.disputed} in dispute</span>}
+      </td>
+      <td className="text-end">{counts.sources}</td>
+      <td className="text-end">{counts.emails}</td>
+      <td className="text-end text-secondary">{topic.costUsd30 > 0 ? formatUsd(topic.costUsd30) : "–"}</td>
+    </tr>
   );
 }
 
-function DirectionForm({ topicId, onAdded }: { topicId: string; onAdded: () => void }) {
-  const [kind, setKind] = useState<TopicDirectionKindName>("WORD");
-  const [value, setValue] = useState("");
-  const [about, setAbout] = useState("");
-  const action = useAction();
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const saved = await action.run(() =>
-      api.topics.addDirection(topicId, { kind, value, about: kind === "PERSON" && about.trim() ? about : null }),
-    );
-    if (!saved) return;
-    setValue("");
-    setAbout("");
-    onAdded();
-  };
-  return (
-    <form onSubmit={(e) => void submit(e)} data-testid="direction-form">
-      <ErrorAlert error={action.error} title="Not added" />
-      <div className="row g-2">
-        <div className="col-sm-3">
-          <select
-            className="form-select"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as TopicDirectionKindName)}
-            aria-label="Kind"
-          >
-            {TOPIC_DIRECTION_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {KIND[k].label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className={kind === "PERSON" ? "col-sm-4" : "col-sm-7"}>
-          <input
-            className="form-control"
-            value={value}
-            placeholder={KIND[kind].placeholder}
-            onChange={(e) => setValue(e.target.value)}
-            aria-label="Direction"
-            required
-          />
-        </div>
-        {kind === "PERSON" && (
-          <div className="col-sm-3">
-            <input
-              className="form-control"
-              value={about}
-              placeholder="about (optional): the API"
-              onChange={(e) => setAbout(e.target.value)}
-              aria-label="About"
-            />
-          </div>
-        )}
-        <div className="col-sm-2">
-          <button type="submit" className="btn w-100" disabled={action.busy || !value.trim()}>
-            Add
-          </button>
-        </div>
-      </div>
-      <div className="form-hint">{KIND[kind].hint}</div>
-    </form>
-  );
-}
-
-function TopicForm({ topic, onDone }: { topic: TopicView | null; onDone: () => void }) {
+/** A topic's name and description, new or edited. */
+export function TopicForm({ topic, onDone }: { topic: TopicView | null; onDone: (saved: TopicView | null) => void }) {
   const [name, setName] = useState(topic?.name ?? "");
   const [description, setDescription] = useState(topic?.description ?? "");
   const action = useAction();
@@ -285,7 +154,7 @@ function TopicForm({ topic, onDone }: { topic: TopicView | null; onDone: () => v
     );
     if (!saved) return;
     toast.success(`${saved.name} saved`);
-    onDone();
+    onDone(saved);
   };
   return (
     <form className="card mb-3" onSubmit={(e) => void submit(e)} data-testid="topic-form">
@@ -320,7 +189,7 @@ function TopicForm({ topic, onDone }: { topic: TopicView | null; onDone: () => v
         </div>
       </div>
       <div className="card-footer d-flex gap-2 justify-content-end">
-        <button type="button" className="btn" onClick={onDone}>
+        <button type="button" className="btn" onClick={() => onDone(null)}>
           Cancel
         </button>
         <button type="submit" className="btn btn-primary" disabled={action.busy}>
@@ -334,7 +203,7 @@ function TopicForm({ topic, onDone }: { topic: TopicView | null; onDone: () => v
 const VIA = { DIRECTION: "by a direction", THREAD: "by its thread", LLM: "by Storm's LLM", USER: "by you" } as const;
 
 /** An email of a link: subject, sender, date, and what shows it belongs. */
-function EmailLine({ link, topic }: { link: TopicLinkView; topic?: boolean }) {
+export function EmailLine({ link, topic }: { link: TopicLinkView; topic?: boolean }) {
   return (
     <div className="flex-fill overflow-hidden">
       <div className="fw-bold text-truncate">
@@ -430,45 +299,6 @@ function Waiting({ topics, onDecided }: { topics: TopicView[]; onDecided: () => 
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/** A topic's emails (M41-T4), newest first: one taken out says it doesn't belong. */
-function TopicEmails({ topicId, decided }: { topicId: string; decided: number }) {
-  const links = useLoad(() => api.topics.links(topicId), [topicId, decided]);
-  const action = useAction();
-  const reject = async (link: TopicLinkView) => {
-    if (await action.run(() => api.topicLinks.reject(link.topicLinkId))) links.reload();
-  };
-  const linked = links.data?.filter((l) => l.status !== "SUGGESTED") ?? [];
-  return (
-    <div className="mt-3" data-testid="topic-emails">
-      <h4 className="mb-2">Emails</h4>
-      <ErrorAlert error={links.error ?? action.error} />
-      {links.data && linked.length === 0 && (
-        <p className="text-secondary small">No email linked yet: the pipelines with topic.match link them.</p>
-      )}
-      {linked.length > 0 && (
-        <div className="list-group">
-          {linked.map((link) => (
-            <div key={link.topicLinkId} className="list-group-item d-flex align-items-center gap-2 py-2">
-              <EmailLine link={link} />
-              {link.status === "CONFIRMED" && <span className="badge bg-green-lt">confirmed</span>}
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost-secondary"
-                title="Not this topic"
-                aria-label="Not this topic"
-                disabled={action.busy}
-                onClick={() => void reject(link)}
-              >
-                <IconX size={16} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

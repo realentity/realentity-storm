@@ -1,0 +1,22 @@
+# M44: a weekly tidy-up of what Storm knows about your topics (the Topics page; Topic upkeep fills their memory). A
+# topic that has collected more facts than a reply's draft has room for gets proposals: facts that say parts of one
+# thing merged into one, and facts that no longer hold (a date that has passed, a status a later fact overtook) retired.
+# You pick at the gate what is done; nothing changes without you, every change can be undone on the topic's page, and
+# a retired fact stays in its history. What you leave out isn't proposed again. Disputes are yours to settle, so they
+# are left alone. Topics whose facts all fit are not read, so most weeks cost nothing. The Topics page sets it up for
+# you (Tidy up topics' facts).
+name: Topic tidy-up
+description: Each week, a topic's overlapping facts merged and stale ones retired, as proposals you approve.
+trigger: { schedule: "0 7 * * 0" }
+steps:
+  - id: tidy
+    type: topic.tidy
+    with: {}
+  - id: review
+    type: gate.review
+    when: "{{tidy.proposals}}"
+    with: { items: "{{tidy.proposals}}", title: "{{tidy.title}}" }
+  - id: apply
+    type: topic.apply
+    when: "{{tidy.proposals}}"
+    with: { proposals: "{{review.selected}}" }

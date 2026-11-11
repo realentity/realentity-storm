@@ -260,20 +260,31 @@ const SourceFileSchema = SourceChangeSchema.extend({
   firstRead: z.boolean().default(false).describe("the source's first read: indexed, not read for facts"),
 });
 
-/** A fact topic.extract proposes for one of the user's topics (M42-T2); topic.apply writes it once approved at a gate. */
+/**
+ * A fact topic.extract proposes for one of the user's topics (M42-T2), or a tidy-up of its facts topic.tidy proposes
+ * (M44-T8: merge, retire); topic.apply writes it once approved at a gate.
+ */
 export const TopicProposalSchema = z.object({
   /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
   title: z.string(),
   quote: z.string().max(500),
-  kind: z.enum(["new", "change", "conflict"]),
+  kind: z.enum(["new", "change", "conflict", "merge", "retire"]),
   topic: z.string(),
   topicId: z.string(),
   about: z.string().min(1).max(120),
   statement: z.string().min(1).max(1000),
+  /** retire: the fact that no longer holds. */
   replaces: z.object({ topicFactId: z.string(), about: z.string(), statement: z.string() }).nullable(),
-  /** An email (messageId: its Message-ID), or a file of a topic's source (M43: messageId "owner/repo:path"). */
+  /** merge: the facts that `about` and `statement` say together (two or more), each superseded by the new one. */
+  merges: z.array(z.object({ topicFactId: z.string(), about: z.string(), statement: z.string() })).optional(),
+  /** merge, retire: why, in a few words ("the kickoff is past"). */
+  why: z.string().max(300).optional(),
+  /**
+   * An email (messageId: its Message-ID), a file of a topic's source (M43: messageId "owner/repo:path"), the user's edit
+   * of a draft (M44-T3), or the tidy-up (M44-T8: the facts themselves).
+   */
   source: z.object({
-    kind: z.enum(["email", "file", "edit"]).default("email"),
+    kind: z.enum(["email", "file", "edit", "tidy"]).default("email"),
     messageId: z.string(),
     from: z.string(),
     subject: z.string(),
@@ -908,8 +919,10 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "topic.apply",
     description:
-      "Writes fact proposals the user approved at a gate.review of the same run (topic.extract's proposals; M42): a new " +
-      "fact, a change (the old one superseded, kept as history) or a conflict (both in dispute, for the user to settle). " +
+      "Writes fact proposals the user approved at a gate.review of the same run (topic.extract's or topic.tidy's " +
+      "proposals; M42, M44-T8): a new fact, a change (the old one superseded, kept as history), a conflict (both in " +
+      "dispute, for the user to settle), a merge (the facts superseded by the one that says them together) or a retired " +
+      "fact (superseded, kept as history); a merge or retirement of facts that changed since is skipped. " +
       "Evidence counts by its source's date: a change older than the fact it replaces goes into the history. Each is a " +
       "change on the topic's page, which the user can undo. A proposal not approved at a gate is not written; a dry run " +
       "writes nothing.",
@@ -919,6 +932,31 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({
       applied: z.number().int(),
       skipped: z.array(z.object({ line: z.string(), reason: z.string() })),
+    }),
+  },
+  {
+    type: "topic.tidy",
+    description:
+      "A periodic tidy-up of the topics' facts (M44-T8, docs/design.md §8.1): for each active topic with more current " +
+      "facts than fit in a draft (the room its Facts card shows), the writing model proposes to merge facts that say " +
+      "parts of one thing into one statement, and to retire facts that no longer hold (a date that has passed, a status a " +
+      "later fact overtook). `proposals` go to gate.review (items: proposals, when: proposals), then topic.apply: merged " +
+      "facts are superseded by the new one, a retired one is kept as history; each is a change on the topic's page that " +
+      "can be undone. A proposal the user left out at an earlier gate of the same pipeline isn't made again. Writes " +
+      "nothing; disputes are not touched (the user settles them).",
+    sideEffect: false,
+    llm: true,
+    saasSafe: true,
+    input: z.object({
+      topics: z
+        .array(z.string().min(1).max(80))
+        .optional()
+        .describe("only these topics, by name, tidied even when their facts fit; default: every active one with more than fit"),
+    }),
+    output: z.object({
+      proposals: z.array(TopicProposalSchema),
+      title: z.string().describe('for the gate: "Tidy-up: 4 proposals for Orion"'),
+      topics: z.array(z.object({ topic: z.string(), facts: z.number().int(), fit: z.number().int() })).describe("the topics read"),
     }),
   },
   {

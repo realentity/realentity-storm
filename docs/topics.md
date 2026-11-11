@@ -12,7 +12,9 @@ How it is built: [design.md §8.1](design.md#81-topics).
 
 ## Start in four steps
 
-Everything below is on the **Topics** page.
+Everything below starts on the **Topics** page. It lists your topics, each with how many facts, sources and emails it
+holds, and says when a topic's facts no longer all fit in a draft. A topic's name opens its own page, with its
+directions, facts, sources and emails on tabs.
 
 1. **Make a topic and say which email belongs to it.** Give it a name and a line about what it is ("Orion: the
    customer portal rebuild for Client Ltd"). Then add **directions**:
@@ -33,12 +35,19 @@ Everything below is on the **Topics** page.
    sends nothing.
 
 3. **Approve the facts.** The proposals of each run wait in the **Inbox**, at that run's gate. Each one shows its
-   source and its quote, and you pick the ones that go in. They then appear under **Facts** on the topic's card.
+   source and its quote, and you pick the ones that go in. They then appear under **Facts** on the topic's page.
 
 4. **Answer your topics' email.** On the card of that name, press **Set up**. That installs _Topic replies_, switched
    off like upkeep. Every 15 minutes it drafts a reply to each new email of a topic that expects one, using what the
    topic knows. Each draft waits in the Inbox for you to edit and **Act**. If you also use _Recruiter and client
    replies_, it leaves your topics' email to Topic replies, so no email gets two drafts.
+
+Later, when a topic knows more than a draft has room for: **Tidy up topics' facts.** On the card of that name, press
+**Set up**. That installs _Topic tidy-up_, switched off. Once a week it reads the topics whose facts don't all fit, and
+proposes to merge facts that say parts of one thing and to retire the ones that no longer hold (a date that has
+passed, a status a later fact overtook), each with why. You pick at its gate what is done. Every change can be undone,
+a retired fact stays in the history, and what you leave out isn't proposed again. Topics whose facts all fit aren't
+read.
 
 Your existing drafting pipelines use topics too. `email.draftReply` and `email.draftFollowUp` take `topic: auto` by
 default, so any email already linked to a topic gets the topic's knowledge.
@@ -63,13 +72,13 @@ dispute_ when sources disagree.
 - **New evidence proposes changes.** A new fact ("Launch date: March"), a change ("~~February~~ → March", the old one
   kept as history), or a conflict ("the decision record says PostgreSQL; Ivan's email of 14 Nov says MySQL"). Evidence
   counts by its date, not by when it was read, so an old email read late never undoes a newer fact.
-- **You correct any fact on the topic's card:**
+- **You correct any fact on the topic's page** (with more than a few facts, **Find a fact** narrows the list):
 
   | Action             | Meaning                      | What follows                                                  |
   | ------------------ | ---------------------------- | ------------------------------------------------------------- |
   | Edit               | the wording or value was off | the fact is now yours and pinned                              |
   | No longer true     | it was, things changed       | superseded, kept in the history; you can say what is true now |
-  | Wrong              | it never was                 | removed, and not proposed again from the same source          |
+  | Wrong              | it never was                 | removed (after you confirm), not proposed again from its source |
   | Move to            | it belongs to another topic  | moved with its source                                         |
   | Holds (in dispute) | this one is right            | current and pinned; the others superseded                     |
 
@@ -110,13 +119,13 @@ changed document also proposes facts, like an email. The index is only a cache: 
 
 ## A topic's history
 
-A new topic knows nothing of the email from before you made it. **Its history** on the topic's card reads past email
+A new topic knows nothing of the email from before you made it. **Its history**, under the topic's Facts, reads past email
 and the topic's documents for facts:
 
 1. **Estimate:** choose how far back to go. Storm counts the emails and documents and estimates the cost. No LLM reads
    anything yet.
 2. **Start:** the reading goes through the Batch API, at half the price, and is usually done within a day.
-3. **Pick:** the proposals wait on the card, oldest first, and only the ones you keep are written.
+3. **Pick:** the proposals wait on the topic's page, oldest first, and only the ones you keep are written.
 
 ## How a draft uses a topic
 
@@ -127,8 +136,9 @@ and the topic's documents for facts:
   the closest to the email. It must never contradict a fact, and what none of them says stays a placeholder.
 - **When there are too many facts:** a draft has room for about 6,000 characters of them. While they fit, all go in.
   When they don't, the ones you wrote or confirmed go first, then the ones closest to the email: by meaning, in any
-  language, if `OPENAI_API_KEY` is set, otherwise by the words they share. The topic's card tells you when not all
-  fit. Saying which facts are no longer true, or splitting the topic, keeps more of them in every draft.
+  language, if `OPENAI_API_KEY` is set, otherwise by the words they share. The topic's page tells you when not all
+  fit. Saying which facts are no longer true, or splitting the topic, keeps more of them in every draft, and so does
+  the weekly tidy-up.
 - **Why:** the draft lists what it relied on, and the gate shows it under **Why**, each fact with its source. You see
   stale or wrong knowledge where it matters, before anything is sent.
 
@@ -159,7 +169,8 @@ Both are one change in the History, and **Undo** puts everything back.
 ## What it costs and what goes where
 
 - **Costs.** Matching by exact directions costs nothing. The cheap model checks only the triaged email no direction
-  matched, and screens what is worth reading before the writing model proposes facts. Each topic's card shows what it
+  matched, and screens what is worth reading before the writing model proposes facts. The tidy-up reads only the topics
+  whose facts don't all fit. Each topic's page shows what it
   cost in the last 30 days, and the weekly review lists the topics' costs. The topic pipelines pause when the month's
   LLM budget is reached.
 - **To the LLM (Anthropic):** the text of the emails and documents being matched, read for facts or answered, as for
@@ -173,4 +184,3 @@ Both are one change in the History, and **Undo** puts everything back.
 ## Not built yet
 
 - A topic's people, with the role you give them.
-- A periodic tidy-up proposing to merge overlapping facts and retire stale ones.

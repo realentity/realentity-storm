@@ -7,12 +7,18 @@ import { formatDateTime, statusLabel } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 import { ErrorAlert } from "./ui";
 
-/** pipelines/topic-upkeep.yaml and topic-replies.yaml, read at build time like the examples. */
-const FILES = import.meta.glob<string>(["../../../../pipelines/topic-upkeep.yaml", "../../../../pipelines/topic-replies.yaml"], {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
+/** pipelines/topic-upkeep.yaml, topic-replies.yaml and topic-tidy.yaml, read at build time like the examples. */
+const FILES = import.meta.glob<string>(
+  ["../../../../pipelines/topic-upkeep.yaml", "../../../../pipelines/topic-replies.yaml", "../../../../pipelines/topic-tidy.yaml"],
+  { query: "?raw", import: "default", eager: true },
+);
+
+interface ChecklistItem {
+  label: string;
+  done: boolean;
+  link?: string;
+  note?: string;
+}
 
 interface TopicPipeline {
   testId: string;
@@ -21,6 +27,24 @@ interface TopicPipeline {
   installed: string;
   source: string;
   status: () => Promise<TopicUpkeepView>;
+  /** What it needs besides being tried and switched on; default: email, the LLM, a topic with a direction. */
+  needs?: (u: TopicUpkeepView) => ChecklistItem[];
+  /** A word after its status line. */
+  note?: (u: TopicUpkeepView) => string | null;
+}
+
+/** What the email pipelines need. */
+function emailNeeds(u: TopicUpkeepView): ChecklistItem[] {
+  return [
+    {
+      label: "An email account",
+      done: u.email,
+      link: "/credentials",
+      ...(u.emailProblem ? { note: `The last mail read failed: ${u.emailProblem}` } : {}),
+    },
+    { label: "The LLM", done: u.llm, note: u.llm ? undefined : "Set on the server (.env)" },
+    { label: "A topic with a direction: without one, no email is linked", done: u.topicsWithDirections > 0 },
+  ];
 }
 
 /**
@@ -55,12 +79,37 @@ const REPLIES: TopicPipeline = {
   status: () => api.topics.replies(),
 };
 
+/**
+ * Tidy up topics' facts (M44-T8): a topic with more facts than a draft has room for gets merges and retirements
+ * proposed each week, approved at a gate.
+ */
+const TIDY: TopicPipeline = {
+  testId: "topic-tidy",
+  title: "Tidy up topics' facts",
+  intro:
+    "Once a topic knows more than a reply's draft has room for, Topic tidy-up proposes each week to merge facts that say parts of " +
+    "one thing and to retire the ones that no longer hold. You pick at its gate what is done; each change can be undone on the " +
+    "topic's page, and what you leave out isn't proposed again. Topics whose facts all fit cost nothing.",
+  installed: "Topic tidy-up installed, off: try it, then switch it on",
+  source: FILES["../../../../pipelines/topic-tidy.yaml"] ?? "",
+  status: () => api.topics.tidy(),
+  needs: (u) => [{ label: "The LLM", done: u.llm, note: u.llm ? undefined : "Set on the server (.env)" }],
+  note: (u) =>
+    u.topicsOverRoom === 0
+      ? "every topic's facts fit: nothing to tidy yet"
+      : `${u.topicsOverRoom} topic${u.topicsOverRoom === 1 ? " has" : "s have"} more facts than fit`,
+};
+
 export function TopicUpkeepCard() {
   return <TopicPipelineCard pipeline={UPKEEP} />;
 }
 
 export function TopicRepliesCard() {
   return <TopicPipelineCard pipeline={REPLIES} />;
+}
+
+export function TopicTidyCard() {
+  return <TopicPipelineCard pipeline={TIDY} />;
 }
 
 /**
@@ -81,7 +130,7 @@ function TopicPipelineCard({ pipeline: p }: { pipeline: TopicPipeline }) {
 
   if (!u.pipeline)
     return (
-      <div className="card mb-3" data-testid={p.testId}>
+      <div className="card h-100" data-testid={p.testId}>
         <div className="card-body">
           <h3 className="card-title mb-1">{p.title}</h3>
           <p className="text-secondary mb-2">{p.intro}</p>
@@ -94,21 +143,15 @@ function TopicPipelineCard({ pipeline: p }: { pipeline: TopicPipeline }) {
     );
 
   const link = `/pipelines/${u.pipeline.pipelineId}`;
-  const items: { label: string; done: boolean; link?: string; note?: string }[] = [
-    {
-      label: "An email account",
-      done: u.email,
-      link: "/credentials",
-      ...(u.emailProblem ? { note: `The last mail read failed: ${u.emailProblem}` } : {}),
-    },
-    { label: "The LLM", done: u.llm, note: u.llm ? undefined : "Set on the server (.env)" },
-    { label: "A topic with a direction: without one, no email is linked", done: u.topicsWithDirections > 0 },
+  const items: ChecklistItem[] = [
+    ...(p.needs ?? emailNeeds)(u),
     { label: "Try it: a dry run, which saves nothing", done: u.tried, link },
     { label: "Switch it on", done: u.pipeline.enabled, link },
   ];
   const done = items.every((i) => i.done);
+  const note = p.note?.(u);
   return (
-    <div className="card mb-3" data-testid={p.testId}>
+    <div className="card h-100" data-testid={p.testId}>
       <div className="card-body">
         <div className="d-flex align-items-center gap-2 mb-1">
           <h3 className="card-title mb-0 flex-fill">{p.title}</h3>
@@ -135,6 +178,7 @@ function TopicPipelineCard({ pipeline: p }: { pipeline: TopicPipeline }) {
               </Link>
             </>
           )}
+          {note && <> · {note}</>}
         </div>
         {!done && (
           <ul className="list-unstyled mb-0" data-testid={`${p.testId}-checklist`}>
