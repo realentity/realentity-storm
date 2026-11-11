@@ -147,13 +147,15 @@ describe("odd input is answered quickly", () => {
     expect(person(`!@!.${"!.".repeat(5_000)}`)).toEqual({ error: "Not an email address" });
     // Longer than an address can be.
     expect(person(`a@b${".c".repeat(130)}`)).toEqual({ error: "Not an email address" });
-    expect(Date.now() - start).toBeLessThan(100);
+    // Linear takes a few ms; quadratic would take seconds. The margin is for a busy CI runner.
+    expect(Date.now() - start).toBeLessThan(1_000);
   });
 
   it("a pattern: trailing slashes trimmed by a loop, also thousands of them", () => {
     expect(pathMatches("docs/adr///", "docs/adr/0001.md")).toBe(true);
     const start = Date.now();
     expect(pathMatches(`docs${"/".repeat(20_000)}x`, "docs/x.md")).toBe(false);
-    expect(Date.now() - start).toBeLessThan(100);
+    // Linear takes a few ms; quadratic would take seconds. The margin is for a busy CI runner.
+    expect(Date.now() - start).toBeLessThan(1_000);
   });
 });
