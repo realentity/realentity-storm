@@ -231,6 +231,28 @@ test("a topic's source: a repository added from its address, shown not read yet,
   await expect(sources.getByTestId("source-acme/orion")).toHaveCount(0);
 });
 
+// A private repository's token, made from the source form: a GitHub token, chosen as the source's once stored
+test("a topic's source: a new GitHub token from the form is stored for api.github.com and chosen", async ({ page }) => {
+  const name = unique("Orion");
+  const credential = `gh-${Date.now().toString(36)}`;
+  await newTopic(page, name);
+  await page.goto("/topics");
+  const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
+  await sources.getByTestId("source-add").click();
+  await sources.getByTestId("source-new-token").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Add a GitHub token");
+  await expect(dialog.getByTestId("github-steps")).toContainText("Contents: Read-only");
+  await dialog.getByLabel("Name", { exact: true }).fill(credential);
+  await dialog.getByLabel("Token").fill(`github_pat_e2e${Date.now()}`);
+  await dialog.getByRole("button", { name: "Store" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(sources.getByTestId("source-form").getByLabel("Token")).toHaveValue(credential);
+
+  const stored = (await (await page.request.get("/api/credentials")).json()) as { name: string; kind: string; allowedHosts: string[] }[];
+  expect(stored.find((c) => c.name === credential)).toMatchObject({ kind: "API_KEY", allowedHosts: ["api.github.com"] });
+});
+
 // M43-T5
 test("a topic's history: the estimate shown before anything is read, then its proposals picked and kept", async ({ page }) => {
   const name = unique("Orion");

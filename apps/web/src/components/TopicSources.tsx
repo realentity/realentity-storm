@@ -3,6 +3,7 @@ import { IconBrandGithub, IconPaperclip, IconPlus, IconRefresh, IconX } from "@t
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/endpoints";
+import { AddCredential, GITHUB_API } from "./AddCredential";
 import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 import { ErrorAlert } from "./ui";
@@ -130,73 +131,96 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
   const [path, setPath] = useState("docs/**");
   const [branch, setBranch] = useState("");
   const [credential, setCredential] = useState("");
+  const [addingToken, setAddingToken] = useState(false);
   const action = useAction();
-  const forGitHub = credentials.data?.filter((c) => c.allowedHosts.some((h) => h.toLowerCase() === "api.github.com")) ?? [];
+  const forGitHub = credentials.data?.filter((c) => c.allowedHosts.some((h) => h.toLowerCase() === GITHUB_API)) ?? [];
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (await action.run(() => api.topics.addSource(topicId, { kind: "GITHUB", location, path, branch, credential }))) onDone(true);
   };
   return (
-    <form className="card card-body mb-2" onSubmit={(e) => void submit(e)} data-testid="source-form">
-      <ErrorAlert error={action.error} title="Not added" />
-      <div className="row g-2">
-        <div className="col-sm-5">
-          <label className="form-label required" htmlFor="source-location">
-            GitHub repository
-          </label>
-          <input
-            id="source-location"
-            className="form-control"
-            placeholder="owner/repo"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            required
-          />
-        </div>
-        <div className="col-sm-4">
-          <label className="form-label" htmlFor="source-path">
-            Files
-          </label>
-          <input id="source-path" className="form-control" value={path} onChange={(e) => setPath(e.target.value)} />
-        </div>
-        <div className="col-sm-3">
-          <label className="form-label" htmlFor="source-branch">
-            Branch
-          </label>
-          <input
-            id="source-branch"
-            className="form-control"
-            placeholder="the default"
-            value={branch}
-            onChange={(e) => setBranch(e.target.value)}
-          />
-        </div>
-        <div className="col-sm-6">
-          <label className="form-label" htmlFor="source-credential">
-            Token
-          </label>
-          <select id="source-credential" className="form-select" value={credential} onChange={(e) => setCredential(e.target.value)}>
-            <option value="">None: a public repository</option>
-            {forGitHub.map((c) => (
-              <option key={c.credentialId} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <div className="form-hint">
-            A private repository: a read-only token as a <Link to="/credentials">credential</Link> allowed for api.github.com.
+    <>
+      <form className="card card-body mb-2" onSubmit={(e) => void submit(e)} data-testid="source-form">
+        <ErrorAlert error={action.error} title="Not added" />
+        <div className="row g-2">
+          <div className="col-sm-5">
+            <label className="form-label required" htmlFor="source-location">
+              GitHub repository
+            </label>
+            <input
+              id="source-location"
+              className="form-control"
+              placeholder="owner/repo"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              required
+            />
+          </div>
+          <div className="col-sm-4">
+            <label className="form-label" htmlFor="source-path">
+              Files
+            </label>
+            <input id="source-path" className="form-control" value={path} onChange={(e) => setPath(e.target.value)} />
+          </div>
+          <div className="col-sm-3">
+            <label className="form-label" htmlFor="source-branch">
+              Branch
+            </label>
+            <input
+              id="source-branch"
+              className="form-control"
+              placeholder="the default"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+            />
+          </div>
+          <div className="col-sm-6">
+            <label className="form-label" htmlFor="source-credential">
+              Token
+            </label>
+            <select id="source-credential" className="form-select" value={credential} onChange={(e) => setCredential(e.target.value)}>
+              <option value="">None: a public repository</option>
+              {forGitHub.map((c) => (
+                <option key={c.credentialId} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <div className="form-hint">
+              A private repository needs a read-only token, kept as a <Link to="/credentials">credential</Link> for {GITHUB_API} only.{" "}
+              <button
+                type="button"
+                className="btn btn-link btn-sm p-0 align-baseline"
+                onClick={() => setAddingToken(true)}
+                data-testid="source-new-token"
+              >
+                New GitHub token
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-      <div className="form-hint">Text files under the path (Markdown, AsciiDoc, plain text): docs/adr/**, **/*.md.</div>
-      <div className="d-flex gap-2 justify-content-end mt-2">
-        <button type="button" className="btn" onClick={() => onDone(false)}>
-          Cancel
-        </button>
-        <button type="submit" className="btn btn-primary" disabled={action.busy}>
-          Add
-        </button>
-      </div>
-    </form>
+        <div className="form-hint">Text files under the path (Markdown, AsciiDoc, plain text): docs/adr/**, **/*.md.</div>
+        <div className="d-flex gap-2 justify-content-end mt-2">
+          <button type="button" className="btn" onClick={() => onDone(false)}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={action.busy}>
+            Add
+          </button>
+        </div>
+      </form>
+      {/* Outside the form: a form can't hold another. */}
+      {addingToken && (
+        <AddCredential
+          preset="GITHUB"
+          onClose={() => setAddingToken(false)}
+          onSaved={(saved) => {
+            setAddingToken(false);
+            credentials.reload();
+            setCredential(saved.name);
+          }}
+        />
+      )}
+    </>
   );
 }

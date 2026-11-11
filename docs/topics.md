@@ -85,9 +85,15 @@ dispute_ when sources disagree.
 A topic can point to where its documents live. Storm links them and never keeps a copy you would have to maintain.
 
 - **A GitHub repository.** Add it under **Sources** with a path pattern (`docs/adr/**`) and, optionally, a branch.
-  Storm reads text files only (Markdown, text, AsciiDoc and similar). A private repository needs a read-only token,
-  saved as a credential allowed for `api.github.com`. Storm checks the branch's latest commit every upkeep run, and
-  reads only the files that changed.
+  Storm reads text files only (Markdown, text, AsciiDoc and similar). Storm checks the branch's latest commit every
+  upkeep run, and reads only the files that changed.
+
+  A private repository needs a token, not your GitHub password. **New GitHub token** in the source form (or kind
+  *GitHub token* on **Credentials**) shows the steps and keeps it for `api.github.com` only:
+  a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with the
+  repositories' owner as its resource owner, only the repositories you pick, and **Contents: Read-only**. One token
+  covers the repositories of one owner; repositories of another owner (a client's organization) need a token of their
+  own, which that organization may have to approve. A topic can have several sources, each with its own token.
 - **Email attachments.** PDFs and text files attached to a topic's email are added by themselves.
 
 Documents are split into passages at their headings and kept in an index, so a draft can quote the passage closest to
