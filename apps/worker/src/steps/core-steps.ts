@@ -29,6 +29,7 @@ import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
 import { TopicApplyStep, TopicExtractStep } from "./topic-memory-steps";
+import { TopicTidyStep } from "./topic-tidy-step";
 import { DriveChangesStep, GitChangesStep, TopicAttachmentsStep, TopicIndexStep } from "./topic-source-steps";
 import { GitHubClient } from "../sources/github";
 import { DriveClient } from "../sources/drive";
@@ -94,6 +95,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new TopicMatchStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new TopicExtractStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new TopicApplyStep(deps.prisma),
+    new TopicTidyStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new GitChangesStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault)),
     new DriveChangesStep(deps.prisma, drive),
     new TopicIndexStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault), deps.embeddings ?? null, drive),

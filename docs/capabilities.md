@@ -19,7 +19,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
-| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub, Google Drive) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `git.changes`, `drive.changes`, `topic.index`, `topic.attachments` |
+| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub, Google Drive) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `topic.tidy`, `git.changes`, `drive.changes`, `topic.index`, `topic.attachments` |
 | Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
@@ -760,12 +760,41 @@ file was wrong about; a fact you wrote or confirmed is only ever disputed, never
 
 #### `topic.apply`
 Writes the fact proposals you approved at a gate.review of the same run: a new fact, a change (the old one kept in the
-history, superseded) or a conflict (both in dispute until you say which holds, on the Topics page). Evidence counts by
-the date of its source, not the order it was read in: a change from an email older than the fact it replaces goes into
-the history. Each one is a change on the topic's page that you can undo. A proposal no gate of the run approved is not
-written; a dry run writes nothing.
+history, superseded) or a conflict (both in dispute until you say which holds, on the topic's page). From `topic.tidy`:
+a merge (the facts superseded by the one that says them together) or a retired fact (superseded, kept in the history).
+Evidence counts by the date of its source, not the order it was read in: a change from an email older than the fact it
+replaces goes into the history. A merge or retirement of a fact that changed since it was proposed is skipped. Each one
+is a change on the topic's page that you can undo. A proposal no gate of the run approved is not written; a dry run
+writes nothing.
 - In: `proposals` (the gate's `selected`).
-- Out: `applied` (how many), `skipped` (each with why: already known, you said it was wrong, not approved).
+- Out: `applied` (how many), `skipped` (each with why: already known, you said it was wrong, a fact it tidies has
+  changed since, not approved).
+
+#### `topic.tidy` 🧠
+A tidy-up of your topics' facts, for a weekly pipeline. For each active topic with more current facts than a draft has
+room for (the topic's page says when), the writing model proposes to **merge** facts that say parts of one thing into
+one statement, keeping every detail, and to **retire** facts that no longer hold: a date that has passed and that
+nothing depends on, a status a later fact overtook. Each proposal says why. Topics whose facts all fit aren't read, so
+most weeks cost nothing. Facts in dispute are left to you. What you left out at an earlier gate of the same pipeline
+isn't proposed again (until one of its facts changes). It writes nothing: approved at a gate.review, `topic.apply` does.
+A merged fact is yours (approved wording), pinned if one of the facts it merges was.
+- In: `topics` (only these, by name, tidied even when their facts fit; default: every active topic with more than fit).
+- Out: `proposals` (for gate.review, then topic.apply), `title` ("Tidy-up: 4 proposals for Orion", for the gate),
+  `topics` (the topics read: how many facts, how many fit).
+
+```yaml
+- id: tidy
+  type: topic.tidy
+  with: {}
+- id: review
+  type: gate.review
+  when: "{{tidy.proposals}}"
+  with: { items: "{{tidy.proposals}}", title: "{{tidy.title}}" }
+- id: apply
+  type: topic.apply
+  when: "{{tidy.proposals}}"
+  with: { proposals: "{{review.selected}}" }
+```
 
 #### `git.changes`
 The files changed in your topics' GitHub sources (on the Topics page: a repository, a path like `docs/adr/**`, a branch)
@@ -1206,6 +1235,7 @@ What the steps add up to, with the pipeline that does it:
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
 | A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
 | Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.attachments`; `git.changes`, `drive.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) |
+| Each week, merge your topics' overlapping facts and retire stale ones, with your approval | `topic.tidy` → `gate.review` → `topic.apply` | [topic-tidy.yaml](../pipelines/topic-tidy.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
 | Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |

@@ -185,6 +185,7 @@ export const api = {
     changes: (topicId: string) => request<TopicChangeView[]>("GET", `/topics/${topicId}/changes`),
     upkeep: () => request<TopicUpkeepView>("GET", "/topics/upkeep"),
     replies: () => request<TopicUpkeepView>("GET", "/topics/replies"),
+    tidy: () => request<TopicUpkeepView>("GET", "/topics/tidy"),
     split: (topicId: string, body: SplitTopicRequest) => request<{ topicId: string }>("POST", `/topics/${topicId}/split`, body),
     merge: (topicId: string, body: MergeTopicRequest) => request<{ disputed: number }>("POST", `/topics/${topicId}/merge`, body),
     sources: (topicId: string) => request<TopicSourceView[]>("GET", `/topics/${topicId}/sources`),

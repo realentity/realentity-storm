@@ -505,17 +505,19 @@ function same(a: FactSnapshot | null, b: FactSnapshot | null): boolean {
   return (Object.keys(a) as (keyof FactSnapshot)[]).every((key) => a[key] === b[key]);
 }
 
-/** A fact proposal from topic.extract, approved at a gate (M42-T2). */
+/** A fact proposal from topic.extract, or a tidy-up from topic.tidy (M44-T8), approved at a gate (M42-T2). */
 export interface FactProposal {
   topicId: string;
-  kind: "new" | "change" | "conflict";
+  kind: "new" | "change" | "conflict" | "merge" | "retire";
   about: string;
   statement: string;
   quote: string;
-  /** The fact it changes or disputes. */
-  replaces: { topicFactId: string } | null;
+  /** The fact it changes or disputes; retire: the one that no longer holds. */
+  replaces: { topicFactId: string; statement?: string } | null;
+  /** merge: the facts it says together. */
+  merges?: { topicFactId: string; statement: string }[];
   /** An email, or a file of a topic's source (M43: messageId "owner/repo:path", from the repository, subject the path). */
-  source: { kind?: "email" | "file" | "edit"; messageId: string; from: string; subject: string; date: string; commit?: string };
+  source: { kind?: "email" | "file" | "edit" | "tidy"; messageId: string; from: string; subject: string; date: string; commit?: string };
   /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
   title: string;
 }
@@ -537,6 +539,7 @@ export async function applyProposal(
 ): Promise<ApplyOutcome> {
   const topic = await prisma.topic.findFirst({ where: { topicId: proposal.topicId, userId } });
   if (!topic) return { applied: false, reason: "the topic is gone" };
+  if (proposal.kind === "merge" || proposal.kind === "retire") return applyTidy(prisma, userId, proposal, runId);
   const fromSource = await prisma.topicFact.findMany({ where: { userId, topicId: proposal.topicId, sourceId: proposal.source.messageId } });
   const same = fromSource.filter((f) => sameAbout(f.about, proposal.about));
   if (same.some((f) => f.status === "WRONG")) return { applied: false, reason: "you said this source was wrong about it" };
@@ -588,6 +591,59 @@ export async function applyProposal(
       const created = await r.create({ ...fact, status: "CURRENT" });
       await r.update(target, { status: "SUPERSEDED", supersededById: created.topicFactId });
       return { applied: true as const, topicFactId: created.topicFactId };
+    },
+  );
+}
+
+/**
+ * A tidy-up approved at a gate (M44-T8): merged facts superseded by the one that says them together, or a fact that no
+ * longer holds superseded and kept as history. Only while each is still current and says what it said when proposed:
+ * otherwise the user, or newer evidence, has changed it since, and that wins.
+ */
+async function applyTidy(prisma: PrismaClient, userId: string, proposal: FactProposal, runId: string | null): Promise<ApplyOutcome> {
+  const named = proposal.kind === "merge" ? (proposal.merges ?? []) : proposal.replaces ? [proposal.replaces] : [];
+  const ids = [...new Set(named.map((f) => f.topicFactId))];
+  if (proposal.kind === "merge" ? ids.length < 2 : ids.length !== 1) return { applied: false, reason: "it names no facts to tidy" };
+  const facts = await prisma.topicFact.findMany({
+    where: { userId, topicId: proposal.topicId, topicFactId: { in: ids } },
+    orderBy: [{ sourceDate: "asc" }, { about: "asc" }],
+  });
+  const unchanged = named.every((n) => {
+    const fact = facts.find((f) => f.topicFactId === n.topicFactId);
+    return fact?.status === "CURRENT" && (n.statement === undefined || fact.statement.trim() === n.statement.trim());
+  });
+  if (facts.length !== ids.length || !unchanged) return { applied: false, reason: "a fact it tidies has changed since" };
+
+  return change(
+    prisma,
+    { userId, topicId: proposal.topicId, kind: "APPLY", summary: proposal.title, runId: runId ?? undefined },
+    async (r) => {
+      if (proposal.kind === "retire") {
+        await r.update(facts[0], { status: "SUPERSEDED", supersededById: null });
+        return { applied: true as const, topicFactId: facts[0].topicFactId };
+      }
+      // The user approved its wording: theirs, dated by the newest fact it says, pinned if any of them was.
+      const newest = facts.reduce((a, b) => (b.sourceDate > a.sourceDate ? b : a));
+      const merged = await r.create({
+        userId,
+        topicId: proposal.topicId,
+        about: proposal.about,
+        statement: proposal.statement,
+        source: "USER",
+        sourceId: null,
+        sourceLabel:
+          `you, merging ${facts.length} facts (${[...new Set(facts.map((f) => (f.source === "USER" ? "yours" : f.sourceLabel)))].join("; ")})`.slice(
+            0,
+            300,
+          ),
+        sourceDate: newest.sourceDate,
+        quote: "",
+        status: "CURRENT",
+        pinned: facts.some((f) => f.pinned),
+        runId,
+      });
+      for (const fact of facts) await r.update(fact, { status: "SUPERSEDED", supersededById: merged.topicFactId });
+      return { applied: true as const, topicFactId: merged.topicFactId };
     },
   );
 }

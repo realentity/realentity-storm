@@ -61,6 +61,12 @@ export class TopicsController {
     return this.upkeep.status(user.userId, "replies");
   }
 
+  /** M44-T8: the pipeline that tidies the topics' facts each week. */
+  @Get("tidy")
+  tidyStatus(@CurrentUser() user: AuthenticatedUser): Promise<TopicUpkeepView> {
+    return this.upkeep.status(user.userId, "tidy");
+  }
+
   @Get(":topicId/sources")
   topicSources(@CurrentUser() user: AuthenticatedUser, @Param("topicId", ParseUUIDPipe) topicId: string): Promise<TopicSourceView[]> {
     return this.sources.list(user.userId, topicId);

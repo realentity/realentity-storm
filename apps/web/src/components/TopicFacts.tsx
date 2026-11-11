@@ -6,6 +6,9 @@ import { formatDateTime } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 import { ErrorAlert } from "./ui";
 
+/** From this many facts, the list can be filtered. */
+const FILTER_FROM = 8;
+
 /**
  * A topic's facts (M42-T1, docs/design.md §8.1): what is true about it, each with its source; the user edits one, says
  * it is no longer true, wrong, or belongs to another topic, and can undo each change. The brief is the description and
@@ -16,14 +19,20 @@ export function TopicFacts({ topic, topics }: { topic: TopicView; topics: TopicV
   const changes = useLoad(() => api.topics.changes(topic.topicId), [topic.topicId]);
   const [adding, setAdding] = useState(false);
   const [history, setHistory] = useState(false);
+  const [filter, setFilter] = useState("");
   const reload = () => {
     facts.reload();
     changes.reload();
   };
   const now = facts.data?.filter((f) => f.status !== "SUPERSEDED") ?? [];
   const before = facts.data?.filter((f) => f.status === "SUPERSEDED") ?? [];
+  const words = filter.trim().toLowerCase();
+  // Disputes first: they wait for the user.
+  const shown = now
+    .filter((f) => !words || `${f.about} ${f.statement} ${f.sourceLabel}`.toLowerCase().includes(words))
+    .sort((a, b) => Number(b.status === "DISPUTED") - Number(a.status === "DISPUTED"));
   return (
-    <div className="mt-3" data-testid="topic-facts">
+    <div data-testid="topic-facts">
       <div className="d-flex align-items-center mb-2">
         <h4 className="mb-0 flex-fill">Facts</h4>
         <button type="button" className="btn btn-sm btn-ghost-secondary" onClick={() => setHistory((h) => !h)} data-testid="facts-history">
@@ -51,9 +60,19 @@ export function TopicFacts({ topic, topics }: { topic: TopicView; topics: TopicV
           Nothing yet. Storm proposes facts from the topic&apos;s emails, and you approve them; you can also write one.
         </p>
       )}
-      {now.length > 0 && (
+      {now.length >= FILTER_FROM && (
+        <input
+          className="form-control mb-2"
+          placeholder="Find a fact"
+          aria-label="Find a fact"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      )}
+      {now.length > 0 && shown.length === 0 && <p className="text-secondary small">No fact matches.</p>}
+      {shown.length > 0 && (
         <div className="list-group mb-2">
-          {now.map((fact) => (
+          {shown.map((fact) => (
             <FactRow key={fact.topicFactId} fact={fact} topics={topics} onChange={reload} />
           ))}
         </div>
@@ -72,7 +91,8 @@ function RoomNote({ topic, facts }: { topic: TopicView; facts: TopicFactView[] }
   return (
     <p className="text-secondary small" data-testid="facts-room">
       A draft has room for about {fit} of these {current.length} facts. It takes the ones you wrote or confirmed first, then those closest
-      to the email it answers. To keep more of them in every draft, say which are no longer true, or split the topic.
+      to the email it answers. To keep more of them in every draft, say which are no longer true, or split the topic; the weekly tidy-up
+      (Tidy up topics&apos; facts, on the Topics page) proposes merges and retirements for you to approve.
     </p>
   );
 }
@@ -149,7 +169,15 @@ function FactRow({ fact, topics, onChange }: { fact: TopicFactView; topics: Topi
             className="btn btn-sm btn-ghost-danger"
             title="Wrong: it never was (not proposed again from this source)"
             disabled={action.busy}
-            onClick={() => void run(() => api.topicFacts.wrong(fact.topicFactId))}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Mark "${fact.about}: ${fact.statement}" wrong? It is hidden and not proposed again from its source; Undo is in the History.`,
+                )
+              ) {
+                void run(() => api.topicFacts.wrong(fact.topicFactId));
+              }
+            }}
           >
             Wrong
           </button>

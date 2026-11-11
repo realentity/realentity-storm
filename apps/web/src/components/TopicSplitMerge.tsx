@@ -11,7 +11,7 @@ type Picks = Record<"facts" | "directions" | "sources" | "links", Set<string>>;
  * Split (M44-T4, docs/design.md §8.1): name the new topic, tick what goes there (its facts, directions, sources,
  * emails). One change on both topics' history: Undo brings everything back.
  */
-export function SplitForm({ topic, onDone }: { topic: TopicView; onDone: (split: boolean) => void }) {
+export function SplitForm({ topic, onDone }: { topic: TopicView; onDone: (made: string | null) => void }) {
   const facts = useLoad(() => api.topics.facts(topic.topicId), [topic.topicId]);
   const sources = useLoad(() => api.topics.sources(topic.topicId), [topic.topicId]);
   const links = useLoad(() => api.topics.links(topic.topicId), [topic.topicId]);
@@ -40,7 +40,7 @@ export function SplitForm({ topic, onDone }: { topic: TopicView; onDone: (split:
     );
     if (!done) return;
     toast.success(`${name} made from ${topic.name}`);
-    onDone(true);
+    onDone(done.topicId);
   };
   const group = (title: string, key: keyof Picks, items: { id: string; label: string }[]) =>
     items.length > 0 && (
@@ -107,7 +107,7 @@ export function SplitForm({ topic, onDone }: { topic: TopicView; onDone: (split:
           .map((l) => ({ id: l.topicLinkId, label: `${l.subject || "(no subject)"} · ${l.from}` })),
       )}
       <div className="d-flex gap-2 justify-content-end">
-        <button type="button" className="btn" onClick={() => onDone(false)}>
+        <button type="button" className="btn" onClick={() => onDone(null)}>
           Cancel
         </button>
         <button type="submit" className="btn btn-primary" disabled={action.busy || !name.trim()}>

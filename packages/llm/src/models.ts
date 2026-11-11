@@ -31,6 +31,8 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   "topic.extract.screen": "classify",
   // What it states: new facts, changes and conflicts with what the topic knows.
   "topic.extract": "writing",
+  // Which of a topic's facts say one thing together, and which no longer hold (M44-T8).
+  "topic.tidy": "writing",
   "email.draftReply": "writing",
   "email.draftFollowUp": "writing",
   // Amounts and dates out of a bill's text: worth the writing model.

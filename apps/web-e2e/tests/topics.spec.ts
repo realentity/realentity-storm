@@ -2,6 +2,11 @@ import { createPrismaConnection } from "@realentity/storm-db";
 import { expect, test, type Page } from "@playwright/test";
 import { unique } from "./support";
 
+/** A topic's own page, on one of its tabs. */
+async function open(page: Page, topicId: string, tab: "directions" | "facts" | "sources" | "emails") {
+  await page.goto(`/topics/${topicId}?tab=${tab}`);
+}
+
 // M41-T2
 test("a topic made, given directions of each kind, edited and archived", async ({ page }) => {
   const name = unique("Orion");
@@ -12,6 +17,8 @@ test("a topic made, given directions of each kind, edited and archived", async (
   await form.getByLabel("What it is").fill("The customer portal rebuild for Client Ltd");
   await form.getByRole("button", { name: "Save" }).click();
 
+  // Its own page, on its directions.
+  await expect(page).toHaveURL(/\/topics\/[0-9a-f-]{36}\?tab=directions$/);
   const card = page.getByTestId(`topic-${name}`);
   await expect(card).toContainText("The customer portal rebuild for Client Ltd");
   const directions = card.getByTestId("direction-form");
@@ -37,6 +44,11 @@ test("a topic made, given directions of each kind, edited and archived", async (
   await expect(directions).toContainText("Not added");
   await expect(card.getByTestId("directions").locator(".list-group-item")).toHaveCount(3);
 
+  // Asked first: dismissed, it stays.
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await card.getByRole("button", { name: "Remove direction" }).first().click();
+  await expect(card.getByTestId("directions").locator(".list-group-item")).toHaveCount(3);
+  page.once("dialog", (dialog) => void dialog.accept());
   await card.getByRole("button", { name: "Remove direction" }).first().click();
   await expect(card.getByTestId("directions").locator(".list-group-item")).toHaveCount(2);
 
@@ -47,6 +59,41 @@ test("a topic made, given directions of each kind, edited and archived", async (
 
   await card.getByRole("button", { name: "Archive" }).click();
   await expect(card).toContainText("archived");
+
+  // The list: a row per topic, linking to its page.
+  await card.getByRole("link", { name: "Topics" }).click();
+  const row = page.getByTestId(`topic-row-${name}`);
+  await expect(row).toContainText("archived");
+  await expect(row).toContainText("The portal rebuild, phase 2");
+  await row.getByRole("link", { name }).click();
+  await expect(page.getByTestId(`topic-${name}`)).toBeVisible();
+});
+
+// The list stays short however much the topics know: counts, not their facts
+test("the Topics list shows each topic's counts, and says when its facts don't all fit", async ({ page }) => {
+  const name = unique("Orion");
+  const topicId = await newTopic(page, name);
+  for (let i = 0; i < 8; i++) {
+    const response = await page.request.post(`/api/topics/${topicId}/facts`, {
+      data: { about: `Note ${i}`, statement: "Routine detail of the weekly meeting. ".repeat(23).trim() },
+    });
+    expect(response.status()).toBe(201);
+  }
+  await page.goto("/topics");
+  const row = page.getByTestId(`topic-row-${name}`);
+  await expect(row).toContainText("no directions");
+  await expect(row).toContainText("8");
+  await expect(row).toContainText("6 fit");
+  await expect(row).not.toContainText("Note 0");
+
+  await row.getByRole("link", { name }).click();
+  await expect(page.getByTestId("topic-summary")).toContainText("8 facts (a draft has room for about 6)");
+  // No direction yet: its page opens on them.
+  await expect(page.getByTestId("tab-directions")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("tab-facts").click();
+  const facts = page.getByTestId("topic-facts");
+  await facts.getByLabel("Find a fact").fill("Note 3");
+  await expect(facts.locator("[data-testid^='fact-Note']")).toHaveCount(1);
 });
 
 async function newTopic(page: Page, name: string): Promise<string> {
@@ -61,7 +108,7 @@ test("a suggested link confirmed from the queue, another moved to another topic,
   const orion = unique("Orion");
   const billing = unique("Billing");
   const orionId = await newTopic(page, orion);
-  await newTopic(page, billing);
+  const billingId = await newTopic(page, billing);
   // What topic.match writes (the browser tests' steps call no LLM).
   const db = createPrismaConnection();
   try {
@@ -97,13 +144,18 @@ test("a suggested link confirmed from the queue, another moved to another topic,
   await waiting.getByTestId(`waiting-Invoice ${orion}`).getByLabel("Move to").selectOption({ label: billing });
   await expect(page.getByTestId(`waiting-Invoice ${orion}`)).toHaveCount(0);
 
+  await open(page, billingId, "emails");
+  await expect(page.getByTestId(`topic-${billing}`).getByTestId("topic-emails")).toContainText(`Invoice ${orion}`);
+  await expect(page.getByTestId(`topic-${billing}`).getByTestId("topic-emails")).toContainText("moved here from");
+
+  await open(page, orionId, "emails");
   const orionEmails = page.getByTestId(`topic-${orion}`).getByTestId("topic-emails");
   await expect(orionEmails).toContainText(`Kickoff ${orion}`);
   await expect(orionEmails).toContainText(`Spec ${orion}`);
   await expect(orionEmails).not.toContainText(`Invoice ${orion}`);
-  await expect(page.getByTestId(`topic-${billing}`).getByTestId("topic-emails")).toContainText(`Invoice ${orion}`);
-  await expect(page.getByTestId(`topic-${billing}`).getByTestId("topic-emails")).toContainText("moved here from");
+  await expect(page.getByTestId("tab-emails")).toHaveText("Emails (2)");
 
+  page.once("dialog", (dialog) => void dialog.accept());
   await orionEmails
     .locator(".list-group-item", { hasText: `Kickoff ${orion}` })
     .getByRole("button", { name: "Not this topic" })
@@ -114,8 +166,8 @@ test("a suggested link confirmed from the queue, another moved to another topic,
 // M42-T1
 test("a topic's facts: written, no longer true with what is true now, wrong, and a change undone from the history", async ({ page }) => {
   const name = unique("Orion");
-  await newTopic(page, name);
-  await page.goto("/topics");
+  const topicId = await newTopic(page, name);
+  await open(page, topicId, "facts");
   const facts = page.getByTestId(`topic-${name}`).getByTestId("topic-facts");
   const add = async (about: string, statement: string) => {
     await facts.getByTestId("fact-add").click();
@@ -142,6 +194,11 @@ test("a topic's facts: written, no longer true with what is true now, wrong, and
   await launch.getByRole("button", { name: "Save" }).click();
   await expect(facts.getByTestId("fact-Launch date")).toContainText("Launch date: March");
 
+  // Asked first.
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain('Mark "Database: MySQL" wrong?');
+    void dialog.accept();
+  });
   await facts.getByTestId("fact-Database").getByRole("button", { name: "Wrong" }).click();
   await expect(facts.getByTestId("fact-Database")).toHaveCount(0);
 
@@ -167,7 +224,7 @@ test("a topic with more facts than a draft has room for says so, and which ones 
       ).status(),
     ).toBe(201);
   await add(0);
-  await page.goto("/topics");
+  await open(page, topicId, "facts");
   const facts = page.getByTestId(`topic-${name}`).getByTestId("topic-facts");
   await expect(facts.getByTestId("fact-Note 0")).toBeVisible();
   await expect(facts.getByTestId("facts-room")).toHaveCount(0);
@@ -175,6 +232,7 @@ test("a topic with more facts than a draft has room for says so, and which ones 
   await page.reload();
   await expect(facts.getByTestId("facts-room")).toContainText("A draft has room for about 6 of these 8 facts");
   await expect(facts.getByTestId("facts-room")).toContainText("the ones you wrote or confirmed first");
+  await expect(facts.getByTestId("facts-room")).toContainText("the weekly tidy-up");
 });
 
 // M42: topic upkeep offered on the Topics page, installed off, with what is left; deleted, offered again
@@ -210,11 +268,28 @@ test("Answer your topics' email: set up from the Topics page, off, an ordinary p
   expect((await page.request.delete(`/api/pipelines/${pipelineId}`)).status()).toBe(204);
 });
 
+// M44-T8
+test("Tidy up topics' facts: set up from the Topics page, off, with what it would read", async ({ page }) => {
+  await page.goto("/topics");
+  const card = page.getByTestId("topic-tidy");
+  await expect(card).toContainText("You pick at its gate what is done");
+  await card.getByRole("button", { name: "Set up" }).click();
+  await expect(card.getByTestId("topic-tidy-status")).toContainText("Topic tidy-up: off");
+  await expect(card.getByTestId("topic-tidy-status")).toContainText(/fit/);
+  const checklist = card.getByTestId("topic-tidy-checklist");
+  await expect(checklist).toContainText("Try it: a dry run");
+  await expect(checklist).not.toContainText("An email account");
+  await card.getByRole("link", { name: "Topic tidy-up" }).click();
+  await expect(page).toHaveURL(/\/pipelines\/[0-9a-f-]{36}$/);
+  const pipelineId = page.url().split("/").at(-1)!;
+  expect((await page.request.delete(`/api/pipelines/${pipelineId}`)).status()).toBe(204);
+});
+
 // M43: a topic's GitHub source, linked and never copied
 test("a topic's source: a repository added from its address, shown not read yet, then removed", async ({ page }) => {
   const name = unique("Orion");
-  await newTopic(page, name);
-  await page.goto("/topics");
+  const topicId = await newTopic(page, name);
+  await open(page, topicId, "sources");
   const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
   await sources.getByTestId("source-add").click();
   const form = sources.getByTestId("source-form");
@@ -235,8 +310,8 @@ test("a topic's source: a repository added from its address, shown not read yet,
 test("a topic's source: a new GitHub token from the form is stored for api.github.com and chosen", async ({ page }) => {
   const name = unique("Orion");
   const credential = `gh-${Date.now().toString(36)}`;
-  await newTopic(page, name);
-  await page.goto("/topics");
+  const topicId = await newTopic(page, name);
+  await open(page, topicId, "sources");
   const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
   await sources.getByTestId("source-add").click();
   await sources.getByTestId("source-new-token").click();
@@ -268,7 +343,7 @@ test("a topic's source: a Drive folder from its link, with a word when Google's 
     await expect(page.getByTestId("google-allowed")).toContainText("Calendar: allowed");
     await expect(page.getByTestId("google-allowed")).toContainText("Drive (read-only): not allowed");
 
-    await page.goto("/topics");
+    await open(page, topicId, "sources");
     const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
     await sources.getByTestId("source-add").click();
     const form = sources.getByTestId("source-form");
@@ -304,7 +379,7 @@ test("a topic's history: the estimate shown before anything is read, then its pr
         emails: [{ messageId: "<a@x.test>", date: "2026-10-01" }],
       },
     });
-    await page.goto("/topics");
+    await open(page, topicId, "facts");
     const history = page.getByTestId(`topic-${name}`).getByTestId("topic-history");
     await expect(history.getByTestId("history-estimate")).toContainText("Found 1 email and 0 documents from the last 6 months");
     await expect(history.getByTestId("history-estimate")).toContainText("$0.12");
@@ -373,11 +448,13 @@ test("a direction suggested from the user's decisions, accepted; a topic split f
   const suggestion = page.getByTestId("topic-suggestions").getByTestId("suggestion-DIRECTION").filter({ hasText: sender });
   await expect(suggestion).toContainText(`${name}: add the person ${sender} as a direction?`);
   await suggestion.getByRole("button", { name: "Yes" }).click();
+  await expect(suggestion).toHaveCount(0);
+  await open(page, topicId, "directions");
   await expect(page.getByTestId(`topic-${name}`).getByTestId("directions")).toContainText(sender);
 
-  // Split: the fact and the direction go to a new topic.
+  // Split: the fact and the direction go to a new topic, whose page opens.
   expect((await page.request.post(`/api/topics/${topicId}/facts`, { data: { about: "Terms", statement: "30 days" } })).status()).toBe(201);
-  await page.reload();
+  await open(page, topicId, "facts");
   const card = page.getByTestId(`topic-${name}`);
   await card.getByRole("button", { name: "Split" }).click();
   const form = page.getByTestId("split-form");
@@ -387,6 +464,9 @@ test("a direction suggested from the user's decisions, accepted; a topic split f
   await form.getByLabel(sender, { exact: true }).check();
   await form.getByRole("button", { name: "Split" }).click();
   await expect(page.getByTestId(`topic-${split}`).getByTestId("fact-Terms")).toContainText("Terms: 30 days");
+  await page.getByTestId("tab-directions").click();
   await expect(page.getByTestId(`topic-${split}`).getByTestId("directions")).toContainText(sender);
+  await open(page, topicId, "facts");
+  await expect(page.getByTestId(`topic-${name}`).getByTestId("topic-facts")).toBeVisible();
   await expect(page.getByTestId(`topic-${name}`).getByTestId("fact-Terms")).toHaveCount(0);
 });

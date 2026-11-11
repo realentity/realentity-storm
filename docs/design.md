@@ -461,7 +461,7 @@ email and the documents you point it to, and changed only with your approval. A 
 you (M15): those answer forms; these are what Storm knows about a subject. The user's guide is
 [topics.md](topics.md); this section is how it works. (M41: topics, directions and links; M42: facts, their history,
 drafts that use them, the upkeep pipeline; M43: GitHub and attachment sources, the index, the backfill; M44: learning,
-split and merge, costs, Topic replies.)
+split and merge, costs, Topic replies, the weekly tidy-up of facts.)
 
 **What a topic holds.**
 
@@ -554,12 +554,12 @@ first, then those closest to the email, the newer first among equals; they are s
 meaning when there is an embeddings provider (any language: a Bulgarian question finds an English fact): each fact is
 embedded the first time a draft needs it, and again only when its text or the model changed (`embeddingOf`,
 `embeddingModel`); the email is embedded once per draft, for the facts and the passages. Without a provider, or when
-it fails, by the words they share. The topic's card says how many facts a draft has room for. The draft names the
+it fails, by the words they share. The topic's page says how many facts a draft has room for. The draft names the
 references it relied on (`used`), and the gate's **Why** shows those facts and passages with their sources, so stale or
 wrong memory is seen where it matters. The drafting rules stay: what the context doesn't hold is a placeholder.
 
 **The pipelines.** A topic's upkeep is a pipeline, so runs, gates, decisions, limits and costs come with it. Storm
-ships two, each set up from a card on the Topics page as an ordinary pipeline of yours: off until you switch it on,
+ships three, each set up from a card on the Topics page as an ordinary pipeline of yours: off until you switch it on,
 with a checklist of what is left (an email account, the LLM, a topic with a direction, a dry run, switching it on) and
 how it is doing (its last run, the proposals waiting). You edit, copy or delete them like any other; deleted, the card
 offers it again. Storm doesn't keep pipelines of its own that you can't delete: an update of one would clash with your
@@ -574,8 +574,23 @@ edits.
   drafted) → `email.draftReply` with `topic: auto` on `linked` → `email.send` at the gate. Recognized by a draft over
   `topic.match`'s `linked`. [pipelines/recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) drafts only over
   `unlinked`, so no email is drafted twice.
+- [pipelines/topic-tidy.yaml](../pipelines/topic-tidy.yaml), **Tidy up topics' facts**: weekly, `topic.tidy` →
+  `gate.review` → `topic.apply`. Recognized by `topic.tidy`; its card counts the topics whose facts don't all fit.
 
-**The backfill.** A new topic knows nothing of the email from before it. **Its history** on the topic's card
+**The tidy-up.** A long-lived topic collects more facts than a draft has room for, and then a draft has to choose. For
+each active topic over that room, `topic.tidy` gives the writing model the topic's current facts (references F1…,
+the ones you wrote or confirmed marked) and today's date, and asks for **merges** (facts that say parts of one thing,
+said once without losing a detail) and **retirements** (facts that no longer hold, not merely old ones), each with why.
+Each fact is in one proposal at most; unknown references and anything that looks like a secret are dropped. Facts in
+dispute aren't shown: you settle them. The proposals wait at a gate like any fact; `topic.apply` writes only the
+approved ones, and only while each fact it touches is still current and says what it said when proposed. A merge
+writes a new fact, yours (`USER`, labelled with what it merged), dated by the newest fact it says and pinned if one of
+them was, and supersedes the merged facts by it; a retirement supersedes the fact with nothing. Each is one
+`TopicChange` (APPLY), undone like any other. What you left out at an earlier gate of the same pipeline (keyed by the
+facts it names) isn't proposed again; a proposal whose facts changed since is a new one. Its cost is the topic's
+(`TopicCost`, `topic.tidy`).
+
+**The backfill.** A new topic knows nothing of the email from before it. **Its history** on the topic's page
 (`TopicBackfill`, queue `topic-backfill`) first estimates: the past emails found by the topic's exact directions and
 their threads (the inbox's and the Sent folder's newest 1 000 each) and its sources' documents from the index, with no
 LLM, and what reading them would cost. Nothing is read until you start it. Then the cheap model screens and the writing
@@ -606,7 +621,7 @@ it, and a dismissed suggestion isn't made again):
 - A topic's memory is a cached prefix of the draft's prompt while its facts fit.
 - The backfill shows its estimate first and goes through the Batch API.
 - Topic pipelines are non-essential, so the monthly budget pauses them. The topic steps share each call's cost among
-  the topics it was for (`TopicCost`; the screen over the emails it read); a topic's card shows its last 30 days with
+  the topics it was for (`TopicCost`; the screen over the emails it read); a topic's page shows its last 30 days with
   its backfills, and the weekly review lists the topics' costs.
 
 **Safety.** Email and document text is data: it can lead to a proposed fact or a suggested topic, never write either,
