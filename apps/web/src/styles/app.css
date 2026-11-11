@@ -49,6 +49,14 @@
   --tblr-navbar-bg: oklch(26.86% 0.026 255deg);
 }
 
+/*
+ * The sidebar takes its own column, so the pages can be wider than Tabler's 1320px: wide tables (pipeline edit, app
+ * lists) stop scrolling sideways on a desktop screen, and the cap keeps reading pages from stretching on wide ones.
+ */
+.page-wrapper .container-xl {
+  max-width: 1760px;
+}
+
 /* Tabler's <pre> is dark-on-light inverted; payloads read better as plain text on a light surface. */
 .json-block {
   color: var(--tblr-body-color);
