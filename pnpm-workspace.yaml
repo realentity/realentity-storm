@@ -70,7 +70,7 @@ catalog:
   mailparser: ^3.14.0
 
   # files: text of downloaded PDFs (file.read); ships CommonJS and its own types
-  fast-xml-parser: ^5.11.2
+  fast-xml-parser: ^5.12.0
   pdf-parse: ^2.4.5
 
   # data.map: JSONata expressions over JSON an API returned
