@@ -1,8 +1,8 @@
 import { type PrismaClient } from "./generated/prisma/client";
 
 /**
- * What the user's LLM calls cost since `since`: steps (Step.llmUsage), reflections (Reflection.llmUsage) and builder
- * chats (BuilderMessage.llmUsage).
+ * What the user's LLM calls cost since `since`: steps (Step.llmUsage), reflections (Reflection.llmUsage), builder
+ * chats (BuilderMessage.llmUsage) and topic backfills (TopicBackfill.llmUsage, M43-T5).
  */
 export async function llmSpendSince(prisma: PrismaClient, userId: string, since: Date): Promise<number> {
   const rows = await prisma.$queryRaw<{ spent: string | null }[]>`
@@ -21,12 +21,17 @@ export async function llmSpendSince(prisma: PrismaClient, userId: string, since:
         SELECT SUM((m."llmUsage"->>'costUsd')::numeric)
         FROM "BuilderMessages" m JOIN "BuilderChats" c ON c."builderChatId" = m."builderChatId"
         WHERE c."userId" = ${userId}::uuid AND m."dateCreated" >= ${since} AND m."llmUsage" ? 'costUsd'
+      ), 0) +
+      COALESCE((
+        SELECT SUM((b."llmUsage"->>'costUsd')::numeric)
+        FROM "TopicBackfills" b
+        WHERE b."userId" = ${userId}::uuid AND b."dateCreated" >= ${since} AND b."llmUsage" ? 'costUsd'
       ), 0)
     )::text AS spent`;
   return Number(rows[0]?.spent ?? 0);
 }
 
-/** One line of where the money went (M19-T3): a step type, or "reflection" and "builder", by the model that answered. */
+/** One line of where the money went (M19-T3): a step type, or "reflection", "builder", "topic backfill", by the model. */
 export interface LlmCostRow {
   source: string;
   /** The models of a call, in order of first use ("claude-haiku-5-5 + claude-sonnet-5-5": the fallback answered too). */
@@ -49,6 +54,9 @@ export async function llmCostSince(prisma: PrismaClient, userId: string, since: 
       SELECT 'builder', m."llmUsage"
       FROM "BuilderMessages" m JOIN "BuilderChats" c ON c."builderChatId" = m."builderChatId"
       WHERE c."userId" = ${userId}::uuid AND m."dateCreated" >= ${since} AND m."llmUsage" ? 'costUsd'
+      UNION ALL
+      SELECT 'topic backfill', b."llmUsage" FROM "TopicBackfills" b
+      WHERE b."userId" = ${userId}::uuid AND b."dateCreated" >= ${since} AND b."llmUsage" ? 'costUsd'
     )
     SELECT source,
       (SELECT string_agg(value, ' + ') FROM jsonb_array_elements_text(COALESCE(u->'models', '[]'::jsonb))) AS model,

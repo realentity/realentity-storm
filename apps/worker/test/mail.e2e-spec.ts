@@ -5,6 +5,7 @@ import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type z } from "zod";
@@ -15,7 +16,7 @@ import { ExecutorRegistry, NO_ATTENTION } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { coreSteps } from "../src/steps/core-steps";
 import { EmailFetchStep } from "../src/steps/email-steps";
-import { EmailAwaitingStep } from "../src/steps/follow-up-steps";
+import { DraftFollowUpStep, EmailAwaitingStep } from "../src/steps/follow-up-steps";
 import { APP_PASSWORD, MAILBOX, OTHER_MAILBOX, OTHER_PASSWORD, startMailServer, type TestMailServer } from "./support/greenmail";
 import { createVersion } from "./support/test-steps";
 
@@ -27,8 +28,9 @@ class FakeLlm implements LlmClient {
     this.requests.push(request);
     const indexes = [...request.prompt.matchAll(/<email index="(\d+)">/g)].map((m) => Number(m[1]));
     const answer = indexes.length
-      ? { results: indexes.map((index) => ({ index, label: "reply", reason: "a recruiter" })) }
-      : { body: this.draft(request.prompt), language: "en" };
+      ? // A triage (label) or topic.match (topics: none beyond the directions) answer.
+        { results: indexes.map((index) => ({ index, label: "reply", reason: "a recruiter", topics: [] })) }
+      : { body: this.draft(request.prompt), language: "en", ...("used" in request.schema.shape ? { used: [] } : {}) };
     return Promise.resolve({ output: request.schema.parse(answer), usage: { ...emptyUsage(), calls: 1, costUsd: 0.001 } });
   }
 }
@@ -277,8 +279,8 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     }
 
     /** Only mail delivered after this point (each test starts from a fresh cursor anyway). */
-    async function freshPipeline(): Promise<string> {
-      const pipelineVersionId = await createVersion(db.client, userId, REPLIES);
+    async function freshPipeline(source = REPLIES): Promise<string> {
+      const pipelineVersionId = await createVersion(db.client, userId, source);
       const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
       const mailbox = await connector.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
       await db.client.mailCursor.create({
@@ -292,6 +294,31 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       });
       return pipelineVersionId;
     }
+
+    // M44: the shipped pipelines: an email of a topic is answered by Topic replies only, any other by Recruiter replies
+    it("Topic replies drafts for a topic's email, Recruiter replies for the rest: none twice", async () => {
+      const shipped = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+      const topic = await db.client.topic.create({
+        data: { userId, name: "Acme project", directions: { create: { kind: "DOMAIN", value: "acme.test" } } },
+      });
+      try {
+        const topicReplies = await freshPipeline(shipped("topic-replies.yaml"));
+        const recruiterReplies = await freshPipeline(shipped("recruiter-replies.yaml"));
+        await server.deliver({ from: "ana@acme.test", subject: "The project plan", text: "Can we move the review?" });
+        await server.deliver({ from: "bob@hiring.test", subject: "A role", text: "Are you open to a new role?" });
+        const proposed = async (pipelineVersionId: string) => {
+          const run = runner(new FakeLlm());
+          const runId = await run.start(pipelineVersionId, { trigger: "manual" });
+          await expect(run.advance(runId)).resolves.toBe("WAITING_FOR_USER");
+          return (await db.client.proposal.findMany({ where: { runId } })).map((p) => (p.originalPayload as { to: string }).to);
+        };
+        expect(await proposed(topicReplies)).toEqual(["ana@acme.test"]);
+        expect(await proposed(recruiterReplies)).toEqual(["bob@hiring.test"]);
+      } finally {
+        await db.client.topic.delete({ where: { topicId: topic.topicId } });
+        await db.client.unlinkedEmail.deleteMany();
+      }
+    });
 
     // M4-S1
     it("an email telling the LLM to mail an attacker: the proposal still targets only the sender", async () => {
@@ -318,7 +345,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       const pipelineVersionId = await freshPipeline();
       await server.deliver({ from: "ana@acme.test", subject: "Interview", text: "When can we talk?" });
       let sends = 0;
-      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), recent: (u, r) => connector.recent(u, r), attachments: (u, r) => connector.attachments(u, r), send: (u, m) => (sends++, connector.send(u, m)) };
+      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), recent: (u, r) => connector.recent(u, r), attachments: (u, r) => connector.attachments(u, r), send: (u, m) => (sends++, connector.send(u, m)), thread: (u, ids) => connector.thread(u, ids) };
       const run = runner(new FakeLlm(), counting);
       const runId = await run.start(pipelineVersionId, { trigger: "manual" });
       await run.advance(runId);
@@ -439,6 +466,40 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       // Two follow-ups in a row allowed: E's second is due.
       const more = await awaiting(true, { maxFollowUps: 2 });
       expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]]]);
+    });
+
+    // M42: topic upkeep reads the user's sent mail too
+    it('email.fetch reads "Sent": the server\'s Sent folder, whatever its name, read-only', async () => {
+      const read = await connector.fetch(userId, { mailbox: "sent", after: null, since: ago(30), limit: 50 });
+      expect(read.messages.map((m) => m.messageId)).toEqual(
+        expect.arrayContaining(["<a1@storm.test>", "<b1@storm.test>", "<e2@storm.test>"]),
+      );
+      expect(read.messages.map((m) => m.messageId)).not.toContain("<b2@corp.test>");
+      expect(await seenFlags()).not.toContain(true);
+    });
+
+    // M41-T1
+    it("a thread's earlier messages, read-only, from INBOX and Sent, oldest first; the user's marked; ones gone left out", async () => {
+      const thread = await connector.thread(userId, ["<b1@storm.test>", "<b2@corp.test>", "<gone@corp.test>"]);
+      expect(thread.map((t) => [t.message.messageId, t.message.subject, t.mine])).toEqual([
+        ["<b1@storm.test>", "Invoice question", true],
+        ["<b2@corp.test>", "Re: Invoice question", false],
+      ]);
+      // A Message-ID that is only part of another one isn't it.
+      expect(await connector.thread(userId, ["<b1@storm"])).toEqual([]);
+      expect(await connector.thread(userId, [])).toEqual([]);
+      expect(await seenFlags()).not.toContain(true);
+
+      // The follow-up to E's second email sees the first.
+      const llm = new FakeLlm(() => "Hi Eve, any news on the quote? Best");
+      const e2 = (await connector.thread(userId, ["<e2@storm.test>"]))[0].message;
+      await new DraftFollowUpStep(llm, new ModelRouter(() => Promise.resolve(null)), undefined, connector).execute(
+        { message: e2, instruction: "A short nudge" },
+        { ...baseContext(userId, randomUUID()), runId: randomUUID(), dryRun: true },
+      );
+      expect(llm.requests[0]?.prompt).toMatch(
+        /^<thread>\n<email mine="true">\nFrom: me@storm.test\n[\s\S]*Subject: Quote\n[\s\S]*<\/thread>\n\n<email>\n/,
+      );
     });
 
     it("the follow-ups pipeline: a draft in the thread, to whom the user's email went, waiting at the gate", async () => {

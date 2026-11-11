@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { type LlmChat, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { type Embeddings, type LlmChat, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { type StepLearning } from "../learning/learning";
 import { type GoogleConnection } from "../google/google-connection";
 import { type MailConnector } from "../mail/mail-connector";
@@ -28,6 +28,10 @@ import { BrowserExtractStep } from "./recipe-steps";
 import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
+import { TopicApplyStep, TopicExtractStep } from "./topic-memory-steps";
+import { GitChangesStep, TopicAttachmentsStep, TopicIndexStep } from "./topic-source-steps";
+import { GitHubClient } from "../sources/github";
+import { TopicMatchStep } from "./topic-steps";
 
 export interface CoreStepDependencies {
   llm: LlmClient;
@@ -54,6 +58,10 @@ export interface CoreStepDependencies {
   http?: HttpFetchOptions;
   /** http.fetch's and http.request's API keys, db.query's connections (M29); without it, steps using {{cred:…}} fail. */
   vault?: CredentialVault;
+  /** git.changes and topic.index (M43): GitHub's API; tests give one with a stand-in fetch. */
+  github?: GitHubClient;
+  /** topic.index's passage embeddings (M43-T3); without them passages are found by their words. */
+  embeddings?: Embeddings | null;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */
@@ -79,11 +87,24 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new GenerateStep(deps.llm, deps.router, deps.learning),
     new SummarizeStep(deps.llm, deps.router, deps.learning),
     new ExtractStep(deps.llm, deps.router, deps.learning),
+    new TopicMatchStep(deps.llm, deps.router, deps.learning, deps.prisma),
+    new TopicExtractStep(deps.llm, deps.router, deps.learning, deps.prisma),
+    new TopicApplyStep(deps.prisma),
+    new GitChangesStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault)),
+    new TopicIndexStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault), deps.embeddings ?? null),
+    new TopicAttachmentsStep(deps.prisma, deps.mail, deps.embeddings ?? null),
     ...(deps.google ? [new CalendarFindStep({ google: deps.google, appOrigin: deps.appOrigin }), new CalendarCreateStep({ google: deps.google, appOrigin: deps.appOrigin })] : []),
     ...(deps.later ? [new FlowLaterStep(deps.later), new FlowCancelStep(deps.later)] : []),
     telegram,
     new DigestStep(deps.prisma, telegram),
-    ...emailSteps({ mail: deps.mail, prisma: deps.prisma, llm: deps.llm, router: deps.router, learning: deps.learning }),
+    ...emailSteps({
+      mail: deps.mail,
+      prisma: deps.prisma,
+      llm: deps.llm,
+      router: deps.router,
+      learning: deps.learning,
+      embeddings: deps.embeddings,
+    }),
     ...(deps.browser ? browserSteps(deps, deps.browser) : []),
     ...(deps.browser && "documents" in deps.browser
       ? [

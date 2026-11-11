@@ -1,0 +1,47 @@
+# M44: replies to the email of your topics, drafted with what Storm knows about them (the Topics page: make a topic and
+# give it directions first; Topic upkeep fills its memory). Every 15 minutes the new email that expects a reply from
+# you is sorted into your topics, here before drafting, so a new conversation has its topic too. Each email of a topic
+# gets a draft that uses the topic's current facts and the passages of its documents closest to it; the gate's "Why"
+# lists what it drew on. Every reply waits in the inbox until you press Act; nothing is sent without you. Email of no
+# topic is left alone: Recruiter and client replies, if you use it, answers that. The Topics page sets it up for you
+# (Answer your topics' email).
+name: Topic replies
+description: Drafts replies to the email of your topics, with what Storm knows about them; you review, edit and Act on each.
+trigger: { schedule: "*/15 * * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "reply": a person writing to me personally, or to a few people with me, where a reply from me is expected.
+        "skip": everything else: newsletters, notifications, receipts, automated or mass mail, and messages that need
+        no reply.
+      labels: [reply, skip]
+      keep: [reply]
+  - id: topics
+    type: topic.match
+    with: { messages: "{{triage.kept}}" }
+  - id: draft
+    type: email.draftReply
+    forEach: "{{topics.linked}}"
+    with:
+      message: "{{item}}"
+      topic: auto
+      instruction: >-
+        Reply briefly as me. Answer what is asked with what the memory and the passages say; where they don't say,
+        write a placeholder rather than guess. Agree to nothing new on my behalf: propose, or ask.
+  - id: send
+    type: email.send
+    forEach: "{{topics.linked}}"
+    with:
+      to: "{{item.from}}" # the sender of the fetched email; never a value the LLM wrote
+      subject: "{{draft.subject}}"
+      body: "{{draft.body}}"
+      inReplyTo: "{{item.messageId}}"
+      references: "{{item.references}}"
+limits:
+  email.send: 20/day

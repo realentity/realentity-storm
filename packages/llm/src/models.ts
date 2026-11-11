@@ -25,6 +25,12 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
   // Which application an email is about, and whether it is an answer: a classification (M16-T3).
   "application.outcome": "classify",
   "email.classify": "classify",
+  // Which topics an email belongs to, when no direction says (M41-T3).
+  "topic.match": "classify",
+  // Whether an email states anything worth remembering about its topics: most don't (M42-T2).
+  "topic.extract.screen": "classify",
+  // What it states: new facts, changes and conflicts with what the topic knows.
+  "topic.extract": "writing",
   "email.draftReply": "writing",
   "email.draftFollowUp": "writing",
   // Amounts and dates out of a bill's text: worth the writing model.

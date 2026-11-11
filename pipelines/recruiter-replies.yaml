@@ -1,6 +1,7 @@
 # Phase 1 (docs/design.md §11): every 15 minutes, read new mail, keep what recruiters and clients wrote to you personally,
 # and draft a reply to each. Every reply waits in the inbox until you press Act (the compiler adds the gate).
 # Paste it on the Pipelines page, check, dry run, save, enable. Needs IMAP_HOST/SMTP_HOST and the "mail" credential.
+# An email of one of your topics is left to Topic replies (M44), so it isn't drafted twice; without topics, none is.
 name: Recruiter and client replies
 description: Drafts replies to recruiters and clients; you review, edit and Act on each.
 trigger: { schedule: "*/15 * * * *" }
@@ -19,9 +20,12 @@ steps:
         marketing, personal mail, and messages that need no reply.
       labels: [reply, skip]
       keep: [reply]
+  - id: topics
+    type: topic.match
+    with: { messages: "{{triage.kept}}" }
   - id: draft
     type: email.draftReply
-    forEach: "{{triage.kept}}"
+    forEach: "{{topics.unlinked}}"
     with:
       message: "{{item}}"
       instruction: >-
@@ -33,7 +37,7 @@ steps:
       #   ...
   - id: send
     type: email.send
-    forEach: "{{triage.kept}}"
+    forEach: "{{topics.unlinked}}"
     with:
       to: "{{item.from}}" # the sender of the fetched email; never a value the LLM wrote
       subject: "{{draft.subject}}"

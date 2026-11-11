@@ -15,6 +15,7 @@ import {
   type RunJob,
   type EventJob,
   type ScheduleTrigger,
+  type TopicBackfillJob,
   type TriggerJob,
   type WebhookJob,
 } from "@realentity/storm-queue";
@@ -25,6 +26,7 @@ import { type Reflector } from "../learning/reflection";
 import { type PipelineRunner } from "../runner/pipeline-runner";
 import { type TakeoverDesk } from "../runner/takeovers";
 import { type Triggers } from "../runner/triggers";
+import { type TopicBackfills } from "../sources/backfill";
 import { type ProposalNotifier } from "./proposal-notifier";
 import { type MorningBrief } from "./morning-brief";
 import { type WeeklyReview } from "./weekly-review";
@@ -54,7 +56,14 @@ export class JobHandlers {
     /** Run files and how long they are kept (ARTIFACTS_RETENTION_DAYS; 0: forever). */
     private readonly retention?: { artifacts: ArtifactStore; days: number },
     /** M12: event and webhook triggers; proposals told on the Storm bot. */
-    private readonly more: { triggers?: Triggers; notifier?: ProposalNotifier; review?: WeeklyReview; brief?: MorningBrief } = {},
+    private readonly more: {
+      triggers?: Triggers;
+      notifier?: ProposalNotifier;
+      review?: WeeklyReview;
+      brief?: MorningBrief;
+      /** M43-T5: topics' backfills. */
+      backfills?: TopicBackfills;
+    } = {},
   ) {}
 
   async consume(options: ConsumeOptions = {}): Promise<void> {
@@ -75,7 +84,10 @@ export class JobHandlers {
       await boss.work<ReflectionPollJob>(QUEUES.reflectionPoll, work, async ([job]) => job && reflector.check(job.data.reflectionId));
       await boss.schedule(QUEUES.reflection, REFLECTION_SCHEDULE.cron, {}, { tz: REFLECTION_SCHEDULE.tz });
     }
-    const { triggers } = this.more;
+    const { triggers, backfills } = this.more;
+    if (backfills) {
+      await boss.work<TopicBackfillJob>(QUEUES.topicBackfill, work, async ([job]) => job && backfills.step(job.data.topicBackfillId));
+    }
     if (triggers) {
       await boss.work<EventJob>(QUEUES.events, work, async ([job]) => job && triggers.fire(job.data));
       await boss.work<WebhookJob>(QUEUES.webhooks, work, async ([job]) => job && triggers.webhook(job.data));

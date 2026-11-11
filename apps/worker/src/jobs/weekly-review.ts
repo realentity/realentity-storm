@@ -1,4 +1,4 @@
-import { llmCostSince, type PrismaClient } from "@realentity/storm-db";
+import { llmCostSince, topicCostsSince, type PrismaClient } from "@realentity/storm-db";
 import { defaultTimeZone, type TelegramMessage } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { type RunControls } from "../runner/run-controls";
@@ -45,10 +45,11 @@ export class WeeklyReview {
     const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: defaultTimeZone() });
     const lines = [await new DigestStep(this.prisma).compose(userId, 168, null, now, `Storm · weekly review, ${day(since)} – ${day(now)}`)];
 
-    const [settings, month, costs] = await Promise.all([
+    const [settings, month, costs, topics] = await Promise.all([
       this.prisma.userSetting.findUnique({ where: { userId } }),
       this.controls.monthlySpendUsd(userId, now),
       llmCostSince(this.prisma, userId, since),
+      topicCostsSince(this.prisma, userId, since),
     ]);
     const budget = this.controls.budgetOf(settings);
     if (budget !== undefined) {
@@ -57,6 +58,10 @@ export class WeeklyReview {
     if (costs.length > 0) {
       const top = costs.slice(0, TOP_COSTS).map((row) => `${row.source} (${row.model}) $${row.costUsd.toFixed(2)}`);
       lines.push(`Most of it: ${top.join("; ")}`);
+    }
+    // M44-T5: what keeping each topic up to date cost this week.
+    if (topics.length > 0) {
+      lines.push(`Topics: ${topics.slice(0, TOP_COSTS).map((t) => `${t.name} $${t.costUsd.toFixed(2)}`).join(", ")}`);
     }
 
     const outcomes = await this.outcomes(userId, since);

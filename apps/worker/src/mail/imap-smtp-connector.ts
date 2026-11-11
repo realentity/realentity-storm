@@ -15,8 +15,12 @@ import {
   type OutgoingMail,
   type RecentRequest,
   type SentMail,
+  type ThreadMessage,
   SENT_MAILBOX,
 } from "./mail-connector";
+
+/** Gmail's All Mail: every message once, archived or sent. */
+const ALL_MAILBOX = "\\All";
 
 export interface MailServerConfig {
   imapHost?: string;
@@ -70,8 +74,36 @@ export class ImapSmtpConnector implements MailConnector {
     });
   }
 
+  async thread(userId: string, messageIds: string[]): Promise<ThreadMessage[]> {
+    const wanted = new Set(messageIds);
+    if (wanted.size === 0) return [];
+    return this.imap(userId, async (client, user) => {
+      const boxes = await client.list();
+      const all = boxes.find((box) => box.specialUse === ALL_MAILBOX)?.path;
+      const sent = sentPath(boxes);
+      const names = all ? [all] : ["INBOX", ...(sent ? [sent] : [])];
+      // HEADER search matches a substring: only exact Message-IDs are kept.
+      const ids = [...wanted];
+      const query = ids.length === 1 ? { header: { "message-id": ids[0] } } : { or: ids.map((id) => ({ header: { "message-id": id } })) };
+      const found = new Map<string, EmailMessage>();
+      for (const name of names) {
+        const lock = await client.getMailboxLock(name, { readOnly: true });
+        try {
+          const uids = ((await client.search(query, { uid: true })) || []).sort((a, b) => a - b);
+          for (const message of await fetchMessages(client, uids)) {
+            if (wanted.has(message.messageId) && !found.has(message.messageId)) found.set(message.messageId, message);
+          }
+        } finally {
+          lock.release();
+        }
+      }
+      const me = user.trim().toLowerCase();
+      return [...found.values()].sort((a, b) => a.date.localeCompare(b.date)).map((message) => ({ message, mine: message.from === me }));
+    });
+  }
+
   /** A read-only IMAP session; errors without the password. */
-  private async imap<T>(userId: string, work: (client: ImapFlow) => Promise<T>): Promise<T> {
+  private async imap<T>(userId: string, work: (client: ImapFlow, user: string) => Promise<T>): Promise<T> {
     const host = this.config.imapHost;
     if (!host) throw new Error("Mail is not configured (IMAP_HOST)");
     const login = await this.login(userId, host);
@@ -87,7 +119,7 @@ export class ImapSmtpConnector implements MailConnector {
     });
     try {
       await client.connect();
-      return await work(client);
+      return await work(client, login.user);
     } catch (error) {
       throw new Error(`IMAP: ${withoutSecret(message(error), login.pass)}`);
     } finally {
@@ -97,8 +129,10 @@ export class ImapSmtpConnector implements MailConnector {
 
   async fetch(userId: string, request: FetchRequest): Promise<FetchResult> {
     return this.imap(userId, async (client) => {
+      // "Sent" is the server's Sent folder, whatever it is called there ([Gmail]/Sent Mail, a translated name).
+      const name = /^sent$/i.test(request.mailbox) || request.mailbox === SENT_MAILBOX ? await sentMailbox(client) : request.mailbox;
       // Read-only: EXAMINE, so even fetching a body doesn't set \Seen.
-      const lock = await client.getMailboxLock(request.mailbox, { readOnly: true });
+      const lock = await client.getMailboxLock(name, { readOnly: true });
       try {
         const mailbox = client.mailbox;
         if (!mailbox) throw new Error(`Mailbox "${request.mailbox}" could not be opened`);
@@ -180,12 +214,15 @@ async function fetchMessages(client: ImapFlow, uids: number[]): Promise<EmailMes
 
 /** The Sent folder: the one the server marks \\Sent, else one named like it. */
 async function sentMailbox(client: ImapFlow): Promise<string> {
-  const boxes = await client.list();
+  const path = sentPath(await client.list());
+  if (path) return path;
+  throw new Error("No Sent folder found: name the folder instead (sentMailbox, or the mailbox to read)");
+}
+
+function sentPath(boxes: { path: string; specialUse?: string }[]): string | null {
   const marked = boxes.find((box) => box.specialUse === SENT_MAILBOX);
   if (marked) return marked.path;
-  const named = boxes.find((box) => /^(sent|sent items|sent messages|\[gmail\]\/sent mail)$/i.test(box.path));
-  if (named) return named.path;
-  throw new Error("No Sent folder: set sentMailbox");
+  return boxes.find((box) => /^(sent|sent items|sent messages|\[gmail\]\/sent mail)$/i.test(box.path))?.path ?? null;
 }
 
 async function toEmailMessage(fetched: FetchMessageObject): Promise<EmailMessage> {

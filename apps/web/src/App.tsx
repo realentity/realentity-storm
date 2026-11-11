@@ -28,6 +28,7 @@ import { AppsPage } from "./pages/AppsPage";
 import { RunPage } from "./pages/RunPage";
 import { RulesPage } from "./pages/RulesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TopicsPage } from "./pages/TopicsPage";
 import { ViewPage } from "./pages/ViewPage";
 import { ViewRowPage } from "./pages/ViewRowPage";
 
@@ -60,6 +61,7 @@ export function App() {
             <Route path="insight" element={<InsightPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="rules" element={<RulesPage />} />
+            <Route path="topics" element={<TopicsPage />} />
             <Route path="bills" element={<BillsPage />} />
             <Route path="prices" element={<PricesPage />} />
             <Route path="recipes" element={<RecipesPage />} />

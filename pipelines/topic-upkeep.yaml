@@ -1,0 +1,51 @@
+# M42, M43: what is true about your topics (the Topics page: make a topic and give it directions first), kept from your
+# email and your topics' sources with your approval. Every 15 minutes the new email is triaged (newsletters and
+# notifications set aside) and sorted into your topics, with the emails you sent (what you decided counts too); each
+# topic's GitHub sources are checked for changed files (one call each when nothing changed), which are indexed for your
+# drafts to quote, like the attachments (PDFs, text files) of your topics' emails. What the emails and changed files state that is worth remembering is proposed, and you pick at the
+# gate what goes into memory. Nothing is written without you, and every change can be undone on the Topics page. Your
+# drafts (email.draftReply, email.draftFollowUp: topic auto) then use what the memory says is true now, and the passages
+# closest to the email. The Topics page sets it up for you (Keep topics up to date).
+name: Topic upkeep
+description: New email and changed documents sorted into your topics, and what they state proposed for their memory.
+trigger: { schedule: "*/15 * * * *" }
+steps:
+  - id: fetch
+    type: email.fetch
+    with: { sinceDays: 2 }
+  - id: triage
+    type: email.classify
+    with:
+      messages: "{{fetch.messages}}"
+      instruction: >-
+        "person": written by a person to me, or to a few people with me, about something we work on, decide or arrange.
+        "other": newsletters, notifications, receipts, marketing and other automated mail.
+      labels: [person, other]
+      keep: [person]
+      answerable: false
+  - id: sent
+    type: email.fetch
+    with: { mailbox: Sent, sinceDays: 2 }
+  - id: topics
+    type: topic.match
+    with: { messages: "{{triage.kept}}", more: "{{sent.messages}}" }
+  - id: attachments
+    type: topic.attachments
+    with: { messages: "{{triage.kept}}", matches: "{{topics.results}}" }
+  - id: repos
+    type: git.changes
+    with: {}
+  - id: indexed
+    type: topic.index
+    with: { changes: "{{repos.changes}}", sources: "{{repos.sources}}" }
+  - id: facts
+    type: topic.extract
+    with: { messages: "{{topics.linked}}", matches: "{{topics.results}}", documents: "{{indexed.files}}" }
+  - id: review
+    type: gate.review
+    when: "{{facts.proposals}}"
+    with: { items: "{{facts.proposals}}", title: "{{facts.title}}" }
+  - id: remember
+    type: topic.apply
+    when: "{{facts.proposals}}"
+    with: { proposals: "{{review.selected}}" }

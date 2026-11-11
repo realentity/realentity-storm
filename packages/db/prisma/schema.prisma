@@ -112,37 +112,47 @@ model User {
   dateCreated DateTime @default(now())
   dateUpdated DateTime @updatedAt
 
-  sessions      UserSession[]
-  settings      UserSetting?
-  followUps     FollowUp[]
-  bills         Bill[]
-  watched       WatchedProduct[]
-  pipelines     Pipeline[]
-  builderChats  BuilderChat[]
-  siteRecipes   SiteRecipe[]
-  runs          Run[]
-  proposals     Proposal[]
-  rules         Rule[]
-  examples      Example[]
-  credentials   Credential[]
-  modelSettings ModelSetting[]
-  artifacts     Artifact[]
-  jobPostings   JobPosting[]
-  applications  Application[]
-  documents     Document[]
-  mailCursors   MailCursor[]
-  reflections   Reflection[]
-  suggestions   PipelineSuggestion[]
-  webhooks      Webhook[]
-  dataRecords   DataRecord[]
-  apps          App[]
-  dataPoints    DataPoint[]
-  httpCaches    HttpCache[]
-  alertStates   AlertState[]
-  google        GoogleConnection?
-  facts         Fact[]
-  questions     Question[]
-  scheduled     ScheduledStart[]
+  sessions         UserSession[]
+  settings         UserSetting?
+  followUps        FollowUp[]
+  bills            Bill[]
+  watched          WatchedProduct[]
+  pipelines        Pipeline[]
+  builderChats     BuilderChat[]
+  siteRecipes      SiteRecipe[]
+  runs             Run[]
+  proposals        Proposal[]
+  rules            Rule[]
+  examples         Example[]
+  credentials      Credential[]
+  modelSettings    ModelSetting[]
+  artifacts        Artifact[]
+  jobPostings      JobPosting[]
+  applications     Application[]
+  documents        Document[]
+  mailCursors      MailCursor[]
+  reflections      Reflection[]
+  suggestions      PipelineSuggestion[]
+  webhooks         Webhook[]
+  dataRecords      DataRecord[]
+  apps             App[]
+  dataPoints       DataPoint[]
+  httpCaches       HttpCache[]
+  alertStates      AlertState[]
+  google           GoogleConnection?
+  facts            Fact[]
+  questions        Question[]
+  topics           Topic[]
+  topicLinks       TopicLink[]
+  topicFacts       TopicFact[]
+  topicChanges     TopicChange[]
+  topicSources     TopicSource[]
+  topicPassages    TopicPassage[]
+  topicBackfills   TopicBackfill[]
+  topicSuggestions TopicSuggestion[]
+  topicCosts       TopicCost[]
+  unlinkedEmails   UnlinkedEmail[]
+  scheduled        ScheduledStart[]
 
   @@map("Users")
 }
@@ -661,6 +671,10 @@ model Reflection {
   since        DateTime
   until        DateTime
   decisions    Int
+  /// The edited replies shown with their topics (M44-T3): [{ index, proposalId, subject, decidedAt, topics: [{ topicId, name }] }].
+  edits        Json             @default("[]")
+  /// The unlinked emails shown (M44-T2), by index: [{ messageId, from, subject, date }].
+  unlinked     Json             @default("[]")
   llmUsage     Json?
   error        String?
   startedAt    DateTime         @default(now())
@@ -867,8 +881,8 @@ model App {
   dateCreated      DateTime @default(now())
   dateUpdated      DateTime @updatedAt
 
-  versions AppVersion[]
-  entities DataEntity[]
+  versions     AppVersion[]
+  entities     DataEntity[]
   builderChats BuilderChat[]
 
   @@unique([userId, name])
@@ -1094,4 +1108,422 @@ model Question {
   @@index([userId, status])
   @@index([telegramMessageId])
   @@map("Questions")
+}
+
+enum TopicStatus {
+  ACTIVE
+  /// Ended: matches no new email, keeps what it knows.
+  ARCHIVED
+}
+
+enum TopicDirectionKind {
+  /// A word or name in the subject or text ("Orion"), whole words, any case.
+  WORD
+  /// Anyone at a domain (`client.example`), its subdomains too.
+  DOMAIN
+  /// One address; with `about`, only when the email is about that (judged by the LLM).
+  PERSON
+  /// In plain words ("emails about the payment integration"), judged by the LLM.
+  TEXT
+}
+
+/// A subject Storm keeps a memory of (M41, docs/design.md §8.1): what belongs to it is said by its directions.
+model Topic {
+  topicId     String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  user        User              @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name        String            @db.Citext
+  /// A few lines the user writes: what the subject is.
+  description String            @default("")
+  status      TopicStatus       @default(ACTIVE)
+  directions  TopicDirection[]
+  links       TopicLink[]
+  facts       TopicFact[]
+  changes     TopicChange[]
+  sources     TopicSource[]
+  passages    TopicPassage[]
+  backfills   TopicBackfill[]
+  suggestions TopicSuggestion[]
+  costs       TopicCost[]
+  dateCreated DateTime          @default(now())
+  dateUpdated DateTime          @updatedAt
+
+  @@unique([userId, name])
+  @@map("Topics")
+}
+
+/// What belongs to a topic (M41-T2): written by the user only (or a suggestion they approved, M44).
+model TopicDirection {
+  topicDirectionId String             @id @default(uuid()) @db.Uuid
+  topicId          String             @db.Uuid
+  topic            Topic              @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  kind             TopicDirectionKind
+  /// The word, the domain, the address or the plain words.
+  value            String
+  /// PERSON only: what the email must be about ("the API").
+  about            String?
+  dateCreated      DateTime           @default(now())
+
+  @@index([topicId])
+  @@map("TopicDirections")
+}
+
+enum TopicLinkStatus {
+  /// An exact direction or the thread said so: linked, shown on the email.
+  LINKED
+  /// Only the LLM thinks so: waits for the user.
+  SUGGESTED
+  /// The user said so (confirmed, or moved it here).
+  CONFIRMED
+  /// The user said no: never suggested again for this email.
+  REJECTED
+}
+
+enum TopicLinkVia {
+  DIRECTION
+  THREAD
+  LLM
+  USER
+}
+
+/**
+ * An email and a topic it belongs to (M41-T3, docs/design.md §8.1): one per email and topic, an email in none, one or
+ * several. The email's ids, sender, subject and date only, not its text (read from the mailbox when needed).
+ */
+model TopicLink {
+  topicLinkId String          @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid
+  user        User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId     String          @db.Uuid
+  topic       Topic           @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  messageId   String
+  threadId    String
+  from        String
+  subject     String
+  date        DateTime
+  status      TopicLinkStatus
+  via         TopicLinkVia
+  /// What shows it: the direction that matched, the thread, or the line the LLM quoted.
+  evidence    String
+  runId       String?         @db.Uuid
+  dateCreated DateTime        @default(now())
+  dateUpdated DateTime        @updatedAt
+
+  @@unique([topicId, messageId])
+  @@index([userId, status])
+  @@index([userId, threadId])
+  @@index([userId, messageId])
+  @@map("TopicLinks")
+}
+
+enum TopicFactStatus {
+  /// What is true now: drafts use it.
+  CURRENT
+  /// It was true; a newer fact (supersededById) or the user said it no longer is. Kept as history.
+  SUPERSEDED
+  /// Sources disagree: the user decides which one holds.
+  DISPUTED
+  /// The user said it never was: hidden, and kept so the same source doesn't propose it again.
+  WRONG
+}
+
+enum TopicFactSource {
+  /// An email (sourceId: its Message-ID).
+  EMAIL
+  /// The user wrote it.
+  USER
+  /// A file of a topic's source (sourceId: "owner/repo:path@commit").
+  FILE
+}
+
+/**
+ * What is true about a topic (M42-T1, docs/design.md §8.1), each with its source and the date of that source. Not the
+ * facts about the user (Fact, M15). Written only by the user or by a proposal they approved.
+ */
+model TopicFact {
+  topicFactId    String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  user           User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId        String          @db.Uuid
+  topic          Topic           @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  /// What it is about, short ("Launch date"): facts about the same thing replace each other.
+  about          String
+  statement      String
+  source         TopicFactSource
+  /// EMAIL: the Message-ID.
+  sourceId       String?
+  /// Who and what, to show: "Maria <maria@client.example>: Kickoff".
+  sourceLabel    String
+  sourceDate     DateTime
+  /// The source's own words that show it.
+  quote          String          @default("")
+  status         TopicFactStatus @default(CURRENT)
+  supersededById String?         @db.Uuid
+  supersededBy   TopicFact?      @relation("TopicFactSuperseded", fields: [supersededById], references: [topicFactId], onDelete: SetNull)
+  supersedes     TopicFact[]     @relation("TopicFactSuperseded")
+  /// The user wrote, edited or settled it: later evidence can only propose a conflict.
+  pinned         Boolean         @default(false)
+  /// M44-T9: made when a draft first needs it (more facts than fit), by embeddingModel, of embeddingOf ("about: statement"):
+  /// a fact whose text changed since is embedded again.
+  embedding      Unsupported("vector(1024)")?
+  embeddingModel String?
+  embeddingOf    String?
+  runId          String?         @db.Uuid
+  dateCreated    DateTime        @default(now())
+  dateUpdated    DateTime        @updatedAt
+
+  @@index([topicId, status])
+  @@index([userId, sourceId])
+  @@map("TopicFacts")
+}
+
+enum TopicChangeKind {
+  ADD
+  EDIT
+  NO_LONGER_TRUE
+  WRONG
+  MOVE
+  SETTLE
+  /// A proposal approved at a gate (topic.apply).
+  APPLY
+  /// Part of a topic moved to a new one (M44-T4); otherTopicId: the new one.
+  SPLIT
+  /// A topic merged into this one (M44-T4); otherTopicId: the one merged (archived).
+  MERGE
+}
+
+/**
+ * A change to a topic's facts (M42-T1), with each fact before and after it, so it can be undone. `facts`:
+ * [{ topicFactId, before, after }] (a snapshot or null); `links`: [{ topicLinkId, before }] of email links it made or
+ * changed.
+ */
+model TopicChange {
+  topicChangeId String          @id @default(uuid()) @db.Uuid
+  userId        String          @db.Uuid
+  user          User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId       String          @db.Uuid
+  topic         Topic           @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  /// MOVE: where to.
+  otherTopicId  String?         @db.Uuid
+  kind          TopicChangeKind
+  /// One line: "Launch date: February → March".
+  summary       String
+  facts         Json
+  links         Json            @default("[]")
+  /// SPLIT, MERGE: [{ table: direction | source | link | topic, id, from, to }] (a topic id, or a topic's status).
+  moves         Json            @default("[]")
+  runId         String?         @db.Uuid
+  undoneAt      DateTime?
+  dateCreated   DateTime        @default(now())
+
+  @@index([topicId, dateCreated])
+  @@index([userId, otherTopicId])
+  @@map("TopicChanges")
+}
+
+enum TopicSourceKind {
+  /// A GitHub repository: files under a path, read at the branch's head.
+  GITHUB
+  /// An email's attachment (location: the Message-ID; path: the file name): read once, it never changes.
+  ATTACHMENT
+}
+
+/**
+ * Where a topic's documents live (M43, docs/design.md §8.1): linked, never copied. Storm keeps where it is and how far
+ * it has read; the passages it indexes from it are a cache.
+ */
+model TopicSource {
+  topicSourceId String          @id @default(uuid()) @db.Uuid
+  userId        String          @db.Uuid
+  user          User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId       String          @db.Uuid
+  topic         Topic           @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  kind          TopicSourceKind
+  /// GITHUB: owner/repo.
+  location      String
+  /// GITHUB: the branch; null: the repository's default.
+  branch        String?
+  /// Which files: a glob ("docs/adr/**", "**/*.md").
+  path          String          @default("**")
+  /// A credential's name: a read-only token for the host (allowedHosts api.github.com); null for a public repository.
+  credential    String?
+  /// ATTACHMENT: where its email is, to read it again (a rebuild).
+  mailbox       String?
+  uid           Int?
+  /// ATTACHMENT: what to show, "Maria <maria@client.example>: Kickoff".
+  title         String          @default("")
+  /// The last commit indexed (ATTACHMENT: "read"): the next read continues from it. Null: not read yet.
+  cursor        String?
+  readAt        DateTime?
+  passages      TopicPassage[]
+  dateCreated   DateTime        @default(now())
+
+  @@index([topicId])
+  @@map("TopicSources")
+}
+
+/**
+ * A passage of a source's file (M43-T3): the index, a cache. Refreshed when its file changes, rebuilt on request,
+ * deleted without losing anything.
+ */
+model TopicPassage {
+  topicPassageId String                       @id @default(uuid()) @db.Uuid
+  userId         String                       @db.Uuid
+  user           User                         @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId        String                       @db.Uuid
+  topic          Topic                        @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  topicSourceId  String                       @db.Uuid
+  source         TopicSource                  @relation(fields: [topicSourceId], references: [topicSourceId], onDelete: Cascade)
+  path           String
+  /// The commit it was read at.
+  ref            String
+  /// When that commit was made: the passage's date as evidence.
+  refDate        DateTime
+  /// The headings it is under: "Decision > Database".
+  heading        String                       @default("")
+  ordinal        Int
+  text           String
+  embedding      Unsupported("vector(1024)")?
+  embeddingModel String?
+  dateCreated    DateTime                     @default(now())
+
+  @@index([topicSourceId, path])
+  @@index([topicId])
+  @@map("TopicPassages")
+}
+
+enum TopicBackfillStatus {
+  /// Finding the topic's past emails and documents, and what reading them would cost.
+  ESTIMATING
+  /// Waiting for the user to start it.
+  ESTIMATED
+  /// The cheap model's batch: which of them state anything worth remembering.
+  SCREENING
+  /// The writing model's batch: the proposals.
+  PROPOSING
+  /// The proposals wait for the user.
+  REVIEW
+  DONE
+  FAILED
+  CANCELLED
+}
+
+/**
+ * Reading a topic's history for facts (M43-T5, docs/design.md §8.1): its past emails (found by its exact directions and
+ * threads) and its sources' indexed documents. An estimate first; then, once the user starts it, two Batch API passes
+ * at half the price; the proposals wait for the user. Emails by their ids only: their text is read from the mailbox
+ * when the batch is built.
+ */
+model TopicBackfill {
+  topicBackfillId String              @id @default(uuid()) @db.Uuid
+  userId          String              @db.Uuid
+  user            User                @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId         String              @db.Uuid
+  topic           Topic               @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  /// How far back, in months.
+  months          Int
+  /// The documents indexed from the topic's sources too.
+  documents       Boolean             @default(true)
+  status          TopicBackfillStatus @default(ESTIMATING)
+  /// The emails found: [{ messageId, date }].
+  emails          Json                @default("[]")
+  /// The documents: [{ topicSourceId, path }].
+  files           Json                @default("[]")
+  estimateUsd     Float?
+  /// The screen's answer: which of emails, then files (by index), are worth the writing model.
+  worth           Json?
+  batchId         String?
+  /// The proposals (TopicProposal), for the user to pick.
+  proposals       Json                @default("[]")
+  applied         Int                 @default(0)
+  llmUsage        Json?
+  error           String?
+  dateCreated     DateTime            @default(now())
+  finishedAt      DateTime?
+
+  @@index([topicId, dateCreated])
+  @@index([userId, status])
+  @@map("TopicBackfills")
+}
+
+enum TopicSuggestionKind {
+  /// A direction for a topic (payload: { kind, value, about }).
+  DIRECTION
+  /// A new topic (payload: { name, description, directions }).
+  TOPIC
+  /// A fact for a topic (payload: a TopicProposal).
+  FACT
+}
+
+enum TopicSuggestionStatus {
+  OPEN
+  ACCEPTED
+  /// The user said no: the same suggestion isn't made again.
+  DISMISSED
+}
+
+/**
+ * What Storm suggests from the user's decisions and edits (M44, docs/design.md §8.1): a direction, a topic, a fact.
+ * Nothing suggested is active before the user accepts it; a dismissed one isn't suggested again (its `key`).
+ */
+model TopicSuggestion {
+  topicSuggestionId String                @id @default(uuid()) @db.Uuid
+  userId            String                @db.Uuid
+  user              User                  @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// DIRECTION, FACT: the topic it is for.
+  topicId           String?               @db.Uuid
+  topic             Topic?                @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  kind              TopicSuggestionKind
+  /// What makes it the same suggestion again: "DIRECTION:<topicId>:PERSON:ivan@client.example".
+  key               String
+  payload           Json
+  /// Why, in one line: "you confirmed 6 of their emails for Billing".
+  reason            String
+  status            TopicSuggestionStatus @default(OPEN)
+  dateCreated       DateTime              @default(now())
+  decidedAt         DateTime?
+
+  @@unique([userId, key])
+  @@index([userId, status])
+  @@map("TopicSuggestions")
+}
+
+/**
+ * What a topic's upkeep cost (M44-T5), by day and step type: the topic steps' LLM and embedding calls shared out among
+ * the topics they were for. Only to show where the money went (its page, the weekly review): the budget counts the
+ * steps themselves.
+ */
+model TopicCost {
+  topicCostId String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  topicId     String   @db.Uuid
+  topic       Topic    @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+  day         DateTime @db.Date
+  /// The step type: topic.match, topic.extract, topic.index, topic.attachments.
+  source      String
+  costUsd     Float    @default(0)
+
+  @@unique([topicId, day, source])
+  @@index([userId, day])
+  @@map("TopicCosts")
+}
+
+/**
+ * A triaged email that belonged to no topic (M44-T2, docs/design.md §8.1): what the nightly reflection looks at for a
+ * subject the user may want a topic for. Its ids, sender, subject and date only, never its text; kept 30 days.
+ */
+model UnlinkedEmail {
+  unlinkedEmailId String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  user            User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  messageId       String
+  from            String
+  subject         String
+  date            DateTime
+  dateCreated     DateTime @default(now())
+
+  @@unique([userId, messageId])
+  @@index([userId, date])
+  @@map("UnlinkedEmails")
 }

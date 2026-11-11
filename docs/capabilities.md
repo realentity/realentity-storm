@@ -19,6 +19,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
+| Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `git.changes`, `topic.index`, `topic.attachments` |
 | Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
@@ -626,7 +627,8 @@ Reading uses IMAP and sending uses SMTP, with the `mail` credential. Reading nev
 
 #### `email.fetch`
 The emails that arrived since this pipeline's last run (the first run looks back `sinceDays`), oldest first, so each
-email is read once. Text only: attachments are listed, not downloaded.
+email is read once. Text only: attachments are listed, not downloaded. `mailbox: Sent` reads your server's Sent folder,
+whatever it is called there (`[Gmail]/Sent Mail`, a translated name): the emails you wrote.
 - In: `mailbox` [INBOX], `limit` [50], `sinceDays` [2].
 - Out: `messages` (uid, messageId, threadId, from, fromName, replyTo, to, cc, subject, date, text, attachments, …).
 
@@ -653,10 +655,16 @@ is on when `keep` has `reply`; set `answerable` to choose.
 ```
 
 #### `email.draftReply` 🧠
-Drafts a reply in your voice, in the email's language, without inventing facts. It never decides the recipient. Edits
-you make at the gate teach it your style.
-- In: `message`, `instruction`, `context` (what it may draw on: availability, rates, links), `signature`.
-- Out: `subject`, `body`, `language`.
+Drafts a reply in your voice, in the email's language, without inventing facts. It reads the thread's earlier
+messages from your mailbox (the email's References, up to 10, without their quoted text), so it knows what was said
+before. With a topic it also knows what your approved memory of the topic says is true now (only current facts; when there are more than fit, yours first, then those closest to the
+email: by meaning with an embeddings provider, else by shared words), and
+the gate's "Why" lists the facts the draft used, each with its source. `topic`: `auto` (the default: the email's topics
+that aren't waiting for you, else its thread's), `none`, or a topic's name. What neither the memory nor the email says
+is still a placeholder. With a topic that has sources, the passages closest to the email go in too, and a passage it
+used is cited at the gate (`docs/adr/0012-database.md @ a1b2c3d`). It never decides the recipient. Edits you make at the gate teach it your style.
+- In: `message`, `instruction`, `context` (what it may draw on: availability, rates, links), `signature`, `topic`.
+- Out: `subject`, `body`, `language`, `drewOn` (the facts it used; empty without a topic).
 
 #### `email.send` ⚡
 Sends an email from your mailbox. With `inReplyTo` and `references` it is a reply in the same thread. `to` must come
@@ -692,9 +700,10 @@ other side since. Each email is listed once; a thread comes back only when you w
 - Out: `threads` (threadId, to, subject, sentAt, daysWaiting, followUps, message, references).
 
 #### `email.draftFollowUp` 🧠
-Drafts a short, polite follow-up to your own unanswered email, in its language, without new facts or pressure.
-- In: `message`, `instruction`, `daysWaiting`, `signature`.
-- Out: `subject`, `body`, `language`.
+Drafts a short, polite follow-up to your own unanswered email, in its language, without new facts or pressure. It
+reads the thread's earlier messages too, and the memory of the thread's topics (`topic`, as for `email.draftReply`).
+- In: `message`, `instruction`, `daysWaiting`, `signature`, `topic`.
+- Out: `subject`, `body`, `language`, `drewOn`.
 
 ```yaml
 - id: waiting
@@ -713,6 +722,97 @@ Drafts a short, polite follow-up to your own unanswered email, in its language, 
     body: "{{draft.body}}"
     inReplyTo: "{{item.message.messageId}}"
     references: "{{item.references}}"
+```
+
+#### `topic.match` 🧠
+Which of your topics (the Topics page; docs/design.md §8.1) each email belongs to. The directions you gave come first,
+without an LLM: a word in the subject or text, anyone at a domain, a person; an email whose thread already belongs to a
+topic belongs to it too. The cheap model looks only at emails no direction settles (a thread's later email included, in
+case the conversation moved to another subject), with each topic's description and directions. An email can belong to
+several topics, and to none, which is normal. Found by a direction or the thread: linked; only by the model: suggested,
+waiting for you. Your own decisions stay: a topic you rejected for an email isn't suggested for it again. Use it after
+triage, not on all mail. An email no topic took is kept for 30 days (its sender, subject and date, never its text), for
+the nightly reflection to suggest a new topic from several of them. A dry run links and keeps nothing.
+- In: `messages`, `more` (emails that need no triage, like your own sent ones: `email.fetch` with `mailbox: Sent`),
+  `topics` (only these, by name; default: every active topic).
+- Out: `results` (per email: messageId, topics with status, how found and the line that shows it), `linked` (the emails
+  with a linked or confirmed topic), `unlinked`.
+
+```yaml
+- id: topics
+  type: topic.match
+  with: { messages: "{{triage.kept}}" }
+```
+
+#### `topic.extract` 🧠
+What emails state that is worth remembering about the topics they belong to: decisions, dates, numbers, owners,
+requirements, and changes to them. It reads only emails linked to a topic (topic.match's `linked`; a suggested link
+waits for you, and so does memory from it), each without the quoted thread under it. Two passes keep it cheap: the
+cheap model first asks whether an email states anything worth remembering (most don't); only those go to the writing
+model, which compares them with what the topic knows. Each proposal is new, a change (the old fact will be superseded)
+or a conflict (two sources disagree), with its source and the line that shows it. With `documents` (topic.index's `files`) it also
+reads the changed files of your topics' sources, a decision record or a spec, the same way; a source's first read is
+only indexed. It writes nothing. Something that looks like a secret is never proposed, nor what you said an email or a
+file was wrong about; a fact you wrote or confirmed is only ever disputed, never replaced.
+- In: `messages`, `topics` (only these, by name; default: every active topic), `matches` (topic.match's `results`:
+  the topics it linked count too, also in a dry run, where it stores no link), `documents` (topic.index's changed `files`).
+- Out: `proposals` (for gate.review, then topic.apply), `title` ("2 facts for Orion", for the gate).
+
+#### `topic.apply`
+Writes the fact proposals you approved at a gate.review of the same run: a new fact, a change (the old one kept in the
+history, superseded) or a conflict (both in dispute until you say which holds, on the Topics page). Evidence counts by
+the date of its source, not the order it was read in: a change from an email older than the fact it replaces goes into
+the history. Each one is a change on the topic's page that you can undo. A proposal no gate of the run approved is not
+written; a dry run writes nothing.
+- In: `proposals` (the gate's `selected`).
+- Out: `applied` (how many), `skipped` (each with why: already known, you said it was wrong, not approved).
+
+#### `git.changes`
+The files changed in your topics' GitHub sources (on the Topics page: a repository, a path like `docs/adr/**`, a branch)
+since each was last indexed, at its branch's head: text files under its path only (Markdown, AsciiDoc, plain text). The
+first read lists every one. Seeing that nothing changed is one call to GitHub, no LLM. A private repository needs a
+read-only token, kept as a credential allowed for `api.github.com` only. It only reads: `topic.index` moves each source on
+once its files are indexed, so a failed index is read again next time.
+- In: `topics` (only these, by name; default: every active topic).
+- Out: `changes` (topic, repo, path, added / modified / removed, commit, its date, link), `sources` (each source read,
+  from which commit to which), `problems`.
+
+#### `topic.attachments`
+The readable attachments (PDFs, text files) of emails linked to a topic become its sources, by reference: the email, its
+mailbox and UID, and the file's name, never a copy. Their passages are indexed like a repository's files, for drafts to
+quote ("api-spec.md, attached to Maria: The API spec"). An attachment never changes: it is read once, and again only
+after a rebuild on the Topics page. Give it the inbox's triaged emails with `mailbox` where they were read: a UID means
+something only in its own folder. A dry run reads and writes nothing.
+- In: `messages`, `mailbox` [INBOX], `matches` (topic.match's `results`).
+- Out: `added` (new sources), `passages`, `problems`.
+
+#### `topic.index`
+Indexes git.changes' files into their topics' passages: each file split at its headings, with its path and commit and,
+with OpenAI embeddings set up, a vector; a removed file's passages go. Then each source is marked read at its commit. The
+passages are a cache, never a copy you keep up to date: the topic's page rebuilds them, and deleting them loses nothing.
+Drafts get the passages closest to the email (by embedding, else by its words), each cited with its file and commit. A
+dry run reads the files and writes nothing.
+- In: `changes`, `sources` (git.changes').
+- Out: `files` (the changed files with their text, for topic.extract), `passages`, `removed`, `problems`.
+
+```yaml
+- id: repos
+  type: git.changes
+  with: {}
+- id: indexed
+  type: topic.index
+  with: { changes: "{{repos.changes}}", sources: "{{repos.sources}}" }
+- id: facts
+  type: topic.extract
+  with: { messages: "{{topics.linked}}", matches: "{{topics.results}}", documents: "{{indexed.files}}" }
+- id: review
+  type: gate.review
+  when: "{{facts.proposals}}"
+  with: { items: "{{facts.proposals}}", title: "{{facts.title}}" }
+- id: remember
+  type: topic.apply
+  when: "{{facts.proposals}}"
+  with: { proposals: "{{review.selected}}" }
 ```
 
 ### 4.5 Job applications
@@ -778,7 +878,7 @@ the unpaid ones due within three days. *Move them here* on the App's page brings
 
 ### 4.7 Google Calendar
 
-Needs Google Calendar connected in Settings (see [google-calendar-setup.md](google-calendar-setup.md)).
+Needs Google Calendar connected in Settings (see [google-setup.md](google-setup.md)).
 
 #### `calendar.find`
 Your events between `from` and `to` (default: the next 7 days), optionally matching `query`. `durationMinutes` gives a
@@ -1083,10 +1183,12 @@ What the steps add up to, with the pipeline that does it:
 
 | Goal | Steps | Example |
 | --- | --- | --- |
-| Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
+| Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `topic.match` (the email of your topics is left to Topic replies) → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) |
+| Draft replies to the email of your topics with what Storm knows about them, send after you approve | `email.fetch` → `email.classify` → `topic.match` → `email.draftReply` (`topic: auto`, on `linked`) → `email.send` | [topic-replies.yaml](../pipelines/topic-replies.yaml) |
 | Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../pipelines/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../pipelines/job-board.yaml) up to `data.save` |
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../pipelines/application-replies.yaml) |
 | A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../pipelines/follow-up-later.yaml), [follow-up.yaml](../pipelines/follow-up.yaml) |
+| Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.attachments`; `git.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../pipelines/topic-upkeep.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../pipelines/email-follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../pipelines/interview-invite.yaml) |
 | Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../pipelines/bills.yaml) |

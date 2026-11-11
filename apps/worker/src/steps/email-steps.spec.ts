@@ -6,6 +6,7 @@ import { NO_ATTENTION, type StepContext } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock as emailBlockOf } from "./email-block";
 import { DraftReplyStep, EmailClassifyStep, EmailSendStep, replySubject } from "./email-steps";
+import { earlierIds, THREAD_MESSAGES, THREAD_TEXT, threadBlock, withoutQuoted } from "./email-thread";
 
 const catalog = defaultCatalog();
 const input = (type: string, raw: Record<string, unknown>) => catalog.get(type)!.input.parse(raw);
@@ -99,6 +100,8 @@ describe("email steps", () => {
       subject: "Re: Позиция Senior .NET",
       body: "Здравейте,\n\nБлагодаря. [date] е удобно.",
       language: "bg",
+      // No topic memory without the database (M42-T3).
+      drewOn: [],
     });
     const [request] = llm.requests;
     expect(request?.cacheSystem).toBe(true);
@@ -146,6 +149,68 @@ describe("email steps", () => {
     expect(llm.requests[0]?.prompt).toMatch(/^<email>/);
   });
 
+  // M41-T1
+  it("email.draftReply reads the thread: earlier messages before the email, oldest first, the user's marked, quotes left out", async () => {
+    const asked: string[][] = [];
+    const earlier = (i: number, extra: Partial<EmailMessage>) => email(i, { text: `Message ${i}.`, ...extra });
+    const mail: MailConnector = {
+      fetch: () => Promise.reject(new Error("unused")),
+      recent: () => Promise.reject(new Error("unused")),
+      attachments: () => Promise.reject(new Error("unused")),
+      send: () => Promise.reject(new Error("unused")),
+      thread: (_user, ids) => (
+        asked.push(ids),
+        Promise.resolve([
+          { message: earlier(7, { text: "Can you send the spec?" }), mine: false },
+          { message: earlier(8, { from: "me@storm.test", text: "Sent it.\n\nOn Mon, 3 Nov 2026, Sender 7 wrote:\n> Can you send the spec?" }), mine: true },
+        ])
+      ),
+    };
+    const llm = new FakeLlm(() => ({ body: "Hi", language: "en" }));
+    const message = email(9, { references: ["<m7@acme.test>", "<m8@acme.test>"], inReplyTo: "<m8@acme.test>", text: "Got it, thanks." });
+    await new DraftReplyStep(llm, router, undefined, mail).execute(input("email.draftReply", { message, instruction: "Reply" }), context);
+
+    expect(asked).toEqual([["<m7@acme.test>", "<m8@acme.test>"]]);
+    const prompt = llm.requests[0].prompt;
+    expect(prompt).toMatch(/^<thread>\n<email>\nFrom: Sender 7[\s\S]*Can you send the spec\?\n<\/email>\n<email mine="true">\nFrom: Sender 8/);
+    expect(prompt).toContain("Sent it.\n</email>\n</thread>\n\n<email>\nFrom: Sender 9");
+    expect(prompt).not.toContain("> Can you send");
+    expect(llm.requests[0].system).toContain("<thread>, when given, holds the earlier messages");
+
+    // No earlier messages: the mailbox isn't asked.
+    await new DraftReplyStep(llm, router, undefined, mail).execute(input("email.draftReply", { message: email(2), instruction: "Reply" }), context);
+    expect(asked).toHaveLength(1);
+    expect(llm.requests[1].prompt).toMatch(/^<email>/);
+
+    // A mailbox that can't be searched for the thread: drafted without it, not failed.
+    const broken: MailConnector = { ...mail, thread: () => Promise.reject(new Error("SEARCH not supported")) };
+    const draft = await new DraftReplyStep(llm, router, undefined, broken).execute(input("email.draftReply", { message, instruction: "Reply" }), context);
+    expect(draft).toMatchObject({ body: "Hi" });
+    expect(llm.requests[2].prompt).toMatch(/^<email>/);
+  });
+
+  it("the thread: its own text without the quoted original; the newest messages within the budget", () => {
+    expect(withoutQuoted("Thanks!\n\nOn Mon, 3 Nov 2026 at 10:00, Ana <ana@acme.test> wrote:\n> Hi\n> there")).toBe("Thanks!");
+    expect(withoutQuoted("Thanks!\n\nOn Mon, 3 Nov 2026 at 10:00, Ana Petrova <ana@acme.test>\nwrote:\n> Hi")).toBe("Thanks!");
+    expect(withoutQuoted("Да.\n\nНа пн, 3.11.2026 г. в 10:00 Ана написа:\n> Може ли?")).toBe("Да.");
+    expect(withoutQuoted("Fine.\n\n-----Original Message-----\nFrom: Bob\nSent: Monday")).toBe("Fine.");
+    expect(withoutQuoted("> quoted on top\nMy answer below.")).toBe("My answer below.");
+    expect(withoutQuoted("> only quoted")).toBe("> only quoted");
+    expect(withoutQuoted("On the roadmap: the API.\nOn Friday we ship.")).toBe("On the roadmap: the API.\nOn Friday we ship.");
+
+    expect(earlierIds(email(5, { messageId: "<c>", references: ["<a>", "<b>"], inReplyTo: "<b>" }))).toEqual(["<a>", "<b>"]);
+    const many = Array.from({ length: 15 }, (_, i) => `<r${i}>`);
+    expect(earlierIds(email(5, { references: many }))).toEqual(many.slice(-THREAD_MESSAGES));
+
+    const long = Array.from({ length: 10 }, (_, i) => ({ message: email(i, { text: `${i} `.repeat(2_000) }), mine: false }));
+    const block = threadBlock(long);
+    expect(block.length).toBeLessThan(THREAD_TEXT + 200);
+    expect(block).toContain("older messages left out]");
+    expect(block).toContain("From: Sender 9");
+    expect(block).not.toContain("From: Sender 0\n");
+    expect(threadBlock([])).toBe("");
+  });
+
   it("reply subjects: Re: once, recognizing Re/AW/Отн", () => {
     expect(replySubject("Senior role")).toBe("Re: Senior role");
     expect(replySubject("RE: Senior role")).toBe("RE: Senior role");
@@ -159,6 +224,7 @@ describe("email steps", () => {
       fetch: () => Promise.reject(new Error("unused")),
       recent: () => Promise.reject(new Error("unused")),
       attachments: () => Promise.reject(new Error("unused")),
+      thread: () => Promise.reject(new Error("unused")),
       send: (_user, message) => (sent.push(message), Promise.resolve({ messageId: "<r@storm.test>", accepted: [message.to] })),
     };
     const step = new EmailSendStep(mail);

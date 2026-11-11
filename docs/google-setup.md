@@ -1,7 +1,9 @@
-# Google Calendar for Storm: setup
+# Google for Storm: setup
 
-Connects your Google Calendar so pipelines can read your events (`calendar.find`) and propose new ones
-(`calendar.create`, always waiting for your approval). It's done once and takes about 15 minutes. You need the Google
+Connects your Google account to Storm, once, in about 15 minutes. Today that is **Google Calendar**: pipelines read
+your events (`calendar.find`) and propose new ones (`calendar.create`, always waiting for your approval). **Google
+Drive** for topics' documents uses the same project, consent screen and client when it arrives
+([Later: Google Drive](#later-google-drive)). You need the Google
 account whose calendar Storm should use, and access to Storm's `.env` on your server ([self-hosting.md](self-hosting.md)).
 
 What you create: a Google Cloud **project**, with the **Calendar API** turned on, a **consent screen** (what Google
@@ -131,13 +133,28 @@ Done. Pipelines with calendar steps can now run; the review screen no longer war
 - **A new client secret:** Google Cloud → **Clients** → `storm` → **Add secret**, put it in `.env`,
   `./docker/storm up`, then disable the old secret there.
 
+## Later: Google Drive
+
+Not in Storm yet: topics will read Drive folders as sources ([topics.md](topics.md), "Not built yet"). When it arrives
+it needs, in the same project:
+
+1. The **Google Drive API** turned on: <https://console.cloud.google.com/apis/library/drive.googleapis.com> → **Enable**.
+2. On **Data access**, the scope `.../auth/drive.readonly` ("See and download all your Google Drive files"): read-only,
+   since Storm never writes to Drive. A folder's new files can't be seen with a narrower scope. Google classes it as
+   *restricted*, which matters only for apps published to other people: for your own use, Testing or an unverified
+   app In production works as for Calendar.
+3. In Storm, **Settings → Reconnect**, and tick the Drive access on Google's list.
+
+Turning the API on and adding the scope now is harmless: a scope is only granted when Storm asks for it at a sign-in.
+
 ## Later: In production
 
 To stop the weekly reconnect, publish the app. Google asks for two public pages first:
 
 1. A **homepage** and a **privacy policy** page on a domain you own (e.g. `example.com`; not `hooks.example.com`, which
    only Telegram and webhook callers can reach). A few lines each are enough: Storm is a personal assistant used only
-   by you; it reads and creates events in your own calendar; it shares nothing with anyone.
+   by you; it reads and creates events in your own calendar (and, with Drive, reads the folders you choose); it shares
+   nothing with anyone.
 2. **Branding:** fill in **Application home page** and **Application privacy policy link**, and add the domain under
    **Authorized domains**. **Save**. (If Google asks you to verify the domain, do it in Google Search Console with
    a DNS record.)

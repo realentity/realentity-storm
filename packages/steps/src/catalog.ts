@@ -231,6 +231,66 @@ export type EmailMessage = z.infer<typeof EmailMessageSchema>;
 
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
+/** A file of a topic's source that changed (M43): git.changes' output, topic.index's input. */
+const SourceChangeSchema = z.object({
+  topic: z.string(),
+  topicId: z.string(),
+  sourceId: z.string(),
+  repo: z.string(),
+  path: z.string(),
+  status: z.enum(["added", "modified", "removed"]),
+  commit: z.string(),
+  commitDate: z.string(),
+  url: z.string(),
+});
+const SourceReadSchema = z.object({
+  sourceId: z.string(),
+  topic: z.string(),
+  repo: z.string(),
+  from: z.string().nullable(),
+  to: z.string(),
+  date: z.string(),
+});
+/** A changed file with its text, as topic.index hands it on to topic.extract. */
+const SourceFileSchema = SourceChangeSchema.extend({
+  text: z.string(),
+  firstRead: z.boolean().default(false).describe("the source's first read: indexed, not read for facts"),
+});
+
+/** A fact topic.extract proposes for one of the user's topics (M42-T2); topic.apply writes it once approved at a gate. */
+export const TopicProposalSchema = z.object({
+  /** One line, for the gate and the history: "Orion: Launch date: February → March (Maria, 2026-11-12)". */
+  title: z.string(),
+  quote: z.string().max(500),
+  kind: z.enum(["new", "change", "conflict"]),
+  topic: z.string(),
+  topicId: z.string(),
+  about: z.string().min(1).max(120),
+  statement: z.string().min(1).max(1000),
+  replaces: z.object({ topicFactId: z.string(), about: z.string(), statement: z.string() }).nullable(),
+  /** An email (messageId: its Message-ID), or a file of a topic's source (M43: messageId "owner/repo:path"). */
+  source: z.object({
+    kind: z.enum(["email", "file", "edit"]).default("email"),
+    messageId: z.string(),
+    from: z.string(),
+    subject: z.string(),
+    date: z.string(),
+    url: z.string().optional(),
+    commit: z.string().optional(),
+  }),
+});
+export type TopicProposal = z.infer<typeof TopicProposalSchema>;
+
+/** Which topic's memory a draft uses (M42-T3): auto (the email's topics not waiting for the user), none, or one by name. */
+const Topic = z
+  .string()
+  .min(1)
+  .max(80)
+  .default("auto")
+  .describe('"auto": the email\'s (or its thread\'s) linked or confirmed topics; "none"; or a topic\'s name');
+/** What a draft drew on, for the gate: the facts it used, with their sources. */
+const DrewOn = z.array(z.string()).describe("the topic facts the text relies on, each with its source; empty without a topic");
+
 const FilterCondition = z.object({
   field: z.string().min(1),
   op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"]),
@@ -747,7 +807,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.fetch",
     description:
       "Reads the emails that arrived since this pipeline's last run (its first run looks back `sinceDays`), oldest first, " +
-      "so each email is read once; read-only (IMAP), nothing is marked or moved.",
+      "so each email is read once; read-only (IMAP), nothing is marked or moved. `mailbox: Sent` reads the server's Sent " +
+      "folder, whatever it is called there (the user's own emails).",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -782,8 +843,144 @@ export const CORE_STEPS: StepDefinition[] = [
     }),
   },
   {
+    type: "topic.match",
+    description:
+      "Which of the user's topics (M41, docs/design.md §8.1) each email belongs to: their exact directions and the thread " +
+      "first, without an LLM; the cheap model only for emails no direction settles. An email may have several topics; " +
+      "none is normal. Found by a direction or the thread: LINKED; only by the LLM: SUGGESTED, waiting for the user on the " +
+      "Topics page; the user's own decisions stay. Use it after triage (email.classify's kept), not on all mail. `linked`: " +
+      "the emails with a LINKED or CONFIRMED topic. `more`: emails that need no triage, like the user's own sent ones " +
+      "(email.fetch with mailbox Sent), matched the same way. A dry run links nothing.",
+    sideEffect: false,
+    llm: true,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      more: Messages.optional().describe("more emails, untriaged: the user's own sent ones"),
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics, by name; default: every active one"),
+    }),
+    output: z.object({
+      results: z.array(
+        z.object({
+          messageId: z.string(),
+          topics: z.array(z.object({ topic: z.string(), status: z.string(), via: z.string(), evidence: z.string() })),
+        }),
+      ),
+      linked: Messages,
+      unlinked: Messages,
+    }),
+  },
+  {
+    type: "topic.extract",
+    description:
+      "What `messages` state that is worth remembering about the topics they belong to (M42, docs/design.md §8.1): " +
+      "decisions, dates, numbers, owners, requirements, and changes to them. Only emails linked to a topic (topic.match's " +
+      "`linked`; suggested links wait for the user) are read, without their quoted thread. The cheap model first asks " +
+      "whether an email states anything at all (most don't); only those go to the writing model, which compares them with " +
+      "the topic's current facts. `proposals`: new facts, changes (the old one superseded) and conflicts (sources " +
+      "disagree), each with its source and the line that shows it; for gate.review (items: proposals, when: proposals), " +
+      "then topic.apply. " +
+      "Nothing is written here. Something that looks like a secret is never proposed, nor a fact the user said a source " +
+      "was wrong about; a fact the user wrote or confirmed is only ever disputed, not replaced.",
+    sideEffect: false,
+    llm: true,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages.default([]),
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics, by name; default: every active one"),
+      documents: z
+        .array(SourceFileSchema)
+        .optional()
+        .describe("topic.index's `files`, the changed files: read as evidence too (a source's first read is only indexed)"),
+      matches: z
+        .array(z.object({ messageId: z.string(), topics: z.array(z.object({ topic: z.string(), status: z.string() }).loose()) }).loose())
+        .optional()
+        .describe("topic.match's results: their linked topics count too (a dry run stores no link)"),
+    }),
+    output: z.object({
+      proposals: z.array(TopicProposalSchema),
+      title: z.string().describe('for the gate: "3 facts for Orion"'),
+    }),
+  },
+  {
+    type: "topic.apply",
+    description:
+      "Writes fact proposals the user approved at a gate.review of the same run (topic.extract's proposals; M42): a new " +
+      "fact, a change (the old one superseded, kept as history) or a conflict (both in dispute, for the user to settle). " +
+      "Evidence counts by its source's date: a change older than the fact it replaces goes into the history. Each is a " +
+      "change on the topic's page, which the user can undo. A proposal not approved at a gate is not written; a dry run " +
+      "writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({ proposals: z.array(TopicProposalSchema) }),
+    output: z.object({
+      applied: z.number().int(),
+      skipped: z.array(z.object({ line: z.string(), reason: z.string() })),
+    }),
+  },
+  {
+    type: "git.changes",
+    description:
+      "The files changed in the user's topics' GitHub sources since each was last indexed (M43, docs/design.md §8.1): at " +
+      "each source's branch head, only text files under its path; the first read lists every one. Seeing that nothing " +
+      "changed is one API call, no LLM. A private repository's token is a credential for api.github.com only. Reads " +
+      "only: topic.index (with: changes, sources) indexes them and moves each source on, so a failed index is read again.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics' sources, by name; default: every active one"),
+    }),
+    output: z.object({
+      changes: z.array(SourceChangeSchema),
+      sources: z.array(SourceReadSchema).describe("each source read, from which commit to which: for topic.index"),
+      problems: z.array(z.string()),
+    }),
+  },
+  {
+    type: "topic.attachments",
+    description:
+      "The readable attachments (PDFs, text files) of emails linked to a topic become its sources, by reference (the " +
+      "email, its mailbox and UID, the file's name: never a copy), and their passages are indexed for drafts to quote " +
+      "(M43, docs/design.md §8.1). An attachment never changes: it is read once, again only after a rebuild on the " +
+      "Topics page. `mailbox` must be the one `messages` were read from (email.fetch's; a UID means something only " +
+      "there): give it the inbox's triaged emails, not the Sent folder's. A dry run reads and writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      mailbox: z.string().min(1).max(200).default("INBOX"),
+      matches: z
+        .array(z.object({ messageId: z.string(), topics: z.array(z.object({ topic: z.string(), status: z.string() }).loose()) }).loose())
+        .optional()
+        .describe("topic.match's results: their linked topics count too"),
+    }),
+    output: z.object({ added: z.number().int(), passages: z.number().int(), problems: z.array(z.string()) }),
+  },
+  {
+    type: "topic.index",
+    description:
+      "Indexes git.changes' files into their topics' passages (M43): each file split at its headings, with its path and " +
+      "commit and, with an embeddings provider, its embedding; a removed file's passages go. Each source is then marked " +
+      "read at its commit. The index is a cache: deleted (the topic's page: Rebuild), the next read makes the same " +
+      "passages. Drafts get the passages closest to the email. `files`: the changed files with their text, for " +
+      "topic.extract (documents: ...). A dry run reads the files and writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({ changes: z.array(SourceChangeSchema), sources: z.array(SourceReadSchema) }),
+    output: z.object({
+      files: z.array(SourceFileSchema),
+      passages: z.number().int(),
+      removed: z.number().int(),
+      problems: z.array(z.string()),
+    }),
+  },
+  {
     type: "email.draftReply",
-    description: "Drafts a reply to `message` in the user's voice, in the email's language, without inventing facts.",
+    description:
+      "Drafts a reply to `message` in the user's voice, in the email's language, without inventing facts. It reads the " +
+      "thread's earlier messages from the mailbox (its References) to know what was said before, and with `topic` " +
+      "(default auto: the email's linked or confirmed topics) what the user's approved memory of the topic says is true " +
+      "now; `drewOn` lists the facts it used, which the gate shows.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -795,9 +992,10 @@ export const CORE_STEPS: StepDefinition[] = [
       /** What the reply may draw on besides the email (the user's availability, rates, links). */
       context: z.unknown().optional(),
       signature: z.string().max(500).optional(),
+      topic: Topic,
     }),
     // No recipient: it always comes from the fetched email, never from the LLM.
-    output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
+    output: z.object({ subject: z.string(), body: z.string(), language: z.string(), drewOn: DrewOn }),
   },
   {
     type: "email.awaiting",
@@ -836,7 +1034,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.draftFollowUp",
     description:
       "Drafts a short, polite follow-up to `message`, the user's own email that got no answer: in its language, asking " +
-      "whether they had a chance to look, without new facts or pressure.",
+      "whether they had a chance to look, without new facts or pressure. It reads the thread's earlier messages too, and " +
+      "the memory of its thread's topics (`topic`, as email.draftReply).",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -847,8 +1046,9 @@ export const CORE_STEPS: StepDefinition[] = [
       instruction: z.string().min(1).default("A short, friendly nudge: two or three sentences."),
       daysWaiting: z.number().int().optional(),
       signature: z.string().max(500).optional(),
+      topic: Topic,
     }),
-    output: z.object({ subject: z.string(), body: z.string(), language: z.string() }),
+    output: z.object({ subject: z.string(), body: z.string(), language: z.string(), drewOn: DrewOn }),
   },
   {
     type: "price.watch",

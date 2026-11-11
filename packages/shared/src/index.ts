@@ -28,5 +28,7 @@ export * from "./prices-api";
 export * from "./runs-api";
 export * from "./telegram";
 export * from "./time-zone";
+export * from "./topic-match";
+export * from "./topics-api";
 export * from "./telegram-proposals";
 export * from "./view";

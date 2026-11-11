@@ -29,6 +29,8 @@ export const QUEUES = {
   weeklyReview: "weekly-review",
   /** Every morning: what today needs, on Telegram (M25). */
   morningBrief: "morning-brief",
+  /** A topic's backfill moves on (M43-T5): its estimate, its batches submitted and checked, by its status. */
+  topicBackfill: "topic-backfill",
 } as const;
 
 export interface RunJob {
@@ -58,6 +60,10 @@ export interface LearningJob {
 /** Without a userId (the nightly schedule): every user with new decisions. */
 export interface ReflectionJob {
   userId?: string;
+}
+
+export interface TopicBackfillJob {
+  topicBackfillId: string;
 }
 
 export interface ReflectionPollJob {
@@ -118,6 +124,7 @@ export const QUEUE_DEFINITIONS: PgBoss.Queue[] = [
   { name: QUEUES.maintenance, policy: "stately", retryLimit: 2, retryDelay: 600 },
   { name: QUEUES.weeklyReview, policy: "stately", retryLimit: 2, retryDelay: 600 },
   { name: QUEUES.morningBrief, policy: "stately", retryLimit: 2, retryDelay: 300 },
+  { name: QUEUES.topicBackfill, policy: "standard", retryLimit: 3, retryDelay: 120, retryBackoff: true },
   { name: QUEUES.events, policy: "standard", retryLimit: 3, retryDelay: 30 },
   { name: QUEUES.webhooks, policy: "standard", retryLimit: 3, retryDelay: 30 },
   // Waits up to flow.later's longest delay (a year) before it may run.
