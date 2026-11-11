@@ -94,6 +94,14 @@ A topic can point to where its documents live. Storm links them and never keeps 
   repositories' owner as its resource owner, only the repositories you pick, and **Contents: Read-only**. One token
   covers the repositories of one owner; repositories of another owner (a client's organization) need a token of their
   own, which that organization may have to approve. A topic can have several sources, each with its own token.
+- **A Google Drive folder.** Add it under **Sources → Google Drive folder** by its link (open the folder in Drive and
+  copy the address). Storm reads it with its subfolders: Google Docs (as Markdown, so their headings split the
+  passages), Slides, PDFs and text files; **Files** narrows it (`Specs/**`, `**/*.pdf`). It is read through your Google
+  connection, which must allow Drive (read-only): Settings shows whether it does, and [google-setup.md](google-setup.md)
+  says how. Every upkeep run asks Drive what changed in your Drive since the last one, which is one call when nothing
+  did, and reads only the files that changed under the folder. A file deleted, binned or moved out of the folder loses
+  its passages; a renamed or moved one keeps its place by its id. A folder moved into the source's folder is read at
+  the next **Rebuild**. A draft cites a Drive file by its path and folder, such as `Specs/API, in the Drive folder Orion`.
 - **Email attachments.** PDFs and text files attached to a topic's email are added by themselves.
 
 Documents are split into passages at their headings and kept in an index, so a draft can quote the passage closest to
@@ -164,6 +172,5 @@ Both are one change in the History, and **Undo** puts everything back.
 
 ## Not built yet
 
-- Google Drive folders as sources (waiting for the Google connection).
 - A topic's people, with the role you give them.
 - A periodic tidy-up proposing to merge overlapping facts and retire stale ones.

@@ -29,8 +29,9 @@ import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
 import { TopicApplyStep, TopicExtractStep } from "./topic-memory-steps";
-import { GitChangesStep, TopicAttachmentsStep, TopicIndexStep } from "./topic-source-steps";
+import { DriveChangesStep, GitChangesStep, TopicAttachmentsStep, TopicIndexStep } from "./topic-source-steps";
 import { GitHubClient } from "../sources/github";
+import { DriveClient } from "../sources/drive";
 import { TopicMatchStep } from "./topic-steps";
 
 export interface CoreStepDependencies {
@@ -60,6 +61,8 @@ export interface CoreStepDependencies {
   vault?: CredentialVault;
   /** git.changes and topic.index (M43): GitHub's API; tests give one with a stand-in fetch. */
   github?: GitHubClient;
+  /** drive.changes and topic.index's Drive files (M43-T2); by default through `google`. */
+  drive?: DriveClient;
   /** topic.index's passage embeddings (M43-T3); without them passages are found by their words. */
   embeddings?: Embeddings | null;
 }
@@ -68,6 +71,7 @@ export interface CoreStepDependencies {
 export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
   const telegram = new TelegramStep(deps.telegram, deps.fetch);
   const product = new ProductStep(deps.llm, deps.router, deps.http, deps.browser?.pool);
+  const drive = deps.drive ?? (deps.google ? new DriveClient(deps.google) : undefined);
   return [
     new DedupeStep(deps.prisma),
     new FilterStep(),
@@ -91,7 +95,8 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new TopicExtractStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new TopicApplyStep(deps.prisma),
     new GitChangesStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault)),
-    new TopicIndexStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault), deps.embeddings ?? null),
+    new DriveChangesStep(deps.prisma, drive),
+    new TopicIndexStep(deps.prisma, deps.github ?? new GitHubClient(deps.vault), deps.embeddings ?? null, drive),
     new TopicAttachmentsStep(deps.prisma, deps.mail, deps.embeddings ?? null),
     ...(deps.google ? [new CalendarFindStep({ google: deps.google, appOrigin: deps.appOrigin }), new CalendarCreateStep({ google: deps.google, appOrigin: deps.appOrigin })] : []),
     ...(deps.later ? [new FlowLaterStep(deps.later), new FlowCancelStep(deps.later)] : []),

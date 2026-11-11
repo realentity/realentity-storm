@@ -18,6 +18,7 @@ describe("topic sources", () => {
   afterEach(async () => {
     await db.client.topic.deleteMany();
     await db.client.credential.deleteMany();
+    await db.client.googleConnection.deleteMany();
   });
 
   afterAll(async () => {
@@ -27,6 +28,45 @@ describe("topic sources", () => {
 
   const credential = (name: string, allowedHosts: string[]) =>
     agent.post("/api/credentials").send({ name, kind: "API_KEY", secret: "test-token-value", allowedHosts }).expect(201);
+
+  // M43-T2
+  it("a Drive folder added from its link, once Google is connected: no branch, no token, its link kept", async () => {
+    const { topicId } = (await agent.post("/api/topics").send({ name: "Orion" }).expect(201)).body as TopicView;
+    const folder = "1AbCdEfGhIjKlMnOpQrStUv";
+    const add = (location: string) =>
+      agent.post(`/api/topics/${topicId}/sources`).send({ kind: "DRIVE", location, credential: "orion-repo" });
+
+    expect((await add(`https://drive.google.com/drive/folders/${folder}`).expect(400)).body).toMatchObject({
+      message: expect.stringContaining("Connect Google in Settings first") as unknown,
+    });
+    const { userId } = await db.client.user.findFirstOrThrow();
+    const sealed = { ciphertext: Buffer.from("x"), iv: Buffer.from("x"), authTag: Buffer.from("x"), wrappedDek: Buffer.from("x") };
+    await db.client.googleConnection.create({
+      data: { userId, email: "ana@gmail.test", scopes: ["https://www.googleapis.com/auth/drive.readonly"], ...sealed },
+    });
+
+    await add("https://drive.google.com/file/d/abc/view").expect(400);
+    const source = (await add(`https://drive.google.com/drive/u/0/folders/${folder}?usp=sharing`).expect(201)).body as TopicSourceView;
+    expect(source).toMatchObject({
+      kind: "DRIVE",
+      location: folder,
+      path: "**",
+      branch: null,
+      credential: null,
+      cursor: null,
+      url: `https://drive.google.com/drive/folders/${folder}`,
+    });
+    await add(folder).expect(409);
+
+    // Read once: its page token isn't shown, only that it was read.
+    await db.client.topicSource.update({
+      where: { topicSourceId: source.topicSourceId },
+      data: { cursor: "48213", readAt: new Date(), title: "Orion" },
+    });
+    expect((await agent.get(`/api/topics/${topicId}/sources`).expect(200)).body).toEqual([
+      expect.objectContaining({ cursor: "read", title: "Orion" }),
+    ]);
+  });
 
   it("a repository added (from its address), its token checked for api.github.com, rebuilt and removed", async () => {
     const { topicId } = (await agent.post("/api/topics").send({ name: "Orion" }).expect(201)).body as TopicView;

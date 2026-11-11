@@ -1,6 +1,6 @@
 import { type GoogleStatusView } from "@realentity/storm-shared";
-import { IconBrandGoogle, IconCalendar } from "@tabler/icons-react";
-import { useEffect } from "react";
+import { IconBrandGoogle, IconBrandGoogleDrive, IconCalendar, IconCheck, IconX } from "@tabler/icons-react";
+import { useEffect, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { api } from "../lib/endpoints";
@@ -10,8 +10,9 @@ import { useAction, useLoad } from "../lib/use-load";
 import { ErrorAlert, Loading } from "./ui";
 
 /**
- * Google Calendar (M14-T1) in Settings: connected as whom and when it last worked, or what to do. The state is as
- * last seen when the calendar was used; nothing checks it in the background.
+ * The Google connection in Settings: the calendar (M14-T1) and topics' Drive folders (M43-T2), one sign-in for both.
+ * Connected as whom, what was allowed, and when it last worked, or what to do. The state is as last seen when Google
+ * was used; nothing checks it in the background.
  */
 export function GoogleCalendarCard() {
   const status = useLoad(() => api.google.status(), []);
@@ -22,8 +23,8 @@ export function GoogleCalendarCard() {
   useEffect(() => {
     const outcome = params.get("google");
     if (!outcome) return;
-    if (outcome === "connected") toast.success("Google Calendar connected");
-    else toast.error(`Google Calendar not connected: ${outcome}`);
+    if (outcome === "connected") toast.success("Google connected");
+    else toast.error(`Google not connected: ${outcome}`);
     params.delete("google");
     setParams(params, { replace: true });
   }, [params, setParams]);
@@ -33,8 +34,8 @@ export function GoogleCalendarCard() {
     <div className="card" id="google" data-testid="google-calendar">
       <div className="card-header">
         <h3 className="card-title">
-          <IconCalendar size={18} className="me-1" />
-          Google Calendar
+          <IconBrandGoogle size={18} className="me-1" />
+          Google Calendar and Drive
         </h3>
         {g && <Badge g={g} />}
       </div>
@@ -43,7 +44,10 @@ export function GoogleCalendarCard() {
         {!g && status.loading && <Loading />}
         {g && !g.configured && <Setup g={g} />}
         {g?.configured && !g.connected && (
-          <p className="text-secondary">Connect your Google account so pipelines can read your calendar and propose events (calendar.find, calendar.create).</p>
+          <p className="text-secondary">
+            Connect your Google account so pipelines can read your calendar and propose events (calendar.find, calendar.create), and topics
+            can read the Drive folders you link as their sources (read-only).
+          </p>
         )}
         {g?.connected && (
           <div className="mb-3">
@@ -57,6 +61,13 @@ export function GoogleCalendarCard() {
             ) : (
               <div className="text-secondary small">{g.lastWorkedAt ? `Last worked ${formatDateTime(g.lastWorkedAt)}` : "Not used yet"}</div>
             )}
+            <div className="d-flex gap-3 mt-2 small" data-testid="google-allowed">
+              <Allowed icon={<IconCalendar size={16} className="me-1" />} name="Calendar" allowed={g.calendar} />
+              <Allowed icon={<IconBrandGoogleDrive size={16} className="me-1" />} name="Drive (read-only)" allowed={g.drive} />
+            </div>
+            {(!g.calendar || !g.drive) && (
+              <div className="form-hint">Not allowed at the sign-in: Reconnect, and tick it on Google's list.</div>
+            )}
           </div>
         )}
         {g?.configured && (
@@ -69,7 +80,7 @@ export function GoogleCalendarCard() {
               data-testid="google-connect"
             >
               <IconBrandGoogle size={18} className="me-1" />
-              {g.connected ? "Reconnect" : "Connect Google Calendar"}
+              {g.connected ? "Reconnect" : "Connect Google"}
             </button>
             {g.connected && (
               <button
@@ -105,6 +116,21 @@ export function GoogleCalendarCard() {
         )}
       </div>
     </div>
+  );
+}
+
+function Allowed({ icon, name, allowed }: { icon: ReactNode; name: string; allowed: boolean }) {
+  return (
+    <span className={allowed ? "" : "text-secondary"}>
+      {icon}
+      {name}:{" "}
+      {allowed ? (
+        <IconCheck size={16} className="text-green" aria-label="allowed" />
+      ) : (
+        <IconX size={16} className="text-red" aria-label="not allowed" />
+      )}{" "}
+      {allowed ? "allowed" : "not allowed"}
+    </span>
   );
 }
 

@@ -89,9 +89,14 @@ export async function topicMemory(
     if (p.text.length > room) continue;
     room -= p.text.length;
     const ref = `P${lines.length + 1}`;
-    // A repository's file at its commit; an email's attachment by the email it came with.
-    const attached = p.kind === "ATTACHMENT";
-    const cite = attached ? `${p.path}, attached to ${p.title}` : `${p.path} @ ${p.ref.slice(0, 7)}`;
+    // A repository's file at its commit; an email's attachment by the email it came with; a Drive file by its folder.
+    const attached = p.kind === "ATTACHMENT" || p.kind === "DRIVE";
+    const cite =
+      p.kind === "ATTACHMENT"
+        ? `${p.path}, attached to ${p.title}`
+        : p.kind === "DRIVE"
+          ? `${p.path}, in the Drive folder ${p.title || p.location}`
+          : `${p.path} @ ${p.ref.slice(0, 7)}`;
     const where = attached ? cite : `${p.location} ${cite}`;
     lines.push(
       `<passage ref="${ref}" source="${where.replace(/"/g, "'")}"${p.heading ? ` heading="${p.heading.replace(/"/g, "'")}"` : ""}>\n${p.text}\n</passage>`,

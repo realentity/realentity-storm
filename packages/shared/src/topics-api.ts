@@ -222,7 +222,7 @@ export interface TopicUpkeepView {
   topicsWithDirections: number;
 }
 
-export const TOPIC_SOURCE_KINDS = ["GITHUB"] as const;
+export const TOPIC_SOURCE_KINDS = ["GITHUB", "DRIVE"] as const;
 export type TopicSourceKindName = (typeof TOPIC_SOURCE_KINDS)[number];
 
 /** Where a topic's documents live (M43, docs/design.md §8.1): linked, never copied; its passages are a cache. */
@@ -233,7 +233,7 @@ export interface TopicSourceView {
   kind: TopicSourceKindName | "ATTACHMENT";
   /** ATTACHMENT: its email, "Maria <maria@client.example>: Kickoff". */
   title: string;
-  /** GITHUB: owner/repo. */
+  /** GITHUB: owner/repo. DRIVE: the folder's id (its name is `title`, once read). */
   location: string;
   branch: string | null;
   path: string;
@@ -242,22 +242,31 @@ export interface TopicSourceView {
   cursor: string | null;
   readAt: string | null;
   passages: number;
-  /** Where to open it: the repository's files under the path; "" for an attachment. */
+  /** Where to open it: the repository's files under the path, the Drive folder; "" for an attachment. */
   url: string;
 }
 
 const REPOSITORY = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
+/** A Drive file or folder id: letters, digits, "-" and "_". */
+const DRIVE_ID = /^[A-Za-z0-9_-]{10,200}$/;
+
+/**
+ * A Drive folder's id from what the user pastes: its link (drive.google.com/drive/folders/<id>, also under /u/0/, with
+ * ?usp=…) or the id itself; null when it is neither.
+ */
+export function driveFolderId(value: string): string | null {
+  const text = value.trim();
+  const link = /^https:\/\/drive\.google\.com\/(?:drive\/(?:u\/\d+\/)?folders\/|open\?id=)([A-Za-z0-9_-]+)/i.exec(text);
+  const id = link?.[1] ?? text;
+  return DRIVE_ID.test(id) ? id : null;
+}
 const BRANCH = /^[A-Za-z0-9._/-]{1,200}$/;
 const GLOB = /^[A-Za-z0-9._/*?{},@ -]{1,300}$/;
 
 export const TopicSourceSchema = z
   .object({
     kind: z.enum(TOPIC_SOURCE_KINDS),
-    location: z
-      .string()
-      .trim()
-      .transform((value) => value.replace(/^https:\/\/github\.com\//i, "").replace(/\.git$|\/$/g, ""))
-      .refine((value) => REPOSITORY.test(value), "A GitHub repository: owner/repo"),
+    location: z.string().trim().max(500),
     branch: z
       .string()
       .trim()
@@ -276,7 +285,18 @@ export const TopicSourceSchema = z
       .transform((value) => value || null)
       .nullish(),
   })
-  .strict();
+  .strict()
+  .transform((source, context) => {
+    if (source.kind === "DRIVE") {
+      // A folder: its link or id. No branch, and no credential: Drive is read through the Google connection.
+      const folder = driveFolderId(source.location);
+      if (!folder) context.addIssue({ code: "custom", path: ["location"], message: "A Google Drive folder: its link or id" });
+      return { ...source, location: folder ?? source.location, branch: null, credential: null };
+    }
+    const repo = source.location.replace(/^https:\/\/github\.com\//i, "").replace(/\.git$|\/$/g, "");
+    if (!REPOSITORY.test(repo)) context.addIssue({ code: "custom", path: ["location"], message: "A GitHub repository: owner/repo" });
+    return { ...source, location: repo };
+  });
 export type TopicSourceRequest = z.input<typeof TopicSourceSchema>;
 
 /** "docs/adr///" → "docs/adr", by a loop: a regular expression for it is slow on long runs of "/". */

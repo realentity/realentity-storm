@@ -64,8 +64,8 @@ documents, and **nothing goes into it without your approval**.
 1. **Say what belongs to it.** A word ("Orion"), a domain, a person, or a description in plain words. Storm sorts
    your new and sent email into your topics. When only the LLM thinks an email belongs to one, the email waits for your
    Yes.
-2. **It proposes what is true.** From a topic's new email, its GitHub repository (decision records, specs) and the
-   attachments of its email, Storm proposes facts: "Launch date: ~~February~~ → March", each with its source and the
+2. **It proposes what is true.** From a topic's new email, its GitHub repository (decision records, specs), its Google
+   Drive folder and the attachments of its email, Storm proposes facts: "Launch date: ~~February~~ → March", each with its source and the
    quote that shows it. You pick the ones that go in. Where sources disagree, you decide.
 3. **Its replies use it.** A draft to a topic's email gets the topic's current facts and the passages of its documents
    closest to the question, and the gate shows what it drew on. A fact it doesn't have stays a placeholder.
@@ -289,7 +289,7 @@ the ports and folders themselves.
 | [docs/design.md](docs/design.md) | How it works: principles, pipelines, gates, architecture, security, data model |
 | [docs/self-hosting.md](docs/self-hosting.md) | Install, HTTPS, webhooks and Telegram, updates, backups |
 | [docs/telegram.md](docs/telegram.md) | What the bot does |
-| [docs/google-setup.md](docs/google-setup.md) | Connecting Google: Calendar (and Drive, planned) |
+| [docs/google-setup.md](docs/google-setup.md) | Connecting Google: Calendar, and Drive for topics |
 | [pipelines/](pipelines) | Example pipelines and Apps |
 
 Comments and commits cite milestone ids such as `M12-T5`: they come from the project's development plan and mark

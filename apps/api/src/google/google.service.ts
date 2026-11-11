@@ -1,9 +1,10 @@
 import { KeyRing, seal } from "@realentity/storm-crypto";
 import {
+  CALENDAR_SCOPE,
+  DRIVE_SCOPE,
   emailOfIdToken,
   exchangeGoogleCode,
   googleAuthUrl,
-  GOOGLE_SCOPES,
   type GoogleClient,
   type GoogleStatusView,
   type ServerEnv,
@@ -17,7 +18,6 @@ export const GOOGLE_FETCH = Symbol("GOOGLE_FETCH");
 
 /** A sign-in that wasn't finished within this long is forgotten. */
 const PENDING_MS = 10 * 60_000;
-const CALENDAR_SCOPE = GOOGLE_SCOPES[2];
 
 interface Pending {
   userId: string;
@@ -27,7 +27,8 @@ interface Pending {
 }
 
 /**
- * Google Calendar's connection (M14-T1): the consent screen, the code exchanged for a refresh token (sealed, AAD =
+ * The Google connection, for the calendar (M14-T1) and topics' Drive folders (M43-T2): the consent screen, the code
+ * exchanged for a refresh token (sealed, AAD =
  * userId; only the worker opens it), the state as last seen, and disconnecting. Connecting again continues the runs
  * waiting for it. Sign-ins in progress are kept in memory (one api process): a restart only means signing in again.
  */
@@ -51,6 +52,8 @@ export class GoogleService {
       connected: row !== null,
       email: row?.email ?? null,
       status: row?.status ?? null,
+      calendar: row?.scopes.includes(CALENDAR_SCOPE) ?? false,
+      drive: row?.scopes.includes(DRIVE_SCOPE) ?? false,
       lastWorkedAt: row?.lastWorkedAt?.toISOString() ?? null,
       brokenAt: row?.brokenAt?.toISOString() ?? null,
       brokenReason: row?.brokenReason ?? null,
@@ -85,7 +88,10 @@ export class GoogleService {
 
     const result = await exchangeGoogleCode(this.send, this.client(origin), query.code, pending.verifier);
     if (!result.ok) return back(pending.returnTo, result.error);
-    if (!result.scopes.includes(CALENDAR_SCOPE)) return back(pending.returnTo, "the calendar wasn't allowed: connect again and tick the calendar access");
+    // Either is enough: the other one's steps say it wasn't allowed.
+    if (!result.scopes.includes(CALENDAR_SCOPE) && !result.scopes.includes(DRIVE_SCOPE)) {
+      return back(pending.returnTo, "neither the calendar nor Drive was allowed: connect again and tick them");
+    }
     if (!result.refreshToken) {
       return back(pending.returnTo, "Google sent no refresh token: remove Storm at myaccount.google.com/permissions, then connect again");
     }
@@ -99,7 +105,7 @@ export class GoogleService {
       where: { waitsFor: "google", status: "OPEN", run: { userId } },
       data: { status: "CONTINUED", resolvedAt: new Date() },
     });
-    if (count) this.logger.log(`Google Calendar connected: ${count} waiting run(s) continue`);
+    if (count) this.logger.log(`Google connected: ${count} waiting run(s) continue`);
     return back(pending.returnTo, "connected");
   }
 
@@ -117,7 +123,7 @@ export class GoogleService {
 
   private client(origin: string): GoogleClient {
     const { GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: clientSecret } = this.env;
-    if (!clientId || !clientSecret) throw new BadRequestException("Google Calendar isn't set up: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env");
+    if (!clientId || !clientSecret) throw new BadRequestException("Google isn't set up: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env");
     return { clientId, clientSecret, redirectUri: this.redirectUri(origin) };
   }
 

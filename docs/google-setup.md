@@ -1,13 +1,17 @@
 # Google for Storm: setup
 
-Connects your Google account to Storm, once, in about 15 minutes. Today that is **Google Calendar**: pipelines read
-your events (`calendar.find`) and propose new ones (`calendar.create`, always waiting for your approval). **Google
-Drive** for topics' documents uses the same project, consent screen and client when it arrives
-([Later: Google Drive](#later-google-drive)). You need the Google
-account whose calendar Storm should use, and access to Storm's `.env` on your server ([self-hosting.md](self-hosting.md)).
+Connects your Google account to Storm, once, in about 15 minutes, for two things:
 
-What you create: a Google Cloud **project**, with the **Calendar API** turned on, a **consent screen** (what Google
-shows when you sign in), and an **OAuth client** (an id and a secret that Storm puts in `.env`).
+- **Google Calendar:** pipelines read your events (`calendar.find`) and propose new ones (`calendar.create`, always
+  waiting for your approval).
+- **Google Drive, read-only:** a topic reads the Drive folders you link as its sources, for drafts to quote
+  ([topics.md](topics.md)). Storm never changes anything in Drive.
+
+One sign-in covers both, and you can allow only one of them. You need the Google account whose calendar and Drive
+Storm should use, and access to Storm's `.env` on your server ([self-hosting.md](self-hosting.md)).
+
+What you create: a Google Cloud **project**, with the **Calendar API** and the **Drive API** turned on, a **consent
+screen** (what Google shows when you sign in), and an **OAuth client** (an id and a secret that Storm puts in `.env`).
 
 > Google renames buttons in its console now and then. If a label differs, look for the same idea nearby; the
 > addresses below take you to the right page.
@@ -24,11 +28,11 @@ shows when you sign in), and an **OAuth client** (an id and a secret that Storm 
 6. Make sure the project picker at the top of the page shows **realentity-storm**. If it doesn't, click it and choose `realentity-storm`.
    Every step below happens in this project.
 
-## 2. Turn on the Google Calendar API
+## 2. Turn on the Calendar and Drive APIs
 
 1. Open <https://console.cloud.google.com/apis/library/calendar-json.googleapis.com> (the project picker still shows
-   `realentity-storm`).
-2. Press **Enable**.
+   `realentity-storm`), and press **Enable**.
+2. Open <https://console.cloud.google.com/apis/library/drive.googleapis.com>, and press **Enable**.
 
 ## 3. The consent screen (Google Auth Platform)
 
@@ -43,10 +47,13 @@ shows when you sign in), and an **OAuth client** (an id and a secret that Storm 
 
 1. In the left menu, open **Data access**.
 2. Press **Add or remove scopes**.
-3. Tick these three (type each in the filter box to find it):
+3. Tick these four (type each in the filter box to find it):
    - `openid`
    - `.../auth/userinfo.email`: your address, so Settings can show which account is connected.
    - `.../auth/calendar.events`: "View and edit events on all your calendars".
+   - `.../auth/drive.readonly`: "See and download all your Google Drive files". Read-only. A folder's new files can't
+     be seen with a narrower scope. Google classes it as *restricted*, which matters only for apps published to other
+     people: for your own use, Testing or an unverified app in production works as for Calendar.
 4. Press **Update**, then **Save** at the bottom of the page.
 
 ### You as the test user
@@ -59,7 +66,8 @@ The app stays in **Testing** (Google publishes an External app only with a homep
 
 In Testing, Google ends the connection **7 days** after you connect. Storm handles that: the next run that needs the
 calendar waits for you, and Telegram says **Google Calendar needs reconnecting** with a **Reconnect** button (a
-sign-in, about 20 seconds); the run goes on once you're back.
+sign-in, about 20 seconds); the run goes on once you're back. A topic's Drive folder isn't read meanwhile: the upkeep
+run lists it among its problems until you reconnect, then reads what changed.
 
 ## 4. The OAuth client (the id and secret for Storm)
 
@@ -74,8 +82,8 @@ sign-in, about 20 seconds); the run goes on once you're back.
    ```
 
    That is your `APP_ORIGIN` followed by `/api/google/callback`. It must match exactly: `https`, the same host and
-   port, no slash at the end. Storm's **Settings → Google Calendar** shows the address it uses, if you want to
-   compare.
+   port, no slash at the end. Storm's **Settings → Google Calendar and Drive** shows the address it uses, if you want
+   to compare.
 6. Press **Create**.
 7. A dialog shows the **Client ID** (ends in `.apps.googleusercontent.com`) and the **Client secret** (starts with
    `GOCSPX-`). **Copy both now, or press Download JSON**: Google may not show the secret again. (If you lose it: open
@@ -108,17 +116,23 @@ which key is wrong (`./docker/storm logs api`; it names the key, never the value
 
 ## 6. Connect in Storm
 
-1. Open Storm's **Settings** (`APP_ORIGIN` + `/settings`). The **Google Calendar** card now has
-   **Connect Google Calendar** (it said *Not set up* before step 5).
+1. Open Storm's **Settings** (`APP_ORIGIN` + `/settings`). The **Google Calendar and Drive** card now has
+   **Connect Google** (it said *Not set up* before step 5).
 2. Press it. Google's sign-in opens: choose your account.
 3. Google says **"Google hasn't verified this app"**. That's your own app (step 3): press **Continue** (or
    **Advanced**, then **Go to Storm (unsafe)**).
 4. Google lists what Storm asks for. **Tick the calendar access** ("See, edit, share, and permanently delete all the
-   calendars…" or "View and edit events…"), then **Continue**.
-5. You're back on Settings: a green message **Google Calendar connected**, and the card says
-   **Connected as you@gmail.com**.
+   calendars…" or "View and edit events…") and **the Drive access** ("See and download all your Google Drive
+   files"), then **Continue**. Leave one unticked if you don't want it: the other one still works.
+5. You're back on Settings: a green message **Google connected**, and the card says **Connected as you@gmail.com**,
+   with **Calendar: allowed** and **Drive (read-only): allowed**.
 
-Done. Pipelines with calendar steps can now run; the review screen no longer warns about the calendar.
+Done. Pipelines with calendar steps can now run; the review screen no longer warns about the calendar. A topic can
+now have a Drive folder as a source: on the Topics page, **Sources → Add → Google Drive folder**, and paste the
+folder's link.
+
+**Connected before Drive was added?** The connection keeps working for the calendar, and the card says **Drive (read-only):
+not allowed**. Do step 2's second line and step 3's fourth scope, then **Reconnect** once and tick the Drive access.
 
 ---
 
@@ -132,20 +146,6 @@ Done. Pipelines with calendar steps can now run; the review screen no longer war
   <https://myaccount.google.com/permissions> (Google forgets the access).
 - **A new client secret:** Google Cloud → **Clients** → `storm` → **Add secret**, put it in `.env`,
   `./docker/storm up`, then disable the old secret there.
-
-## Later: Google Drive
-
-Not in Storm yet: topics will read Drive folders as sources ([topics.md](topics.md), "Not built yet"). When it arrives
-it needs, in the same project:
-
-1. The **Google Drive API** turned on: <https://console.cloud.google.com/apis/library/drive.googleapis.com> → **Enable**.
-2. On **Data access**, the scope `.../auth/drive.readonly` ("See and download all your Google Drive files"): read-only,
-   since Storm never writes to Drive. A folder's new files can't be seen with a narrower scope. Google classes it as
-   *restricted*, which matters only for apps published to other people: for your own use, Testing or an unverified
-   app In production works as for Calendar.
-3. In Storm, **Settings → Reconnect**, and tick the Drive access on Google's list.
-
-Turning the API on and adding the scope now is harmless: a scope is only granted when Storm asks for it at a sign-in.
 
 ## Later: In production
 
@@ -169,7 +169,10 @@ To stop the weekly reconnect, publish the app. Google asks for two public pages 
 | Google: **Error 400: redirect_uri_mismatch** | the redirect URI of the client (step 4.5) isn't exactly the one Settings shows: fix it in **Clients → storm**, wait a minute, connect again |
 | Google: **Error 403: access_denied**, "has not completed the Google verification process" | your account isn't a test user: add it (step 3, *You as the test user*) |
 | Google: **invalid_client** | the client id or secret in `.env` is wrong or has a space: copy them again, restart |
-| Back on Settings: **the calendar wasn't allowed** | on Google's list (step 6.4) the calendar box wasn't ticked: connect again and tick it |
+| Back on Settings: **neither the calendar nor Drive was allowed** | on Google's list (step 6.4) no box was ticked: connect again and tick them |
+| Settings: **Drive (read-only): not allowed**, or a topic's run says "Storm's Google access doesn't include Google Drive" | connected before Drive was added, or the Drive box wasn't ticked: **Reconnect** and tick it (and step 3's fourth scope, if it isn't there) |
+| A topic's run says **Google Drive: refused … is the Drive API on** | step 2's Drive API isn't enabled in `realentity-storm`: enable it |
+| A topic's run says **Google Drive: not found** | the folder's link is wrong, or the folder isn't shared with the connected account: open it in Drive as that account, or add it to My Drive |
 | Back on Settings: **Google sent no refresh token** | remove Storm at <https://myaccount.google.com/permissions>, then connect again |
 | Back on Settings: **the sign-in expired or wasn't started here** | more than 10 minutes passed, or Storm restarted meanwhile: press Connect again |
 | **Google Calendar API has not been used in project … or it is disabled** (in a run's error) | step 2 was done in another project: enable the Calendar API in `realentity-storm` |

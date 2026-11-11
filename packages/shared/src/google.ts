@@ -1,15 +1,24 @@
 /**
- * Google OAuth for the calendar (M14-T1), shared by the api (connect: the consent screen, the code exchanged for a
- * refresh token) and the worker (an access token from the refresh token). Plain HTTPS calls; `fetch` is injected so
+ * Google OAuth for the calendar (M14-T1) and Drive (M43-T2), shared by the api (connect: the consent screen, the code
+ * exchanged for a refresh token) and the worker (an access token from the refresh token). Plain HTTPS calls; `fetch` is injected so
  * tests answer for Google.
  */
 
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
+export const GOOGLE_DRIVE_API = "https://www.googleapis.com/drive/v3";
 
-/** The user's address (the id token's email) and their calendars' events: read, create. */
-export const GOOGLE_SCOPES = ["openid", "email", "https://www.googleapis.com/auth/calendar.events"] as const;
+/** Calendar steps: the calendars' events, read and create. */
+export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+/** Topics' Drive folders: read only (a folder's new files can't be seen with a narrower scope). */
+export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+
+/**
+ * What the sign-in asks for: the user's address (the id token's email), the calendar and Drive. Google lets the user
+ * untick either; the connection then works for the other one.
+ */
+export const GOOGLE_SCOPES = ["openid", "email", CALENDAR_SCOPE, DRIVE_SCOPE] as const;
 
 export interface GoogleClient {
   clientId: string;
@@ -42,7 +51,12 @@ export type GoogleTokenResult =
   | { ok: false; error: string; reconnect: boolean };
 
 /** The sign-in's code for tokens (the api, on the callback). */
-export function exchangeGoogleCode(send: typeof fetch, client: GoogleClient, code: string, codeVerifier: string): Promise<GoogleTokenResult> {
+export function exchangeGoogleCode(
+  send: typeof fetch,
+  client: GoogleClient,
+  code: string,
+  codeVerifier: string,
+): Promise<GoogleTokenResult> {
   return tokenRequest(send, {
     grant_type: "authorization_code",
     code,
@@ -54,7 +68,11 @@ export function exchangeGoogleCode(send: typeof fetch, client: GoogleClient, cod
 }
 
 /** A fresh access token from the refresh token (the worker, when a calendar step runs). */
-export function refreshGoogleToken(send: typeof fetch, client: Omit<GoogleClient, "redirectUri">, refreshToken: string): Promise<GoogleTokenResult> {
+export function refreshGoogleToken(
+  send: typeof fetch,
+  client: Omit<GoogleClient, "redirectUri">,
+  refreshToken: string,
+): Promise<GoogleTokenResult> {
   return tokenRequest(send, {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
@@ -105,6 +123,9 @@ export function emailOfIdToken(idToken: string): string | null {
 }
 
 function base64UrlBytes(value: string): Uint8Array {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const base64 = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
   return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 }

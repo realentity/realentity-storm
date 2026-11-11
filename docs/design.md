@@ -492,6 +492,7 @@ concern. The email's text is read from the mailbox when it is needed, never stor
 | Source | What Storm keeps | How it sees a change (no LLM) |
 | --- | --- | --- |
 | GitHub repository | `owner/repo`, a branch, a path pattern (`docs/adr/**`), the last commit read; for a private one, a read-only token as a credential allowed for `api.github.com` | `git.changes`: the branch's head commit, then the files changed under the path since the last read |
+| Google Drive folder | the folder's id and name, a path pattern, Drive's changes page token; each passage's file id (a rename or a move keeps it) | `drive.changes`: Drive's changes list since the token (all of the user's Drive, one call when nothing changed), each changed file followed up its parents to see whether it is under the folder; the first read lists the folder |
 | An email's attachment | its message (Message-ID, mailbox, UID) and file | `topic.attachments`: added once for a linked inbox email; it never changes |
 | Email | the topic's links | new mail, sorted by `topic.match` |
 
@@ -566,7 +567,7 @@ edits.
 
 - [pipelines/topic-upkeep.yaml](../pipelines/topic-upkeep.yaml), **Keep topics up to date**: every 15 minutes, new
   inbox email (triaged: newsletters and notifications set aside) and sent email → `topic.match` →
-  `topic.attachments`; `git.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply`. It sends
+  `topic.attachments`; `git.changes`, `drive.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply`. It sends
   nothing. The card recognizes it by `topic.extract`.
 - [pipelines/topic-replies.yaml](../pipelines/topic-replies.yaml), **Answer your topics' email**: every 15 minutes,
   new inbox email that expects a reply → its own `topic.match` (so a new conversation has its topic before it is
@@ -610,12 +611,11 @@ it, and a dismissed suggestion isn't made again):
 
 **Safety.** Email and document text is data: it can lead to a proposed fact or a suggested topic, never write either,
 and a passage reaches a prompt delimited like any untrusted text. Directions come only from you. Source credentials are
-credentials like any other (§7): the GitHub client reaches only `api.github.com`, with the token revealed for that host.
+credentials like any other (§7): the GitHub client reaches only `api.github.com`, with the token revealed for that host. A Drive folder is read through the Google connection (the calendar's, its refresh token sealed like a credential), with the read-only Drive scope; Storm never writes to Drive.
 With `OPENAI_API_KEY`, passages, facts and the start of an email being answered go to OpenAI for their embeddings.
 
 **Not built yet.**
 
-- Google Drive folders as sources (`drive.changes`, read-only scope), waiting for the Google consent screen.
 - A topic's people, with the role you give them, and their card in drafts.
 - `llm.generate` and `llm.summarize` with a topic.
 - A source ranking (an accepted decision record outranking an email that mentions the subject in passing).
@@ -921,7 +921,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Google Calendar's refresh token is sealed like a credential (AAD: the user id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
 - [ ] Facts about you are written only by your approvals, your answers and the Profile page, never by a page or the LLM alone; a fact the LLM cites must be one of yours, with your answer
 - [ ] A topic's facts and directions are written only by your approvals and your edits, never by an email's or a document's text or the LLM alone; something that looks like a secret is never proposed as a fact, nor written by you (§8.1)
-- [ ] Topic sources are read with read-only access (a read-only repository token, opened for api.github.com only; Drive's read-only scope, planned), and their passages reach prompts delimited as untrusted data (§8.1)
+- [ ] Topic sources are read with read-only access (a read-only repository token, opened for api.github.com only; Drive through the Google connection's read-only scope), and their passages reach prompts delimited as untrusted data (§8.1)
 - [ ] `calendar.create`'s guests can't come from LLM output (they are recipient targets), and Google emails them only after Act
 - [ ] Browser pages that explore or act (agent, upload, submit, shop.product) go only to allowed sites, every redirect checked before it is followed
 - [ ] `data.map` runs only a JSONata expression over its input (no network or code), with a time, depth and length limit

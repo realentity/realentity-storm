@@ -1326,6 +1326,8 @@ enum TopicSourceKind {
   GITHUB
   /// An email's attachment (location: the Message-ID; path: the file name): read once, it never changes.
   ATTACHMENT
+  /// A Google Drive folder and its subfolders (location: the folder's id), read through the user's Google connection.
+  DRIVE
 }
 
 /**
@@ -1339,7 +1341,7 @@ model TopicSource {
   topicId       String          @db.Uuid
   topic         Topic           @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
   kind          TopicSourceKind
-  /// GITHUB: owner/repo.
+  /// GITHUB: owner/repo. DRIVE: the folder's id.
   location      String
   /// GITHUB: the branch; null: the repository's default.
   branch        String?
@@ -1350,9 +1352,10 @@ model TopicSource {
   /// ATTACHMENT: where its email is, to read it again (a rebuild).
   mailbox       String?
   uid           Int?
-  /// ATTACHMENT: what to show, "Maria <maria@client.example>: Kickoff".
+  /// ATTACHMENT: what to show, "Maria <maria@client.example>: Kickoff". DRIVE: the folder's name, as last read.
   title         String          @default("")
-  /// The last commit indexed (ATTACHMENT: "read"): the next read continues from it. Null: not read yet.
+  /// The last commit indexed (ATTACHMENT: "read"; DRIVE: Drive's changes page token): the next read continues from it.
+  /// Null: not read yet.
   cursor        String?
   readAt        DateTime?
   passages      TopicPassage[]
@@ -1375,7 +1378,9 @@ model TopicPassage {
   topicSourceId  String                       @db.Uuid
   source         TopicSource                  @relation(fields: [topicSourceId], references: [topicSourceId], onDelete: Cascade)
   path           String
-  /// The commit it was read at.
+  /// DRIVE: the file's id, which a rename or a move keeps (its path is the folder's path to it).
+  documentId     String?
+  /// The commit it was read at (DRIVE: the file's version).
   ref            String
   /// When that commit was made: the passage's date as evidence.
   refDate        DateTime
@@ -1388,6 +1393,7 @@ model TopicPassage {
   dateCreated    DateTime                     @default(now())
 
   @@index([topicSourceId, path])
+  @@index([topicSourceId, documentId])
   @@index([topicId])
   @@map("TopicPassages")
 }

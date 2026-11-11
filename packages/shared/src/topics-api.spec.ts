@@ -9,6 +9,7 @@ import {
   pathMatches,
   TopicFactSchema,
   TopicSourceSchema,
+  driveFolderId,
 } from "./topics-api";
 
 // M42-S1 (part): a topic's fact never holds a secret
@@ -76,6 +77,30 @@ describe("pathMatches", () => {
     expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme/orion", path: "../secrets/**" }).success).toBe(false);
     expect(isTextFile("docs/adr/0012.md")).toBe(true);
     expect(isTextFile("docs/diagram.png")).toBe(false);
+  });
+
+  it("a Drive source: a folder from its link or id, without a branch or a credential", () => {
+    const id = "1AbCdEfGhIjKlMnOpQrStUv-_x";
+    for (const pasted of [
+      `https://drive.google.com/drive/folders/${id}`,
+      `https://drive.google.com/drive/u/0/folders/${id}?usp=sharing`,
+      `https://drive.google.com/open?id=${id}`,
+      ` ${id} `,
+    ]) {
+      expect(driveFolderId(pasted)).toBe(id);
+    }
+    expect(driveFolderId("https://drive.google.com/file/d/abc")).toBeNull();
+    expect(driveFolderId("not a folder")).toBeNull();
+    expect(
+      TopicSourceSchema.parse({ kind: "DRIVE", location: `https://drive.google.com/drive/folders/${id}`, branch: "main", credential: "x" }),
+    ).toEqual({
+      kind: "DRIVE",
+      location: id,
+      path: "**",
+      branch: null,
+      credential: null,
+    });
+    expect(TopicSourceSchema.safeParse({ kind: "DRIVE", location: "acme/orion" }).success).toBe(false);
   });
 });
 
