@@ -62,7 +62,9 @@ test("a database credential: one connection string, checked as it is typed, its 
   await expect(form).toContainText("Not a connection string");
   await expect(form.getByRole("button", { name: "Store" })).toBeDisabled();
   await connection.fill(`postgresql://reader:${password}@db.example.ts.net:5433/shop`);
-  await expect(page.getByTestId("connection-hint")).toHaveText("Connects to database shop on db.example.ts.net:5433 as reader, and nowhere else.");
+  await expect(page.getByTestId("connection-hint")).toHaveText(
+    "Connects to database shop on db.example.ts.net:5433 as reader, and nowhere else.",
+  );
   await page.screenshot({ path: "test-results/credential-database.png" });
   await form.getByRole("button", { name: "Store" }).click();
 
@@ -75,4 +77,32 @@ test("a database credential: one connection string, checked as it is typed, its 
   await expect(page.getByTestId("connection-hint")).toContainText("not db.example.ts.net. Another server is another credential.");
   // The preview names the server, never the password.
   await expect(page.getByTestId("connection-hint")).not.toContainText(password);
+});
+
+// A GitHub token: an API key for api.github.com only, with the steps to make one; shown as a GitHub token
+test("a GitHub token: the steps to make one, api.github.com as its only host, a pasted password pointed out", async ({ page }) => {
+  const name = `e2e-gh-${Date.now().toString(36)}`;
+  await page.goto("/credentials");
+  await page.getByTestId("add-credential").click();
+  const form = page.getByTestId("credential-form");
+  await form.getByLabel("Name", { exact: true }).fill(name);
+  await expect(page.getByTestId("credential-kind-hint")).toContainText("browser.open's login");
+  await form.getByLabel("Kind").selectOption("GITHUB");
+  await expect(page.getByTestId("github-steps")).toContainText("Fine-grained");
+  await expect(form.getByLabel("Allowed hosts")).toHaveCount(0);
+  await expect(form.getByLabel("Username (optional)")).toHaveCount(0);
+  await expect(form).toContainText("api.github.com only");
+
+  const token = form.getByLabel("Token");
+  await token.fill("my-github-password");
+  await expect(page.getByTestId("token-hint")).toContainText("doesn't look like a GitHub token");
+  await token.fill(`github_pat_e2e${Date.now()}`);
+  await expect(page.getByTestId("token-hint")).toHaveCount(0);
+  await form.getByRole("button", { name: "Store" }).click();
+
+  const row = page.getByTestId("credentials").locator("tr", { hasText: name });
+  await expect(row).toContainText("GitHub token");
+  await expect(row).toContainText("api.github.com");
+  await row.getByRole("button", { name: "Replace" }).click();
+  await expect(page.getByLabel("New token")).toBeVisible();
 });

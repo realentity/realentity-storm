@@ -411,6 +411,9 @@ export interface GoogleStatusView {
   connected: boolean;
   email: string | null;
   status: "CONNECTED" | "NEEDS_RECONNECT" | null;
+  /** What the user allowed at the sign-in: the calendar, Drive (read-only). */
+  calendar: boolean;
+  drive: boolean;
   lastWorkedAt: string | null;
   brokenAt: string | null;
   brokenReason: string | null;

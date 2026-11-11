@@ -1,7 +1,8 @@
-import { CredentialKind, databaseConnection, type CredentialView } from "@realentity/storm-shared";
+import { CredentialKind, type CredentialView } from "@realentity/storm-shared";
 import { IconKey, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
+import { AddCredential, ConnectionHint, credentialLabel, isGitHubToken, TokenHint } from "../components/AddCredential";
 import { Empty, ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
@@ -72,7 +73,7 @@ export function CredentialsPage() {
                         key v{c.keyVersion} · updated {formatDateTime(c.dateUpdated)}
                       </div>
                     </td>
-                    <td>{c.kind.toLowerCase().replace("_", " ")}</td>
+                    <td>{credentialLabel(c)}</td>
                     <td>{c.allowedHosts.join(", ")}</td>
                     <td>{c.username ?? <span className="text-secondary">—</span>}</td>
                     <td className="text-secondary">{formatDateTime(c.lastUsedAt)}</td>
@@ -136,183 +137,27 @@ export function CredentialsPage() {
   );
 }
 
-function AddCredential({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<CredentialKind>(CredentialKind.PASSWORD);
-  const [hosts, setHosts] = useState("");
-  const [username, setUsername] = useState("");
-  const [secret, setSecret] = useState("");
-  const action = useAction();
-  const database = kind === CredentialKind.DATABASE;
-  const connection = database ? databaseConnection(secret) : null;
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const value = secret;
-    setSecret("");
-    const saved = await action.run(() =>
-      api.credentials.create({
-        name: name.trim(),
-        kind,
-        // A database connects to the host its connection string names, and nowhere else.
-        allowedHosts: connection
-          ? [connection.host]
-          : hosts
-              .split(/[\s,]+/)
-              .map((h) => h.trim())
-              .filter(Boolean),
-        username: database ? undefined : username.trim() || undefined,
-        secret: value,
-      }),
-    );
-    if (!saved) return;
-    toast.success(`Stored ${saved.name}`);
-    onSaved();
-  };
-
-  return (
-    <Modal title="Add a credential" onClose={onClose}>
-      <form onSubmit={(e) => void submit(e)} autoComplete="off" data-testid="credential-form">
-        <ErrorAlert error={action.error} title="Not stored" />
-        <div className="mb-3">
-          <label className="form-label" htmlFor="cred-name">
-            Name
-          </label>
-          <input
-            id="cred-name"
-            className="form-control"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="linkedin"
-            required
-          />
-        </div>
-        <div className="mb-3">
-          <label className="form-label" htmlFor="cred-kind">
-            Kind
-          </label>
-          <select id="cred-kind" className="form-select" value={kind} onChange={(e) => setKind(e.target.value as CredentialKind)}>
-            {Object.values(CredentialKind).map((k) => (
-              <option key={k} value={k}>
-                {k.toLowerCase().replace("_", " ")}
-              </option>
-            ))}
-          </select>
-        </div>
-        {!database && (
-          <>
-            <div className="mb-3">
-              <label className="form-label" htmlFor="cred-hosts">
-                Allowed hosts
-              </label>
-              <input
-                id="cred-hosts"
-                className="form-control"
-                value={hosts}
-                onChange={(e) => setHosts(e.target.value)}
-                placeholder="linkedin.com, *.linkedin.com"
-                required
-              />
-              <div className="form-hint">Exact hosts, or *.host for its subdomains. It is never sent anywhere else.</div>
-            </div>
-            <div className="mb-3">
-              <label className="form-label" htmlFor="cred-username">
-                Username (optional)
-              </label>
-              <input id="cred-username" className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} />
-            </div>
-          </>
-        )}
-        <div className="mb-3">
-          <label className="form-label" htmlFor="cred-secret">
-            {database ? "Connection string" : "Secret"}
-          </label>
-          <input
-            id="cred-secret"
-            type="password"
-            className="form-control"
-            autoComplete="new-password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            required
-            placeholder={database ? "postgresql://reader:password@host:5432/app" : undefined}
-            data-testid="credential-secret"
-          />
-          {database && <ConnectionHint secret={secret} />}
-        </div>
-        <div className="d-flex justify-content-end gap-2">
-          <button type="button" className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={action.busy || (database && !connection)}>
-            Store
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-/**
- * What a connection string connects to, without its password, so it can be checked before it is stored: for db.query
- * (M29), which reads only, in a read-only transaction, on this host.
- */
-function ConnectionHint({ secret, hosts }: { secret: string; hosts?: string[] }) {
-  const connection = databaseConnection(secret);
-  if (!secret) {
-    return (
-      <div className="form-hint">
-        For <code>db.query</code>. Use a database user that may only read; Storm reads in a read-only transaction either way.
-      </div>
-    );
-  }
-  if (!connection)
-    return <div className="form-hint text-danger">Not a connection string: postgresql://user:password@host:5432/database</div>;
-  const elsewhere = hosts && !hosts.includes(connection.host);
-  return (
-    <div className={`form-hint ${elsewhere ? "text-danger" : ""}`} data-testid="connection-hint">
-      Connects to{" "}
-      {connection.database ? (
-        <>
-          database <strong>{connection.database}</strong> on{" "}
-        </>
-      ) : null}
-      <strong>
-        {connection.host}:{connection.port}
-      </strong>
-      {connection.user ? (
-        <>
-          {" "}
-          as <strong>{connection.user}</strong>
-        </>
-      ) : null}
-      {elsewhere ? `: not ${hosts.join(", ")}. Another server is another credential.` : ", and nowhere else."}
-    </div>
-  );
-}
-
 function ReplaceSecret({ credential, onClose, onSaved }: { credential: CredentialView; onClose: () => void; onSaved: () => void }) {
   const [secret, setSecret] = useState("");
   const database = credential.kind === CredentialKind.DATABASE;
+  const github = isGitHubToken(credential);
+  const what = database ? "connection string" : github ? "token" : "secret";
   const action = useAction();
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const value = secret;
+    const value = github ? secret.trim() : secret;
     setSecret("");
     const saved = await action.run(() => api.credentials.replaceSecret(credential.credentialId, value));
     if (!saved) return;
-    toast.success(`Replaced the secret of ${saved.name}`);
+    toast.success(`Replaced the ${what} of ${saved.name}`);
     onSaved();
   };
   return (
-    <Modal
-      title={database ? `Replace the connection string of ${credential.name}` : `Replace the secret of ${credential.name}`}
-      onClose={onClose}
-    >
+    <Modal title={`Replace the ${what} of ${credential.name}`} onClose={onClose}>
       <form onSubmit={(e) => void submit(e)} autoComplete="off">
         <ErrorAlert error={action.error} title="Not replaced" />
         <label className="form-label" htmlFor="replace-secret">
-          {database ? "New connection string" : "New secret"}
+          New {what}
         </label>
         <div className="mb-3">
           <input
@@ -322,10 +167,11 @@ function ReplaceSecret({ credential, onClose, onSaved }: { credential: Credentia
             autoComplete="new-password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
-            placeholder={database ? "postgresql://reader:password@host:5432/app" : undefined}
+            placeholder={database ? "postgresql://reader:password@host:5432/app" : github ? "github_pat_…" : undefined}
             required
           />
           {database && <ConnectionHint secret={secret} hosts={credential.allowedHosts} />}
+          {github && <TokenHint secret={secret} />}
         </div>
         <div className="d-flex justify-content-end gap-2">
           <button type="button" className="btn" onClick={onClose}>

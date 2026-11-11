@@ -26,11 +26,16 @@ export class TopicSourcesService {
   async add(
     userId: string,
     topicId: string,
-    request: { kind: "GITHUB"; location: string; branch?: string | null; path: string; credential?: string | null },
+    request: { kind: "GITHUB" | "DRIVE"; location: string; branch?: string | null; path: string; credential?: string | null },
   ): Promise<TopicSourceView> {
     await this.ownTopic(userId, topicId);
     const clash = await this.prisma.client.topicSource.findFirst({ where: { topicId, location: request.location, path: request.path } });
     if (clash) throw new ConflictException("The topic has this source already");
+    if (request.kind === "DRIVE") {
+      // Read through the Google connection. Whether it allows Drive shows on the form and on the source's first read.
+      const google = await this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { userId: true } });
+      if (!google) throw new BadRequestException("Connect Google in Settings first (Google Calendar and Drive), and allow Drive");
+    }
     if (request.credential) {
       const credential = await this.prisma.client.credential.findFirst({ where: { userId, name: request.credential } });
       if (!credential) throw new BadRequestException(`There is no credential "${request.credential}"`);
@@ -90,12 +95,15 @@ function sourceView(source: TopicSource, passages: number): TopicSourceView {
     branch: source.branch,
     path: source.path,
     credential: source.credential,
-    cursor: source.cursor?.slice(0, 7) ?? null,
+    // Drive's page token means nothing to show: "read".
+    cursor: source.kind === "DRIVE" ? (source.cursor ? "read" : null) : (source.cursor?.slice(0, 7) ?? null),
     readAt: source.readAt?.toISOString() ?? null,
     passages,
     url:
       source.kind === "ATTACHMENT"
         ? ""
-        : `https://github.com/${source.location}${folder ? `/tree/${source.branch ?? "HEAD"}/${folder}` : ""}`,
+        : source.kind === "DRIVE"
+          ? `https://drive.google.com/drive/folders/${source.location}`
+          : `https://github.com/${source.location}${folder ? `/tree/${source.branch ?? "HEAD"}/${folder}` : ""}`,
   };
 }

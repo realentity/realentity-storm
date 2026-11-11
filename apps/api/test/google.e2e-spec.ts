@@ -73,7 +73,7 @@ describe("Google Calendar connection", () => {
   /** Google's redirect back: from accounts.google.com, so the browser sends no SameSite=Strict session cookie. */
   const callback = (query: Record<string, string>) => request(api.http).get(`/api/google/callback?${new URLSearchParams(query).toString()}`).expect(302);
 
-  it("sends the user to Google's consent screen for offline calendar access, and back to the redirect URI", async () => {
+  it("sends the user to Google's consent screen for offline calendar and read-only Drive access, and back to the redirect URI", async () => {
     const status = (await agent.get("/api/google").expect(200)).body as GoogleStatusView;
     expect(status).toEqual({
       configured: true,
@@ -81,6 +81,8 @@ describe("Google Calendar connection", () => {
       connected: false,
       email: null,
       status: null,
+      calendar: false,
+      drive: false,
       lastWorkedAt: null,
       brokenAt: null,
       brokenReason: null,
@@ -91,7 +93,7 @@ describe("Google Calendar connection", () => {
       client_id: ENV.GOOGLE_CLIENT_ID,
       redirect_uri: "https://storm.test/api/google/callback",
       response_type: "code",
-      scope: "openid email https://www.googleapis.com/auth/calendar.events",
+      scope: "openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.readonly",
       access_type: "offline",
       prompt: "consent",
       code_challenge_method: "S256",
@@ -125,7 +127,14 @@ describe("Google Calendar connection", () => {
     expect(await db.client.takeover.findUniqueOrThrow({ where: { takeoverId: wait.takeoverId } })).toMatchObject({ status: "CONTINUED" });
     expect(await db.client.takeover.findUniqueOrThrow({ where: { takeoverId: browserWait.takeoverId } })).toMatchObject({ status: "OPEN" });
 
-    expect((await agent.get("/api/google").expect(200)).body).toMatchObject({ connected: true, email: "ana@gmail.test", status: "CONNECTED" });
+    // Drive unticked at Google: the calendar works, Drive says it isn't allowed.
+    expect((await agent.get("/api/google").expect(200)).body).toMatchObject({
+      connected: true,
+      email: "ana@gmail.test",
+      status: "CONNECTED",
+      calendar: true,
+      drive: false,
+    });
     await agent.delete("/api/google").expect(204);
     expect(await db.client.googleConnection.count()).toBe(0);
   });
@@ -157,7 +166,7 @@ describe("Google Calendar connection", () => {
     await agent.delete(`/api/scheduled-starts/${pending.scheduledStartId}`).expect(404);
   });
 
-  it("refuses a state it didn't start, a sign-in without calendar access, and one without a refresh token", async () => {
+  it("refuses a state it didn't start, a sign-in allowing neither the calendar nor Drive, and one without a refresh token", async () => {
     expect((await callback({ code: "code-1", state: "made-up" })).headers.location).toMatch(/^\/settings\?google=the%20sign-in%20expired/);
     expect(exchanges).toHaveLength(0);
 
@@ -169,7 +178,16 @@ describe("Google Calendar connection", () => {
     await db.client.googleConnection.deleteMany();
     answer.body.scope = "openid email";
     const noCalendar = await startConnect();
-    expect((await callback({ code: "c", state: noCalendar.searchParams.get("state")! })).headers.location).toMatch(/calendar%20wasn't%20allowed/);
+    expect((await callback({ code: "c", state: noCalendar.searchParams.get("state")! })).headers.location).toMatch(
+      /neither%20the%20calendar%20nor%20Drive%20was%20allowed/,
+    );
+
+    // Drive alone is enough.
+    answer.body.scope = "openid email https://www.googleapis.com/auth/drive.readonly";
+    const driveOnly = await startConnect();
+    expect((await callback({ code: "c", state: driveOnly.searchParams.get("state")! })).headers.location).toBe("/settings?google=connected#google");
+    expect((await agent.get("/api/google").expect(200)).body).toMatchObject({ calendar: false, drive: true });
+    await db.client.googleConnection.deleteMany();
 
     answer.body.scope = "https://www.googleapis.com/auth/calendar.events";
     delete answer.body.refresh_token;

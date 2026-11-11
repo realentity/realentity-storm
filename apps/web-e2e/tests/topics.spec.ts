@@ -231,6 +231,62 @@ test("a topic's source: a repository added from its address, shown not read yet,
   await expect(sources.getByTestId("source-acme/orion")).toHaveCount(0);
 });
 
+// A private repository's token, made from the source form: a GitHub token, chosen as the source's once stored
+test("a topic's source: a new GitHub token from the form is stored for api.github.com and chosen", async ({ page }) => {
+  const name = unique("Orion");
+  const credential = `gh-${Date.now().toString(36)}`;
+  await newTopic(page, name);
+  await page.goto("/topics");
+  const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
+  await sources.getByTestId("source-add").click();
+  await sources.getByTestId("source-new-token").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Add a GitHub token");
+  await expect(dialog.getByTestId("github-steps")).toContainText("Contents: Read-only");
+  await dialog.getByLabel("Name", { exact: true }).fill(credential);
+  await dialog.getByLabel("Token").fill(`github_pat_e2e${Date.now()}`);
+  await dialog.getByRole("button", { name: "Store" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(sources.getByTestId("source-form").getByLabel("Token")).toHaveValue(credential);
+
+  const stored = (await (await page.request.get("/api/credentials")).json()) as { name: string; kind: string; allowedHosts: string[] }[];
+  expect(stored.find((c) => c.name === credential)).toMatchObject({ kind: "API_KEY", allowedHosts: ["api.github.com"] });
+});
+
+// M43-T2: a Drive folder, read through the Google connection, which says when it doesn't allow Drive
+test("a topic's source: a Drive folder from its link, with a word when Google's access doesn't include Drive", async ({ page }) => {
+  const name = unique("Orion");
+  const topicId = await newTopic(page, name);
+  const db = createPrismaConnection();
+  const { userId } = await db.client.topic.findUniqueOrThrow({ where: { topicId } });
+  const sealed = { ciphertext: Buffer.from("x"), iv: Buffer.from("x"), authTag: Buffer.from("x"), wrappedDek: Buffer.from("x") };
+  await db.client.googleConnection.create({
+    data: { userId, email: "ana@gmail.test", scopes: ["https://www.googleapis.com/auth/calendar.events"], ...sealed },
+  });
+  try {
+    await page.goto("/settings");
+    await expect(page.getByTestId("google-allowed")).toContainText("Calendar: allowed");
+    await expect(page.getByTestId("google-allowed")).toContainText("Drive (read-only): not allowed");
+
+    await page.goto("/topics");
+    const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
+    await sources.getByTestId("source-add").click();
+    const form = sources.getByTestId("source-form");
+    await form.getByTestId("source-kind-drive").click();
+    await expect(form.getByTestId("source-drive-access")).toContainText("doesn't include Drive");
+    await expect(form.getByLabel("Branch")).toHaveCount(0);
+    await form.getByLabel("Drive folder").fill("https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv?usp=sharing");
+    await form.getByRole("button", { name: "Add" }).click();
+    const row = sources.getByTestId("source-1AbCdEfGhIjKlMnOpQrStUv");
+    await expect(row).toContainText("in Google Drive, with its subfolders");
+    await expect(row).toContainText("not read yet: the next run of a pipeline with drive.changes reads it");
+    await expect(row.getByRole("link", { name: "Drive folder" })).toHaveAttribute("href", "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv");
+  } finally {
+    await db.client.googleConnection.deleteMany({ where: { userId } });
+    await db.close();
+  }
+});
+
 // M43-T5
 test("a topic's history: the estimate shown before anything is read, then its proposals picked and kept", async ({ page }) => {
   const name = unique("Orion");

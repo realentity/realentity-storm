@@ -231,7 +231,7 @@ export type EmailMessage = z.infer<typeof EmailMessageSchema>;
 
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
-/** A file of a topic's source that changed (M43): git.changes' output, topic.index's input. */
+/** A file of a topic's source that changed (M43): git.changes' and drive.changes' output, topic.index's input. */
 const SourceChangeSchema = z.object({
   topic: z.string(),
   topicId: z.string(),
@@ -242,11 +242,14 @@ const SourceChangeSchema = z.object({
   commit: z.string(),
   commitDate: z.string(),
   url: z.string(),
+  fileId: z.string().optional().describe("a Drive file's id"),
+  mimeType: z.string().optional().describe("a Drive file's type"),
 });
 const SourceReadSchema = z.object({
   sourceId: z.string(),
   topic: z.string(),
   repo: z.string(),
+  title: z.string().optional().describe("a Drive folder's name"),
   from: z.string().nullable(),
   to: z.string(),
   date: z.string(),
@@ -957,16 +960,44 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({ added: z.number().int(), passages: z.number().int(), problems: z.array(z.string()) }),
   },
   {
-    type: "topic.index",
+    type: "drive.changes",
     description:
-      "Indexes git.changes' files into their topics' passages (M43): each file split at its headings, with its path and " +
-      "commit and, with an embeddings provider, its embedding; a removed file's passages go. Each source is then marked " +
-      "read at its commit. The index is a cache: deleted (the topic's page: Rebuild), the next read makes the same " +
-      "passages. Drafts get the passages closest to the email. `files`: the changed files with their text, for " +
-      "topic.extract (documents: ...). A dry run reads the files and writes nothing.",
+      "The files changed in the user's topics' Google Drive sources (M43-T2, docs/design.md §8.1): a folder and its " +
+      "subfolders, read through the user's Google connection (read-only Drive access, allowed at the sign-in in " +
+      "Settings). Google Docs (as Markdown), Slides, PDFs and text files under the source's path. Seeing that nothing " +
+      "changed is one call to Drive's changes list, no LLM; the first read lists the folder. A file deleted, trashed or " +
+      "moved out of the folder is removed. Reads only: topic.index indexes them and moves each source on.",
     sideEffect: false,
     saasSafe: true,
-    input: z.object({ changes: z.array(SourceChangeSchema), sources: z.array(SourceReadSchema) }),
+    input: z.object({
+      topics: z.array(z.string().min(1).max(80)).optional().describe("only these topics' sources, by name; default: every active one"),
+    }),
+    output: z.object({
+      changes: z.array(SourceChangeSchema),
+      sources: z.array(SourceReadSchema).describe("each source read, from which page token to which: for topic.index"),
+      problems: z.array(z.string()),
+    }),
+  },
+  {
+    type: "topic.index",
+    description:
+      "Indexes git.changes' and drive.changes' files into their topics' passages (M43): each file split at its headings, " +
+      "with its path and commit (a Drive file: its version) and, with an embeddings provider, its embedding; a removed " +
+      "file's passages go. Each source is then marked read where it was read to. The index is a cache: deleted (the " +
+      "topic's page: Rebuild), the next read makes the same passages. Drafts get the passages closest to the email. " +
+      "Both steps' lists go in as a list of lists: changes: [\"{{repos.changes}}\", \"{{drive.changes}}\"], the same for " +
+      "sources. `files`: the changed files with their text, for topic.extract (documents: ...). A dry run reads the " +
+      "files and writes nothing.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      changes: z
+        .array(z.union([SourceChangeSchema, z.array(SourceChangeSchema)]))
+        .describe("git.changes' changes, or a list of git.changes' and drive.changes' changes"),
+      sources: z
+        .array(z.union([SourceReadSchema, z.array(SourceReadSchema)]))
+        .describe("their sources, the same way"),
+    }),
     output: z.object({
       files: z.array(SourceFileSchema),
       passages: z.number().int(),

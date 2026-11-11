@@ -1,7 +1,7 @@
 # M42, M43: what is true about your topics (the Topics page: make a topic and give it directions first), kept from your
 # email and your topics' sources with your approval. Every 15 minutes the new email is triaged (newsletters and
 # notifications set aside) and sorted into your topics, with the emails you sent (what you decided counts too); each
-# topic's GitHub sources are checked for changed files (one call each when nothing changed), which are indexed for your
+# topic's GitHub repositories and Google Drive folders are checked for changed files (one call each when nothing changed), which are indexed for your
 # drafts to quote, like the attachments (PDFs, text files) of your topics' emails. What the emails and changed files state that is worth remembering is proposed, and you pick at the
 # gate what goes into memory. Nothing is written without you, and every change can be undone on the Topics page. Your
 # drafts (email.draftReply, email.draftFollowUp: topic auto) then use what the memory says is true now, and the passages
@@ -35,9 +35,14 @@ steps:
   - id: repos
     type: git.changes
     with: {}
+  - id: drive
+    type: drive.changes
+    with: {}
   - id: indexed
     type: topic.index
-    with: { changes: "{{repos.changes}}", sources: "{{repos.sources}}" }
+    with:
+      changes: ["{{repos.changes}}", "{{drive.changes}}"]
+      sources: ["{{repos.sources}}", "{{drive.sources}}"]
   - id: facts
     type: topic.extract
     with: { messages: "{{topics.linked}}", matches: "{{topics.results}}", documents: "{{indexed.files}}" }
