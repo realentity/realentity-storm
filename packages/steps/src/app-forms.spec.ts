@@ -344,7 +344,7 @@ describe("entities kept by me and pipelines together (M45)", () => {
   });
 });
 
-// M46-U1: a file or an image is held as a reference; a pipeline can't save one yet
+// M46-U1: a file or an image is held as a reference; a pipeline gives one file.keep kept
 describe("files and images (M46)", () => {
   const papers = AppDefinitionSchema.parse({
     name: "Papers",
@@ -363,12 +363,54 @@ describe("files and images (M46)", () => {
     ]);
   });
 
-  it("leaves a file out of what a pipeline saves", () => {
-    expect(checkEntity(papers.types.Paper, { title: "Oven", scan: { id, name: "a.jpg", mime: "image/jpeg", size: 1 } })).toEqual({
-      value: { title: "Oven" },
+  it("takes a file's reference from what a pipeline saves (the worker attaches it), nothing else", () => {
+    expect(checkEntity(papers.types.Paper, { title: "Oven", scan: { id, name: "a.jpg", mime: "image/jpeg", size: 1 }, receipt: "https://example.org/r.pdf" })).toEqual({
+      value: { title: "Oven", scan: { id } },
       key: "Oven",
-      problems: ["scan is an image: it is uploaded on the form"],
+      problems: ["receipt isn't an uploaded file"],
       rejected: false,
     });
+  });
+
+  it("compiles a receipt by email kept as a Paper's file, and its photo read by the model (docs/capabilities.md)", () => {
+    ok(
+      compiler.compile(
+        {
+          name: "Receipts",
+          app: "Papers",
+          trigger: { schedule: "0 8 * * *" },
+          steps: [
+            { id: "receipts", type: "email.fetch", with: { mailbox: "INBOX" } },
+            { id: "keep", type: "file.keep", forEach: "{{receipts.messages}}", with: { type: "Paper", field: "receipt", message: "{{item}}" } },
+            { id: "save", type: "data.save", forEach: "{{receipts.messages}}", with: { type: "Paper", items: [{ title: "{{item.subject}}", receipt: "{{keep.first}}" }] } },
+          ],
+        },
+        { app: papers },
+      ),
+    );
+    ok(
+      compiler.compile(
+        {
+          name: "Read a paper",
+          app: "Papers",
+          trigger: { on: "entity.changed", type: "Paper" },
+          steps: [{ id: "read", type: "llm.extract", with: { files: ["{{trigger.item.scan}}"], fields: { merchant: "the shop" } } }],
+        },
+        { app: papers },
+      ),
+    );
+  });
+
+  it("keeps a file only into a file field of the App's types that pipelines write", () => {
+    const keep = (type: string, field: string, app = papers) =>
+      compiler.compile({ name: "P", app: "Papers", steps: [{ id: "keep", type: "file.keep", with: { type, field, artifact: id } }] }, { app });
+    ok(keep("Paper", "scan"));
+    expect(errorsOf(keep("Paper", "title"))).toEqual(["steps[0].with.field: Paper.title isn't a file or an image (those: scan, receipt)"]);
+    expect(errorsOf(keep("Note", "scan"))).toEqual(['steps[0].with.type: "Papers" has no type "Note" (types: Paper)']);
+    const mine = AppDefinitionSchema.parse({ ...papers, types: { Paper: { ...papers.types.Paper, fields: { ...papers.types.Paper.fields, scan: { type: "image", mine: true } } } } });
+    expect(errorsOf(keep("Paper", "scan", mine))).toEqual(["steps[0].with.field: Paper.scan is mine: a pipeline can't write it"]);
+    expect(errorsOf(compiler.compile({ name: "P", steps: [{ id: "keep", type: "file.keep", with: { type: "Paper", field: "scan", artifact: id } }] }))).toEqual([
+      "steps[0].with.type: files belong to an App: say which with `app:` at the top of the pipeline",
+    ]);
   });
 });

@@ -12,6 +12,7 @@ import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
 import { CalendarCreateStep, CalendarFindStep } from "./calendar-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
 import { ReadStep } from "./entity-steps";
+import { type AppFileStore, FileKeepStep } from "./app-file-steps";
 import { DbQueryStep } from "./db-step";
 import { DigestStep } from "./digest-step";
 import { BrowserDownloadStep, BrowserUploadStep, FileReadStep } from "./file-steps";
@@ -56,6 +57,8 @@ export interface CoreStepDependencies {
   appOrigin?: string;
   /** flow.later and flow.cancel (M14-T3). */
   later?: LaterStarts;
+  /** M46: an App's files (DOCUMENTS_DIR/app-files): file.keep, data.save's file fields, file.read's and llm.extract's files. */
+  appFiles?: AppFileStore;
   /** http.fetch's and shop.product's address checks and DNS; tests reach their local server through them. */
   http?: HttpFetchOptions;
   /** http.fetch's and http.request's API keys, db.query's connections (M29); without it, steps using {{cred:…}} fail. */
@@ -76,7 +79,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
   return [
     new DedupeStep(deps.prisma),
     new FilterStep(),
-    new SaveStep(deps.prisma),
+    new SaveStep(deps.prisma, deps.appFiles?.root),
     new ReadStep(deps.prisma),
     new HistoryStep(deps.prisma),
     new MapStep(),
@@ -91,7 +94,10 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new ApplicationOutcomeStep(deps.prisma, deps.llm, deps.router, deps.learning),
     new GenerateStep(deps.llm, deps.router, deps.learning),
     new SummarizeStep(deps.llm, deps.router, deps.learning),
-    new ExtractStep(deps.llm, deps.router, deps.learning),
+    deps.appFiles ? new ExtractStep(deps.llm, deps.router, deps.learning).withFiles(deps.prisma, deps.appFiles) : new ExtractStep(deps.llm, deps.router, deps.learning),
+    ...(deps.appFiles ? [new FileKeepStep(deps.prisma, deps.appFiles, deps.mail, deps.browser?.artifacts, deps.downloadMaxMb)] : []),
+    // file.read without a browser: an App's files only (the browser's steps add documents and downloads).
+    ...(deps.appFiles && !deps.browser ? [new FileReadStep(deps.prisma, undefined, undefined, deps.appFiles)] : []),
     new TopicMatchStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new TopicExtractStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new TopicApplyStep(deps.prisma),
@@ -133,7 +139,7 @@ function browserSteps(deps: CoreStepDependencies, browser: BrowserDependencies |
     new BrowserExtractStep(browser, undefined, fallback),
     new BrowserTeachStep(browser, deps.llm, deps.router),
     new BrowserDownloadStep(browser, deps.downloadMaxMb),
-    new FileReadStep(browser.prisma, browser.artifacts, "documents" in browser ? browser.documents : undefined),
+    new FileReadStep(browser.prisma, browser.artifacts, "documents" in browser ? browser.documents : undefined, deps.appFiles),
     ...(agent ? [agent] : []),
   ];
 }

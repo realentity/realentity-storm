@@ -23,6 +23,32 @@ export interface StructuredRequest<S extends z.ZodObject> {
    * the system prompt, `prompt` follows it. Retries then pay a tenth for it.
    */
   cachedPrompt?: string;
+  /**
+   * M46: images (JPEG, PNG, WebP, GIF) and PDFs the model sees before the prompt: an entity's scan, a receipt. They are
+   * data like any content: the system prompt says so.
+   */
+  files?: LlmFile[];
+}
+
+/** A file sent with a request: an image, or a PDF (its pages as text and as images). */
+export interface LlmFile {
+  name: string;
+  mime: string;
+  data: Buffer;
+}
+
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+
+/** The content blocks of the files, each followed by its name so the prompt can refer to it. */
+function fileBlocks(files: LlmFile[]): Anthropic.Beta.BetaContentBlockParam[] {
+  return files.flatMap((file, index): Anthropic.Beta.BetaContentBlockParam[] => {
+    const data = file.data.toString("base64");
+    const label = { type: "text" as const, text: `<file index="${index}" name="${file.name.replace(/[<>"]/g, "")}"/>` };
+    if (file.mime === "application/pdf") return [{ type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data } }, label];
+    const media = IMAGE_TYPES.find((t) => t === file.mime);
+    if (!media) throw new Error(`${file.name} is a ${file.mime} file: the model sees images and PDFs`);
+    return [{ type: "image" as const, source: { type: "base64" as const, media_type: media, data } }, label];
+  });
 }
 
 export interface StructuredResult<T> {
@@ -143,12 +169,14 @@ function messageParams<S extends z.ZodObject>(request: StructuredRequest<S>) {
     messages: [
       {
         role: "user" as const,
-        content: request.cachedPrompt
-          ? [
-              { type: "text" as const, text: request.cachedPrompt, cache_control: { type: "ephemeral" as const } },
-              ...(request.prompt ? [{ type: "text" as const, text: request.prompt }] : []),
-            ]
-          : request.prompt,
+        content:
+          request.cachedPrompt || request.files?.length
+            ? ([
+                ...fileBlocks(request.files ?? []),
+                ...(request.cachedPrompt ? [{ type: "text" as const, text: request.cachedPrompt, cache_control: { type: "ephemeral" as const } }] : []),
+                ...(request.prompt ? [{ type: "text" as const, text: request.prompt }] : []),
+              ] satisfies Anthropic.Beta.BetaContentBlockParam[])
+            : request.prompt,
       },
     ],
     output_config: { effort, format: { type: "json_schema" as const, schema: betaZodOutputFormat(request.schema).schema } },

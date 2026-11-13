@@ -24,7 +24,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
 | Browser | Open pages (with sign-in), read lists with recipes, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
-| Documents | Read a stored document or a downloaded file | `file.read` |
+| Documents | Read a stored document, a downloaded file or an App's file; keep an email's attachments in an App | `file.read`, `file.keep` |
 | You in the loop | Pick items from a list, approve an action | `gate.review`, `gate.act` |
 | Telling you | A Telegram message, a digest | `notify.telegram`, `notify.digest` |
 | Timing | Start another pipeline later, cancel it | `flow.later`, `flow.cancel` |
@@ -162,7 +162,9 @@ types:
   `image` is a PNG, JPEG, WebP or GIF (never SVG) and gets a thumbnail, shown in lists and on its page; a `file` is
   also a PDF, an office document (DOCX, XLSX, ODT, ODS) or text (TXT, MD, CSV), a download. The entity holds
   `{ id, name, mime, size }`, never the bytes; a file replaced or cleared on the form, or whose entity or App is
-  deleted, goes with it. Pipelines read the reference; they don't save files yet.
+  deleted, goes with it. A pipeline keeps a file with `file.keep` (an email's attachments, a download) and puts its
+  reference in data.save's item; a save that doesn't name the field keeps the file there. `file.read` reads a file's
+  text, `llm.extract`'s `files` shows the model its images and PDFs. Only the pipeline's own App's files.
 - **Writing:** each field is read as its kind (`"4 500"` → 4500, an ISO date and time → its date); a wrong one is
   left out and said in `invalid`; an item without a required field, or without its key, isn't saved. What the type
   doesn't name is kept with the entity as it came.
@@ -625,8 +627,10 @@ Summarizes `content`.
 
 #### `llm.extract` 🧠
 Reads named fields out of text (an email, a page). `fields` maps each name to what it is (1–20). Dates and times come
-as ISO 8601 with an offset.
-- In: `content`, `fields`, `instruction`, `timeZone` [Europe/Sofia].
+as ISO 8601 with an offset. `files` (M46): up to 5 of an entity's images and PDFs (its App's file and image fields),
+which the model sees as well: a receipt's photo, a warranty's PDF. Like any content, they are data, never
+instructions.
+- In: `content` and/or `files`, `fields`, `instruction`, `timeZone` [Europe/Sofia].
 - Out: `values` (each as text, `""` when not found), `missing`, `found` (true when nothing is missing).
 
 ```yaml
@@ -639,6 +643,13 @@ as ISO 8601 with an offset.
       start: when the interview starts, date and time
       company: the company
       place: the address, or the video call link
+
+# What a receipt's photo says (an App's Paper with an image field)
+- id: read
+  type: llm.extract
+  with:
+    files: ["{{trigger.item.scan}}"]
+    fields: { merchant: the shop, amount: the total paid, warrantyUntil: when the warranty ends }
 ```
 
 ### 4.4 Email
@@ -1124,10 +1135,11 @@ as soon as a file is chosen, so this is always behind a gate.
 ### 4.9 Documents
 
 #### `file.read`
-Reads the text of a stored document (Documents page, e.g. `cv-main`) or of a file `browser.download` kept. Text files
-as they are, PDFs' text. Its output also binds the document by content, so `browser.upload` sends exactly the version
+Reads the text of a stored document (Documents page, e.g. `cv-main`), of a file `browser.download` kept, or of an
+entity's file of the pipeline's App (`file: "{{item.receipt}}"`, M46). Text files as they are, PDFs' text (an image:
+`llm.extract`'s `files`). Its output also binds the document by content, so `browser.upload` sends exactly the version
 you approved.
-- In: `document` or `artifact`, `maxChars` [20000].
+- In: `document`, `artifact` or `file`, `maxChars` [20000].
 - Out: `filename`, `mime`, `sha256`, `text`, `truncated`, `document`, `documentId`, `artifactId`.
 
 ```yaml
@@ -1149,6 +1161,29 @@ you approved.
 - id: upload
   type: browser.upload
   with: { url: https://ats.example.com/profile, field: "#resume", file: "{{cv}}" }
+```
+
+#### `file.keep`
+Keeps an email's attachments (`message`, read from `mailbox`) or a file `browser.download` kept (`artifact`) as files of
+the pipeline's App, for a type's file or image `field` (M46). Checked by content: an image field takes only PNG,
+JPEG, WebP or GIF; a file field also PDFs, office documents and text. Their references go into that field of
+`data.save`'s items, which attaches them to the entity; kept files no entity takes are removed after a day. Nothing
+leaves Storm. A dry run keeps nothing and says how many it would.
+- In: `type`, `field`, `message` or `artifact`, `mailbox` [INBOX], `max` [5].
+- Out: `files` (`{ id, name, mime, size }` each), `first` (or null), `found`, `skipped` (name and why).
+
+```yaml
+# A receipt by email becomes a Paper with its PDF
+- id: keep
+  type: file.keep
+  forEach: "{{receipts.kept}}"
+  with: { type: Paper, field: receipt, message: "{{item}}" }
+- id: save
+  type: data.save
+  forEach: "{{receipts.kept}}"
+  with:
+    type: Paper
+    items: [{ title: "{{item.subject}}", receipt: "{{keep.first}}" }]   # this email's file
 ```
 
 ### 4.10 You in the loop

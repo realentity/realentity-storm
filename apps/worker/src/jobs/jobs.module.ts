@@ -24,6 +24,7 @@ import { Learning } from "../learning/learning";
 import { Reflector } from "../learning/reflection";
 import { CredentialVault } from "../secrets/credential-vault";
 import { SecretsModule } from "../secrets/secrets.module";
+import { AppFileStore } from "../steps/app-file-steps";
 import { coreSteps } from "../steps/core-steps";
 import { Triggers } from "../runner/triggers";
 import { JobHandlers } from "./job-handlers";
@@ -169,6 +170,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
           chat: env.ANTHROPIC_API_KEY ? ClaudeChat.fromApiKey(env.ANTHROPIC_API_KEY) : NO_CHAT,
           downloadMaxMb: env.DOWNLOAD_MAX_MB,
+          appFiles: new AppFileStore(env.DOCUMENTS_DIR),
           router,
           telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },
           mail: new ImapSmtpConnector(

@@ -22,6 +22,7 @@
   "dependencies": {
     "@realentity/storm-crypto": "workspace:*",
     "@realentity/storm-db": "workspace:*",
+    "@realentity/storm-files": "workspace:*",
     "@realentity/storm-llm": "workspace:*",
     "@realentity/storm-queue": "workspace:*",
     "@realentity/storm-shared": "workspace:*",
@@ -43,6 +44,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "sharp": "catalog:",
     "@realentity/storm-config": "workspace:*",
     "@realentity/storm-testing": "workspace:*",
     "@eslint/js": "catalog:",

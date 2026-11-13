@@ -6,6 +6,7 @@ import { type Page } from "playwright";
 import { hostOf, SendGuard } from "../browser/agent-page";
 import { type ArtifactStore } from "../browser/artifact-store";
 import { type DocumentStore } from "../browser/document-store";
+import { type AppFileStore } from "./app-file-steps";
 import { Quarantine } from "../browser/quarantine";
 import { NO_ATTENTION, RunStopped, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { ownerOf, settle, unblock, type FormDependencies } from "./form-steps";
@@ -146,6 +147,7 @@ async function isFileInput(page: Page, field: string): Promise<boolean> {
 interface ReadInput {
   document?: string;
   artifact?: string;
+  file?: unknown;
   maxChars: number;
 }
 
@@ -158,19 +160,30 @@ export class FileReadStep implements StepExecutor {
 
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly artifacts: ArtifactStore,
+    private readonly artifacts?: ArtifactStore,
     private readonly documents?: DocumentStore,
+    /** M46: an App entity's file. */
+    private readonly appFiles?: AppFileStore,
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { document, artifact, maxChars } = input as unknown as ReadInput;
-    if (!document === !artifact) throw new Error("file.read reads one file: give either document or artifact");
+    const { document, artifact, file: entityFile, maxChars } = input as unknown as ReadInput;
+    if ([document, artifact, entityFile].filter((v) => v !== undefined).length !== 1) {
+      throw new Error("file.read reads one file: give document, artifact or file");
+    }
     let file: { filename: string; mime: string; sha256: string; content: Buffer; document: string | null; documentId: string | null; artifactId: string | null };
-    if (document) {
+    if (entityFile !== undefined) {
+      if (!this.appFiles) throw new Error("An App's files aren't available here");
+      if (entityFile === null) throw new Error("The entity has no file there");
+      const { row, content } = await this.appFiles.read(this.prisma, context, entityFile);
+      if (row.mime.startsWith("image/")) throw new Error(`${row.filename} is an image: llm.extract's files reads what it shows`);
+      file = { filename: row.filename, mime: row.mime, sha256: row.sha256, content, document: null, documentId: null, artifactId: null };
+    } else if (document) {
       if (!this.documents) throw new Error("The user's documents aren't available here");
       const read = await this.documents.read(this.prisma, context.userId, document);
       file = { filename: read.file.filename, mime: read.mimeType, sha256: read.file.sha256, content: read.buffer, document, documentId: read.file.documentId, artifactId: null };
     } else {
+      if (!this.artifacts) throw new Error("Downloads aren't available here");
       const read = await this.artifacts.readDownload(this.prisma, context.userId, artifact!);
       file = { filename: read.name, mime: read.mime, sha256: read.sha256, content: read.content, document: null, documentId: null, artifactId: artifact! };
     }

@@ -1,5 +1,6 @@
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
-import { addedByHand, canMove, canonicalJson, checkEntity, entityItem, readAppSource, type AppDefinition, type DataType } from "@realentity/storm-shared";
+import { attachFiles, releaseFiles } from "@realentity/storm-files";
+import { addedByHand, canMove, canonicalJson, checkEntity, entityItem, FILE_KINDS, fileRefId, readAppSource, type AppDefinition, type DataType } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { matchesAll, valueAt, type Condition } from "./conditions";
 import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
@@ -52,6 +53,7 @@ export async function saveEntities(
   prisma: PrismaClient,
   { items, type: typeName, fields, complete, stage: everyStage }: SaveEntitiesInput,
   context: StepContext,
+  filesRoot?: string,
 ): Promise<unknown> {
   const { appId, app, type } = await appType(prisma, context, typeName);
   if (type.mine) throw new Error(`${typeName} is a type of mine: pipelines read it, only the user writes it`);
@@ -79,8 +81,23 @@ export async function saveEntities(
   const changed: { key: string; item: Item; before: Item; after: Item }[] = [];
   const events: Record<string, unknown>[] = [];
   const writes: { key: string; value: Item; stage: string | null; stageDates: Record<string, string> }[] = [];
+  const fileFields = Object.entries(type.fields).flatMap(([name, f]) => (FILE_KINDS.includes(f.type) ? [name] : []));
   for (const [key, { value, stage: wanted }] of keyed) {
     const old = before.get(key);
+    // M46: a file field: a file file.keep kept for this type and field (attached now), never another entity's; a save
+    // without it keeps the one there, so a re-read of the source never loses a receipt.
+    for (const name of fileFields) {
+      if (valueAt(value, name) === undefined) {
+        const kept = old ? valueAt(old.value as Item, name) : undefined;
+        if (kept !== undefined && kept !== null) value[name] = kept;
+        continue;
+      }
+      const attached = filesRoot && !context.dryRun ? await attachOne(prisma, { appId, type: typeName, key }, value, name) : dryFile(value, name, filesRoot);
+      if (attached === null) {
+        delete value[name];
+        invalid.push({ key, saved: true, problems: [`${name} isn't a file file.keep kept for ${typeName}.${name}`] });
+      }
+    }
     const isNew = !old || old.removedAt !== null;
     const current = stages ? (old?.stage ?? stages.initial) : null;
     let stage = current;
@@ -126,6 +143,9 @@ export async function saveEntities(
       ),
       prisma.dataEntity.updateMany({ where: { dataEntityId: { in: gone.map((e) => e.dataEntityId) } }, data: { removedAt: now } }),
     ]);
+    if (fileFields.length > 0 && filesRoot) {
+      for (const { key, value } of writes) await releaseFiles(prisma, filesRoot, { appId, type: typeName, key }, value, before.get(key)?.mine);
+    }
     for (const event of events) {
       await context.emit?.("entity.changed", { app: app.name, appId, type: typeName, ...event, by: "pipeline" });
       // A Job reaching an application's stage still tells application.status (M33): its pipelines start on it.
@@ -192,4 +212,27 @@ function order(a: unknown, b: unknown, desc: boolean): number {
   const text = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v));
   const result = typeof a === "number" && typeof b === "number" ? a - b : text(a).localeCompare(text(b));
   return desc ? -result : result;
+}
+
+/** M46: one file field of an item attached: its reference, or null when it isn't one file.keep kept for it. */
+async function attachOne(prisma: PrismaClient, where: { appId: string; type: string; key: string }, value: Item, field: string): Promise<unknown> {
+  try {
+    const attached = await attachFiles(prisma, where, { [field]: (value[field] as { id?: string })?.id ?? null }, [field], () => {
+      throw new Refused();
+    });
+    if (!attached[field]) return null;
+    value[field] = attached[field];
+    return attached[field];
+  } catch (error) {
+    if (error instanceof Refused) return null;
+    throw error;
+  }
+}
+
+class Refused extends Error {}
+
+/** A dry run attaches nothing: a reference is shown as it came; without the App's files, none is taken. */
+function dryFile(value: Item, field: string, filesRoot: string | undefined): unknown {
+  if (!filesRoot) return null;
+  return fileRefId(value[field]) ? value[field] : null;
 }
