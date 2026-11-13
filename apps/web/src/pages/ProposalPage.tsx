@@ -4,9 +4,11 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { AgentProposal } from "../components/AgentProposal";
+import { EmailEditor, EmailView } from "../components/EmailProposal";
 import { FormProposal } from "../components/FormProposal";
 import { ErrorAlert, Json, Loading, Modal, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
+import { EMAIL_STEPS } from "../lib/email-payload";
 import { formatDateTime } from "../lib/format";
 import { changedFields, editableText, newTargets, readEdits } from "../lib/payload";
 import { useAction, useLoad } from "../lib/use-load";
@@ -153,6 +155,7 @@ function Decision({ proposal, onUndone }: { proposal: ProposalView; onUndone: ()
 
 function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pending: boolean; onDecided: () => void }) {
   const original = proposal.originalPayload;
+  const email = proposal.stepType !== null && EMAIL_STEPS.has(proposal.stepType);
   const [editing, setEditing] = useState(false);
   const [texts, setTexts] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(original).map(([field, value]) => [field, editableText(value)])),
@@ -185,10 +188,16 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
     return (
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">{proposal.finalPayload ? "Approved payload" : "Proposed payload"}</h3>
+          <h3 className="card-title">
+            {email ? (proposal.finalPayload ? "Approved email" : "Proposed email") : proposal.finalPayload ? "Approved payload" : "Proposed payload"}
+          </h3>
         </div>
         <div className="card-body">
-          <Json value={proposal.finalPayload ?? original} maxHeight={600} />
+          {email ? (
+            <EmailView payload={proposal.finalPayload ?? original} changed={proposal.finalPayload ? changedFields(original, proposal.finalPayload) : []} />
+          ) : (
+            <Json value={proposal.finalPayload ?? original} maxHeight={600} />
+          )}
         </div>
       </div>
     );
@@ -197,7 +206,7 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
   return (
     <div className="card">
       <div className="card-header">
-        <h3 className="card-title">Exact payload</h3>
+        <h3 className="card-title">{email ? "The email, exactly as it will be sent" : "Exact payload"}</h3>
         <div className="card-actions">
           <button type="button" className="btn btn-sm" onClick={() => setEditing((on) => !on)} data-testid="edit-payload">
             <IconPencil size={16} className="me-1" />
@@ -207,7 +216,15 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
       </div>
       <div className="card-body">
         <ErrorAlert error={action.error} title="The decision wasn't saved" />
-        {editing ? (
+        {editing && email ? (
+          <EmailEditor
+            original={original}
+            texts={texts}
+            onChange={(field, text) => setTexts((all) => ({ ...all, [field]: text }))}
+            changed={changed}
+            invalid={edit.ok ? [] : edit.invalid}
+          />
+        ) : editing ? (
           <div className="d-flex flex-column gap-3">
             {Object.entries(original).map(([field, value]) => {
               const invalid = !edit.ok && edit.invalid.includes(field);
@@ -232,6 +249,8 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
               );
             })}
           </div>
+        ) : email ? (
+          <EmailView payload={payload} changed={changed} />
         ) : (
           <PayloadFields payload={payload} changed={changed} />
         )}
@@ -295,10 +314,10 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
           }
         >
           <p>
-            The run executes exactly this payload{changed.length > 0 && <> (edited: {changed.join(", ")})</>}. If anything else is needed,
-            it pauses and asks.
+            The run {email ? "sends exactly this email" : "executes exactly this payload"}
+            {changed.length > 0 && <> (edited: {changed.join(", ")})</>}. If anything else is needed, it pauses and asks.
           </p>
-          <Json value={payload} maxHeight={420} />
+          {email ? <EmailView payload={payload} changed={changed} /> : <Json value={payload} maxHeight={420} />}
         </Modal>
       )}
       {rejecting && <RejectModal proposal={proposal} onClose={() => setRejecting(false)} onDecided={onDecided} />}
