@@ -117,12 +117,20 @@
   tab-size: 2;
 }
 
+/* Stages left to right, wrapping onto the next row when the card is too narrow for them all. */
 .step-graph {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.step-graph-stage {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
 }
 
 .step-graph-layer {
