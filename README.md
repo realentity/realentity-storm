@@ -13,6 +13,8 @@ what will be sent and pressed Act.** It learns from how you edit what it propose
 
 Single user. Runs with Docker on a machine of yours, reached over your private network, not the Internet.
 
+![The Job Search App: postings scored against what you look for, grouped by where you are with each](docs/images/job-search.png)
+
 ## What it can do
 
 ### A job search, end to end
@@ -31,6 +33,8 @@ weeks, and needs you only at the moments that matter.
    fills them from your profile, writes the free-text answers and attaches your CV. A question it can't answer
    ("notice period?") comes to you, and **your answer is remembered for the next form**. You see every field and
    file before **Act**. Before typing, it reads the form again and stops if anything changed.
+
+   ![An application form at its gate: each field with where its value came from, the CV attached, Act or Reject](docs/images/application-gate.png)
 5. **It keeps track.** A week later it reminds you to follow up, **unless the employer answered first**. Employers'
    emails move each job on to *responded*, *interview* or *rejected*. An invitation to an interview becomes a
    proposed calendar event, with prep notes and a warning if something else is on at that time.
