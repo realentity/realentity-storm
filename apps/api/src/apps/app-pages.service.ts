@@ -7,6 +7,7 @@ import {
   sampleRows,
   entityItem,
   entityValueAt,
+  isMineField,
   movesFrom,
   fieldOf,
   groupValue,
@@ -150,6 +151,7 @@ export class AppPagesService {
         ? { value: current, moves: movesFrom(stages, current!, "me"), dates: entity.stageDates as Record<string, string> }
         : null,
       mine: (entity.mine ?? {}) as Record<string, unknown>,
+      written: writtenUnder(dataType, page.form, entity.value, entity.mine),
       actions: page.actions.flatMap((action, i) => (actionApplies(action, row.value, entityValueAt) ? [i] : [])),
     };
   }
@@ -269,4 +271,17 @@ function compare(a: unknown, b: unknown, desc: boolean): number {
   const result =
     typeof a === "number" && typeof b === "number" ? a - b : (text(a) ?? JSON.stringify(a)).localeCompare(text(b) ?? JSON.stringify(b));
   return desc ? -result : result;
+}
+
+/** M45: what pipelines wrote under each form field the user set, when pipelines may write it and wrote something. */
+function writtenUnder(type: DataType, form: { field: string }[], value: unknown, mine: unknown): Record<string, unknown> {
+  const set = (mine ?? {}) as Record<string, unknown>;
+  const written = (value ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(
+    form.flatMap(({ field }) => {
+      if (!(field in set) || isMineField(type, field)) return [];
+      const under = entityValueAt(written, field);
+      return under === undefined || under === null ? [] : [[field, under]];
+    }),
+  );
 }

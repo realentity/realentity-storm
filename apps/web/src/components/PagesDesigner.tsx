@@ -158,9 +158,8 @@ function TypePages({
   const formPage = written("form");
   const rawList = listPage?.raw ?? {};
   const rawView = viewPage?.raw ?? {};
-  const mineFields = fields
-    .filter(([name, f]) => (def.mine ? name !== def.key : f.mine) && def.stages?.field !== name)
-    .map(([n]) => option(n));
+  // M45: any field but the stage, and the key unless the type is mine (it names the entity and stays).
+  const formFields = fields.filter(([name]) => (def.mine || name !== def.key) && def.stages?.field !== name).map(([n]) => option(n));
 
   // A column or total written as a map (a label, a due badge, a when) stays one when it's moved.
   const keepWritten = (raw: unknown, names: string[]) => {
@@ -440,6 +439,21 @@ function TypePages({
               </label>
             </Row>
           )}
+          {!def.mine && (
+            <Row label="Added by hand" help={HELP.pageAdd}>
+              <label className="form-check mb-0">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  checked={list.create !== null}
+                  disabled={!editable}
+                  onChange={(e) => set("list", "add", e.target.checked || undefined)}
+                  data-testid="page-add"
+                />
+                <span className="form-check-label">New on the list, Delete on its page</span>
+              </label>
+            </Row>
+          )}
           <Row label="Removed tab" help={HELP.pageRemoved}>
             <label className="form-check mb-0">
               <input
@@ -554,7 +568,7 @@ function TypePages({
               </button>
             </>
           )}
-          {mineFields.length > 0 && (
+          {formFields.length > 0 && (
             <div className="mt-4" data-testid="page-form">
               <PageHead
                 title="Its form"
@@ -566,7 +580,7 @@ function TypePages({
               <Row label="Fields you fill in" help={HELP.pageFormFields}>
                 <FieldChips
                   value={view.form.map((f) => f.field)}
-                  options={mineFields}
+                  options={formFields}
                   max={40}
                   min={1}
                   editable={editable}

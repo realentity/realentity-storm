@@ -98,3 +98,63 @@ steps:
   await page.getByTestId("confirm-delete").click();
   await expect(page.getByText("No company yet.")).toBeVisible();
 });
+
+// M45-E1: a type pipelines write, added by hand too; a field set over the pipeline's, then reset; deleted
+test("an entity added by hand next to a pipeline's; a field set over the pipeline's and reset", async ({ page }) => {
+  const name = unique("Tasks");
+  const created = await page.request.post("/api/apps", {
+    data: {
+      source: `name: ${name}
+types:
+  Task:
+    key: title
+    fields:
+      title: { type: text, required: true }
+      tag: { type: enum, values: [home, work] }
+      due: { type: date }
+pages:
+  - list: Task
+    add: true
+  - form: Task
+    fields: [tag, due]
+`,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const appId = ((await created.json()) as { appId: string }).appId;
+  const collect = await createPipeline(
+    page,
+    `name: ${unique("Task collect")}
+app: ${name}
+steps:
+  - id: save
+    type: data.save
+    with: { type: Task, items: [{ title: "Water the plants", tag: home }] }
+`,
+  );
+  await startRun(page, collect.pipelineId);
+
+  await page.goto(`/a/${appId}/Task`);
+  await expect(page.getByTestId("entity-row")).toHaveCount(1, { timeout: 20_000 });
+  await page.getByTestId("add-entity").click();
+  await page.getByTestId("add-form").getByLabel("Title").fill("Renew the passport");
+  await page.getByTestId("add-form").getByLabel("Tag").selectOption("work");
+  await page.getByTestId("add-form").getByRole("button", { name: "Add" }).click();
+  await expect(page.getByRole("heading", { name: "Renew the passport" })).toBeVisible();
+  await page.getByTestId("delete-entity").click();
+  await page.getByTestId("confirm-delete").click();
+  await expect(page.getByTestId("entity-row")).toHaveCount(1);
+
+  // The pipeline's task: the form shows its tag; set over it, then reset to it.
+  await page.getByRole("link", { name: "Water the plants" }).click();
+  const form = page.getByTestId("entity-form");
+  await expect(form.getByLabel("Tag")).toHaveValue("home");
+  await form.getByLabel("Tag").selectOption("work");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("entity-fields")).toContainText("work");
+  await expect(page.getByTestId("written-tag")).toContainText("home");
+  await page.getByTestId("reset-tag").click();
+  await expect(page.getByTestId("written-tag")).toHaveCount(0);
+  await expect(form.getByLabel("Tag")).toHaveValue("home");
+  await expect(page.getByTestId("entity-fields")).toContainText("home");
+});

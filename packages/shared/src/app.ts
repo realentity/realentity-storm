@@ -237,6 +237,11 @@ export const ListPageSchema = z
     /** Each row's stage moves (mine) as buttons on the row, e.g. Mark paid (M33). */
     moves: z.boolean().default(false),
     /**
+     * M45: entities added (New on the list: the key and the form's fields) and deleted by hand, on a type pipelines
+     * write too. What I set stays over what they write. A type of mine is always added by hand.
+     */
+    add: z.boolean().default(false),
+    /**
      * A data.history collection keyed by the entities' keys, drawn above the list (M33, as M29-T8's): a line per key,
      * the five with the highest latest value; `stepped` for prices.
      */
@@ -275,7 +280,10 @@ export const ViewPageSchema = z
   .strict();
 export type ViewPage = z.output<typeof ViewPageSchema>;
 
-/** The form on an entity's page (M32): which fields of mine, in what order; default all of them. */
+/**
+ * The form on an entity's page (M32): which fields, in what order; default the fields of mine. M45: any field but the
+ * key and the stage; what I set there stays over what pipelines write, until I reset it.
+ */
 export const FormPageSchema = z
   .object({
     form: z.string().regex(TYPE_NAME),
@@ -340,11 +348,18 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
     if ("form" in page) {
       for (const [j, name] of (page.fields ?? []).entries()) {
         field(name, [...at, "fields", j]);
-        if (type.fields[name] && !isMineField(type, name)) issue([...at, "fields", j], `${typeName}.${name} is written by pipelines: a form edits fields of mine`);
+        if (name === type.stages?.field) issue([...at, "fields", j], `${typeName}.${name} is its stage: it moves by its buttons, not on the form`);
+        else if (name === type.key && !type.mine) issue([...at, "fields", j], `${typeName}.${name} is its key: it names the entity and stays`);
       }
       return;
     }
     if ("list" in page) {
+      if (page.add && !type.mine) {
+        const form = app.pages.find((p): p is FormPage => "form" in p && p.form === typeName);
+        const fields = addFieldNames(type, form);
+        const missing = Object.entries(type.fields).filter(([name, f]) => f.required && name !== type.stages?.field && !fields.includes(name));
+        for (const [name] of missing) issue([...at, "add"], `${typeName}.${name} is required: put it on ${typeName}'s form to add one by hand`);
+      }
       page.columns?.forEach((c, j) => {
         if (typeof c === "string") return field(c, [...at, "columns", j]);
         field(c.field, [...at, "columns", j], c.due ? PERIOD_KINDS : undefined, "a due badge is on a date field");
@@ -376,6 +391,24 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
  */
 export function readAppSource(source: string): AppDefinition {
   return AppDefinitionSchema.parse(parseYaml(source));
+}
+
+/** M45: are its entities added and deleted by hand? A type of mine's always; another's when its list says `add`. */
+export function addedByHand(app: { types: Record<string, DataType>; pages: AppPage[] }, typeName: string): boolean {
+  if (app.types[typeName]?.mine) return true;
+  return app.pages.some((p) => "list" in p && p.list === typeName && p.add);
+}
+
+/** The fields on an entity's form: as its form page says, or the fields of mine; never the stage, nor a key that stays. */
+export function formFieldNames(type: DataType, form: FormPage | undefined): string[] {
+  const names = form?.fields ?? Object.keys(type.fields).filter((name) => isMineField(type, name) && !(type.mine && name === type.key));
+  return names.filter((name) => name !== type.stages?.field);
+}
+
+/** M45: the fields of the form that adds one by hand: a type of mine's every field; another's key, then its form's. */
+export function addFieldNames(type: DataType, form: FormPage | undefined): string[] {
+  if (type.mine) return Object.keys(type.fields).filter((name) => name !== type.stages?.field);
+  return [type.key, ...formFieldNames(type, form).filter((name) => name !== type.key)];
 }
 
 /** A field set on a form: one marked mine, or any of a type of mine, never the stage (moved by its buttons). */

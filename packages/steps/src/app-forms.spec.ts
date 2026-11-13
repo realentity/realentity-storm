@@ -1,4 +1,4 @@
-import { AppDefinitionSchema, canMove, checkFormValues, movesFrom, viewPageOf, listPageOf, type CompileResult } from "@realentity/storm-shared";
+import { addedByHand, AppDefinitionSchema, canMove, checkFormValues, movesFrom, viewPageOf, listPageOf, type CompileResult } from "@realentity/storm-shared";
 import { defaultCatalog } from "./catalog";
 import { PipelineCompiler } from "./compiler";
 
@@ -106,7 +106,7 @@ describe("forms, stages and buttons (M32)", () => {
       'types.Job.stages.moves.0.from: "old" is not one of the states',
       'types.Job.stages.moves.0.to.0: "gone" is not one of the states',
       "types.Mine.stages.moves.0.by: pipelines don't write a type of mine",
-      "pages.0.fields.0: Job.url is written by pipelines: a form edits fields of mine",
+      "pages.0.fields.0: Job.url is its stage: it moves by its buttons, not on the form",
       'pages.0.fields.1: Job has no field "nope"',
       'pages.1.actions.0.when.nope: Job has no field "nope"',
       'pages.1.actions.1.label: "Go" is used by an earlier button',
@@ -258,5 +258,88 @@ describe("forms, stages and buttons (M32)", () => {
         "steps[0].with.to: {{trigger.item.contact}} can't be a target: an entity holds what a pipeline read from pages, feeds or emails (only a type of mine can be)",
       ]);
     });
+  });
+});
+
+// M45-U1, M45-S1
+describe("entities kept by me and pipelines together (M45)", () => {
+  const tasks = AppDefinitionSchema.parse({
+    name: "Tasks",
+    types: {
+      Task: {
+        key: "title",
+        stages: { field: "state", initial: "open", states: ["open", "done"], moves: [{ from: "open", to: ["done"], by: ["me", "pipeline"] }] },
+        fields: {
+          title: { type: "text", required: true },
+          due: { type: "date" },
+          owner: { type: "email" },
+          note: { type: "longtext", mine: true },
+        },
+      },
+    },
+    pages: [
+      { list: "Task", add: true },
+      { form: "Task", fields: ["due", "owner", "note"] },
+    ],
+  });
+
+  it("adds by hand on the key and the form's fields, and edits any field but the key and the stage", () => {
+    expect(addedByHand(tasks, "Task")).toBe(true);
+    expect(addedByHand(jobSearch, "Job")).toBe(false);
+    expect(addedByHand(jobSearch, "Company")).toBe(true);
+    expect(listPageOf(tasks, "Task").create?.map((f) => f.field)).toEqual(["title", "due", "owner", "note"]);
+    expect(viewPageOf(tasks, "Task").form.map((f) => f.field)).toEqual(["due", "owner", "note"]);
+    expect(viewPageOf(tasks, "Task").remove).toBe(true);
+    expect(viewPageOf(jobSearch, "Job").remove).toBe(false);
+  });
+
+  it("refuses adding by hand without a required field on the form, and the stage on a form", () => {
+    const result = AppDefinitionSchema.safeParse({
+      ...tasks,
+      types: { Task: { ...tasks.types.Task, fields: { ...tasks.types.Task.fields, project: { type: "text", required: true } } } },
+      pages: [
+        { list: "Task", add: true },
+        { form: "Task", fields: ["due", "state"] },
+      ],
+    });
+    expect(result.error?.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([
+      "pages.0.add: Task.project is required: put it on Task's form to add one by hand",
+      "pages.1.fields.1: Task.state is its stage: it moves by its buttons, not on the form",
+    ]);
+  });
+
+  it("refuses a complete save of a type added by hand, and never takes a target from it", () => {
+    const save = (complete: boolean) =>
+      compiler.compile(
+        {
+          name: "P",
+          app: "Tasks",
+          steps: [
+            { id: "save", type: "data.save", with: { items: [{ title: "Renew the passport" }], type: "Task", complete } },
+          ],
+        },
+        { app: tasks },
+      );
+    ok(save(false));
+    expect(errorsOf(save(true))).toEqual([
+      "steps[0].with.complete: Task is added by hand too: a pipeline's list isn't the whole of it, so it can't be complete",
+    ]);
+    expect(
+      errorsOf(
+        compiler.compile(
+          {
+            name: "P",
+            app: "Tasks",
+            steps: [
+              { id: "read", type: "data.read", with: { type: "Task" } },
+              { id: "mail", type: "email.send", forEach: "{{read.items}}", with: { to: "{{item.owner}}", subject: "Due", body: "Hi" } },
+            ],
+          },
+          { app: tasks },
+        ),
+      ),
+    ).toEqual([
+      "steps[1].with.to: {{item.owner}} can't be a target: Task is written by pipelines, from what pages, feeds or emails said; only a type of mine can be",
+    ]);
   });
 });

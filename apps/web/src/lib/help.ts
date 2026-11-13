@@ -51,7 +51,9 @@ export const HELP = {
   pageRemoved: "A Removed tab: the entities a pipeline's complete save no longer found.",
   pageSection: "A section of the entity's own page: its title and the fields under it.",
   pageViewFields: "The fields on the entity's own page, in order.",
-  pageFormFields: "The fields you fill in on the entity's form (your fields).",
+  pageFormFields:
+    "The fields you can change on the entity's form. What you set stays over what pipelines write, until you reset it; a field marked mine only you write.",
+  pageAdd: "New on the list adds one by hand (its key and its form's fields), and its page deletes it. Pipelines still add and update them.",
 
   // Pipelines and their steps.
   pipelineName: "The pipeline's name: in the menu, on its runs, and how other pipelines and buttons start it.",
