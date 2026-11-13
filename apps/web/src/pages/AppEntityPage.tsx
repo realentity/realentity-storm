@@ -17,6 +17,8 @@ import { asText } from "../lib/view";
 /**
  * M31: an entity's own page: its fields (in sections when its App says so) and its history as a chart. M32: its stage
  * with the moves the user may make, their fields on a form, its buttons; an entity of a type of mine can be deleted.
+ * M45: the form shows what the entity holds, a field I set over a pipeline's can be reset, and an entity of a type
+ * added by hand can be deleted.
  */
 export function AppEntityPage() {
   const { appId = "", type = "", key = "" } = useParams();
@@ -35,13 +37,15 @@ export function AppEntityPage() {
   const title = fieldOf(row, page.title);
   const listUrl = `/a/${appId}/${encodeURIComponent(type)}`;
 
-  const save = async (values: Record<string, unknown>) => {
+  const save = async (values: Record<string, unknown>, done = "Saved") => {
+    if (Object.keys(values).length === 0) return void toast.info("Nothing changed");
     const saved = await action.run(() => api.apps.saveValues(appId, type, key, values));
     if (saved) {
       setShown(saved);
-      toast.success("Saved");
+      toast.success(done);
     }
   };
+  const formValues = Object.fromEntries(page.form.map((f) => [f.field, f.field in data.mine ? data.mine[f.field] : fieldOf(row, f.field)]));
   const move = async (to: string) => {
     const moved = await action.run(() => api.apps.move(appId, type, key, to));
     if (moved) setShown(moved);
@@ -67,7 +71,7 @@ export function AppEntityPage() {
           <>
             <EntityLink row={row} field={page.link} />
             <EntityButtons appId={appId} type={type} entityKey={key} actions={data.actions.map((i) => ({ index: i, ...page.actions[i] }))} />
-            {page.mine && (
+            {page.remove && (
               <button type="button" className="btn btn-outline-danger" onClick={() => setDeleting(true)} data-testid="delete-entity">
                 <IconTrash size={18} className="me-1" />
                 Delete
@@ -118,13 +122,16 @@ export function AppEntityPage() {
           {page.form.length > 0 && (
             <div className="card">
               <div className="card-header">
-                <h3 className="card-title">Mine</h3>
+                <h3 className="card-title">{page.mine ? "Mine" : "Edit"}</h3>
               </div>
               <div className="card-body">
                 <EntityForm
-                  key={JSON.stringify(data.mine)}
+                  key={JSON.stringify([data.mine, data.written])}
                   fields={page.form}
-                  values={data.mine}
+                  values={formValues}
+                  changedOnly
+                  written={data.written}
+                  reset={(field) => void save({ [field]: null }, "Reset to what the pipeline wrote")}
                   submit={(values) => void save(values)}
                   busy={action.busy}
                   testId="entity-form"

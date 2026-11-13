@@ -2,13 +2,13 @@ import { type DataEntity, type Prisma } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
   actionApplies,
+  addedByHand,
   canMove,
   canonicalJson,
   checkFormValues,
   entityItem,
   entityValueAt,
   isEventTrigger,
-  isMineField,
   isWebhookTrigger,
   listPageOf,
   readAppSource,
@@ -43,13 +43,14 @@ export class EntityActionsService {
     private readonly runs: RunsService,
   ) {}
 
-  /** The user's fields on the entity's form (a type of mine: any field but the key); null or "" clears one. */
+  /**
+   * The fields on the entity's form; null or "" clears one, so a field pipelines write too shows theirs again (M45:
+   * Reset).
+   */
   async saveValues(userId: string, appId: string, typeName: string, key: string, values: Item): Promise<void> {
     const { app, type } = await this.app(userId, appId, typeName);
     const entity = await this.entity(appId, typeName, key);
-    const allowed = type.mine
-      ? Object.keys(type.fields).filter((f) => f !== type.key && isMineField(type, f))
-      : viewPageOf(app, typeName).form.map((f) => f.field);
+    const allowed = viewPageOf(app, typeName).form.map((f) => f.field);
     const checked = this.check(type, allowed, values);
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
@@ -96,17 +97,17 @@ export class EntityActionsService {
     }
   }
 
-  /** An entity of a type of mine, from its list's form: every field, the key too. */
+  /**
+   * An entity added by hand, from its list's form (M32: a type of mine, every field; M45: a list with `add`, its key and
+   * its form's fields). What I set is kept as mine, over what a pipeline writes later.
+   */
   async create(userId: string, appId: string, typeName: string, values: Item): Promise<string> {
     const { app, type } = await this.app(userId, appId, typeName);
-    if (!type.mine) throw new ConflictException(`${typeName} is written by pipelines; only a type of mine is added by hand`);
-    const checked = this.check(
-      type,
-      Object.keys(type.fields).filter((f) => isMineField(type, f)),
-      values,
-    );
+    if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
+    const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
+    const checked = this.check(type, allowed, values);
     const missing = Object.entries(type.fields).filter(
-      ([name, f]) => (f.required || name === type.key) && isMineField(type, name) && (checked[name] ?? null) === null,
+      ([name, f]) => (f.required || name === type.key) && allowed.includes(name) && (checked[name] ?? null) === null,
     );
     if (missing.length > 0) {
       throw new BadRequestException({
@@ -147,10 +148,10 @@ export class EntityActionsService {
     return key;
   }
 
-  /** An entity of a type of mine, gone. */
+  /** An entity deleted by hand: of a type of mine, or one added by hand (M45). */
   async remove(userId: string, appId: string, typeName: string, key: string): Promise<void> {
-    const { type } = await this.app(userId, appId, typeName);
-    if (!type.mine) throw new ConflictException(`${typeName} is written by pipelines; only a type of mine is deleted by hand`);
+    const { app } = await this.app(userId, appId, typeName);
+    if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is kept by pipelines; its list doesn't delete one by hand`);
     const entity = await this.entity(appId, typeName, key);
     await this.prisma.client.dataEntity.delete({ where: { dataEntityId: entity.dataEntityId } });
   }

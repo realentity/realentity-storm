@@ -1,4 +1,4 @@
-import { type AppDefinition } from "./app";
+import { addedByHand, type AppDefinition } from "./app";
 import { listPageOf } from "./app-pages";
 import { type CompiledDefinition, type Trigger } from "./pipeline";
 
@@ -147,7 +147,7 @@ export function appMap(
       type,
       label: type,
       entities: entities[type] ?? 0,
-      detail: `${entities[type] ?? 0} kept${app.types[type].mine ? " · mine" : ""}`,
+      detail: `${entities[type] ?? 0} kept${app.types[type].mine ? " · mine" : addedByHand(app, type) ? " · added by hand too" : ""}`,
     })),
     pages,
     edges,

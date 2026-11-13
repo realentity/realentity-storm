@@ -1,5 +1,6 @@
 import {
   type AppDefinition,
+  addedByHand,
   PipelineDefinitionSchema,
   REFERENCE,
   WHOLE_REFERENCE,
@@ -274,6 +275,10 @@ export class PipelineCompiler {
       if (type.mine) {
         errors.push({ path: `${at}.type`, message: `${typeName} is a type of mine: pipelines read it, only the user writes it` });
         return {};
+      }
+      // M45: what I added by hand isn't in a pipeline's whole list, and a complete save would mark it removed.
+      if (step.with.complete === true && addedByHand(scope.app, typeName)) {
+        errors.push({ path: `${at}.complete`, message: `${typeName} is added by hand too: a pipeline's list isn't the whole of it, so it can't be complete` });
       }
       if (step.with.collection !== undefined) errors.push({ path: `${at}.collection`, message: "saves into a type or a collection, not both" });
       if (step.with.key !== undefined) errors.push({ path: `${at}.key`, message: `${typeName}'s key (${type.key}) identifies its entities` });

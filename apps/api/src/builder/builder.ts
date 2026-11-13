@@ -431,8 +431,10 @@ pipelines that change. An App definition (JSON): { "name", "description"?, "icon
 "fields": { "<name>": { "type": text|longtext|number|money|date|datetime|url|email|yesno|enum|list, "required"?,
 "mine"? (the user's to set, never a pipeline's), "values"? (enum), "currency"? (money: the field with its code), "label"? } } } },
 "pages"?: [{ "list": "<Type>", "menu"?, "columns"?, "filters"?, "sort"?, "group"?: { "by", "period"?, "totals"? },
-"moves"?: true, "actions"?: [{ "label", "run" }] }, { "view": "<Type>", "sections"?, "history"?, "actions"?:
-[{ "label", "run", "when"? }] }, { "form": "<Type>", "fields"? }] }. Its pipelines say "app": "<name>" and write with
+"moves"?: true, "add"?: true (the user adds and deletes them by hand too, on a form of the key and the form's fields;
+pipelines still write them; never with a complete data.save), "actions"?: [{ "label", "run" }] }, { "view": "<Type>",
+"sections"?, "history"?, "actions"?: [{ "label", "run", "when"? }] }, { "form": "<Type>", "fields"? (any but the key
+and the stage: what the user sets stays over what pipelines write) }] }. Its pipelines say "app": "<name>" and write with
 data.save { "type": "<Type>", "items", "stage"? }, read with data.read, start on { "on": "entity.changed", "type",
 "stage"? } or an entity's button { "on": "entity.action", "type" }. An entity a pipeline wrote is never a target; one
 of a "mine" type may be.

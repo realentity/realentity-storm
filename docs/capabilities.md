@@ -190,8 +190,15 @@ pages:
 **Stages, forms and buttons (M32).** A type may have a stage: where an entity is (new, favorite, applied…), moved
 only as its `moves` allow and by whom: you on its page (the default), or a pipeline's `data.save` (`by: [me,
 pipeline]`, where `me` is you). A move a pipeline may not make is said in `invalid` and the stage stays, so an
-email re-read never moves a job back. The date each state was first reached is kept. Your fields (`mine: true`) are edited on the entity's form;
-a whole type can be yours (`mine: true` on the type: you add, edit and delete its entities, pipelines only read it).
+email re-read never moves a job back. The date each state was first reached is kept.
+
+**You and pipelines on the same entities (M45).** The entity's form (`form:`) may hold any field but the key and the
+stage (default: your `mine` fields). What you set there stays over what pipelines write, until you reset it: the
+form shows what the pipeline wrote under it, with *Reset*. `add: true` on a type's list lets you add entities by hand
+(*New*: the key and the form's fields) and delete them on their page, while pipelines still add and update them; a
+pipeline's `data.save` on such a type can't be `complete`, since what you added isn't in its list. `mine: true` stays
+the guard for what only you write: a field (no pipeline can write it, and every save keeps it) or a whole type (you
+add, edit and delete its entities, pipelines only read it).
 Buttons start pipelines: a list's (a manual or scheduled one), an entity's (one triggered by `{ on: entity.action }`,
 with the entity), shown only while its `when` holds.
 
@@ -213,9 +220,16 @@ types:
     mine: true                               # you write it; its email may be a side effect's target
     key: name
     fields: { name: { type: text, required: true }, email: { type: email } }
+  Task:
+    key: title
+    fields: { title: { type: text, required: true }, due: { type: date }, done: { type: yesno } }
 pages:
   - form: Job
     fields: [comments]
+  - list: Task
+    add: true                                # New on the list; a pipeline from Telegram adds them too
+  - form: Task
+    fields: [due, done]
   - view: Job
     actions:
       - { label: Apply, run: Job submit, when: { status: favorite }, confirm: "Apply to this job?" }
@@ -223,7 +237,8 @@ pages:
     actions: [{ label: Check now, run: Job Search collect }]
 ```
 
-A target (an address to send to) never comes from a type pipelines write; from a `mine` type it may.
+A target (an address to send to) never comes from a type pipelines write, even an entity you added by hand to one;
+from a `mine` type it may.
 
 A list can also draw a `data.history` collection keyed by its entities above it (`chart: { history, label?, stepped? }`,
 the five with the highest latest value), and *Move them here* on an App's page brings a pipeline's collection (a

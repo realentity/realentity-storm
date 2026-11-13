@@ -220,4 +220,58 @@ describe("entity actions", () => {
       .expect(409);
     await agent.delete(page()).expect(409);
   });
+
+  // M45-I1, the user's half: a type pipelines write, added by hand too; what I set stays over what they write
+  it("adds, edits, resets and deletes entities of a type pipelines write too, when its list adds by hand", async () => {
+    const tasks = (
+      await agent
+        .post("/api/apps")
+        .send({
+          source: `
+name: Tasks
+types:
+  Task:
+    key: title
+    fields:
+      title: { type: text, required: true }
+      due: { type: date }
+      tag: { type: enum, values: [home, work] }
+pages:
+  - list: Task
+    add: true
+  - form: Task
+    fields: [due, tag]
+`,
+        })
+        .expect(201)
+    ).body as AppDetailView;
+    const at = `/api/apps/${tasks.appId}/pages/Task`;
+    const added = (await agent.post(at).send({ values: { title: "Renew the passport", due: "2026-12-01" } }).expect(201)).body as AppEntityView;
+    expect(added.row.value).toEqual({ title: "Renew the passport", due: "2026-12-01" });
+    expect(added.page.remove).toBe(true);
+
+    // A pipeline writes the same task: its tag and due date; my due date stays over its.
+    await db.client.dataEntity.update({
+      where: { appId_type_key: { appId: tasks.appId, type: "Task", key: "Renew the passport" } },
+      data: { value: { title: "Renew the passport", due: "2026-12-15", tag: "home" } },
+    });
+    const task = `${at}/${encodeURIComponent("Renew the passport")}`;
+    const read = (await agent.get(task).expect(200)).body as AppEntityView;
+    expect(read.row.value).toEqual({ title: "Renew the passport", due: "2026-12-01", tag: "home" });
+    expect(read.written).toEqual({ due: "2026-12-15" });
+
+    // A field pipelines write, set on the form; then due reset to the pipeline's.
+    const edited = (await agent.put(`${task}/values`).send({ values: { tag: "work" } }).expect(200)).body as AppEntityView;
+    expect(edited.row.value).toMatchObject({ due: "2026-12-01", tag: "work" });
+    expect(edited.written).toEqual({ due: "2026-12-15", tag: "home" });
+    const reset = (await agent.put(`${task}/values`).send({ values: { due: null } }).expect(200)).body as AppEntityView;
+    expect(reset.row.value).toMatchObject({ due: "2026-12-15", tag: "work" });
+    expect(reset.written).toEqual({ tag: "home" });
+
+    // The key isn't on the form; a title missing can't be added.
+    await agent.put(`${task}/values`).send({ values: { title: "Other" } }).expect(400);
+    await agent.post(at).send({ values: { due: "2026-12-01" } }).expect(400);
+    await agent.delete(task).expect(204);
+    await agent.get(task).expect(404);
+  });
 });

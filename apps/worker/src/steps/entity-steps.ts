@@ -1,5 +1,5 @@
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
-import { canMove, canonicalJson, checkEntity, entityItem, readAppSource, type AppDefinition, type DataType } from "@realentity/storm-shared";
+import { addedByHand, canMove, canonicalJson, checkEntity, entityItem, readAppSource, type AppDefinition, type DataType } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { matchesAll, valueAt, type Condition } from "./conditions";
 import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
@@ -55,6 +55,8 @@ export async function saveEntities(
 ): Promise<unknown> {
   const { appId, app, type } = await appType(prisma, context, typeName);
   if (type.mine) throw new Error(`${typeName} is a type of mine: pipelines read it, only the user writes it`);
+  // M45: the App may have started adding by hand after the pipeline was saved; what I added would be marked removed.
+  if (complete && addedByHand(app, typeName)) throw new Error(`${typeName} is added by hand too: a pipeline's list can't be complete`);
   const stages = type.stages;
   const invalid: { key: string | null; saved: boolean; problems: string[] }[] = [];
   const keyed = new Map<string, { value: Item; stage?: string }>();

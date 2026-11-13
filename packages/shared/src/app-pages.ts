@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isMineField, movesFrom, type AppDefinition, type DataType, type EntityActionDef, type FieldKind, type FormPage, type ListPage, type ViewPage } from "./app";
+import { addedByHand, addFieldNames, formFieldNames, movesFrom, type AppDefinition, type DataType, type EntityActionDef, type FieldKind, type FormPage, type ListPage, type ViewPage } from "./app";
 import { type ViewChart, type ViewFormat, type ViewIcon, type ViewRow } from "./view";
 
 /**
@@ -61,8 +61,9 @@ export interface PageStages {
 
 export interface ResolvedListPage {
   type: string;
-  /** A type of mine (M32): the user adds entities from the list, on a form of all its fields. */
+  /** A type of mine (M32): pipelines never write it. */
   mine: boolean;
+  /** The form that adds one by hand (M32: a type of mine's; M45: a list with `add`); null: added only by pipelines. */
   create: FormField[] | null;
   actions: { label: string; run: string; confirm?: string }[];
   label: string;
@@ -85,8 +86,10 @@ export interface ResolvedListPage {
 export interface ResolvedViewPage {
   type: string;
   mine: boolean;
+  /** M45: deleted by hand (a type of mine, or one added by hand). */
+  remove: boolean;
   stages: PageStages | null;
-  /** Fields of mine on its form; empty: none to edit. */
+  /** The fields on its form (M45: any but the key and the stage); empty: none to edit. */
   form: FormField[];
   actions: EntityActionDef[];
   title: string;
@@ -157,7 +160,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
   return {
     type: typeName,
     mine: type.mine,
-    create: type.mine ? formFields(type, Object.keys(type.fields)) : null,
+    create: addedByHand(app, typeName) ? formFields(type, addFieldNames(type, app.pages.find((p): p is FormPage => "form" in p && p.form === typeName))) : null,
     actions: page?.actions ?? [],
     label: (menu && menu.label) || typeName,
     icon: (menu && menu.icon) || app.icon,
@@ -205,9 +208,9 @@ export function viewPageOf(app: AppDefinition, typeName: string): ResolvedViewPa
   return {
     type: typeName,
     mine: type.mine,
+    remove: addedByHand(app, typeName),
     stages: type.stages ? { field: type.stages.field, label: fieldLabel(type, type.stages.field), states: type.stages.states } : null,
-    // A type of mine: every field but its key, which names the entity and stays.
-    form: formFields(type, form?.fields ?? Object.keys(type.fields).filter((name) => isMineField(type, name) && !(type.mine && name === type.key))),
+    form: formFields(type, formFieldNames(type, form)),
     actions: page?.actions ?? [],
     ...naming(type),
     sections,
@@ -311,8 +314,10 @@ export interface AppEntityView extends AppPageHeader {
   history: { at: string; value: number }[] | null;
   /** M32: its stage, where the user may move it, and when it first reached each state. */
   stage: { value: string | null; moves: string[]; dates: Record<string, string> } | null;
-  /** Fields of mine as the user set them (the form's values). */
+  /** Fields as the user set them on the form; they stay over what pipelines write. */
   mine: Record<string, unknown>;
+  /** M45: for a form field the user set that pipelines write too, what the pipelines wrote (Reset brings it back). */
+  written: Record<string, unknown>;
   /** The indexes of the view's buttons that apply to it now (`when`). */
   actions: number[];
 }
