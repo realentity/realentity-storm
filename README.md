@@ -59,6 +59,11 @@ Apps are typed and versioned, so they keep working as they grow:
 
 Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car and Server ops.
 
+Each App's page maps how it connects: what starts its pipelines, which types they write and read, and the pages that
+show them. The Trips App:
+
+![The Trips App's map: six pipelines, what starts each, the Trip and Booking types they write and read, and its pages](docs/images/app-map.png)
+
 ### Topics: replies that know the subject
 
 Storm's drafts never invent facts, so a reply about a project is only as good as what Storm knows about the project. A
@@ -71,8 +76,14 @@ documents, and **nothing goes into it without your approval**.
 2. **It proposes what is true.** From a topic's new email, its GitHub repository (decision records, specs), its Google
    Drive folder and the attachments of its email, Storm proposes facts: "Launch date: ~~February~~ → March", each with its source and the
    quote that shows it. You pick the ones that go in. Where sources disagree, you decide.
+
+   ![A topic's facts, each with its source (an email, a decision record in its repository, or you) and the quote that shows it](docs/images/topic.png)
+
 3. **Its replies use it.** A draft to a topic's email gets the topic's current facts and the passages of its documents
    closest to the question, and the gate shows what it drew on. A fact it doesn't have stays a placeholder.
+
+   ![A reply drafted from the topic's facts, waiting for Act, with the facts it drew on and a placeholder for what it doesn't know](docs/images/topic-reply.png)
+
 4. **You stay in charge.** Edit a fact, mark it no longer true or wrong, move it, split or merge topics, and undo any
    change. An old email read late never overwrites a newer fact.
 5. **It learns.** Your edits of drafts become suggested facts, your decisions become suggested directions, and a group
@@ -109,6 +120,9 @@ with their steps, and [pipelines/](pipelines) has them ready to paste.
    these steps but can't add new ones or write code. The compiler checks every reference, domain and recipient before
    a pipeline can be saved. You can read and edit the YAML or use the visual editor, and dry-run it before switching
    it on.
+
+   ![The Job board pipeline's page: its steps as a graph by data flow, what it may do (here nothing leaves Storm) and the domains it may reach](docs/images/pipeline.png)
+
 3. **It runs** on a schedule, on new email, from a webhook, when an App's data changes, or when you press a button.
 4. **It proposes, you act.** Every side effect (an email, a form submission, an upload, a calendar invite, an API
    call) waits behind a gate that shows exactly what will go out. Edit it if needed, then press **Act** in the app or
