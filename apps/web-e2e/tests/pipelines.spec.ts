@@ -101,4 +101,22 @@ test.describe("pipelines", () => {
     await expect(page.getByTestId("webhook-secret").locator("code")).not.toHaveText(first);
     await expect(page.getByTestId("webhook-address")).toHaveText(address);
   });
+  // A long pipeline's graph wraps onto the next row: every stage is in sight, none cut at the card's edge
+  test("a pipeline of nine stages: its graph wraps inside the card, the last stage in sight", async ({ page }) => {
+    const steps = Array.from({ length: 9 }, (_, n) => ({
+      id: `stage${n + 1}`,
+      type: "test.search",
+      with: { query: n === 0 ? "dotnet" : `after {{stage${n}.items}}` },
+    }));
+    const pipeline = await createPipeline(page, JSON.stringify({ name: unique("Long graph"), steps }));
+    await page.goto(`/pipelines/${pipeline.pipelineId}`);
+    const graph = page.getByTestId("step-graph");
+    await expect(graph).toContainText("stage9");
+    const fits = await graph.evaluate((el) => el.scrollWidth <= el.clientWidth);
+    expect(fits).toBe(true);
+    const box = (await graph.boundingBox())!;
+    const last = (await graph.getByText("stage9", { exact: true }).boundingBox())!;
+    expect(last.y).toBeGreaterThan(box.y + 40); // on a later row than the first stage
+    expect(last.x + last.width).toBeLessThanOrEqual(box.x + box.width);
+  });
 });

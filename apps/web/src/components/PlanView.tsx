@@ -1,6 +1,6 @@
 import { type CompiledDefinition, type CompiledPolicy, type CompileIssue, type DefinitionChange, type StepTypeView } from "@realentity/storm-shared";
 import { IconArrowRight, IconShieldCheck } from "@tabler/icons-react";
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import { dependencies, describeChange, describeTrigger, policySummary, stepGraph } from "../lib/plan";
 import { Json } from "./ui";
 
@@ -89,7 +89,8 @@ export function StepGraphView({ definition, catalog }: { definition: CompiledDef
   return (
     <div className="step-graph" data-testid="step-graph">
       {graph.layers.map((layer, index) => (
-        <Fragment key={layer.join()}>
+        // A stage carries the arrow into it, so a long pipeline wraps onto the next row as "→ stage", never cut at the edge.
+        <div key={layer.join()} className="step-graph-stage">
           {index > 0 && <IconArrowRight className="step-graph-arrow" size={20} />}
           <div className="step-graph-layer">
             {layer.map((id) => {
@@ -106,7 +107,7 @@ export function StepGraphView({ definition, catalog }: { definition: CompiledDef
               );
             })}
           </div>
-        </Fragment>
+        </div>
       ))}
     </div>
   );
