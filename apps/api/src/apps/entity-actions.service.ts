@@ -8,6 +8,7 @@ import {
   checkFormValues,
   entityItem,
   entityValueAt,
+  FILE_KINDS,
   isEventTrigger,
   isWebhookTrigger,
   listPageOf,
@@ -24,8 +25,14 @@ import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";
+import { AppFilesService } from "./app-files.service";
 
 type Item = Record<string, unknown>;
+
+/** M46: a type's file and image fields. */
+function fileFields(type: DataType): string[] {
+  return Object.entries(type.fields).flatMap(([name, f]) => (FILE_KINDS.includes(f.type) ? [name] : []));
+}
 
 /** A Job's stage as the application.status it was (M12); the worker's job steps use the same. */
 const STAGE_STATUS: Record<string, string> = { prepared: "PREPARED", applied: "SUBMITTED", responded: "RESPONDED", interview: "INTERVIEW", rejected: "REJECTED" };
@@ -41,6 +48,7 @@ export class EntityActionsService {
     private readonly prisma: PrismaService,
     private readonly queue: JobQueue,
     private readonly runs: RunsService,
+    private readonly files: AppFilesService,
   ) {}
 
   /**
@@ -51,7 +59,7 @@ export class EntityActionsService {
     const { app, type } = await this.app(userId, appId, typeName);
     const entity = await this.entity(appId, typeName, key);
     const allowed = viewPageOf(app, typeName).form.map((f) => f.field);
-    const checked = this.check(type, allowed, values);
+    const checked = await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type));
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
       if (value === null) delete mine[field];
@@ -62,6 +70,8 @@ export class EntityActionsService {
       where: { dataEntityId: entity.dataEntityId },
       data: { mine: mine as Prisma.InputJsonObject },
     });
+    // M46: a file replaced or cleared goes; one a pipeline's value still names stays.
+    await this.files.release(appId, typeName, key, entity.value, mine);
     const after = this.item(type, { ...entity, mine: mine as Prisma.JsonObject });
     const changed = Object.keys(checked).filter(
       (f) => canonicalJson(entityValueAt(before, f) ?? null) !== canonicalJson(entityValueAt(after, f) ?? null),
@@ -105,7 +115,7 @@ export class EntityActionsService {
     const { app, type } = await this.app(userId, appId, typeName);
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
     const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
-    const checked = this.check(type, allowed, values);
+    let checked = this.check(type, allowed, values);
     const missing = Object.entries(type.fields).filter(
       ([name, f]) => (f.required || name === type.key) && allowed.includes(name) && (checked[name] ?? null) === null,
     );
@@ -117,11 +127,12 @@ export class EntityActionsService {
     }
     const keyValue = checked[type.key];
     const key = typeof keyValue === "number" ? String(keyValue) : (keyValue as string);
-    const mine = Object.fromEntries(Object.entries(checked).filter(([name, value]) => name !== type.key && value !== null));
     const stage = type.stages?.initial ?? null;
     const now = new Date();
     const existing = await this.prisma.client.dataEntity.findUnique({ where: { appId_type_key: { appId, type: typeName, key } } });
     if (existing) throw new ConflictException(`There is already a ${typeName} "${key}"`);
+    checked = await this.files.attach(appId, typeName, key, checked, fileFields(type));
+    const mine = Object.fromEntries(Object.entries(checked).filter(([name, value]) => name !== type.key && value !== null));
     const created = await this.prisma.client.dataEntity.create({
       data: {
         appId,
@@ -154,6 +165,7 @@ export class EntityActionsService {
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is kept by pipelines; its list doesn't delete one by hand`);
     const entity = await this.entity(appId, typeName, key);
     await this.prisma.client.dataEntity.delete({ where: { dataEntityId: entity.dataEntityId } });
+    await this.files.removeEntity(appId, typeName, key);
   }
 
   /**

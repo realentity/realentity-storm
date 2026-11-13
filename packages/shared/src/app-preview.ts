@@ -75,6 +75,10 @@ export function sampleRows(typeName: string, type: DataType, count = 6, now = ne
         case "list":
           value[name] = ["one", "two"];
           break;
+        case "file":
+        case "image":
+          value[name] = null; // M46: nothing stored to show
+          break;
         case "longtext":
           value[name] = `A longer ${name} of ${typeName} ${n}, a sentence or two as it would come.`;
           break;

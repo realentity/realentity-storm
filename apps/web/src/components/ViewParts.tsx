@@ -1,5 +1,5 @@
-import { fieldOf, safeLink, type PipelineView, type ViewColumn, type ViewRow } from "@realentity/storm-shared";
-import { IconExternalLink } from "@tabler/icons-react";
+import { asFileRef, fieldOf, safeLink, type PipelineView, type ViewColumn, type ViewRow } from "@realentity/storm-shared";
+import { IconExternalLink, IconPaperclip } from "@tabler/icons-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -50,6 +50,26 @@ export function ViewValue({
     case "link": {
       const href = safeLink(value);
       return href ? <ShortLink href={href} /> : <>{asText(value)}</>;
+    }
+    case "file":
+    case "image": {
+      // M46: a stored file's reference only; anything else as text.
+      const file = asFileRef(value);
+      if (!file) return <>{asText(value)}</>;
+      const href = api.apps.fileUrl(file.id);
+      if (column.as === "image" && file.mime.startsWith("image/")) {
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer" title={file.name} data-testid="entity-image">
+            <img src={api.apps.thumbUrl(file.id)} alt={file.name} className="rounded border" style={{ maxHeight: full ? "16rem" : "2.5rem", maxWidth: "100%" }} loading="lazy" />
+          </a>
+        );
+      }
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-truncate d-inline-block align-bottom" style={{ maxWidth: "18rem" }} data-testid="entity-file">
+          <IconPaperclip size={16} className="me-1" />
+          {file.name}
+        </a>
+      );
     }
     default: {
       if (full) return <span style={{ whiteSpace: "pre-wrap" }}>{asText(value)}</span>;

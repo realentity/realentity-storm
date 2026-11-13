@@ -1,6 +1,7 @@
-import { type FormField } from "@realentity/storm-shared";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { asFileRef, type FileRef, type FormField } from "@realentity/storm-shared";
+import { IconDeviceFloppy, IconPaperclip, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
+import { api } from "../lib/endpoints";
 import { asText } from "../lib/view";
 
 type Values = Record<string, unknown>;
@@ -8,6 +9,7 @@ type Values = Record<string, unknown>;
 /** A value as its input shows it: dates cut to what the input takes, lists a line each, yes/no as "true"/"false". */
 function shown(field: FormField, value: unknown): string {
   if (value === undefined || value === null) return "";
+  if (field.kind === "file" || field.kind === "image") return asFileRef(value)?.id ?? "";
   if (field.kind === "list" && Array.isArray(value)) return value.map(asText).join("\n");
   if (field.kind === "date") return asText(value).slice(0, 10);
   if (field.kind === "datetime") return asText(value).slice(0, 16);
@@ -29,6 +31,7 @@ export function EntityForm({
   changedOnly = false,
   written = {},
   reset,
+  upload,
 }: Readonly<{
   fields: FormField[];
   values: Values;
@@ -39,7 +42,22 @@ export function EntityForm({
   changedOnly?: boolean;
   written?: Values;
   reset?: (field: string) => void;
+  /** M46: uploads a file or image for a field (it is the entity's once the form is saved). */
+  upload?: (field: string, file: File) => Promise<FileRef | null | undefined>;
 }>) {
+  // What each file field holds, by id: the entity's files, then the ones uploaded on this form.
+  const [files, setFiles] = useState<Record<string, FileRef>>(() =>
+    Object.fromEntries(Object.values(values).flatMap((v) => (asFileRef(v) ? [[asFileRef(v)!.id, asFileRef(v)!]] : []))),
+  );
+  const [uploading, setUploading] = useState<string | null>(null);
+  const pick = async (field: string, file: File | undefined) => {
+    if (!file || !upload) return;
+    setUploading(field);
+    const ref = await upload(field, file).finally(() => setUploading(null));
+    if (!ref) return;
+    setFiles((f) => ({ ...f, [ref.id]: ref }));
+    set(field, ref.id);
+  };
   const [initial] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.field, shown(f, values[f.field])])));
   const [draft, setDraft] = useState<Record<string, string>>(initial);
   const set = (field: string, value: string) => setDraft((d) => ({ ...d, [field]: value }));
@@ -71,7 +89,9 @@ export function EntityForm({
             <label className={`form-label ${f.required ? "required" : ""}`} htmlFor={id}>
               {f.label}
             </label>
-            {f.kind === "longtext" || f.kind === "list" ? (
+            {f.kind === "file" || f.kind === "image" ? (
+              <FileInput field={f} file={files[value]} busy={uploading === f.field} pick={(file) => void pick(f.field, file)} clear={() => set(f.field, "")} />
+            ) : f.kind === "longtext" || f.kind === "list" ? (
               <textarea
                 className="form-control"
                 rows={f.kind === "list" ? 3 : 4}
@@ -126,10 +146,53 @@ export function EntityForm({
           </div>
         );
       })}
-      <button type="submit" className="btn btn-primary" disabled={busy}>
+      <button type="submit" className="btn btn-primary" disabled={busy || uploading !== null}>
         <IconDeviceFloppy size={18} className="me-1" />
         {label}
       </button>
     </form>
+  );
+}
+
+/** M46: a file field: what it holds (an image as its thumbnail), a picker to upload another, and Remove. */
+function FileInput({
+  field,
+  file,
+  busy,
+  pick,
+  clear,
+}: Readonly<{ field: FormField; file: FileRef | undefined; busy: boolean; pick: (file: File | undefined) => void; clear: () => void }>) {
+  const id = `field-${field.field}`;
+  return (
+    <div data-testid={`file-${field.field}`}>
+      {file && (
+        <div className="d-flex align-items-center gap-2 mb-2">
+          {field.kind === "image" ? (
+            <img src={api.apps.thumbUrl(file.id)} alt={file.name} className="rounded border" style={{ maxHeight: "4rem" }} />
+          ) : (
+            <IconPaperclip size={18} className="text-secondary" />
+          )}
+          <a href={api.apps.fileUrl(file.id)} target="_blank" rel="noopener noreferrer" className="text-truncate" style={{ maxWidth: "16rem" }}>
+            {file.name}
+          </a>
+          <button type="button" className="btn btn-sm btn-ghost-secondary ms-auto" onClick={clear} aria-label={`Remove ${field.label}`}>
+            <IconX size={16} />
+          </button>
+        </div>
+      )}
+      <input
+        id={id}
+        type="file"
+        className="form-control"
+        accept={field.kind === "image" ? "image/png,image/jpeg,image/webp,image/gif" : undefined}
+        required={field.required && !file}
+        disabled={busy}
+        onChange={(e) => {
+          pick(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      {busy && <div className="form-hint">Uploading…</div>}
+    </div>
   );
 }

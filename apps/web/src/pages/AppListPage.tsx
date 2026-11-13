@@ -75,6 +75,7 @@ export function AppListPage() {
             busy={adder.busy}
             label="Add"
             testId="add-form"
+            upload={(field, file) => adder.run(() => api.apps.upload(appId, type, field, file))}
             submit={(values) =>
               void adder
                 .run(() => api.apps.add(appId, type, values))

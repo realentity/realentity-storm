@@ -1,4 +1,4 @@
-import { addedByHand, AppDefinitionSchema, canMove, checkFormValues, movesFrom, viewPageOf, listPageOf, type CompileResult } from "@realentity/storm-shared";
+import { addedByHand, AppDefinitionSchema, canMove, checkEntity, checkFormValues, movesFrom, viewPageOf, listPageOf, type CompileResult } from "@realentity/storm-shared";
 import { defaultCatalog } from "./catalog";
 import { PipelineCompiler } from "./compiler";
 
@@ -341,5 +341,34 @@ describe("entities kept by me and pipelines together (M45)", () => {
     ).toEqual([
       "steps[1].with.to: {{item.owner}} can't be a target: Task is written by pipelines, from what pages, feeds or emails said; only a type of mine can be",
     ]);
+  });
+});
+
+// M46-U1: a file or an image is held as a reference; a pipeline can't save one yet
+describe("files and images (M46)", () => {
+  const papers = AppDefinitionSchema.parse({
+    name: "Papers",
+    types: { Paper: { key: "title", fields: { title: { type: "text", required: true }, scan: { type: "image" }, receipt: { type: "file" } } } },
+    pages: [{ list: "Paper", add: true }, { form: "Paper", fields: ["scan", "receipt"] }],
+  });
+  const id = "1b671a64-40d5-491e-99b0-da01e8a64ba1";
+
+  it("takes an uploaded file's id on the form, nothing else", () => {
+    expect(checkFormValues(papers.types.Paper, ["scan", "receipt"], { scan: id, receipt: { id: id.toUpperCase() } })).toEqual({
+      values: { scan: { id }, receipt: { id } },
+      problems: [],
+    });
+    expect(checkFormValues(papers.types.Paper, ["scan"], { scan: "https://example.org/a.png" }).problems).toEqual([
+      { field: "scan", message: "isn't an uploaded file" },
+    ]);
+  });
+
+  it("leaves a file out of what a pipeline saves", () => {
+    expect(checkEntity(papers.types.Paper, { title: "Oven", scan: { id, name: "a.jpg", mime: "image/jpeg", size: 1 } })).toEqual({
+      value: { title: "Oven" },
+      key: "Oven",
+      problems: ["scan is an image: it is uploaded on the form"],
+      rejected: false,
+    });
   });
 });

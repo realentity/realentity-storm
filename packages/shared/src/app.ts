@@ -14,8 +14,34 @@ export const TYPE_NAME = /^[A-Z][A-Za-z0-9]{0,39}$/;
 /** A field of an entity by dotted path ("salary", "company.name"), as M27's columns. */
 export const ENTITY_FIELD = /^[A-Za-z_][\w-]{0,63}(\.[A-Za-z_][\w-]{0,63}){0,3}$/;
 
-export const FIELD_KINDS = ["text", "longtext", "number", "money", "date", "datetime", "url", "email", "yesno", "enum", "list"] as const;
+export const FIELD_KINDS = ["text", "longtext", "number", "money", "date", "datetime", "url", "email", "yesno", "enum", "list", "file", "image"] as const;
 export type FieldKind = (typeof FIELD_KINDS)[number];
+
+/** M46: kinds whose value is a stored file, uploaded on the form; the entity holds only its reference. */
+export const FILE_KINDS: readonly FieldKind[] = ["file", "image"];
+
+/** A stored file as an entity holds it (M46): never its bytes. */
+export interface FileRef {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A file's reference, or null: what a form sends (its id) and what an entity keeps ({ id, … }). */
+export function fileRefId(value: unknown): string | null {
+  const id = typeof value === "string" ? value : value && typeof value === "object" ? (value as { id?: unknown }).id : null;
+  return typeof id === "string" && UUID.test(id) ? id.toLowerCase() : null;
+}
+
+/** The reference an entity keeps, when the value is one. */
+export function asFileRef(value: unknown): FileRef | null {
+  if (!value || typeof value !== "object") return null;
+  const { id, name, mime, size } = value as Record<string, unknown>;
+  return fileRefId(id) && typeof name === "string" && typeof mime === "string" && typeof size === "number" ? { id: id as string, name, mime, size } : null;
+}
 
 /** Kinds a key can be: one that names the entity as text. */
 const KEY_KINDS: readonly FieldKind[] = ["text", "url", "email", "number"];
@@ -485,6 +511,12 @@ export function fieldValue(field: EntityField, value: unknown): { ok: true; valu
         : { ok: false, problem: `isn't one of ${field.values?.join(", ")}` };
     case "list":
       return Array.isArray(value) ? { ok: true, value: value.slice(0, 200) } : { ok: false, problem: "isn't a list" };
+    case "file":
+    case "image": {
+      // The api swaps the id for the stored file's reference, once it knows the file is this field's.
+      const id = fileRefId(value);
+      return id ? { ok: true, value: { id } } : { ok: false, problem: "isn't an uploaded file" };
+    }
   }
 }
 
@@ -537,6 +569,12 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
   for (const [name, field] of Object.entries(type.fields)) {
     if (field.mine) {
       if (entityValueAt(value, name) !== undefined) problems.push(`${name} is mine: a pipeline can't set it`);
+      deleteAt(value, name);
+      continue;
+    }
+    if (FILE_KINDS.includes(field.type)) {
+      // M46: uploaded on the entity's form; a pipeline saving a file comes later (M46-T4).
+      if (entityValueAt(value, name) !== undefined) problems.push(`${name} is ${field.type === "image" ? "an image" : "a file"}: it is uploaded on the form`);
       deleteAt(value, name);
       continue;
     }

@@ -158,3 +158,59 @@ steps:
   await expect(form.getByLabel("Tag")).toHaveValue("home");
   await expect(page.getByTestId("entity-fields")).toContainText("home");
 });
+
+// M46-E1: an image and a file uploaded on the form; the image's thumbnail on the list and the page, the file a link
+test("an image and a file on an App's form: a thumbnail on the list and the page, the file a download", async ({ page }) => {
+  const name = unique("Papers");
+  const created = await page.request.post("/api/apps", {
+    data: {
+      source: `name: ${name}
+types:
+  Paper:
+    key: title
+    fields:
+      title: { type: text, required: true }
+      scan: { type: image }
+      receipt: { type: file }
+pages:
+  - list: Paper
+    add: true
+    columns: [scan, title, receipt]
+  - form: Paper
+    fields: [scan, receipt]
+`,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const appId = ((await created.json()) as { appId: string }).appId;
+  // A 1×1 PNG and a small PDF, made up.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const pdf = Buffer.from("%PDF-1.4\n% a receipt\n%%EOF\n");
+
+  await page.goto(`/a/${appId}/Paper`);
+  await page.getByTestId("add-entity").click();
+  const form = page.getByTestId("add-form");
+  await form.getByLabel("Title").fill("Washing machine");
+  await form.getByLabel("Scan").setInputFiles({ name: "warranty.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByTestId("file-scan").getByRole("link", { name: "warranty.png" })).toBeVisible();
+  await form.getByLabel("Receipt").setInputFiles({ name: "receipt.pdf", mimeType: "application/pdf", buffer: pdf });
+  await expect(page.getByTestId("file-receipt").getByRole("link", { name: "receipt.pdf" })).toBeVisible();
+  await form.getByRole("button", { name: "Add" }).click();
+
+  await expect(page.getByRole("heading", { name: "Washing machine" })).toBeVisible();
+  const image = page.getByTestId("entity-fields").getByTestId("entity-image").locator("img");
+  await expect(image).toHaveAttribute("alt", "warranty.png");
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1);
+  await expect(page.getByTestId("entity-fields").getByTestId("entity-file")).toHaveText("receipt.pdf");
+  const download = page.waitForEvent("download");
+  await page.getByTestId("entity-fields").getByTestId("entity-file").click();
+  expect((await download).suggestedFilename()).toBe("receipt.pdf");
+
+  // Removed on the form: gone from the page.
+  await page.getByTestId("file-receipt").getByRole("button", { name: "Remove Receipt" }).click();
+  await page.getByTestId("entity-form").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("entity-fields").getByTestId("entity-file")).toHaveCount(0);
+
+  await page.goto(`/a/${appId}/Paper`);
+  await expect(page.getByTestId("entity-row").getByTestId("entity-image")).toHaveCount(1);
+});

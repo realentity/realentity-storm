@@ -132,6 +132,7 @@ export function AppEntityPage() {
                   changedOnly
                   written={data.written}
                   reset={(field) => void save({ [field]: null }, "Reset to what the pipeline wrote")}
+                  upload={(field, file) => action.run(() => api.apps.upload(appId, type, field, file))}
                   submit={(values) => void save(values)}
                   busy={action.busy}
                   testId="entity-form"

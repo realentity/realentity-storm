@@ -56,6 +56,7 @@ import {
   type CreateRuleRequest,
   type CredentialView,
   type DocumentView,
+  type FileRef,
   type DryRunPipelineResponse,
   type FactRequest,
   type FactView,
@@ -290,6 +291,16 @@ export const api = {
       request<AppEntityView>("GET", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}`),
     add: (appId: string, type: string, values: Record<string, unknown>) =>
       request<AppEntityView>("POST", `/apps/${appId}/pages/${encodeURIComponent(type)}`, { values }),
+    /** M46: a file or image for a form's field; the form's save attaches it. */
+    upload: (appId: string, type: string, field: string, file: File) => {
+      const body = new FormData();
+      body.set("type", type);
+      body.set("field", field);
+      body.set("file", file);
+      return request<FileRef>("POST", `/apps/${appId}/files`, body);
+    },
+    fileUrl: (fileId: string) => `/api/app-files/${fileId}`,
+    thumbUrl: (fileId: string) => `/api/app-files/${fileId}/thumb`,
     saveValues: (appId: string, type: string, key: string, values: Record<string, unknown>) =>
       request<AppEntityView>("PUT", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}/values`, { values }),
     move: (appId: string, type: string, key: string, to: string) =>

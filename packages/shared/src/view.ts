@@ -19,7 +19,8 @@ const FieldSchema = z.union([
   z.string().regex(FIELD_PATH, 'a field of the item by dotted path, e.g. "title" or "company.name"'),
 ]);
 
-export const VIEW_FORMATS = ["text", "number", "money", "date", "datetime", "badge", "link", "yesno"] as const;
+/** M46: `file` a download link, `image` a thumbnail; both only of a stored file's reference ({ id, name, mime, size }). */
+export const VIEW_FORMATS = ["text", "number", "money", "date", "datetime", "badge", "link", "yesno", "file", "image"] as const;
 export type ViewFormat = (typeof VIEW_FORMATS)[number];
 
 /** The menu's icons: plain signifiers, mapped to Tabler icons by the web app. */
