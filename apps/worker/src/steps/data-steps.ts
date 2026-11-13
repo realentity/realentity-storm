@@ -79,7 +79,11 @@ interface Change {
 export class SaveStep implements StepExecutor {
   readonly type = "data.save";
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    /** M46: where an App's files are, for file fields; without it, a file in an item is left out. */
+    private readonly filesRoot?: string,
+  ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const result = (await this.save(input as unknown as SaveInput, context)) as { saved: number; created: number };
@@ -90,7 +94,7 @@ export class SaveStep implements StepExecutor {
   }
 
   private async save(save: SaveInput, context: StepContext): Promise<unknown> {
-    if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context);
+    if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context, this.filesRoot);
     if (save.collection) return this.intoCollection(save, save.collection, context);
     const { items, status } = save;
     const postings = items.map(posting).filter((p) => p !== null);

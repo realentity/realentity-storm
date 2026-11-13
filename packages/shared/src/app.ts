@@ -572,12 +572,6 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
       deleteAt(value, name);
       continue;
     }
-    if (FILE_KINDS.includes(field.type)) {
-      // M46: uploaded on the entity's form; a pipeline saving a file comes later (M46-T4).
-      if (entityValueAt(value, name) !== undefined) problems.push(`${name} is ${field.type === "image" ? "an image" : "a file"}: it is uploaded on the form`);
-      deleteAt(value, name);
-      continue;
-    }
     const raw = entityValueAt(value, name);
     if (raw === undefined || raw === null || raw === "") {
       deleteAt(value, name);

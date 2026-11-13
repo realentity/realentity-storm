@@ -1,6 +1,7 @@
 import {
   type AppDefinition,
   addedByHand,
+  FILE_KINDS,
   PipelineDefinitionSchema,
   REFERENCE,
   WHOLE_REFERENCE,
@@ -240,6 +241,10 @@ export class PipelineCompiler {
     errors: CompileIssue[],
   ): Pick<CompiledStepInfo, "output" | "untrusted"> {
     const { step, path } = scope;
+    if (step.type === "file.keep") {
+      this.checkFileKeep(scope, inApp, errors);
+      return {};
+    }
     if (step.type !== "data.save" && step.type !== "data.read" && step.type !== "data.dedupe") return {};
     const typeName = step.type === "data.dedupe" ? step.with.againstType : step.with.type;
     if (typeof typeName !== "string") return {};
@@ -311,6 +316,29 @@ export class PipelineCompiler {
       output: { kind: "object", fields: { items: { kind: "array", element: entityTypeInfo(type) }, count: { kind: "number" } } },
       ...(type.mine ? {} : { untrusted: typeName }),
     };
+  }
+
+  /** file.keep (M46-T4): into a file or image field of one of the App's types that pipelines may write. */
+  private checkFileKeep(scope: Scope, inApp: boolean, errors: CompileIssue[]): void {
+    const at = `${scope.path}.with`;
+    const { type: typeName, field: fieldName } = scope.step.with;
+    if (!inApp) {
+      errors.push({ path: `${at}.type`, message: "files belong to an App: say which with `app:` at the top of the pipeline" });
+      return;
+    }
+    if (!scope.app || typeof typeName !== "string" || typeof fieldName !== "string") return;
+    const type = entityTypeOf(scope.app, typeName);
+    if (!type) {
+      errors.push({ path: `${at}.type`, message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})` });
+      return;
+    }
+    const field = type.fields[fieldName];
+    const files = Object.entries(type.fields).flatMap(([name, f]) => (FILE_KINDS.includes(f.type) ? [name] : []));
+    if (!field || !FILE_KINDS.includes(field.type)) {
+      errors.push({ path: `${at}.field`, message: `${typeName}.${fieldName} isn't a file or an image (${files.length ? `those: ${files.join(", ")}` : "it has none"})` });
+    } else if (type.mine || field.mine) {
+      errors.push({ path: `${at}.field`, message: `${typeName}.${fieldName} is mine: a pipeline can't write it` });
+    }
   }
 
   /** Resolves a reference path in the scope of a step: {{step.field}}, {{item.field}} or {{cred:name}}. */

@@ -428,8 +428,8 @@ them. <apps> in the user's messages lists the Apps they have; change one by prop
 pipelines that change. An App definition (JSON): { "name", "description"?, "icon"?, "types": { "<Type>": { "key":
 "<field>", "title"?: "<field>", "mine"?: true (the user writes it on its form; pipelines only read it), "stages"?: { "field":
 "status", "initial", "states": [...], "moves": [{ "from": "<state>" | [...], "to": [...], "by"?: ["me", "pipeline"] }] },
-"fields": { "<name>": { "type": text|longtext|number|money|date|datetime|url|email|yesno|enum|list|file|image (uploaded on the form;
-pipelines don't write them), "required"?,
+"fields": { "<name>": { "type": text|longtext|number|money|date|datetime|url|email|yesno|enum|list|file|image (uploaded on the form, or kept by a pipeline's
+file.keep: an email's attachments), "required"?,
 "mine"? (the user's to set, never a pipeline's), "values"? (enum), "currency"? (money: the field with its code), "label"? } } } },
 "pages"?: [{ "list": "<Type>", "menu"?, "columns"?, "filters"?, "sort"?, "group"?: { "by", "period"?, "totals"? },
 "moves"?: true, "add"?: true (the user adds and deletes them by hand too, on a form of the key and the form's fields;

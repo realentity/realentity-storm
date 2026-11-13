@@ -1,0 +1,37 @@
+{
+  "name": "@realentity/storm-files",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The files and images of App entities: checked by content, stored with a thumbnail, made small enough for the LLM to see",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "jest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@realentity/storm-db": "workspace:*",
+    "sharp": "catalog:"
+  },
+  "devDependencies": {
+    "@realentity/storm-config": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "jest": "catalog:",
+    "rimraf": "catalog:",
+    "ts-jest": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

@@ -72,6 +72,30 @@ describe("ClaudeClient", () => {
   });
 
   // M4-T5
+  // M46-T3
+  it("sends images and PDFs before the prompt, each named; refuses another kind of file", async () => {
+    const { client, create } = fakeClient({ stop_reason: "end_turn", answer: { label: "keep", reason: "a receipt" } });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const pdf = Buffer.from("%PDF-1.4");
+    await client.structured({
+      ...request(),
+      files: [
+        { name: "scan.png", mime: "image/png", data: png },
+        { name: 'receipt "1".pdf', mime: "application/pdf", data: pdf },
+      ],
+    });
+    expect((firstCall(create).messages as { content: unknown }[])[0].content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } },
+      { type: "text", text: '<file index="0" name="scan.png"/>' },
+      { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") } },
+      { type: "text", text: '<file index="1" name="receipt 1.pdf"/>' },
+      { type: "text", text: "<item>Senior .NET</item>" },
+    ]);
+    await expect(client.structured({ ...request(), files: [{ name: "a.docx", mime: "application/zip", data: pdf }] })).rejects.toThrow(
+      "a.docx is a application/zip file: the model sees images and PDFs",
+    );
+  });
+
   it("marks the system prompt for caching when asked", async () => {
     const { client, create } = fakeClient({ stop_reason: "end_turn", answer: { label: "keep", reason: "fits the profile" } });
     await client.structured({ ...request(), cacheSystem: true });

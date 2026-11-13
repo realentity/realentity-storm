@@ -229,6 +229,9 @@ export const EmailMessageSchema = z.object({
 });
 export type EmailMessage = z.infer<typeof EmailMessageSchema>;
 
+/** M46: a stored file as an entity holds it (FileRef). */
+const FILE_REF_SCHEMA = z.object({ id: z.string(), name: z.string(), mime: z.string(), size: z.number() });
+
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
 /** A file of a topic's source that changed (M43): git.changes' and drive.changes' output, topic.index's input. */
@@ -747,13 +750,16 @@ export const CORE_STEPS: StepDefinition[] = [
       "Reads named fields out of `content` (an email, a page's text) with the LLM: `fields` maps each name to what it " +
       "is. `values` has each as text (\"\" when the content doesn't say), `missing` the ones it doesn't, `found` is " +
       "true when none is missing. Dates and times come as ISO 8601 with the offset the content implies (else " +
-      "`timeZone`'s), e.g. 2026-11-12T10:00:00+02:00.",
+      "`timeZone`'s), e.g. 2026-11-12T10:00:00+02:00. `files` (M46): an entity's images and PDFs of the pipeline's App " +
+      "({{item.scan}}, {{trigger.item.receipt}}), which the model sees too: a receipt's merchant, a warranty's date; " +
+      "an empty one is skipped.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
     saasSafe: true,
     input: z.object({
-      content: z.unknown(),
+      content: z.unknown().optional(),
+      files: z.array(z.unknown()).max(5).optional().describe("an entity's file or image fields, e.g. [\"{{item.scan}}\"]"),
       fields: z
         .record(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/), z.string().min(1).max(300))
         .refine((fields) => Object.keys(fields).length >= 1 && Object.keys(fields).length <= 20, "1 to 20 fields")
@@ -1472,14 +1478,16 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "file.read",
     description:
-      "Reads the text of one of the user's stored documents (`document`, e.g. cv-main) or of a file browser.download " +
-      "kept (`artifact`): text files as they are, PDFs' text. Its output also binds a document by content for " +
+      "Reads the text of one of the user's stored documents (`document`, e.g. cv-main), of a file browser.download " +
+      "kept (`artifact`), or of an entity's file of the pipeline's App (`file`: {{item.receipt}}, M46): text files as " +
+      "they are, PDFs' text (an image: llm.extract's files). Its output also binds a document by content for " +
       "browser.upload.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
       document: DocumentName.optional(),
       artifact: z.uuid().optional().describe("a download's artifactId"),
+      file: z.unknown().optional().describe("an entity's file field, e.g. {{item.receipt}}"),
       maxChars: z.number().int().min(100).max(100_000).default(20_000),
     }),
     output: z.object({
@@ -1491,6 +1499,31 @@ export const CORE_STEPS: StepDefinition[] = [
       document: z.string().nullable(),
       documentId: z.string().nullable(),
       artifactId: z.string().nullable(),
+    }),
+  },
+  {
+    type: "file.keep",
+    description:
+      "Keeps an email's attachments (`message`, from `mailbox`) or a file browser.download kept (`artifact`) as files " +
+      "of the pipeline's App, for `type`'s file or image `field` (M46): checked by content (an image field takes only " +
+      "images), at most `max`. `files` (and `first`) are their references, to put in that field of data.save's items, " +
+      "which attaches them to the entity; kept files no entity takes go after a day. Nothing leaves Storm. A dry run " +
+      "keeps nothing: `found` says how many it would.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      type: z.string().regex(TYPE_NAME),
+      field: z.string().min(1).max(200),
+      message: EmailMessageSchema.optional(),
+      mailbox: z.string().min(1).max(200).default("INBOX").describe("where the message is"),
+      artifact: z.uuid().optional().describe("a download's artifactId"),
+      max: z.number().int().min(1).max(10).default(5),
+    }),
+    output: z.object({
+      files: z.array(FILE_REF_SCHEMA),
+      first: FILE_REF_SCHEMA.nullable(),
+      found: z.number().int(),
+      skipped: z.array(z.object({ name: z.string(), reason: z.string() })),
     }),
   },
   {

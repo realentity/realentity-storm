@@ -18,6 +18,7 @@
   "dependencies": {
     "@realentity/storm-crypto": "workspace:*",
     "@realentity/storm-db": "workspace:*",
+    "@realentity/storm-files": "workspace:*",
     "@realentity/storm-llm": "workspace:*",
     "@realentity/storm-queue": "workspace:*",
     "@realentity/storm-shared": "workspace:*",
@@ -30,7 +31,6 @@
     "cookie-parser": "catalog:",
     "dotenv": "catalog:",
     "helmet": "catalog:",
-    "sharp": "catalog:",
     "otplib": "catalog:",
     "qrcode": "catalog:",
     "reflect-metadata": "catalog:",
@@ -41,6 +41,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "sharp": "catalog:",
     "@realentity/storm-config": "workspace:*",
     "@realentity/storm-testing": "workspace:*",
     "@eslint/js": "catalog:",

@@ -1,8 +1,10 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { LlmError, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { forVision } from "@realentity/storm-files";
+import { LlmError, type LlmClient, type LlmFile, type ModelRouter } from "@realentity/storm-llm";
 import { z } from "zod";
 import { learningContext, NO_LEARNING, type ExampleText, type StepLearning } from "../learning/learning";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { type AppFileStore } from "./app-file-steps";
 import { jobAppOf, jobItem, type JobApp } from "./job-entities";
 
 export type Item = Record<string, unknown>;
@@ -45,8 +47,9 @@ export abstract class LlmStep implements StepExecutor {
     schema: S,
     cacheSystem = false,
     cachedPrompt?: string,
+    files?: LlmFile[],
   ): Promise<z.infer<S>> {
-    return this.callAs(this.type, context, system, prompt, schema, cacheSystem, cachedPrompt);
+    return this.callAs(this.type, context, system, prompt, schema, cacheSystem, cachedPrompt, files);
   }
 
   /** `call` with the model of another task key: a step's cheap first pass ("topic.extract.screen"). */
@@ -58,13 +61,14 @@ export abstract class LlmStep implements StepExecutor {
     schema: S,
     cacheSystem = false,
     cachedPrompt?: string,
+    files?: LlmFile[],
   ): Promise<z.infer<S>> {
     const [choice, rules] = await Promise.all([
       this.router.choose(context.userId, taskKey),
       this.learning.rules(context.userId, this.type, context.pipelineId),
     ]);
     try {
-      const result = await this.llm.structured({ choice, system: withRules(system, rules), prompt, schema, cacheSystem, cachedPrompt });
+      const result = await this.llm.structured({ choice, system: withRules(system, rules), prompt, schema, cacheSystem, cachedPrompt, ...(files?.length ? { files } : {}) });
       context.recordUsage(result.usage);
       return result.output;
     } catch (error) {
@@ -254,8 +258,24 @@ export class SummarizeStep extends LlmStep {
 export class ExtractStep extends LlmStep {
   readonly type = "llm.extract";
 
+  /** M46: `files`, an entity's images and PDFs, the model sees too. */
+  private appFiles?: { prisma: PrismaClient; store: AppFileStore };
+
+  withFiles(prisma: PrismaClient, store: AppFileStore): this {
+    this.appFiles = { prisma, store };
+    return this;
+  }
+
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { content, fields, instruction, timeZone } = input as { content: unknown; fields: Record<string, string>; instruction?: string; timeZone: string };
+    const { content, fields, instruction, timeZone, files: wanted } = input as {
+      content?: unknown;
+      fields: Record<string, string>;
+      instruction?: string;
+      timeZone: string;
+      files?: unknown[];
+    };
+    const files = await this.filesOf(wanted ?? [], context);
+    if ((content === undefined || content === null || content === "") && files.length === 0) throw new Error("Nothing to read: give content or files");
     const names = Object.keys(fields);
     const system =
       "You read named fields out of content for the user. Answer every field: the value as the content gives it, short, or " +
@@ -265,13 +285,39 @@ export class ExtractStep extends LlmStep {
     const now = new Date().toISOString();
     const prompt =
       `<task>Fields:\n${names.map((name) => `- ${name}: ${fields[name]}`).join("\n")}\nTime zone: ${timeZone}. Now: ${now}.` +
-      `${instruction ? `\n${instruction}` : ""}</task>\n<content>\n${asText(content)}\n</content>`;
-    const answer = await this.call(context, system, prompt, z.object({ values: z.array(z.object({ name: z.string(), value: z.string() })) }));
+      `${instruction ? `\n${instruction}` : ""}</task>\n` +
+      `${files.length ? `The files before this are content too: ${files.map((f, i) => `file ${i} (${f.name})`).join(", ")}.\n` : ""}` +
+      `<content>\n${content === undefined || content === null ? "" : asText(content)}\n</content>`;
+    const answer = await this.call(context, system, prompt, z.object({ values: z.array(z.object({ name: z.string(), value: z.string() })) }), false, undefined, files);
     const values = Object.fromEntries(names.map((name) => [name, answer.values.find((v) => v.name === name)?.value.trim() ?? ""]));
     const missing = names.filter((name) => values[name] === "");
     return { values, missing, found: missing.length === 0 };
   }
+
+  /** The entity files to show the model: images made small enough, PDFs as they are; an empty field is skipped. */
+  private async filesOf(wanted: unknown[], context: StepContext): Promise<LlmFile[]> {
+    const present = wanted.filter((f) => f !== null && f !== undefined && f !== "");
+    if (present.length === 0) return [];
+    if (!this.appFiles) throw new Error("An App's files aren't available here");
+    const files: LlmFile[] = [];
+    for (const value of present) {
+      const { row, content } = await this.appFiles.store.read(this.appFiles.prisma, context, value);
+      if (row.mime === "application/pdf") {
+        if (content.length > MAX_PDF_BYTES) throw new Error(`${row.filename} is larger than ${MAX_PDF_BYTES / 1_048_576} MB: too large to show the model`);
+        files.push({ name: row.filename, mime: row.mime, data: content });
+      } else if (row.mime.startsWith("image/")) {
+        const image = await forVision(content, row.mime);
+        files.push({ name: row.filename, mime: image.mime, data: image.data });
+      } else {
+        throw new Error(`${row.filename} is a ${row.mime} file: the model sees images and PDFs (file.read reads the text of others)`);
+      }
+    }
+    return files;
+  }
 }
+
+/** A PDF the model is shown is at most this large (the API's limit is 32 MB per request). */
+const MAX_PDF_BYTES = 20 * 1_048_576;
 
 /** The user's active rules, after the step's own: they shape style, never the step's safety rules. */
 export function withRules(system: string, rules: string[]): string {
