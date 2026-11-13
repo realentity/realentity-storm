@@ -77,7 +77,8 @@ TZ=Europe/London
 - The rest of `.env.example` can stay as it is: the containers set `API_HOST`, `API_PORT` and the file folders
   themselves, and the models have defaults (changeable in Settings).
 
-**Files.** Run artifacts (screenshots, traces, downloads) and your documents (CVs, letters that forms attach) live in
+**Files.** Run artifacts (screenshots, traces, downloads) and your documents (CVs, letters that forms attach; the files
+and images on your Apps' entities, under `documents/app-files`) live in
 `STORM_DATA_DIR` (empty: the repository's `data/`). Both folders must exist and belong to uid 1000; the containers
 refuse to start without them, so nothing lands elsewhere if a disk isn't mounted:
 
@@ -203,7 +204,7 @@ git pull --ff-only && ./docker/storm up && ./docker/storm check
 
 - **Database:** a nightly `pg_dump -Fc` of the database, named `<database>-YYYY-MM-DD.dump`, in a folder you also copy
   off the machine.
-- **Files:** `.env`, and `STORM_DATA_DIR/documents`. The artifacts are working files (deleted after
+- **Files:** `.env`, and `STORM_DATA_DIR/documents` (with your Apps' files and images). The artifacts are working files (deleted after
   `ARTIFACTS_RETENTION_DAYS`); the runs themselves are in the database.
 - **`ENCRYPTION_KEY`:** a backup with `.env` holds the key next to the data; treat it as sensitive. Keep the key's own
   copy elsewhere: it is what restores the credentials on a new machine.

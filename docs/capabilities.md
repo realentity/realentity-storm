@@ -156,8 +156,13 @@ types:
 ```
 
 - **Kinds:** `text`, `longtext`, `number`, `money` (with `currency`: the field holding its code), `date`,
-  `datetime`, `url` (http(s) only), `email`, `yesno`, `enum` (with `values`), `list`. A field may be nested by a
-  dotted name (`company.name`).
+  `datetime`, `url` (http(s) only), `email`, `yesno`, `enum` (with `values`), `list`, `file`, `image`. A field may
+  be nested by a dotted name (`company.name`).
+- **Files and images (M46):** uploaded on the entity's form (up to `DOWNLOAD_MAX_MB`), checked by their content: an
+  `image` is a PNG, JPEG, WebP or GIF (never SVG) and gets a thumbnail, shown in lists and on its page; a `file` is
+  also a PDF, an office document (DOCX, XLSX, ODT, ODS) or text (TXT, MD, CSV), a download. The entity holds
+  `{ id, name, mime, size }`, never the bytes; a file replaced or cleared on the form, or whose entity or App is
+  deleted, goes with it. Pipelines read the reference; they don't save files yet.
 - **Writing:** each field is read as its kind (`"4 500"` → 4500, an ISO date and time → its date); a wrong one is
   left out and said in `invalid`; an item without a required field, or without its key, isn't saved. What the type
   doesn't name is kept with the entity as it came.

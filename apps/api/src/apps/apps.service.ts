@@ -32,6 +32,7 @@ import { diffApps, draftField, draftType, leafValues, PipelineCompiler, StepCata
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";
+import { AppFilesService } from "./app-files.service";
 import { AppImportsService } from "./app-imports.service";
 
 type Item = Record<string, unknown>;
@@ -48,6 +49,7 @@ export class AppsService {
     private readonly compiler: PipelineCompiler,
     private readonly imports: AppImportsService,
     private readonly catalog: StepCatalog,
+    private readonly files: AppFilesService,
   ) {}
 
   /** The App a pipeline names (`app:`), for the compiler; nothing for a pipeline outside any App. */
@@ -149,6 +151,7 @@ export class AppsService {
       const names = pipelines.map((p) => `"${p.name}"`).join(", ");
       throw new ConflictException(`${names} ${pipelines.length === 1 ? "belongs" : "belong"} to "${app.name}": delete or move ${pipelines.length === 1 ? "it" : "them"} first`);
     }
+    await this.files.removeApp(appId);
     await this.prisma.client.app.delete({ where: { appId } });
   }
 

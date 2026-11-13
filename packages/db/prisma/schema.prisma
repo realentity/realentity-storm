@@ -884,9 +884,33 @@ model App {
   versions     AppVersion[]
   entities     DataEntity[]
   builderChats BuilderChat[]
+  files        AppFile[]
 
   @@unique([userId, name])
   @@map("Apps")
+}
+
+/// M46: a file or image of an entity's field, uploaded on its form; the entity holds { id, name, mime, size }.
+model AppFile {
+  appFileId   String   @id @default(uuid()) @db.Uuid
+  appId       String   @db.Uuid
+  app         App      @relation(fields: [appId], references: [appId], onDelete: Cascade)
+  type        String
+  field       String
+  /// The entity it belongs to; null between the upload and the form's save (swept after a day).
+  key         String?
+  filename    String
+  mime        String
+  size        Int
+  sha256      String   @db.VarChar(64)
+  /// Relative to DOCUMENTS_DIR.
+  path        String
+  /// An image's thumbnail (WebP), relative to DOCUMENTS_DIR.
+  thumbPath   String?
+  dateCreated DateTime @default(now())
+
+  @@index([appId, type, key])
+  @@map("AppFiles")
 }
 
 /// A saved version of an App's definition; immutable, a change is a new one.

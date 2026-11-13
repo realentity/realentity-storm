@@ -19,6 +19,8 @@ const FORMAT: Record<FieldKind, ViewFormat> = {
   yesno: "yesno",
   enum: "badge",
   list: "text",
+  file: "file",
+  image: "image",
 };
 
 export interface PageColumn {
