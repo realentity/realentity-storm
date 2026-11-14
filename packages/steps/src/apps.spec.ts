@@ -416,5 +416,10 @@ describe("Apps (M30)", () => {
       "Job.rating added (number mine)",
       "type Company added (1 fields)",
     ]);
+    // M50: its slots.
+    const withSlot = { ...jobSearch, needs: { github: { kind: "credential" as const } } };
+    expect(diffApps(jobSearch, withSlot)).toEqual(["slot github added (credential)"]);
+    expect(diffApps(withSlot, { ...withSlot, needs: { github: { kind: "credential" as const, label: "GitHub" } } })).toEqual(["slot github changed"]);
+    expect(diffApps(withSlot, jobSearch)).toEqual(["slot github removed"]);
   });
 });

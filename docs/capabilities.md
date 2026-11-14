@@ -309,6 +309,9 @@ steps:
   App is saved, a slot exactly one of your credentials fits is filled with it; one that two fit waits for you. The api:
   `GET` and `PUT /api/pipelines/:id/bindings`, `/api/apps/:id/bindings` (`{ slot: { credentialId } }`, `{ slot: { text } }`,
   null clears one).
+- **To the App:** on a pipeline in an App, **To <App>** next to one of its own slots makes it the App's: the App gets
+  the slot, the pipeline a version without it, and what filled it goes along (unless the App's is filled already),
+  so the App's other pipelines can use it too.
 - **On the step cards** you pick one of your credentials that fits the step (a database for `db.query`, one allowed on
   the address's host for an API): the step gets a slot named for what it is for (`database`, `github`), filled with
   your choice when you save. You never type `{{cred:…}}`, and the builder never names a credential: it writes slots,

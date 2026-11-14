@@ -3,7 +3,9 @@ import { createPipeline, unique } from "./support";
 
 // M50-E1: a pipeline's needs filled on its page (a credential that fits, one added in place, a setting); switched on
 // only then; the Credentials page says where each is used, and asks before deleting one in use.
-test("a pipeline's needs: chosen on its page, one credential added in place, switched on only then; where each is used", async ({ page }) => {
+test("a pipeline's needs: chosen on its page, one credential added in place, switched on only then; where each is used", async ({
+  page,
+}) => {
   const id = Date.now().toString(36);
   const host = `api.e2e-${id}.example`;
   const credential = async (name: string, kind: string, allowedHosts: string[], secret = `made-up-${id}`) => {
@@ -65,6 +67,42 @@ steps:
   await page.goto("/credentials");
   await expect(page.getByTestId(`used-by-token-b-${id}`)).toContainText(name);
   await expect(page.getByTestId(`used-by-token-a-${id}`)).toHaveText("—");
-  await page.getByTestId("credentials").locator("tr", { hasText: `token-b-${id}` }).getByTitle("Delete").click();
+  await page
+    .getByTestId("credentials")
+    .locator("tr", { hasText: `token-b-${id}` })
+    .getByTitle("Delete")
+    .click();
   await expect(page.getByTestId("delete-used-by")).toContainText(`${name} (api)`);
+});
+
+// M50-T12: a pipeline's own slot moved up to its App, filled once there for all its pipelines
+test("a pipeline's own slot moved to its App: shown as the App's, set on the App's page", async ({ page }) => {
+  const id = Date.now().toString(36);
+  const app = unique("Status board");
+  const created = await page.request.post("/api/apps", {
+    data: { source: `name: ${app}\ntypes:\n  Check:\n    key: id\n    fields: { id: { type: text } }\n` },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const pipeline = await createPipeline(
+    page,
+    `name: ${unique("Status feed")}
+app: ${app}
+steps:
+  - id: feed
+    type: http.fetch
+    with: { url: "https://status-${id}.example.org/feed", headers: { X-Key: "{{cred:status}}" } }
+policy: { allowedDomains: [status-${id}.example.org] }
+`,
+  );
+  await page.goto(`/pipelines/${pipeline.pipelineId}`);
+  const needs = page.getByTestId("needs-card");
+  await needs.getByTestId("need-to-app-status").click();
+  await expect(page.getByText(`"status" is ${app}'s now`)).toBeVisible();
+  await expect(needs.getByTestId("need-status")).toContainText("the App's");
+  await expect(needs.getByTestId("need-to-app-status")).toHaveCount(0);
+  await needs
+    .getByTestId("need-status")
+    .getByRole("link", { name: `set on ${app}` })
+    .click();
+  await expect(page.getByTestId("needs-card").getByTestId("need-credential-status")).toBeVisible();
 });

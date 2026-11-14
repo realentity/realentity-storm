@@ -22,6 +22,14 @@ describe("diffDefinitions", () => {
     expect(diffDefinitions(base, reordered)).toEqual({ changes: [], summary: "" });
   });
 
+  // M50: a version that only changes its slots is a change
+  it("sees a slot added, changed or moved away", () => {
+    const github = { kind: "credential" as const, for: "api.github.com" };
+    const before: CompiledDefinition = { ...base, needs: { github } };
+    expect(diffDefinitions(before, { ...base, needs: { github: { ...github, label: "GitHub" } } }).changes).toHaveLength(1);
+    expect(diffDefinitions(before, base).changes).toEqual([{ kind: "pipeline", field: "needs", before: { github }, after: undefined }]);
+  });
+
   it('describes "Also include Plovdiv" as a parameter change of the search step', () => {
     const next: CompiledDefinition = {
       ...base,
