@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { IconKey, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
-import { AddCredential, ConnectionHint, credentialLabel, isGitHubToken, TokenHint } from "../components/AddCredential";
+import { AccountsNote, AddCredential, ConnectionHint, credentialLabel, isGitHubToken, TokenHint } from "../components/AddCredential";
 import { Empty, ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
@@ -45,9 +45,11 @@ export function CredentialsPage() {
         }
       />
       <p className="text-secondary">
-        Stored encrypted. Pipelines refer to them as <code>{"{{cred:name}}"}</code>: a browser sign-in, or an API key in{" "}
-        <code>http.fetch</code>'s headers or query. Only the allowed hosts receive them, and no value is ever shown here or sent to the LLM.
+        Stored encrypted: a site's password, an API key, a database's connection, a GitHub token. A pipeline or an App says what it needs,
+        and you choose which of these fills it on its page, so a name here is only for you. Only the allowed hosts receive them, and no
+        value is ever shown here or sent to the LLM.
       </p>
+      <AccountsNote />
       <ErrorAlert error={credentials.error} />
       {!credentials.data && credentials.loading && <Loading />}
       {credentials.data?.length === 0 && <Empty>No credentials stored.</Empty>}

@@ -1,5 +1,6 @@
 import { CredentialKind, databaseConnection, type CredentialView } from "@realentity/storm-shared";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { api } from "../lib/endpoints";
 import { useAction } from "../lib/use-load";
@@ -39,6 +40,27 @@ const LABELS: Record<Choice, string> = {
 const GITHUB_TOKEN = /^(github_pat_|gh[pousr]_)\w+$/;
 
 /** A stored credential as the list shows it: an API key for api.github.com alone is a GitHub token. */
+/**
+ * M50-T7, T8: a mailbox and a Google account aren't credentials: they are accounts in Settings, which email and
+ * calendar steps and Drive folders choose. Said where someone looks for them first.
+ */
+export function AccountsNote({ onLeave }: Readonly<{ onLeave?: () => void }>) {
+  return (
+    <div className="alert alert-info py-2 small" data-testid="accounts-note">
+      <strong>Gmail or another mailbox</strong>, <strong>Google Calendar</strong> or <strong>Google Drive</strong>? They aren&apos;t
+      credentials: add them in Settings,{" "}
+      <Link to="/settings#email" onClick={onLeave}>
+        Email accounts
+      </Link>{" "}
+      and{" "}
+      <Link to="/settings#google" onClick={onLeave}>
+        Google accounts
+      </Link>
+      .
+    </div>
+  );
+}
+
 export function credentialLabel(credential: Pick<CredentialView, "kind" | "allowedHosts">): string {
   return isGitHubToken(credential) ? LABELS.GITHUB : LABELS[credential.kind];
 }
@@ -106,6 +128,7 @@ export function AddCredential({
     <Modal title={github ? "Add a GitHub token" : "Add a credential"} onClose={onClose}>
       <form onSubmit={(e) => void submit(e)} autoComplete="off" data-testid="credential-form">
         <ErrorAlert error={action.error} title="Not stored" />
+        {!github && <AccountsNote onLeave={onClose} />}
         <div className="mb-3">
           <label className="form-label" htmlFor="cred-name">
             Name
