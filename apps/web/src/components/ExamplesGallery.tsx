@@ -1,5 +1,5 @@
 import { appMap, freeNames, joinBundle, needMet, splitBundle, type AppSummaryView, type SetupView } from "@realentity/storm-shared";
-import { IconCheck, IconDownload, IconMap, IconSparkles, IconX } from "@tabler/icons-react";
+import { IconCheck, IconDownload, IconKey, IconMap, IconSparkles, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -89,7 +89,7 @@ function ExampleCard({
           </div>
           <div className="text-secondary mb-2">{example.description}</div>
           <div className="small mb-1 fw-bold">What it needs</div>
-          {example.needs.length === 0 ? (
+          {example.needs.length === 0 && example.slots.length === 0 ? (
             <div className="small text-success mb-2" data-testid="example-needs">
               <IconCheck size={14} className="me-1" />
               Nothing: it works as it is.
@@ -118,6 +118,13 @@ function ExampleCard({
                   </li>
                 );
               })}
+              {/* M50: chosen when it is installed: which of your credentials, and what you type. */}
+              {example.slots.map((slot) => (
+                <li key={`slot:${slot}`} className="d-flex align-items-center gap-1" data-testid="example-slot">
+                  <IconKey size={14} className="text-secondary" />
+                  You choose: {slot}
+                </li>
+              ))}
             </ul>
           )}
           <div className="small text-secondary">

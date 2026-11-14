@@ -4,6 +4,9 @@
 name: Tables
 description: A database's tables and how they grow
 icon: chart
+# M50: chosen when you install it.
+needs:
+  database: { kind: credential, type: database, label: "The database whose tables it counts (a user that may only read)" }
 types:
   Table:
     key: name

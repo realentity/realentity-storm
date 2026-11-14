@@ -1,4 +1,5 @@
 import { type BuilderChatView, type BuilderMessageView, type PipelineSuggestionView } from "@realentity/storm-shared";
+import { NeedsCard } from "./NeedsCard";
 import { IconBulb, IconDeviceFloppy, IconEye, IconPencil, IconSend } from "@tabler/icons-react";
 import { useState, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -266,7 +267,9 @@ function Proposal({
         </div>
       )}
       {proposal.status === "saved" && chat.pipelineId && (
-        <div className="card-footer">
+        <div className="card-footer d-flex flex-column gap-2">
+          {/* M50-T5: what it needs, chosen here; the builder never names a credential. */}
+          <NeedsCard load={() => api.pipelines.bindings(chat.pipelineId!)} save={(body) => api.pipelines.setBindings(chat.pipelineId!, body)} />
           <Link to={`/pipelines/${chat.pipelineId}`}>Open the pipeline</Link>
         </div>
       )}

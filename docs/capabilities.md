@@ -301,9 +301,21 @@ steps:
   (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for) or
   `kind: text` (`example`). A slot a step uses without one is added from where it is used: a database for `db.query`'s
   connection, the host of an address written in the step.
-- **Filling them:** `GET` and `PUT /api/pipelines/:id/bindings`, `/api/apps/:id/bindings` (`{ slot: { credentialId } }`,
-  `{ slot: { text } }`, null clears one). A credential must fit: its type, and the host the slot is for. When a pipeline
-  or an App is saved, a slot exactly one of your credentials fits is filled with it; one two fit waits for you.
+- **Filling them:** the **What it needs** card on the pipeline's page (its own slots; its App's are shown and filled on
+  the App's page, once for all its pipelines), on the App's page, and in the builder's chat once a proposal is saved.
+  Each credential slot offers only your credentials that fit (its type, the host it is for), or **Add a new one**,
+  which opens the credential form with that kind and host filled in and chooses it once stored. When a pipeline or an
+  App is saved, a slot exactly one of your credentials fits is filled with it; one that two fit waits for you. The api:
+  `GET` and `PUT /api/pipelines/:id/bindings`, `/api/apps/:id/bindings` (`{ slot: { credentialId } }`, `{ slot: { text } }`,
+  null clears one).
+- **On the step cards** you pick one of your credentials that fits the step (a database for `db.query`, one allowed on
+  the address's host for an API): the step gets a slot named for what it is for (`database`, `github`), filled with
+  your choice when you save. You never type `{{cred:…}}`, and the builder never names a credential: it writes slots,
+  and puts one several of an App's pipelines use on the App.
+- **Kept filled:** a pipeline with a slot empty can't be switched on (it says which); an installed example's checklist
+  lists them. A slot renamed in a new version keeps its credential when it asks for the same. The Credentials page
+  shows where each credential is used, and deleting one in use names what loses it. A copy or an export carries the
+  slots, never what fills them.
 - **At run time** a slot without a credential, or a setting not set, fails the step saying which and where to set it. A
   credential still goes only to its allowed hosts, whatever slot it fills.
 

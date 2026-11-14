@@ -1,4 +1,5 @@
 import { entityValueAt, type DataType, type EntityView } from "@realentity/storm-shared";
+import { NeedsCard } from "../components/NeedsCard";
 import { IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -83,6 +84,13 @@ export function AppPage() {
       />
       {data.definition.description && <p className="text-secondary">{data.definition.description}</p>}
       <ExampleChecklist appId={appId} />
+      <div className="mb-3">
+        <NeedsCard
+          title="What it needs (shared by its pipelines)"
+          load={() => api.apps.bindings(appId)}
+          save={(body) => api.apps.setBindings(appId, body)}
+        />
+      </div>
       {data.imports.map((i) => (
         <div key={i.collection ?? i.from} className="alert alert-info d-flex align-items-center gap-3" data-testid="app-import">
           <div>

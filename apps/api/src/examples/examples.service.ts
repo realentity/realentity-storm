@@ -1,5 +1,7 @@
 import {
+  emptySlots,
   isEventTrigger,
+  type BindingView,
   needMet,
   type ChecklistView,
   type CompiledDefinition,
@@ -9,6 +11,7 @@ import {
 } from "@realentity/storm-shared";
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { AppsService } from "../apps/apps.service";
+import { BindingsService } from "../bindings/bindings.service";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 
@@ -24,6 +27,7 @@ export class ExamplesService {
     private readonly prisma: PrismaService,
     private readonly apps: AppsService,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly bindings: BindingsService,
   ) {}
 
   async setup(userId: string): Promise<SetupView> {
@@ -66,7 +70,13 @@ export class ExamplesService {
       const problem = need.kind === "email" && setup.emailProblem ? { note: `The last mail read failed: ${setup.emailProblem}` } : {};
       items.push({ label: need.label, done: needMet(need, setup, entities), ...where(need, appId), ...problem });
     }
+    // M50-T6: each slot not filled yet, the App's (on its page) and its pipelines' (on theirs).
+    for (const slot of emptySlots(await this.bindings.ofApp(userId, appId))) items.push({ label: slotLabel(slot), done: false, link: `/apps/${appId}#needs` });
     const detail = await this.apps.get(userId, appId);
+    for (const { pipelineId } of detail.pipelines) {
+      const own = (await this.bindings.ofPipeline(userId, pipelineId)).filter((v) => v.owner === "pipeline");
+      for (const slot of emptySlots(own)) items.push({ label: slotLabel(slot), done: false, link: `/pipelines/${pipelineId}#needs` });
+    }
     for (const { pipelineId, name, enabled } of detail.pipelines) {
       const tried = (await this.prisma.client.run.count({ where: { pipelineVersion: { pipelineId } } })) > 0;
       items.push({ label: `Try "${name}": a dry run, which sends and saves nothing`, done: tried, link: `/pipelines/${pipelineId}` });
@@ -83,10 +93,15 @@ export class ExamplesService {
   }
 }
 
+/** What a slot asks for, as a checklist says it. */
+function slotLabel(slot: BindingView): string {
+  const what = slot.need.label ?? slot.slot;
+  return slot.need.kind === "credential" ? `Choose the credential for "${what}"` : `Set "${what}"`;
+}
+
 function where(need: ExampleNeed, appId: string): { link: string | null; note?: string } {
   switch (need.kind) {
     case "email":
-    case "credential":
       return { link: "/credentials" };
     case "google-calendar":
       return { link: "/settings" };

@@ -13,12 +13,18 @@ export interface ExampleEntry extends Example {
   bundle: string;
   app: ReturnType<typeof checkAppSource>["definition"];
   pipelines: AppMapPipeline[];
+  /** M50: what you choose when you install it (its App's and pipelines' slots), by what each is for. */
+  slots: string[];
 }
 
 export const EXAMPLES: ExampleEntry[] = readExamples(file("examples.yaml")).map((example) => {
   const [appSource, ...pipelineSources] = example.files.map(file);
+  const declared = [appSource, ...pipelineSources].flatMap((source) =>
+    Object.entries(((parse(source) ?? {}) as { needs?: Record<string, { label?: string }> }).needs ?? {}).map(([slot, need]) => need.label ?? slot),
+  );
   return {
     ...example,
+    slots: [...new Set(declared)],
     bundle: joinBundle([appSource, ...pipelineSources]),
     app: checkAppSource(appSource).definition,
     pipelines: pipelineSources.map((source) => {

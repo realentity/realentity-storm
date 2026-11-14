@@ -63,6 +63,13 @@ export interface BindingView {
   credential: { credentialId: string; name: string } | null;
   /** A text setting's value; null: not set. */
   text: string | null;
+  /** M50-T4: a credential slot's candidates: the user's credentials that fit it (its type, its host). */
+  fits: { credentialId: string; name: string }[];
+}
+
+/** M50-T13: the slots not filled: a setting with no text, a credential slot with none. */
+export function emptySlots(views: readonly BindingView[]): BindingView[] {
+  return views.filter((v) => (v.need.kind === "credential" ? v.credential === null : v.text === null || v.text === ""));
 }
 
 /** M50: setting one slot: a credential by id, or a text (null clears it). */

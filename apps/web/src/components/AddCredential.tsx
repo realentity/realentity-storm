@@ -19,8 +19,8 @@ const HINTS: Record<Choice, string> = {
   GITHUB: "A fine-grained personal access token, read-only: for a topic's GitHub source, or http.fetch to api.github.com.",
   PASSWORD: "A sign-in: browser.open's login types it into the site's form. Put the account's user name under Username.",
   TOTP_SEED: "The secret behind a site's one-time codes (base32). Kept for a sign-in's second step; no step reads one yet.",
-  API_KEY: "Sent as {{cred:name}} in http.fetch's or http.request's headers or query, to the allowed hosts only.",
-  OAUTH_TOKEN: "An access token for an API: sent like an API key, in a header such as Authorization: Bearer {{cred:name}}.",
+  API_KEY: "Sent in http.fetch's or http.request's headers or query, by the pipelines you choose it for, to the allowed hosts only.",
+  OAUTH_TOKEN: "An access token for an API: sent like an API key, in a header such as Authorization: Bearer.",
   STORAGE_STATE: "A browser's saved sign-in (Playwright storage state, JSON). Storm keeps these itself after a browser sign-in.",
   DATABASE: "A PostgreSQL connection string for db.query, which only reads.",
 };
@@ -53,16 +53,22 @@ export function isGitHubToken(credential: Pick<CredentialView, "kind" | "allowed
  */
 export function AddCredential({
   preset,
+  hosts: presetHosts,
+  name: presetName,
   onClose,
   onSaved,
 }: {
   preset?: Choice;
+  /** M50: filled from the slot it is added for: the host it is for. */
+  hosts?: string[];
+  /** A name to start from (any name: pipelines never use it). */
+  name?: string;
   onClose: () => void;
   onSaved: (saved: CredentialView) => void;
 }) {
-  const [name, setName] = useState(preset === "GITHUB" ? "github" : "");
+  const [name, setName] = useState(presetName ?? (preset === "GITHUB" ? "github" : ""));
   const [choice, setChoice] = useState<Choice>(preset ?? CredentialKind.PASSWORD);
-  const [hosts, setHosts] = useState("");
+  const [hosts, setHosts] = useState((presetHosts ?? []).join(", "));
   const [username, setUsername] = useState("");
   const [secret, setSecret] = useState("");
   const action = useAction();
@@ -113,7 +119,7 @@ export function AddCredential({
             required
           />
           <div className="form-hint">
-            Referred to as <code>{`{{cred:${name.trim() || "name"}}}`}</code>.
+            Only a name for you: a pipeline uses it because you chose it for one of its needs, never by this name.
           </div>
         </div>
         <div className="mb-3">

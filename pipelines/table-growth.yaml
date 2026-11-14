@@ -1,8 +1,8 @@
 # M29: every hour, the row count of the tables named in `sql`; a message once when one grows more than 3 times faster
 # than usual (the median of its hourly growth over the last week), and once when it is back under 1.5 times. M33: the
 # Tables App (pipelines/apps/tables.yaml: save it first) lists the latest counts with a chart of the week.
-# Needs a credential named app-db, kind database: postgresql://reader:…@host:5432/app (a user that may only read),
-# with the database's host as its allowed host. For big tables, pg_stat_user_tables is a free estimate instead of
+# Its database is the App's: you choose the credential when you install it (kind database:
+# postgresql://reader:…@host:5432/app, a user that may only read). For big tables, pg_stat_user_tables is a free estimate instead of
 # count(*): SELECT relname AS name, n_live_tup AS rows FROM pg_stat_user_tables.
 name: Table growth
 app: Tables
@@ -12,7 +12,7 @@ steps:
   - id: counts
     type: db.query
     with:
-      connection: "{{cred:app-db}}"
+      connection: "{{cred:database}}"
       sql: |-
         SELECT 'orders' AS name, count(*) AS rows FROM orders
         UNION ALL SELECT 'users', count(*) FROM users

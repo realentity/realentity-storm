@@ -9,12 +9,13 @@ import { ProposalsModule } from "../proposals/proposals.module";
 import { RunsModule } from "../runs/runs.module";
 import { TelegramBot } from "../telegram/telegram-bot";
 import { TelegramBuilder } from "../telegram/telegram-builder";
+import { BindingsModule } from "../bindings/bindings.module";
 import { TelegramModule } from "../telegram/telegram.module";
 import { HooksController, WebhooksController } from "./hooks.controller";
 import { WebhooksService } from "./webhooks.service";
 
 @Module({
-  imports: [BuilderModule, ControlsModule, FactsModule, HealthModule, PipelinesModule, ProposalsModule, RunsModule, TelegramModule],
+  imports: [BindingsModule, BuilderModule, ControlsModule, FactsModule, HealthModule, PipelinesModule, ProposalsModule, RunsModule, TelegramModule],
   controllers: [HooksController, WebhooksController],
   providers: [TelegramBot, TelegramBuilder, WebhooksService, keyRingProvider],
 })

@@ -5,7 +5,6 @@
 #   google-calendar  Google Calendar connected (Settings)
 #   telegram         the Telegram bot (TELEGRAM_BOT_TOKEN on the server)
 #   llm              the LLM (ANTHROPIC_API_KEY on the server)
-#   credential       a credential of that `name` (Credentials)
 #   recipe           a site recipe of that `name` (Recipes, Teach)
 #   entities         entities of that `type` you add on the App's page
 # `files` are relative to pipelines/: the App first, then its pipelines.
@@ -160,7 +159,6 @@ examples:
     name: Tables
     description: Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.
     needs:
-      - { kind: credential, name: app-db, label: "A database credential named app-db (read-only)" }
       - { kind: telegram, label: "Telegram, for the alerts" }
     files: [apps/tables.yaml, table-growth.yaml]
 
@@ -171,9 +169,7 @@ examples:
       run (a monitor down, a database check above 0, the database out of reach), each resolved when the cause is gone;
       a GitHub issue after you approve it; the week in numbers. No LLM.
     needs:
-      - { kind: credential, name: app-db, label: "A database credential named app-db (read-only), and your checks in Database check" }
       - { kind: telegram, label: "Telegram, for the incidents" }
-      - { kind: credential, name: github, label: "A GitHub credential named github, for Open issue (and your repository in Incident issue)" }
     files:
       - apps/server-ops.yaml
       - check-monitors.yaml

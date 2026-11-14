@@ -1,5 +1,8 @@
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { type AppDetailView, type BindingView, type CredentialView, type PipelineDetailView } from "@realentity/storm-shared";
+import { joinBundle, readExamples, type ChecklistView } from "@realentity/storm-shared";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
@@ -107,5 +110,61 @@ describe("bindings", () => {
   it("never fills a slot with another user's credential, and shows no binding the user can't see", async () => {
     const app = (await agent.post("/api/apps").send({ source: OPS("Ops three") }).expect(201)).body as AppDetailView;
     await agent.put(`/api/apps/${app.appId}/bindings`).send({ github: { credentialId: "1b671a64-40d5-491e-99b0-da01e8a64ba1" } }).expect(400);
+  });
+
+  // M50-T6, T13, T14, T15
+  describe("what keeps slots filled", () => {
+    const PIPELINES = join(__dirname, "../../../pipelines");
+    const serverOps = readExamples(readFileSync(join(PIPELINES, "examples.yaml"), "utf8")).find((e) => e.id === "server-ops")!;
+
+    it("Server ops from the gallery: its slots on the checklist, a pipeline switched on only once they are filled, each credential's uses", async () => {
+      await agent
+        .post("/api/bundles")
+        .send({ text: joinBundle(serverOps.files.map((f) => readFileSync(join(PIPELINES, f), "utf8"))), example: { id: serverOps.id, needs: serverOps.needs } })
+        .expect(201);
+      const app = await db.client.app.findFirstOrThrow({ where: { name: "Server ops" } });
+      const checklist = async () => (await agent.get(`/api/examples/apps/${app.appId}/checklist`).expect(200)).body as ChecklistView;
+      expect((await checklist()).items.filter((i) => i.link === `/apps/${app.appId}#needs`).map((i) => i.label)).toEqual([
+        'Choose the credential for "The database to check (a user that may only read)"',
+        'Choose the credential for "GitHub, to open issues"',
+        'Set "Repository for its issues (owner/name)"',
+      ]);
+
+      const check = await db.client.pipeline.findFirstOrThrow({ where: { name: "Database check" } });
+      const refused = await agent.patch(`/api/pipelines/${check.pipelineId}`).send({ enabled: true }).expect(409);
+      expect((refused.body as { message: string }).message).toBe(
+        `Fill in "The database to check (a user that may only read)", "GitHub, to open issues", "Repository for its issues (owner/name)" first (its Needs, on its page or its App's)`,
+      );
+
+      const db1 = await credential("orders-db", "DATABASE", ["db.example.com"], "postgresql://reader:pw@db.example.com:5432/app");
+      const token = await credential("gh", "API_KEY", ["api.github.com"]);
+      await agent
+        .put(`/api/apps/${app.appId}/bindings`)
+        .send({ database: { credentialId: db1.credentialId }, github: { credentialId: token.credentialId }, repository: { text: "me/infra" } })
+        .expect(200);
+      expect((await checklist()).items.some((i) => i.link === `/apps/${app.appId}#needs`)).toBe(false);
+      await agent.patch(`/api/pipelines/${check.pipelineId}`).send({ enabled: true }).expect(200);
+
+      const credentials = (await agent.get("/api/credentials").expect(200)).body as CredentialView[];
+      expect(credentials.find((c) => c.name === "orders-db")!.usedBy).toEqual([{ owner: "app", id: app.appId, name: "Server ops", slot: "database" }]);
+    });
+
+    it("a slot renamed in a new version keeps its binding when it asks for the same", async () => {
+      const token = await credential("gh", "API_KEY", ["api.github.com"]);
+      const source = (slot: string) => `
+name: Renamed
+needs:
+  ${slot}: { kind: credential, type: api_key, for: api.github.com }
+steps:
+  - id: me
+    type: http.request
+    with: { method: POST, url: "https://api.github.com/user/repos", headers: { Authorization: "Bearer {{cred:${slot}}}" }, body: {} }
+`;
+      const created = (await agent.post("/api/pipelines").send({ source: source("token") }).expect(201)).body as PipelineDetailView;
+      expect(slots((await agent.get(`/api/pipelines/${created.pipelineId}/bindings`).expect(200)).body as BindingView[])).toEqual({ token: "gh" });
+      await agent.post(`/api/pipelines/${created.pipelineId}/versions`).send({ source: source("github") }).expect(201);
+      expect(slots((await agent.get(`/api/pipelines/${created.pipelineId}/bindings`).expect(200)).body as BindingView[])).toEqual({ github: "gh" });
+      expect(token.usedBy).toEqual([]);
+    });
   });
 });

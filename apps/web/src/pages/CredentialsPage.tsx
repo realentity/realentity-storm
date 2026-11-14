@@ -1,4 +1,5 @@
 import { CredentialKind, type CredentialView } from "@realentity/storm-shared";
+import { Link } from "react-router-dom";
 import { IconKey, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "react-toastify";
@@ -60,6 +61,7 @@ export function CredentialsPage() {
                   <th>Kind</th>
                   <th>Allowed hosts</th>
                   <th>Username</th>
+                  <th>Used by</th>
                   <th>Last used</th>
                   <th />
                 </tr>
@@ -76,6 +78,17 @@ export function CredentialsPage() {
                     <td>{credentialLabel(c)}</td>
                     <td>{c.allowedHosts.join(", ")}</td>
                     <td>{c.username ?? <span className="text-secondary">—</span>}</td>
+                    <td data-testid={`used-by-${c.name}`}>
+                      {c.usedBy.length === 0 ? (
+                        <span className="text-secondary">—</span>
+                      ) : (
+                        c.usedBy.map((u) => (
+                          <div key={`${u.owner}:${u.id}:${u.slot}`} className="small">
+                            <Link to={u.owner === "pipeline" ? `/pipelines/${u.id}` : `/apps/${u.id}`}>{u.name}</Link>
+                          </div>
+                        ))
+                      )}
+                    </td>
                     <td className="text-secondary">{formatDateTime(c.lastUsedAt)}</td>
                     <td className="text-end text-nowrap">
                       <button type="button" className="btn btn-sm" onClick={() => setReplacing(c)}>
@@ -130,7 +143,21 @@ export function CredentialsPage() {
           }
         >
           <ErrorAlert error={remove.error} />
-          Pipelines that use <code>{`{{cred:${removing.name}}}`}</code> will fail at that step until it is added again.
+          {removing.usedBy.length === 0 ? (
+            "Nothing uses it."
+          ) : (
+            <div data-testid="delete-used-by">
+              These lose it, and fail at that step until you choose another for them:
+              <ul className="mb-0 mt-1">
+                {removing.usedBy.map((u) => (
+                  <li key={`${u.owner}:${u.id}:${u.slot}`}>
+                    {u.name} ({u.owner === "app" ? "App, " : ""}
+                    {u.slot})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Modal>
       )}
     </>

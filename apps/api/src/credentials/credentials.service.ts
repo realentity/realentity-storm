@@ -33,7 +33,24 @@ export class CredentialsService {
 
   async list(userId: string): Promise<CredentialView[]> {
     const rows = await this.prisma.client.credential.findMany({ where: { userId }, select: viewSelect, orderBy: { name: "asc" } });
-    return rows.map((row) => CredentialsService.toView(row));
+    // M50-T14: where each is used, so a delete can say what loses it.
+    const bindings = await this.prisma.client.binding.findMany({
+      where: { credentialId: { in: rows.map((r) => r.credentialId) } },
+      include: { pipeline: { select: { name: true } }, app: { select: { name: true } } },
+      orderBy: { slot: "asc" },
+    });
+    return rows.map((row) =>
+      CredentialsService.toView(
+        row,
+        bindings
+          .filter((b) => b.credentialId === row.credentialId)
+          .map((b) =>
+            b.pipelineId
+              ? { owner: "pipeline" as const, id: b.pipelineId, name: b.pipeline?.name ?? "", slot: b.slot }
+              : { owner: "app" as const, id: b.appId!, name: b.app?.name ?? "", slot: b.slot },
+          ),
+      ),
+    );
   }
 
   async create(userId: string, request: CreateCredentialRequest): Promise<CredentialView> {
@@ -87,7 +104,7 @@ export class CredentialsService {
     if (found === 0) throw new NotFoundException();
   }
 
-  private static toView(row: CredentialRow): CredentialView {
+  private static toView(row: CredentialRow, usedBy: CredentialView["usedBy"] = []): CredentialView {
     return {
       credentialId: row.credentialId,
       name: row.name,
@@ -98,6 +115,7 @@ export class CredentialsService {
       lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
       dateCreated: row.dateCreated.toISOString(),
       dateUpdated: row.dateUpdated.toISOString(),
+      usedBy,
     };
   }
 }
