@@ -164,7 +164,8 @@ export function StepCards({
       ))}
       {pipeline.steps.length === 0 && (
         <div className="text-center text-secondary" data-testid="no-steps">
-          No steps yet. A step does one thing (fetch email, ask the LLM, save to an App, send you a message); add the first from the catalog.
+          No steps yet. A step does one thing (fetch email, ask the LLM, save to an App, send you a message); add the first from the
+          catalog.
         </div>
       )}
       <AddHere onAdd={() => setAdding(pipeline.steps.length - 1)} disabled={!editable} last />
@@ -328,6 +329,9 @@ function StepCard({
                 picker?.(index, name, kind, (reference) =>
                   set(name, kind === "insert" && typeof step.with[name] === "string" ? `${step.with[name]}${reference}` : reference),
                 )}
+              {editable && name === "account" && Object.hasOwn(ACCOUNT_STEPS, step.type) && (
+                <AccountChoice step={step} value={step.with.account} onChange={(v) => set("account", v)} />
+              )}
               {editable && takesCredential(name) && fitting.length > 0 && (
                 <select
                   className="form-select form-select-sm w-auto py-0"
@@ -339,7 +343,8 @@ function StepCard({
                     const slot = slotFor(step, chosen);
                     const reference = `{{cred:${slot}}}`;
                     const current = step.with[name];
-                    const map = current && typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
+                    const map =
+                      current && typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
                     // A header carries it as a bearer token, a query as a parameter to rename; elsewhere it is the value.
                     if (name === "headers") set(name, { ...map, Authorization: `Bearer ${reference}` });
                     else if (name === "query") set(name, { ...map, apikey: reference });
@@ -572,6 +577,47 @@ function hostOf(step: LooseStep): string | null {
 }
 
 /** M50-T4: a credential fits a step: a database for db.query's connection; else not one, allowed on its host if written. */
+/** M50-T7, T8, T16: the steps that read or send through one of the user's accounts, and the slot a chosen one gets. */
+const ACCOUNT_STEPS: Record<string, { slot: string; topics: boolean }> = {
+  "email.fetch": { slot: "mailbox", topics: true },
+  "email.awaiting": { slot: "mailbox", topics: false },
+  "email.send": { slot: "mailbox", topics: false },
+  "calendar.find": { slot: "calendar-account", topics: false },
+  "calendar.create": { slot: "calendar-account", topics: false },
+};
+
+/**
+ * Which account a step uses, in words: the default one, every mailbox the user's topics read (email.fetch), or one
+ * chosen on the pipeline's page (the step gets a slot; What it needs offers the accounts). Never an address here.
+ */
+function AccountChoice({ step, value, onChange }: Readonly<{ step: LooseStep; value: unknown; onChange: (value: unknown) => void }>) {
+  const { slot, topics } = ACCOUNT_STEPS[step.type];
+  const current = value === undefined || value === null || value === "" ? "" : value === "topics" ? "topics" : "slot";
+  return (
+    <select
+      className="form-select form-select-sm w-auto py-0"
+      value={current}
+      onChange={(e) =>
+        onChange(
+          e.target.value === ""
+            ? undefined
+            : e.target.value === "topics"
+              ? "topics"
+              : typeof value === "string" && current === "slot"
+                ? value
+                : slot,
+        )
+      }
+      aria-label="Which account"
+      data-testid="account-choice"
+    >
+      <option value="">the default account</option>
+      {topics && <option value="topics">my topics' mailboxes</option>}
+      <option value="slot">one I choose on the pipeline's page</option>
+    </select>
+  );
+}
+
 function fitsStep(step: LooseStep, credential: CredentialView): boolean {
   if (step.type === "db.query") return credential.kind === "DATABASE";
   if (credential.kind === "DATABASE" || credential.kind === "STORAGE_STATE") return false;

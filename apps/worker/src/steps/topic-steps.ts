@@ -8,6 +8,7 @@ import { type StepContext } from "../runner/step-executor";
 import { emailBlock } from "./email-block";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
 import { costed } from "./topic-costs";
+import { topicMailboxes, topicReads } from "../sources/topic-mailboxes";
 
 /** Per email in the prompt: its opening says what it is about. */
 const MATCH_TEXT = 3_000;
@@ -51,6 +52,8 @@ export class TopicMatchStep extends LlmStep {
     if (topics.length === 0 || emails.length === 0) return output(messages, new Map(), topics);
 
     const topicIds = topics.map((t) => t.topicId);
+    // M50-T16: an email is only for the topics that read its mailbox.
+    const mailboxes = await topicMailboxes(this.prisma, userId, topicIds);
     const [stored, threads] = await Promise.all([
       this.prisma.topicLink.findMany({ where: { userId, topicId: { in: topicIds }, messageId: { in: emails.map((m) => m.messageId) } } }),
       this.prisma.topicLink.findMany({
@@ -78,7 +81,7 @@ export class TopicMatchStep extends LlmStep {
       const hints: string[] = [];
       const threadTopics: string[] = [];
       for (const topic of topics) {
-        if (rejected.has(`${message.messageId}\n${topic.topicId}`)) continue;
+        if (rejected.has(`${message.messageId}\n${topic.topicId}`) || !topicReads(mailboxes, topic.topicId, message.account)) continue;
         const match = matchDirections(message, topic.directions);
         hints.push(...match.hints.map((hint) => `${topic.name}: ${hint}`));
         const inThread = threads.some(
@@ -128,6 +131,7 @@ export class TopicMatchStep extends LlmStep {
         for (const { topic: name, line } of result.topics) {
           const topic = topics.find((t) => t.name === name);
           if (!topic || links.has(topic.topicId) || rejected.has(`${message.messageId}\n${topic.topicId}`)) continue;
+          if (!topicReads(mailboxes, topic.topicId, message.account)) continue;
           links.set(topic.topicId, { status: "SUGGESTED", via: "LLM", evidence: line.trim() || "the LLM thinks so", stored: false });
         }
       }

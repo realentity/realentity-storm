@@ -12,7 +12,7 @@ trigger: { schedule: "*/15 * * * *" }
 steps:
   - id: fetch
     type: email.fetch
-    with: { sinceDays: 2 }
+    with: { sinceDays: 2, account: topics } # every mailbox your topics read
   - id: triage
     type: email.classify
     with:
@@ -25,7 +25,7 @@ steps:
       answerable: false
   - id: sent
     type: email.fetch
-    with: { mailbox: Sent, sinceDays: 2 }
+    with: { mailbox: Sent, sinceDays: 2, account: topics }
   - id: topics
     type: topic.match
     with: { messages: "{{triage.kept}}", more: "{{sent.messages}}" }

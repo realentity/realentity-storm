@@ -107,6 +107,8 @@ export class EmailAccountsService {
   /** Removing the default makes the oldest left the default. Slots filled with it fall back to the default. */
   async remove(userId: string, emailAccountId: string): Promise<void> {
     await this.prisma.client.$transaction(async (tx) => {
+      // M50-T16: the topics that read it read the default account again (an attachment keeps what was indexed).
+      await tx.topicSource.deleteMany({ where: { userId, kind: "MAILBOX", emailAccountId } });
       const { count } = await tx.emailAccount.deleteMany({ where: { emailAccountId, userId } });
       if (count === 0) throw new NotFoundException();
       if ((await tx.emailAccount.count({ where: { userId, isDefault: true } })) > 0) return;

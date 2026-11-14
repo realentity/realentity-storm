@@ -54,6 +54,12 @@ default, so any email already linked to a topic gets the topic's knowledge.
 
 ## Which email belongs to a topic
 
+**Which mailbox.** A topic reads your default email account, unless you give it a mailbox: **Sources → Mailbox**, one of
+your email accounts (Settings → Email accounts). A client's topic can read your work mailbox and a family one your
+personal mailbox; a topic can have several. Topic upkeep and Topic replies read every mailbox your topics read (their
+`email.fetch` says `account: topics`), and an email belongs only to the topics that read its mailbox. A reply goes out
+from the mailbox the email came to.
+
 - **A direction matches:** the email is linked. An email in a thread already linked to a topic is linked to it too.
 - **Only the LLM thinks so** (a direction in plain words, or an email no exact direction matched): the email is
   _suggested_. It waits under **Waiting for you**: answer **Yes**, **No**, or move it to another topic. Each answer

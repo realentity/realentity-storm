@@ -353,13 +353,13 @@ model MailCursor {
   pipelineId   String   @db.Uuid
   pipeline     Pipeline @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
   mailbox      String
-  /// M50-T7: the account it was read from; another account starts again from `since`.
+  /// M50-T7: the account it was read from; M50-T16: one cursor per account (a pipeline may read several).
   emailAccountId String?  @db.Uuid
   uidValidity  BigInt
   lastUid      BigInt
   dateUpdated  DateTime @updatedAt
 
-  @@unique([pipelineId, mailbox])
+  @@unique([pipelineId, mailbox, emailAccountId])
   @@index([userId])
   @@map("MailCursors")
 }
@@ -1366,6 +1366,8 @@ enum TopicSourceKind {
   ATTACHMENT
   /// A Google Drive folder and its subfolders (location: the folder's id), read through the user's Google connection.
   DRIVE
+  /// M50-T16: one of the user's email accounts (location and emailAccountId: its id): the topic's mail is read there.
+  MAILBOX
 }
 
 /**
@@ -1391,8 +1393,10 @@ model TopicSource {
   /// ATTACHMENT: where its email is, to read it again (a rebuild).
   mailbox       String?
   uid           Int?
-  /// M50-T7: the email account the attachment's message is in; null: the default one.
-  emailAccountId String?  @db.Uuid
+  /// M50-T7: the email account the attachment's message is in; null: the default one. M50-T16: a MAILBOX source's account
+  /// (removing the account removes its MAILBOX sources; an attachment keeps what was indexed from it).
+  emailAccountId String?       @db.Uuid
+  emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [emailAccountId], onDelete: SetNull)
   /// M50-T8: a Drive source's Google account; null: the default one.
   googleAccountId String?        @db.Uuid
   googleAccount   GoogleAccount? @relation(fields: [googleAccountId], references: [googleAccountId], onDelete: SetNull)
@@ -1629,6 +1633,7 @@ model EmailAccount {
   dateCreated    DateTime  @default(now())
   dateUpdated    DateTime  @updatedAt
   bindings       Binding[]
+  topicSources   TopicSource[]
 
   @@unique([userId, address])
   @@map("EmailAccounts")

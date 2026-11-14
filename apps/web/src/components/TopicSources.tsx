@@ -1,5 +1,5 @@
 import { type TopicSourceView } from "@realentity/storm-shared";
-import { IconBrandGithub, IconBrandGoogleDrive, IconPaperclip, IconPlus, IconRefresh, IconX } from "@tabler/icons-react";
+import { IconBrandGithub, IconBrandGoogleDrive, IconMail, IconPaperclip, IconPlus, IconRefresh, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/endpoints";
@@ -81,10 +81,15 @@ function SourceRow({
       {source.kind === "ATTACHMENT" && <IconPaperclip size={18} className="text-secondary flex-shrink-0" />}
       {source.kind === "GITHUB" && <IconBrandGithub size={18} className="text-secondary flex-shrink-0" />}
       {source.kind === "DRIVE" && <IconBrandGoogleDrive size={18} className="text-secondary flex-shrink-0" />}
+      {source.kind === "MAILBOX" && <IconMail size={18} className="text-secondary flex-shrink-0" />}
       <div className="flex-fill overflow-hidden">
         {source.kind === "ATTACHMENT" ? (
           <div className="text-truncate">
             {source.path} <span className="text-secondary">attached to {source.title}</span>
+          </div>
+        ) : source.kind === "MAILBOX" ? (
+          <div className="text-truncate">
+            {source.emailAccount?.name ?? "an email account"} <span className="text-secondary">: its email is read for this topic</span>
           </div>
         ) : source.kind === "DRIVE" ? (
           <div className="text-truncate">
@@ -105,29 +110,33 @@ function SourceRow({
           </div>
         )}
         <div className="small text-secondary">
-          {source.kind === "ATTACHMENT"
-            ? source.cursor
-              ? `${source.passages} passages`
-              : "not read yet"
-            : source.kind === "DRIVE"
+          {source.kind === "MAILBOX"
+            ? "by Topic upkeep and Topic replies (email.fetch with account: topics)"
+            : source.kind === "ATTACHMENT"
               ? source.cursor
-                ? `read ${formatDateTime(source.readAt)} · ${source.passages} passages`
-                : "not read yet: the next run of a pipeline with drive.changes reads it"
-              : source.cursor
-                ? `read at ${source.cursor}${source.readAt ? `, ${formatDateTime(source.readAt)}` : ""} · ${source.passages} passages`
-                : "not read yet: the next run of a pipeline with git.changes reads it"}
+                ? `${source.passages} passages`
+                : "not read yet"
+              : source.kind === "DRIVE"
+                ? source.cursor
+                  ? `read ${formatDateTime(source.readAt)} · ${source.passages} passages`
+                  : "not read yet: the next run of a pipeline with drive.changes reads it"
+                : source.cursor
+                  ? `read at ${source.cursor}${source.readAt ? `, ${formatDateTime(source.readAt)}` : ""} · ${source.passages} passages`
+                  : "not read yet: the next run of a pipeline with git.changes reads it"}
         </div>
       </div>
-      <button
-        type="button"
-        className="btn btn-sm btn-ghost-secondary"
-        title="Rebuild: delete its passages; the next read indexes every file again"
-        disabled={busy}
-        onClick={onRebuild}
-      >
-        <IconRefresh size={16} className="me-1" />
-        Rebuild
-      </button>
+      {source.kind !== "MAILBOX" && (
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost-secondary"
+          title="Rebuild: delete its passages; the next read indexes every file again"
+          disabled={busy}
+          onClick={onRebuild}
+        >
+          <IconRefresh size={16} className="me-1" />
+          Rebuild
+        </button>
+      )}
       <button type="button" className="btn btn-sm btn-ghost-danger" aria-label="Remove source" disabled={busy} onClick={onRemove}>
         <IconX size={16} />
       </button>
@@ -137,7 +146,8 @@ function SourceRow({
 
 function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: boolean) => void }) {
   const credentials = useLoad(() => api.credentials.list(), []);
-  const [kind, setKind] = useState<"GITHUB" | "DRIVE">("GITHUB");
+  const [kind, setKind] = useState<"GITHUB" | "DRIVE" | "MAILBOX">("GITHUB");
+  const [emailAccountId, setEmailAccountId] = useState("");
   const [location, setLocation] = useState("");
   const [path, setPath] = useState("docs/**");
   const [branch, setBranch] = useState("");
@@ -149,12 +159,14 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const source =
-      kind === "DRIVE"
-        ? { kind, location, path, ...(googleAccountId ? { googleAccountId } : {}) }
-        : { kind, location, path, branch, ...(credential ? { credentialId: credential } : {}) };
+      kind === "MAILBOX"
+        ? { kind, location: "", emailAccountId }
+        : kind === "DRIVE"
+          ? { kind, location, path, ...(googleAccountId ? { googleAccountId } : {}) }
+          : { kind, location, path, branch, ...(credential ? { credentialId: credential } : {}) };
     if (await action.run(() => api.topics.addSource(topicId, source))) onDone(true);
   };
-  const choose = (next: "GITHUB" | "DRIVE") => {
+  const choose = (next: "GITHUB" | "DRIVE" | "MAILBOX") => {
     setKind(next);
     setLocation("");
     // A repository's documents are usually under docs/; a folder is read whole.
@@ -184,8 +196,20 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
             <IconBrandGoogleDrive size={16} className="me-1" />
             Google Drive folder
           </button>
+          <button
+            type="button"
+            className={`btn ${kind === "MAILBOX" ? "btn-primary" : ""}`}
+            aria-pressed={kind === "MAILBOX"}
+            onClick={() => choose("MAILBOX")}
+            data-testid="source-kind-mailbox"
+          >
+            <IconMail size={16} className="me-1" />
+            Mailbox
+          </button>
         </div>
-        {kind === "DRIVE" ? (
+        {kind === "MAILBOX" ? (
+          <MailboxFields account={emailAccountId} setAccount={setEmailAccountId} />
+        ) : kind === "DRIVE" ? (
           <DriveFields
             location={location}
             setLocation={setLocation}
@@ -277,6 +301,35 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
           }}
         />
       )}
+    </>
+  );
+}
+
+/**
+ * M50-T16: one of the user's email accounts: the topic's email is read there (Topic upkeep and Topic replies read every
+ * mailbox a topic lists). A topic without one reads the default account.
+ */
+function MailboxFields({ account, setAccount }: { account: string; setAccount: (value: string) => void }) {
+  const accounts = useLoad(() => api.emailAccounts.list(), []);
+  const list = accounts.data ?? [];
+  return (
+    <>
+      <label className="form-label required" htmlFor="source-mailbox">
+        Email account
+      </label>
+      <select id="source-mailbox" className="form-select" value={account} onChange={(e) => setAccount(e.target.value)} required>
+        <option value="">{list.length ? "Choose one…" : "No email account yet"}</option>
+        {list.map((a) => (
+          <option key={a.emailAccountId} value={a.emailAccountId}>
+            {a.address}
+            {a.isDefault ? " (default)" : ""}
+          </option>
+        ))}
+      </select>
+      <div className="form-hint">
+        The topic&apos;s email is read in this mailbox, and replies go out from it. Without a mailbox, a topic reads your default account.{" "}
+        {list.length === 0 && <Link to="/settings#email">Add an email account in Settings.</Link>}
+      </div>
     </>
   );
 }

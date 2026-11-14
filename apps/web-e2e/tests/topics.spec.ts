@@ -482,3 +482,29 @@ test("a direction suggested from the user's decisions, accepted; a topic split f
   await expect(page.getByTestId(`topic-${name}`).getByTestId("topic-facts")).toBeVisible();
   await expect(page.getByTestId(`topic-${name}`).getByTestId("fact-Terms")).toHaveCount(0);
 });
+
+// M50-T16: a topic's mailbox is a source: one of the user's email accounts
+test("a topic's source: a mailbox, one of the email accounts", async ({ page }) => {
+  const name = unique("Acme");
+  const address = `work-${Date.now().toString(36)}@example.com`;
+  const created = await page.request.post("/api/email-accounts", {
+    data: { address, imapHost: "imap.example.com", smtpHost: "smtp.example.com", password: `made-up-${Date.now()}` },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const { emailAccountId } = (await created.json()) as { emailAccountId: string };
+  try {
+    const topicId = await newTopic(page, name);
+    await open(page, topicId, "sources");
+    const sources = page.getByTestId(`topic-${name}`).getByTestId("topic-sources");
+    await sources.getByTestId("source-add").click();
+    const form = sources.getByTestId("source-form");
+    await form.getByTestId("source-kind-mailbox").click();
+    await form.getByLabel("Email account").selectOption(emailAccountId);
+    await form.getByRole("button", { name: "Add" }).click();
+    const row = sources.getByTestId(`source-${emailAccountId}`);
+    await expect(row).toContainText(address);
+    await expect(row.getByRole("button", { name: /Rebuild/ })).toHaveCount(0);
+  } finally {
+    await page.request.delete(`/api/email-accounts/${emailAccountId}`);
+  }
+});

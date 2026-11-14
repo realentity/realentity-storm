@@ -154,7 +154,9 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
 
     const real = (await step.execute(input, context(false))) as { messages: EmailMessage[] };
     expect(real.messages.length).toBe(dry.messages.length);
-    const cursor = await db.client.mailCursor.findUniqueOrThrow({ where: { pipelineId_mailbox: { pipelineId, mailbox: "INBOX" } } });
+    // One cursor per account (M50-T16).
+    const cursor = await db.client.mailCursor.findFirstOrThrow({ where: { pipelineId, mailbox: "INBOX" } });
+    expect(cursor.emailAccountId).not.toBeNull();
     expect(Number(cursor.lastUid)).toBe(real.messages[real.messages.length - 1]?.uid);
 
     await expect(step.execute(input, context(false))).resolves.toEqual({ messages: [] });
@@ -276,6 +278,58 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       } finally {
         await db.client.topic.delete({ where: { topicId: topic.topicId } });
         await db.client.unlinkedEmail.deleteMany();
+      }
+    });
+
+    // M50-T16: a topic's mailbox is a source; Topic replies reads every mailbox the topics read
+    it("Topic replies reads each topic's mailbox, matches an email only to the topics of its mailbox, and replies from it", async () => {
+      const shipped = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+      const ana = await addEmailAccount(db.client, userId, server, { address: OTHER_MAILBOX, password: OTHER_PASSWORD });
+      const me = (await db.client.emailAccount.findFirstOrThrow({ where: { userId, address: MAILBOX } })).emailAccountId;
+      // Acme's mail is in Ana's mailbox; Hiring has no mailbox: the default account (mine).
+      const acme = await db.client.topic.create({
+        data: {
+          userId,
+          name: "Acme project",
+          directions: { create: { kind: "DOMAIN", value: "acme.test" } },
+          sources: { create: { userId, kind: "MAILBOX", location: ana, path: "**", emailAccountId: ana } },
+        },
+      });
+      const hiring = await db.client.topic.create({
+        data: { userId, name: "Hiring", directions: { create: { kind: "DOMAIN", value: "hiring.test" } } },
+      });
+      try {
+        const topicReplies = await freshPipeline(shipped("topic-replies.yaml"));
+        // Ana's mailbox has no cursor yet: it is read from `since`, so what is already there is set aside first.
+        const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: topicReplies } });
+        const there = await connector.fetch({ userId, account: ana }, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
+        const position = { uidValidity: there.position.uidValidity, lastUid: BigInt(there.position.lastUid) };
+        await db.client.mailCursor.create({ data: { userId, pipelineId, mailbox: "INBOX", emailAccountId: ana, ...position } });
+        await server.deliver({ from: "bob@hiring.test", subject: "A role", text: "Are you open to a new role?" });
+        await server.deliver({ from: "carl@acme.test", subject: "Acme, in my own inbox", text: "Not where Acme's mail is read." });
+        await server.deliver({ to: OTHER_MAILBOX, from: "dan@acme.test", subject: "The Acme plan", text: "Can we move the review?" });
+
+        const run = runner(new FakeLlm());
+        const runId = await run.start(topicReplies, { trigger: "manual" });
+        await expect(run.advance(runId)).resolves.toBe("WAITING_FOR_USER");
+        const payloads = (await db.client.proposal.findMany({ where: { runId } })).map(
+          (p) => p.originalPayload as { to: string; account: string },
+        );
+        expect(payloads.map((p) => [p.to, p.account]).sort()).toEqual([
+          ["bob@hiring.test", me],
+          ["dan@acme.test", ana],
+        ]);
+        // One position per mailbox.
+        expect(await db.client.mailCursor.count({ where: { pipelineId, mailbox: "INBOX", emailAccountId: { in: [me, ana] } } })).toBe(2);
+        const links = await db.client.topicLink.findMany({
+          where: { topicId: { in: [acme.topicId, hiring.topicId] } },
+          select: { topicId: true, messageId: true },
+        });
+        expect(links.filter((l) => l.topicId === acme.topicId)).toHaveLength(1);
+      } finally {
+        await db.client.topic.deleteMany({ where: { topicId: { in: [acme.topicId, hiring.topicId] } } });
+        await db.client.unlinkedEmail.deleteMany();
+        await db.client.emailAccount.delete({ where: { emailAccountId: ana } });
       }
     });
 
