@@ -40,21 +40,26 @@ describe("worker secrets", () => {
     const keys = ring(1, { 1: randomBytes(32) });
     const vault = (): CredentialVault => new CredentialVault(db.client, keys);
 
-    it("reveals a credential on an allowed host and records the use", async () => {
+    // M50: through the run's slot, bound by id; never by the credential's name
+    it("reveals the credential bound to a slot on an allowed host and records the use", async () => {
       const id = await insert(keys, "site", "s3cret", ["example.com", "*.example.com"]);
-      await expect(vault().revealFor(userId, "site", "login.example.com")).resolves.toEqual({ username: "me", secret: "s3cret" });
+      await expect(vault().revealFor({ userId, credentials: { login: id } }, "login", "login.example.com")).resolves.toEqual({ username: "me", secret: "s3cret" });
+      // Its name is no way in.
+      await expect(vault().revealFor({ userId, credentials: {} }, "site", "login.example.com")).rejects.toBeInstanceOf(CredentialNotFoundError);
       const row = await db.client.credential.findUniqueOrThrow({ where: { credentialId: id } });
       expect(row.lastUsedAt).not.toBeNull();
     });
 
     // M8-S1 (binding part): never fills on a host outside allowedHosts
     it.each(["example.com.evil.net", "evil-example.com", "example.org"])("refuses %s", async (host) => {
-      await insert(keys, "site", "s3cret", ["example.com", "*.example.com"]);
-      await expect(vault().revealFor(userId, "site", host)).rejects.toBeInstanceOf(CredentialHostMismatchError);
+      const id = await insert(keys, "site", "s3cret", ["example.com", "*.example.com"]);
+      await expect(vault().revealFor({ userId, credentials: { login: id } }, "login", host)).rejects.toBeInstanceOf(CredentialHostMismatchError);
     });
 
-    it("reports a missing credential", async () => {
-      await expect(vault().revealFor(userId, "nope", "example.com")).rejects.toBeInstanceOf(CredentialNotFoundError);
+    it("reports a slot without a credential, and one bound to another user's", async () => {
+      await expect(vault().revealFor({ userId, credentials: {} }, "nope", "example.com")).rejects.toThrow('"nope" has no credential');
+      const id = await insert(keys, "site", "s3cret");
+      await expect(vault().revealFor({ userId: randomUUID(), credentials: { login: id } }, "login", "example.com")).rejects.toBeInstanceOf(CredentialNotFoundError);
     });
   });
 
@@ -105,8 +110,8 @@ describe("worker secrets", () => {
     const app = moduleRef.createNestApplication();
     await app.init();
     const keys = KeyRing.fromEnv(process.env);
-    await insert(keys, "boot", "value");
-    await expect(app.get(CredentialVault).revealFor(userId, "boot", "example.com")).resolves.toMatchObject({ secret: "value" });
+    const id = await insert(keys, "boot", "value");
+    await expect(app.get(CredentialVault).revealFor({ userId, credentials: { boot: id } }, "boot", "example.com")).resolves.toMatchObject({ secret: "value" });
     await app.close();
   });
 });

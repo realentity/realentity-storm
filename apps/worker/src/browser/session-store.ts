@@ -2,7 +2,7 @@ import { seal, type KeyRing } from "@realentity/storm-crypto";
 import { type PrismaClient } from "@realentity/storm-db";
 import { randomUUID } from "node:crypto";
 import { type BrowserContextOptions } from "playwright";
-import { CredentialNotFoundError, type CredentialVault } from "../secrets/credential-vault";
+import { OwnCredentialMissingError, type CredentialVault } from "../secrets/credential-vault";
 
 type StorageState = Exclude<BrowserContextOptions["storageState"], string | undefined>;
 
@@ -25,10 +25,10 @@ export class SessionStore {
 
   async load(userId: string, host: string): Promise<StorageState | undefined> {
     try {
-      const { secret } = await this.vault.revealFor(userId, sessionName(host), host);
+      const { secret } = await this.vault.revealOwn(userId, sessionName(host), host);
       return JSON.parse(secret) as StorageState;
     } catch (error) {
-      if (error instanceof CredentialNotFoundError || error instanceof SyntaxError) return undefined;
+      if (error instanceof OwnCredentialMissingError || error instanceof SyntaxError) return undefined;
       throw error;
     }
   }

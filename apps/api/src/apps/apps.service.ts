@@ -32,6 +32,7 @@ import { diffApps, draftField, draftType, leafValues, PipelineCompiler, StepCata
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";
+import { BindingsService } from "../bindings/bindings.service";
 import { AppFilesService } from "./app-files.service";
 import { AppImportsService } from "./app-imports.service";
 
@@ -50,6 +51,7 @@ export class AppsService {
     private readonly imports: AppImportsService,
     private readonly catalog: StepCatalog,
     private readonly files: AppFilesService,
+    private readonly bindings: BindingsService,
   ) {}
 
   /** The App a pipeline names (`app:`), for the compiler; nothing for a pipeline outside any App. */
@@ -327,6 +329,8 @@ export class AppsService {
         return app.appId;
       }),
     );
+    // M50: a slot one of the user's credentials alone fits is filled; the others wait for the user.
+    await this.bindings.fillWhereOneFits(userId, { appId }, definition.needs ?? {});
     return this.get(userId, appId);
   }
 
@@ -362,6 +366,7 @@ export class AppsService {
         await tx.app.update({ where: { appId }, data: { currentVersionId: version.appVersionId, name: definition.name } });
       }),
     );
+    await this.bindings.fillWhereOneFits(userId, { appId }, definition.needs ?? {});
     return this.get(userId, appId);
   }
 

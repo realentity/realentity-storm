@@ -19,6 +19,7 @@ export * from "./google";
 export * from "./health-api";
 export * from "./jobs-api";
 export * from "./learning-api";
+export * from "./needs";
 export * from "./pipeline";
 export * from "./pipeline-api";
 export * from "./pipeline-designer";

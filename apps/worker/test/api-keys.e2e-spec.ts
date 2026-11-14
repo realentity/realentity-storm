@@ -11,7 +11,7 @@ import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry, NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { HttpFetchStep, HttpRequestStep } from "../src/steps/http-steps";
-import { Counting, createVersion } from "./support/test-steps";
+import { bindSlots, Counting, createVersion } from "./support/test-steps";
 
 const KEY = "sk-live-7f3a9c2e";
 
@@ -79,9 +79,12 @@ describe("M29: http.fetch with an API key", () => {
     await api.start();
   });
 
+  /** The credential the slots are bound to (M50: by id). */
+  let credentialId = "";
+
   beforeEach(async () => {
     api.requests = [];
-    const credentialId = randomUUID();
+    credentialId = randomUUID();
     await db.client.credential.create({ data: { credentialId, userId, name: "weather-api", kind: "API_KEY", allowedHosts: ["api.test"], ...seal(keys, credentialId, KEY) } });
     const blocked = new BlockList();
     blocked.addSubnet("10.0.0.0", 8, "ipv4");
@@ -111,6 +114,7 @@ describe("M29: http.fetch with an API key", () => {
     recordUsage: () => undefined,
     attention: NO_ATTENTION,
     allowedDomains: ["api.test", "other.test"],
+    credentials: { "weather-api": credentialId },
   });
   type Output = { items: unknown[]; json: unknown; text: string; documents: { url: string }[] };
   const fetch = (raw: Record<string, unknown>) => step.execute(defaultCatalog().get("http.fetch")!.input.parse(raw), context()) as Promise<Output>;
@@ -145,7 +149,7 @@ describe("M29: http.fetch with an API key", () => {
     await expect(loop).rejects.toThrow(/more than 5 redirects/);
     await expect(loop).rejects.not.toThrow(KEY);
 
-    await expect(fetch({ url: api.url("/v1/me"), headers: { Authorization: "Bearer {{cred:nothing}}" } })).rejects.toThrow('No credential named "nothing"');
+    await expect(fetch({ url: api.url("/v1/me"), headers: { Authorization: "Bearer {{cred:nothing}}" } })).rejects.toThrow('"nothing" has no credential');
     await expect(new HttpFetchStep(db.client, { resolve }).execute(defaultCatalog().get("http.fetch")!.input.parse({ url: api.url("/v1/me"), headers: bearer }), context())).rejects.toThrow(
       "http.fetch can't use credentials here",
     );
@@ -168,6 +172,7 @@ steps:
 `,
       new PipelineCompiler(defaultCatalog()),
     );
+    await bindSlots(db.client, versionId, { "weather-api": credentialId });
     const telegram = new Counting("notify.telegram", () => ({ sent: true }));
     const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([step, telegram]));
     const runId = await runner.start(versionId, { trigger: "manual" });
@@ -206,7 +211,8 @@ steps:
     it("M29-I6: pipelines/failed-run-issue.yaml: the issue waits at its gate with {{cred:…}}, and is created once approved", async () => {
       const source = readFileSync(join(__dirname, "../../../pipelines/failed-run-issue.yaml"), "utf8").replace("https://api.github.com/", `http://api.github.com:${api.port}/`);
       const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()));
-      await db.client.credential.updateMany({ data: { name: "github", allowedHosts: ["api.github.com"] } });
+      await db.client.credential.updateMany({ data: { allowedHosts: ["api.github.com"] } });
+      await bindSlots(db.client, versionId, { github: credentialId });
       const github = (host: string) => (host === "api.github.com" ? Promise.resolve([{ address: "127.0.0.1", family: 4 }]) : Promise.reject(new Error(`ENOTFOUND ${host}`)));
       const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([new HttpRequestStep({ resolve: github, blocked: new BlockList() }, new CredentialVault(db.client, keys))]));
       const runId = await runner.start(versionId, {

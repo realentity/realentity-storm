@@ -89,3 +89,15 @@ export async function createVersion(prisma: PrismaClient, userId: string, source
   await prisma.pipeline.update({ where: { pipelineId: pipeline.pipelineId }, data: { currentVersionId: v.pipelineVersionId } });
   return v.pipelineVersionId;
 }
+
+/** M50: a saved version's pipeline's slots filled with credentials, by id (what the pipeline's page does). */
+export async function bindSlots(prisma: PrismaClient, versionId: string, slots: Record<string, string>): Promise<void> {
+  const { pipelineId } = await prisma.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: versionId } });
+  for (const [slot, credentialId] of Object.entries(slots)) {
+    await prisma.binding.upsert({
+      where: { pipelineId_slot: { pipelineId, slot } },
+      create: { pipelineId, slot, credentialId },
+      update: { credentialId },
+    });
+  }
+}

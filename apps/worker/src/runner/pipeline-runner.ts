@@ -14,6 +14,7 @@ import { referencesIn, type StepCatalog, type StepDefinition } from "@realentity
 import { Logger } from "@nestjs/common";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
+import { loadBindings, type RunBindings } from "./bindings";
 import { RunValues, sourceOf, type ItemScope } from "./run-values";
 import { NO_ATTENTION, RunStopped, type ExecutorRegistry, type StepContext } from "./step-executor";
 import { type TakeoverDesk } from "./takeovers";
@@ -65,6 +66,8 @@ interface RunState {
   controlled: ControlledRun;
   definition: CompiledDefinition;
   policy: CompiledPolicy;
+  /** M50: its slots' credentials (by id) and settings, the pipeline's over its App's. */
+  bindings: RunBindings;
   rows: Map<string, Step>;
   proposals: Proposal[];
   values: RunValues;
@@ -279,8 +282,10 @@ export class PipelineRunner {
       include: { pipelineVersion: { include: { pipeline: true } }, steps: true, proposals: true },
     });
     const definition = run.pipelineVersion.definition as unknown as CompiledDefinition;
+    const bindings = await loadBindings(this.prisma, run.userId, run.pipelineVersion.pipelineId, definition);
     return {
       runId,
+      bindings,
       userId: run.userId,
       dryRun: run.dryRun,
       stopAfter: run.dryRun ? run.stopAfter : null,
@@ -295,7 +300,7 @@ export class PipelineRunner {
       policy: run.pipelineVersion.policy as unknown as CompiledPolicy,
       rows: new Map(run.steps.map((s) => [key(s.stepKey, s.itemIndex), s])),
       proposals: run.proposals,
-      values: new RunValues(run.triggerData),
+      values: new RunValues(run.triggerData, bindings.settings),
       rejected: new Map(),
       blocked: new Map(),
       rejectedSingles: new Set(),
@@ -697,6 +702,7 @@ export class PipelineRunner {
       recordUsage,
       budgetStops: () => this.controls.budgetStops(state.controlled),
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],
+      credentials: state.bindings.credentials,
       privateHosts: state.policy.privateHosts?.includes(row.stepKey) ?? false,
       emit: (event, data) => this.emitEvent(state, event, data),
       attention: this.takeovers

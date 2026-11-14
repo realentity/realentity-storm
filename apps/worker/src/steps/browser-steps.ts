@@ -10,7 +10,7 @@ import { type BrowserPool } from "../browser/browser-pool";
 import { PageSecrets } from "../browser/page-secrets";
 import { type SessionStore } from "../browser/session-store";
 import { NO_ATTENTION, RunStopped, type Attention, type StepContext, type StepExecutor } from "../runner/step-executor";
-import { type CredentialVault } from "../secrets/credential-vault";
+import { type CredentialAsker, type CredentialVault } from "../secrets/credential-vault";
 
 /** Page text returned to the pipeline (an LLM step may read it next). */
 const MAX_TEXT = 50_000;
@@ -78,7 +78,7 @@ export class BrowserOpenStep implements StepExecutor {
 
       let signedIn = false;
       if (login && (await signInForm(page))) {
-        signedIn = await this.signIn(page, login, context.userId, secrets, attention, timeout);
+        signedIn = await this.signIn(page, login, context, secrets, attention, timeout);
       }
       if (waitFor) await waitForSelector(page, waitFor, timeout, attention);
       await attention.checkpoint(page.url());
@@ -107,15 +107,15 @@ export class BrowserOpenStep implements StepExecutor {
   private async signIn(
     page: Page,
     login: NonNullable<OpenInput["login"]>,
-    userId: string,
+    asker: CredentialAsker,
     secrets: PageSecrets,
     attention: Attention,
     timeout: number,
   ): Promise<boolean> {
-    const name = /cred:([a-z0-9._-]+)/.exec(login.credential)?.[1] ?? "";
+    const name = /cred:([a-z0-9][a-z0-9_-]{0,39})/.exec(login.credential)?.[1] ?? "";
     for (let stage = 0; stage < 2; stage++) {
       const host = new URL(page.url()).hostname;
-      const credential = await this.deps.vault.revealFor(userId, name, host);
+      const credential = await this.deps.vault.revealFor(asker, name, host);
       secrets.add(credential.secret, login.password ?? PASSWORD);
       const sameHost = () => new URL(page.url()).hostname === host;
 

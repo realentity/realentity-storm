@@ -2,6 +2,7 @@ import { defaultTimeZone, isTimeZone } from "./time-zone";
 import { z } from "zod";
 import { APP_NAME, ENTITY_FIELD, TYPE_NAME } from "./app";
 import { HOST_PATTERN } from "./credentials";
+import { NeedsSchema } from "./needs";
 import { APPLICATION_STATUSES } from "./jobs-api";
 import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 
@@ -172,6 +173,11 @@ export const PipelineDefinitionSchema = z
     policy: PipelinePolicySchema.default({ allowedDomains: [], allowedRecipients: [] }),
     /** Its page (M27): the collection it saves, in the menu, as a list with the user's marks and buttons. */
     view: PipelineViewSchema.optional(),
+    /**
+     * M50: the credentials and settings it needs, by slot ({{cred:github}}, {{setting.repository}}); the user chooses
+     * which fill them. A slot a step uses without one here is added by the compiler, from where it is used.
+     */
+    needs: NeedsSchema.optional(),
   })
   .strict();
 export type PipelineDefinition = z.infer<typeof PipelineDefinitionSchema>;

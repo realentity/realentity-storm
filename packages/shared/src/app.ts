@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "yaml";
+import { NeedsSchema } from "./needs";
 import { z } from "zod";
 import { safeLink, VIEW_ICONS } from "./view";
 
@@ -350,6 +351,8 @@ export const AppDefinitionSchema = z
       .refine((types) => Object.keys(types).length <= 20, "at most 20 types"),
     /** M31: list and view pages; a type without one gets a default from its fields. */
     pages: z.array(AppPageSchema).max(40).default([]),
+    /** M50: credentials and settings its pipelines share, by slot; each install of the App fills its own. */
+    needs: NeedsSchema.optional(),
   })
   .strict()
   .superRefine((app, ctx) => checkPages(app, (path, message) => ctx.addIssue({ code: "custom", path, message })));

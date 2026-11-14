@@ -64,7 +64,8 @@ A step's inputs can use the outputs of earlier steps:
 | `{{invite.values.start}}` | A nested field |
 | `{{item}}`, `{{item.url}}` | The current item, inside a step with `forEach` |
 | `{{trigger.message.from}}` | Data from the event or webhook that started the run (§3) |
-| `{{cred:jobs-bg}}` | A stored credential (only in `browser.open`'s `login`) |
+| `{{cred:github}}` | The credential filling the pipeline's (or its App's) slot `github` (§2.6); only where a step takes credentials |
+| `{{setting.repository}}` | The text filling its slot `repository` (§2.6), e.g. part of an address |
 
 A value that is **exactly** one reference passes the value as it is (a list stays a list). A reference inside text
 (`"Hello {{item.fromName}}"`) is turned into text. The compiler checks every reference and its type before the
@@ -94,8 +95,9 @@ pipeline can be saved.
   or is exactly a field of mine of an App entity (a Monitor's address you typed); never from emails, pages, webhooks or
   other steps. Only the latter may be a private, LAN or Tailscale address; loopback, link-local and a cloud's metadata
   service never. A check says only whether it answers: it never reads the page.
-- **Credentials only go to the browser.** `{{cred:…}}` is accepted only by `browser.open`'s `login`, and only on the
-  hosts the credential allows. LLM steps never see one.
+- **Credentials only go where a step takes them.** `{{cred:…}}` is accepted only by `browser.open`'s `login`,
+  `http.fetch`'s and `http.request`'s `headers` and `query`, and `db.query`'s `connection`, and opened only on the
+  hosts the credential allows. LLM steps never see one, nor its name (§2.6).
 - **Budget.** Steps that call the LLM stop once the monthly LLM budget is spent, unless the pipeline is marked
   *essential*.
 - **One headed browser.** Runs that use the watchable (headed) browser run one at a time.
@@ -273,6 +275,37 @@ Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Pri
 pipelines.
 
 ---
+
+### 2.6 Credentials and settings: slots, never names (M50)
+
+A pipeline never names one of your credentials. `{{cred:github}}` is its **slot** `github`, and you choose which of
+your credentials fills it, by id: two installs of an App can use two GitHub tokens or two databases, and renaming a
+credential breaks nothing. A setting (`{{setting.repository}}`) is a slot filled with text you type, so an App
+installed twice can watch two repositories.
+
+```yaml
+needs:
+  github: { kind: credential, type: api_key, for: api.github.com, label: "GitHub, to open issues" }
+  repository: { kind: text, label: Repository, example: me/infra }
+steps:
+  - id: issue
+    type: http.request
+    with:
+      method: POST
+      url: "https://api.github.com/repos/{{setting.repository}}/issues"
+      headers: { Authorization: "Bearer {{cred:github}}" }
+      body: { title: "{{trigger.pipeline}} failed" }
+```
+
+- **`needs:`** on a pipeline, or on an App (its pipelines share them; each install fills its own): `kind: credential`
+  (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for) or
+  `kind: text` (`example`). A slot a step uses without one is added from where it is used: a database for `db.query`'s
+  connection, the host of an address written in the step.
+- **Filling them:** `GET` and `PUT /api/pipelines/:id/bindings`, `/api/apps/:id/bindings` (`{ slot: { credentialId } }`,
+  `{ slot: { text } }`, null clears one). A credential must fit: its type, and the host the slot is for. When a pipeline
+  or an App is saved, a slot exactly one of your credentials fits is filled with it; one two fit waits for you.
+- **At run time** a slot without a credential, or a setting not set, fails the step saying which and where to set it. A
+  credential still goes only to its allowed hosts, whatever slot it fills.
 
 ## 3. Triggers: what starts a pipeline
 

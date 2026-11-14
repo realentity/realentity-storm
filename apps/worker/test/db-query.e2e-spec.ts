@@ -13,7 +13,7 @@ import { SaveStep } from "../src/steps/data-steps";
 import { DbQueryStep } from "../src/steps/db-step";
 import { HistoryStep } from "../src/steps/history-step";
 import { AlertStep } from "../src/steps/map-alert-steps";
-import { Counting, createVersion } from "./support/test-steps";
+import { bindSlots, Counting, createVersion } from "./support/test-steps";
 
 /** The test database, its own schema in the search_path: "the user's app's database" for these tests. */
 function appDatabase(options = "-c search_path=m29app"): { url: string; host: string; password: string } {
@@ -31,9 +31,12 @@ describe("M29: db.query", () => {
   const keys = KeyRing.fromEnv(process.env);
   const app = appDatabase();
 
+  /** The credential the step's slot "app-db" is bound to (M50: by id; its name is only a name). */
+  let bound = "";
   const store = async (name: string, secret: string, allowedHosts: string[], kind: "DATABASE" | "API_KEY" = "DATABASE") => {
     const credentialId = randomUUID();
     await db.client.credential.create({ data: { credentialId, userId, name, kind, allowedHosts, ...seal(keys, credentialId, secret) } });
+    bound = credentialId;
   };
 
   beforeAll(async () => {
@@ -76,6 +79,7 @@ describe("M29: db.query", () => {
     dryRun: false,
     recordUsage: () => undefined,
     attention: NO_ATTENTION,
+    credentials: { "app-db": bound },
   });
   type Output = { items: Record<string, unknown>[]; rows: number; truncated: boolean; columns: string[] };
   const query = (raw: Record<string, unknown>) =>
@@ -139,6 +143,7 @@ describe("M29: db.query", () => {
     const versionId = await createVersion(db.client, userId, readFileSync(join(__dirname, "../../../pipelines/table-growth.yaml"), "utf8"), new PipelineCompiler(defaultCatalog()), {
       app: readAppSource(tables),
     });
+    await bindSlots(db.client, versionId, { "app-db": bound });
     const telegram = new Counting("notify.telegram", () => ({ sent: true }));
     const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([step, new SaveStep(db.client), new HistoryStep(db.client), new AlertStep(db.client), telegram]));
     const hour = async (orders: number, users: number) => {

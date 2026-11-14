@@ -31,6 +31,11 @@ export interface StepContext {
    */
   allowedDomains?: readonly string[];
   /**
+   * M50: the run's credential slots, slot → the credential bound to it (by id): {{cred:slot}} is opened through these,
+   * never by a credential's name.
+   */
+  credentials?: Readonly<Record<string, string>>;
+  /**
    * M47: this check's address is a field of mine (the compiler said so, policy.privateHosts): it may be a private, LAN
    * or Tailscale address. Never a link-local or cloud metadata one.
    */

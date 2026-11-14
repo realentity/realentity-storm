@@ -1,6 +1,9 @@
 import {
   type AppDefinition,
   addedByHand,
+  SLOT_NAME,
+  type Need,
+  type Needs,
   FILE_KINDS,
   PipelineDefinitionSchema,
   REFERENCE,
@@ -164,7 +167,10 @@ export class PipelineCompiler {
     if (privateHosts.length > 0) policy.privateHosts = privateHosts;
     policy.allowedDomains = unique(policy.allowedDomains);
     policy.allowedRecipients = unique(policy.allowedRecipients);
-    const compiled: CompiledDefinition = { ...definition, steps };
+    const needs = collectNeeds(definition, app, errors);
+    if (errors.length > 0) return { ok: false, errors };
+    const { needs: _written, ...rest } = definition;
+    const compiled: CompiledDefinition = { ...rest, steps, ...(Object.keys(needs).length > 0 ? { needs } : {}) };
     return { ok: true, definition: compiled, policy, warnings };
   }
 
@@ -391,15 +397,25 @@ export class PipelineCompiler {
     }
   }
 
-  /** Resolves a reference path in the scope of a step: {{step.field}}, {{item.field}} or {{cred:name}}. */
+  /**
+   * Resolves a reference path in the scope of a step: {{step.field}}, {{item.field}}, {{cred:slot}} or (M50)
+   * {{setting.slot}}.
+   */
   private resolve(path: string, scope: Scope, known: Map<string, CompiledStepInfo>): Resolution {
     if (path.startsWith("cred:")) {
-      return /^cred:[a-z0-9][a-z0-9._-]{0,63}$/.test(path)
+      return SLOT_NAME.test(path.slice("cred:".length))
         ? { ok: true, type: { kind: "string" }, credential: true }
-        : { ok: false, message: `{{${path}}} is not a valid credential reference` };
+        : { ok: false, message: `{{${path}}} is not a valid credential slot (lowercase letters, digits, _ or -)` };
     }
     const [root, ...rest] = path.split(".");
     if (!root || rest.some((segment) => segment.length === 0)) return { ok: false, message: `{{${path}}} is not a valid reference` };
+
+    if (root === "setting") {
+      // M50: a setting the user typed for this pipeline or its App (checked against `needs` once all steps are read).
+      return rest.length === 1 && SLOT_NAME.test(rest[0])
+        ? { ok: true, type: { kind: "string" } }
+        : { ok: false, message: `{{${path}}} is not a setting: {{setting.<slot>}}` };
+    }
 
     if (root === "trigger") {
       const data = triggerDataSchema(scope.trigger);
@@ -700,6 +716,39 @@ function literalUrls(value: unknown): [string, string][] {
 
 function referencePath(wholeReference: string): string {
   return (WHOLE_REFERENCE.exec(wholeReference)?.[1] ?? "").trim();
+}
+
+/**
+ * M50: the pipeline's slots: its `needs`, and those its steps use without them (a credential, or a database's for
+ * db.query's connection; a setting is text). Each used as what it is: {{cred:…}} a credential, {{setting.…}} text. A
+ * slot its App declares is the App's (each install fills it), not the pipeline's.
+ */
+function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undefined, errors: CompileIssue[]): Needs {
+  const own: Needs = { ...(definition.needs ?? {}) };
+  const shared: Needs = app?.needs ?? {};
+  const declared = (slot: string): Need | undefined => (Object.hasOwn(own, slot) ? own[slot] : Object.hasOwn(shared, slot) ? shared[slot] : undefined);
+  definition.steps.forEach((step, index) => {
+    for (const [field, value] of Object.entries(step.with)) {
+      const text = JSON.stringify(value ?? null);
+      const at = `steps[${index}].with.${field}`;
+      for (const [, slot] of text.matchAll(/\{\{\s*cred:([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g)) {
+        const database = step.type === "db.query" && field === "connection";
+        const need = declared(slot);
+        // For the host the step goes to, when it is written: only a credential allowed there fits.
+        const url = typeof step.with.url === "string" && !step.with.url.includes("{{") ? step.with.url : undefined;
+        const host = url ? /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1]?.toLowerCase() : undefined;
+        if (!need) own[slot] = database ? { kind: "credential", type: "database" } : { kind: "credential", ...(host ? { for: host } : {}) };
+        else if (need.kind !== "credential") errors.push({ path: at, message: `"${slot}" is a setting (text), not a credential: {{setting.${slot}}}` });
+        else if (database && need.type && need.type !== "database") errors.push({ path: at, message: `"${slot}" is a ${need.type} credential; db.query's connection is a database` });
+      }
+      for (const [, slot] of text.matchAll(/\{\{\s*setting\.([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g)) {
+        const need = declared(slot);
+        if (!need) own[slot] = { kind: "text" };
+        else if (need.kind !== "text") errors.push({ path: at, message: `"${slot}" is a credential, not a setting: {{cred:${slot}}}` });
+      }
+    }
+  });
+  return own;
 }
 
 function formatPath(path: PropertyKey[]): string {

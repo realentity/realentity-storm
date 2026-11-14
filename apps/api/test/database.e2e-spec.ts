@@ -1,7 +1,7 @@
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 
 /** Tables owned through their parent; every other table must carry userId (docs/design.md §9). */
-const OWNED_THROUGH_PARENT = ["AppFiles", "AppVersions", "BuilderMessages", "DataEntities", "Decisions", "PipelineVersions", "Steps", "Takeovers", "TopicDirections", "WatchedOffers"];
+const OWNED_THROUGH_PARENT = ["AppFiles", "AppVersions", "Bindings", "BuilderMessages", "DataEntities", "Decisions", "PipelineVersions", "Steps", "Takeovers", "TopicDirections", "WatchedOffers"];
 /** System tables: not user data. */
 const SYSTEM = ["HealthChecks", "ServiceHeartbeats"];
 
