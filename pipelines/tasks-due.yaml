@@ -1,0 +1,30 @@
+# Every morning, the open tasks of the Tasks App (pipelines/apps/tasks.yaml: save it first) due today or overdue, in
+# one Telegram message; nothing when there are none. No LLM.
+name: Tasks due
+app: Tasks
+description: Every morning, the tasks due today or overdue, on Telegram.
+trigger: { schedule: "0 7 * * *" }
+steps:
+  - id: open
+    type: data.read
+    with:
+      type: Task
+      where: [{ field: state, op: eq, value: open }]
+  - id: due
+    type: data.map
+    with:
+      from: { tasks: "{{open.items}}" }
+      # One message: today's, then the overdue ones with since when.
+      expression: |-
+        (
+          $today := $substring($now(), 0, 10);
+          $due := tasks[due and due <= $today]^(due);
+          $count($due) > 0 ? {
+            "count": $count($due),
+            "text": "Due: " & $join($due.("• " & title & (due < $today ? " (since " & due & ")" : "")), "\n")
+          }
+        )
+  - id: tell
+    type: notify.telegram
+    when: "{{due.items}}"
+    with: { text: "{{due.value.text}}" }

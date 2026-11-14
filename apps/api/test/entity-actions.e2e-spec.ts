@@ -274,4 +274,38 @@ pages:
     await agent.delete(task).expect(204);
     await agent.get(task).expect(404);
   });
+
+  // M48: a key Storm makes: a task added without one, its title renamed
+  it("makes the key of a type whose key is auto; the title can change", async () => {
+    const tasks = (
+      await agent
+        .post("/api/apps")
+        .send({
+          source: `
+name: Todo
+types:
+  Task:
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+pages:
+  - list: Task
+    add: true
+  - form: Task
+    fields: [title]
+`,
+        })
+        .expect(201)
+    ).body as AppDetailView;
+    const at = `/api/apps/${tasks.appId}/pages/Task`;
+    const list = (await agent.get(at).expect(200)).body as { page: { create: { field: string }[] } };
+    expect(list.page.create.map((f) => f.field)).toEqual(["title"]);
+    const added = (await agent.post(at).send({ values: { title: "Renew the passport" } }).expect(201)).body as AppEntityView;
+    expect(added.row.key).toMatch(/^[a-z0-9]{12}$/);
+    const renamed = (await agent.put(`${at}/${added.row.key}/values`).send({ values: { title: "Renew the passport and the ID" } }).expect(200)).body as AppEntityView;
+    expect(renamed.row).toMatchObject({ key: added.row.key, value: { id: added.row.key, title: "Renew the passport and the ID" } });
+    await agent.post(at).send({ values: { id: "mine", title: "x" } }).expect(400);
+  });
 });

@@ -1,0 +1,20 @@
+# When a paper of the Papers App gets a warranty end (typed, or read by read-paper.yaml): that day in your calendar,
+# at 09:00, after you Act at its gate. A date already past does nothing.
+name: Warranty in calendar
+app: Papers
+description: A warranty's end goes into your calendar.
+trigger: { on: entity.changed, type: Paper, field: warrantyUntil }
+steps:
+  - id: ahead
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: 'warrantyUntil and $toMillis(warrantyUntil) + 24 * 60 * 60 * 1000 > $toMillis($now()) ? { "start": warrantyUntil & "T09:00" }'
+  - id: event
+    type: calendar.create
+    forEach: "{{ahead.items}}"
+    with:
+      title: "Warranty ends: {{trigger.item.title}}"
+      start: "{{item.start}}"
+      durationMinutes: 30
+      description: "{{trigger.item.merchant}}"

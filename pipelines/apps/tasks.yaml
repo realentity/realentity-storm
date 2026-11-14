@@ -1,0 +1,36 @@
+# M48: the Tasks App: what you have to do, added on its list, each open until you mark it done (a Done button on its
+# row); the ones due today or overdue told every morning (tasks-due.yaml). A task's key is made by Storm, so its title
+# can change. No LLM.
+name: Tasks
+description: What you have to do, by due date, open until done
+icon: list
+types:
+  Task:
+    key: id
+    title: title
+    stages:
+      field: state
+      initial: open
+      states: [open, done]
+      moves:
+        - { from: open, to: [done] }
+        - { from: done, to: [open] }
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      notes: { type: longtext }
+      due: { type: date }
+      tag: { type: enum, values: [home, work, errands, health, money] }
+pages:
+  - list: Task
+    menu: { label: Tasks, icon: list }
+    add: true
+    columns: [title, { field: due, due: { days: 1, unless: { state: done } } }, tag, state]
+    filters: [state, tag]
+    search: [title, notes]
+    sort: due
+    moves: true
+  - view: Task
+    fields: [title, notes, due, tag]
+  - form: Task
+    fields: [title, notes, due, tag]

@@ -414,3 +414,27 @@ describe("files and images (M46)", () => {
     ]);
   });
 });
+
+// M48: a key Storm makes
+describe("auto keys (M48)", () => {
+  const todo = AppDefinitionSchema.parse({
+    name: "Todo",
+    types: { Task: { key: "id", title: "title", fields: { id: { type: "text", auto: true }, title: { type: "text", required: true } } } },
+    pages: [{ list: "Task", add: true }, { form: "Task", fields: ["title"] }],
+  });
+
+  it("isn't asked for on the form, and is made for a pipeline's new item without it", () => {
+    expect(listPageOf(todo, "Task").create?.map((f) => f.field)).toEqual(["title"]);
+    const made = checkEntity(todo.types.Task, { title: "Water the plants" });
+    expect(made).toMatchObject({ rejected: false, problems: [] });
+    expect(made.key).toMatch(/^[a-z0-9]{12}$/);
+    expect(checkEntity(todo.types.Task, { id: "t1", title: "Water the plants" }).key).toBe("t1");
+  });
+
+  it("is only the key, and text", () => {
+    const issues = (fields: object, key = "id") =>
+      AppDefinitionSchema.safeParse({ name: "Bad", types: { Task: { key, fields } } }).error?.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+    expect(issues({ id: { type: "number", auto: true } })).toEqual(["types.Task.fields.id.auto: a key Storm makes is text"]);
+    expect(issues({ id: { type: "text" }, title: { type: "text", auto: true } })).toEqual(["types.Task.fields.title.auto: only the key is made by Storm"]);
+  });
+});

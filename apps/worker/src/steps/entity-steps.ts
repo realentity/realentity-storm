@@ -62,7 +62,28 @@ export async function saveEntities(
   const stages = type.stages;
   const invalid: { key: string | null; saved: boolean; problems: string[] }[] = [];
   const keyed = new Map<string, { value: Item; stage?: string }>();
-  for (const item of items) {
+  // M48: an update of an entity that has its required fields (one you added on its page, its title typed by you) needn't
+  // give them again: what it holds counts.
+  const required = Object.entries(type.fields).filter(([name, f]) => f.required && !f.mine && name !== type.key).map(([name]) => name);
+  const rawKeys = items.flatMap((item) => {
+    const key = valueAt(item, type.key);
+    return typeof key === "string" || typeof key === "number" ? [String(key)] : [];
+  });
+  const holding = new Map(
+    required.length > 0 && rawKeys.length > 0
+      ? (await prisma.dataEntity.findMany({ where: { appId, type: typeName, key: { in: rawKeys } } })).map((e) => [e.key, entityItem(e.value, e.mine)])
+      : [],
+  );
+  for (const given of items) {
+    const rawKey = valueAt(given, type.key);
+    const held = typeof rawKey === "string" || typeof rawKey === "number" ? holding.get(String(rawKey)) : undefined;
+    const item = held ? { ...given } : given;
+    if (held) {
+      for (const name of required) {
+        const value = valueAt(item, name);
+        if ((value === undefined || value === null || value === "") && valueAt(held, name) !== undefined) item[name] = valueAt(held, name);
+      }
+    }
     const checked = checkEntity(type, item);
     if (checked.problems.length > 0) invalid.push({ key: checked.key, saved: !checked.rejected, problems: checked.problems });
     if (checked.rejected || !checked.key) continue;

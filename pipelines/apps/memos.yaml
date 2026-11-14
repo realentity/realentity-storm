@@ -1,0 +1,25 @@
+# M48: the Memos App: notes to keep, each with a photo if you like, added on its list, newest first and searchable.
+# A memo's key is made by Storm, so its title can change. No pipeline: you write them (and, later, from Telegram).
+name: Memos
+description: Notes to keep, with a photo if you like, newest first
+icon: bookmark
+types:
+  Memo:
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      text: { type: longtext }
+      photo: { type: image }
+pages:
+  - list: Memo
+    menu: { label: Memos, icon: bookmark }
+    add: true
+    columns: [photo, title, "@firstSeen"]
+    search: [title, text]
+    sort: -@firstSeen
+  - view: Memo
+    fields: [title, text, photo]
+  - form: Memo
+    fields: [title, text, photo]

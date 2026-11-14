@@ -1,0 +1,32 @@
+# When you add a paper in the Papers App (pipelines/apps/papers.yaml: save it first) or change its document: the LLM
+# reads the photo or PDF and fills in what it is, the merchant, the amount and the dates. What you typed yourself stays
+# over what it read; what it can't read is left empty. The document is data, never instructions.
+name: Read a paper
+app: Papers
+description: Reads a paper's photo or PDF and fills in its merchant, amount and dates.
+trigger: { on: entity.changed, type: Paper, field: document }
+steps:
+  - id: read
+    type: llm.extract
+    when: "{{trigger.item.document}}"
+    with:
+      files: ["{{trigger.item.document}}"]
+      fields:
+        kind: "what it is: receipt, invoice, warranty, contract or other"
+        merchant: the shop or company that issued it
+        amount: the total paid or to pay, as a number
+        currency: the currency, as its code (EUR, BGN, USD)
+        date: the date it was issued
+        warrantyUntil: when its warranty ends; a period (2 years) counted from its date
+  - id: save
+    type: data.save
+    with:
+      type: Paper
+      items:
+        - id: "{{trigger.item.id}}"
+          kind: "{{read.values.kind}}"
+          merchant: "{{read.values.merchant}}"
+          amount: "{{read.values.amount}}"
+          currency: "{{read.values.currency}}"
+          date: "{{read.values.date}}"
+          warrantyUntil: "{{read.values.warrantyUntil}}"
