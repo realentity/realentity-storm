@@ -59,6 +59,40 @@ export async function sendTelegramTyping(config: TelegramConfig, send: typeof fe
   await callTelegram(config, "sendChatAction", { chat_id: config.chatId, action: "typing" }, send);
 }
 
+/** M49: the bot's command menu (setMyCommands), for the user's chat; the whole list each time. */
+export async function setTelegramCommands(
+  config: TelegramConfig,
+  commands: readonly { command: string; description: string }[],
+  send: typeof fetch = fetch,
+): Promise<void> {
+  await callTelegram(
+    config,
+    "setMyCommands",
+    { commands: commands.map((c) => ({ command: c.command, description: c.description.slice(0, 256) })), scope: { type: "chat", chat_id: Number(config.chatId) } },
+    send,
+  );
+}
+
+/** The Bot API lets a bot download files up to this size. */
+export const TELEGRAM_FILE_MAX_BYTES = 20 * 1_048_576;
+
+/** M49: a file sent to the bot (a photo, a document), by its file_id: its content, within `maxBytes`. */
+export async function downloadTelegramFile(config: TelegramConfig, fileId: string, maxBytes = TELEGRAM_FILE_MAX_BYTES, send: typeof fetch = fetch): Promise<Buffer> {
+  const file = (await callTelegram(config, "getFile", { file_id: fileId }, send)) as { file_path?: string; file_size?: number };
+  if (!file.file_path) throw new Error("Telegram has no such file (or it is larger than 20 MB)");
+  if ((file.file_size ?? 0) > maxBytes) throw new Error(`The file is larger than ${Math.round(maxBytes / 1_048_576)} MB`);
+  let response: Response;
+  try {
+    response = await send(`https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`, { signal: AbortSignal.timeout(60_000) });
+  } catch {
+    throw new Error("Telegram could not be reached");
+  }
+  if (!response.ok) throw new Error(`Telegram didn't give the file (${response.status})`);
+  const content = Buffer.from(await response.arrayBuffer());
+  if (content.length > maxBytes) throw new Error(`The file is larger than ${Math.round(maxBytes / 1_048_576)} MB`);
+  return content;
+}
+
 async function callTelegram(config: TelegramConfig, method: string, body: Record<string, unknown>, send: typeof fetch): Promise<unknown> {
   const { botToken, chatId } = config;
   if (!botToken || !chatId) throw new Error("Telegram is not configured (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)");

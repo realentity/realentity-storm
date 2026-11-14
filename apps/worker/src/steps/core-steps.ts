@@ -100,7 +100,9 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new GenerateStep(deps.llm, deps.router, deps.learning),
     new SummarizeStep(deps.llm, deps.router, deps.learning),
     deps.appFiles ? new ExtractStep(deps.llm, deps.router, deps.learning).withFiles(deps.prisma, deps.appFiles) : new ExtractStep(deps.llm, deps.router, deps.learning),
-    ...(deps.appFiles ? [new FileKeepStep(deps.prisma, deps.appFiles, deps.mail, deps.browser?.artifacts, deps.downloadMaxMb)] : []),
+    ...(deps.appFiles
+      ? [new FileKeepStep(deps.prisma, deps.appFiles, deps.mail, deps.browser?.artifacts, deps.downloadMaxMb, { config: deps.telegram, fetch: deps.fetch })]
+      : []),
     // file.read without a browser: an App's files only (the browser's steps add documents and downloads).
     ...(deps.appFiles && !deps.browser ? [new FileReadStep(deps.prisma, undefined, undefined, deps.appFiles)] : []),
     new TopicMatchStep(deps.llm, deps.router, deps.learning, deps.prisma),

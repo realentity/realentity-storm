@@ -25,7 +25,33 @@ const CRON = /^(\S+\s+){4}\S+$/;
 
 
 /** What happens in Storm that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
-export const TRIGGER_EVENTS = ["run.finished", "application.status", "recipe.broken", "email.classified", "flow.later", "view.action", "entity.changed", "entity.action"] as const;
+export const TRIGGER_EVENTS = [
+  "run.finished",
+  "application.status",
+  "recipe.broken",
+  "email.classified",
+  "flow.later",
+  "view.action",
+  "entity.changed",
+  "entity.action",
+  "telegram.command",
+] as const;
+
+/** M49: a Telegram command's name, as Telegram takes it: lowercase letters, digits and _, at most 32. */
+export const TELEGRAM_COMMAND = /^[a-z0-9_]{1,32}$/;
+
+/** M49: the Storm bot's own commands, with what they do; a pipeline's command is never one of them. */
+export const BUILT_IN_COMMANDS: readonly { command: string; description: string }[] = [
+  { command: "run", description: "Start a pipeline: /run <pipeline>" },
+  { command: "status", description: "What runs, what waits" },
+  { command: "inbox", description: "The proposals waiting for you" },
+  { command: "pause", description: "Kill switch on: nothing runs or acts" },
+  { command: "resume", description: "Kill switch off" },
+  { command: "new", description: "A new chat with the pipeline builder" },
+  { command: "edit", description: "Change a pipeline with the builder: /edit <pipeline>" },
+  { command: "help", description: "What the bot does" },
+  { command: "start", description: "What the bot does" },
+];
 export type TriggerEventName = (typeof TRIGGER_EVENTS)[number];
 
 const list = <T extends z.ZodType>(schema: T) => z.array(schema).min(1).optional();
@@ -63,6 +89,20 @@ export const EventTriggerSchema = z.discriminatedUnion("on", [
     .strict(),
   /** An entity's button on its page (M32), with the entity: {{trigger.item}}. `type` limits it to one. */
   z.object({ on: z.literal("entity.action"), type: z.string().regex(TYPE_NAME).optional() }).strict(),
+  /**
+   * M49: a command sent to the Storm bot, /task Buy milk: {{trigger.text}} is what follows it, {{trigger.file}} a photo
+   * or a file sent with it (the command as its caption). Only from the user's own chat, and only while the pipeline is
+   * on; one pipeline per command (refused when switching on a second).
+   */
+  z
+    .object({
+      on: z.literal("telegram.command"),
+      command: z.string().regex(TELEGRAM_COMMAND, "lowercase letters, digits and _, at most 32, e.g. task"),
+      /** In the bot's menu. */
+      description: z.string().trim().min(3).max(200).optional(),
+    })
+    .strict()
+    .refine((t) => !BUILT_IN_COMMANDS.some((b) => b.command === t.command), { message: "that is one of the Storm bot's own commands", path: ["command"] }),
 ]);
 export type EventTrigger = z.infer<typeof EventTriggerSchema>;
 

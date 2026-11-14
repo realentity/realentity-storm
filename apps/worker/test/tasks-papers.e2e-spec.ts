@@ -12,7 +12,8 @@ import { type z } from "zod";
 import { recordFile, storeFile } from "@realentity/storm-files";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry } from "../src/runner/step-executor";
-import { AppFileStore } from "../src/steps/app-file-steps";
+import { AppFileStore, FileKeepStep } from "../src/steps/app-file-steps";
+import { type MailConnector } from "../src/mail/mail-connector";
 import { SaveStep } from "../src/steps/data-steps";
 import { ReadStep } from "../src/steps/entity-steps";
 import { ExtractStep } from "../src/steps/llm-steps";
@@ -41,17 +42,28 @@ describe("Tasks and Papers", () => {
   let telegram: Counting;
   let reader: ReceiptReader;
   let runner: PipelineRunner;
+  let photo: Buffer;
+  /** The Bot API's getFile and file download, for the photos the tests send. */
+  let downloads: string[];
+  const botApi: typeof fetch = (input) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    downloads.push(url.replace(/bot[^/]+/, "bot<token>"));
+    if (url.endsWith("/getFile")) return Promise.resolve(new Response(JSON.stringify({ ok: true, result: { file_path: "photos/file_7.jpg", file_size: photo.length } })));
+    return Promise.resolve(new Response(new Uint8Array(photo)));
+  };
   const compiler = new PipelineCompiler(defaultCatalog());
 
   beforeAll(async () => {
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
     root = await mkdtemp(join(tmpdir(), "storm-papers-"));
+    photo = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: "#e8e2d4" } }).jpeg().toBuffer();
   });
 
   beforeEach(() => {
     telegram = new Counting("notify.telegram", () => ({ sent: true }));
     reader = new ReceiptReader();
+    downloads = [];
     const store = new AppFileStore(root);
     runner = new PipelineRunner(
       db.client,
@@ -61,6 +73,7 @@ describe("Tasks and Papers", () => {
         new SaveStep(db.client, root),
         new MapStep(),
         new ExtractStep(reader, new ModelRouter(() => Promise.resolve(null))).withFiles(db.client, store),
+        new FileKeepStep(db.client, store, {} as MailConnector, undefined, 25, { config: { botToken: "123:test", chatId: "4242" }, fetch: botApi }),
         telegram,
       ]),
     );
@@ -131,6 +144,50 @@ describe("Tasks and Papers", () => {
       currency: "EUR",
       date: "2026-11-10",
       warrantyUntil: "2028-11-10",
+    });
+  });
+
+  // M49-I1 (the worker's half): /task, /memo with a photo, /paper with a photo
+  describe("from Telegram", () => {
+    const command = (name: string, text: string, file: Record<string, unknown> | null = null) => ({
+      command: name,
+      text,
+      file,
+      messageId: 7,
+      sentAt: "2026-11-14T08:30:00.000Z",
+    });
+    const sentPhoto = { telegramFileId: "AgACAgQAAxkBAAI", name: "photo-1763109000.jpg", mime: "image/jpeg", size: 1 };
+    const runCommand = async (file: string, app: string, data: Record<string, unknown>) => {
+      const { appId, definition } = await install(app);
+      const versionId = await createVersion(db.client, userId, read(file), compiler, { app: definition });
+      const runId = await runner.start(versionId, { trigger: "telegram", triggerData: data });
+      expect(await runner.advance(runId)).toBe("DONE");
+      return appId;
+    };
+    const only = async (appId: string, type: string) => {
+      const rows = await db.client.dataEntity.findMany({ where: { appId, type } });
+      expect(rows).toHaveLength(1);
+      return entityItem(rows[0].value, rows[0].mine);
+    };
+
+    it("pipelines/task-from-telegram.yaml: /task Renew the passport adds an open task", async () => {
+      const appId = await runCommand("task-from-telegram.yaml", "apps/tasks.yaml", command("task", "Renew the passport\nbefore the trip"));
+      expect(await only(appId, "Task")).toMatchObject({ title: "Renew the passport", id: expect.stringMatching(/^[a-z0-9]{12}$/) as unknown });
+      expect(telegram.calls.map((c) => c.text)).toEqual(["Added: Renew the passport"]);
+    });
+
+    it("pipelines/memo-from-telegram.yaml: a photo with /memo kept with its text; the photo downloaded from the bot", async () => {
+      const appId = await runCommand("memo-from-telegram.yaml", "apps/memos.yaml", command("memo", "Wi-Fi at the cottage", sentPhoto));
+      const memo = await only(appId, "Memo");
+      expect(memo).toMatchObject({ title: "Wi-Fi at the cottage", text: "Wi-Fi at the cottage", photo: { name: "photo-1763109000.jpg", mime: "image/jpeg", size: photo.length } });
+      expect(downloads).toEqual(["https://api.telegram.org/bot<token>/getFile", "https://api.telegram.org/file/bot<token>/photos/file_7.jpg"]);
+      expect(telegram.calls.map((c) => c.text)).toEqual(["Kept: Wi-Fi at the cottage"]);
+    });
+
+    it("pipelines/paper-from-telegram.yaml: a photo with /paper becomes a paper with its document", async () => {
+      const appId = await runCommand("paper-from-telegram.yaml", "apps/papers.yaml", command("paper", "Washing machine", sentPhoto));
+      expect(await only(appId, "Paper")).toMatchObject({ title: "Washing machine", document: { mime: "image/jpeg" } });
+      expect(telegram.calls.map((c) => c.text)).toEqual(["Kept: Washing machine. Reading it now."]);
     });
   });
 });

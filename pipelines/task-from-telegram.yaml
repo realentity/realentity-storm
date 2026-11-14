@@ -1,0 +1,20 @@
+# /task Renew the passport on the Storm bot adds a task to the Tasks App (pipelines/apps/tasks.yaml: save it first),
+# and says so. Switch it on to have /task in the bot's menu. No LLM.
+name: Task from Telegram
+app: Tasks
+description: /task Buy milk on Telegram adds a task.
+trigger: { on: telegram.command, command: task, description: "Add a task: /task Buy milk" }
+steps:
+  - id: task
+    type: data.map
+    with:
+      from: { text: "{{trigger.text}}" }
+      # The first line is the task; nothing after /task asks what.
+      expression: '$trim($split(text, "\n")[0]) ? { "title": $substring($trim($split(text, "\n")[0]), 0, 200) }'
+  - id: save
+    type: data.save
+    with: { type: Task, items: "{{task.items}}" }
+  - id: added
+    type: notify.telegram
+    when: "{{save.added}}"
+    with: { text: "Added: {{task.value.title}}" }

@@ -370,7 +370,11 @@ Pipeline definition (JSON; the user sees it as YAML):
   or an event: { "on": "run.finished", "pipeline": "<name>", "status"?: ["DONE" | "FAILED"] },
   { "on": "application.status", "status"?: ["PREPARED" | "SUBMITTED" | "RESPONDED" | "REJECTED" | "INTERVIEW"] },
   { "on": "recipe.broken", "site"?: "<host>" }, { "on": "email.classified", "label"?: ["<label>"] },
-  { "on": "view.action", "collection"?: "<collection>" } (a row's button on a page, see view), or a webhook:
+  { "on": "view.action", "collection"?: "<collection>" } (a row's button on a page, see view),
+  { "on": "telegram.command", "command": "<lowercase name, e.g. task>", "description"?: "<for the bot's menu>" } (the
+  user sends /task <text> to the Storm bot, maybe as a photo's caption: {{trigger.text}} is what follows it, never a
+  target, {{trigger.file}} a photo or file for file.keep's telegram; never run, status, inbox, pause, resume, new, edit,
+  help, start), or a webhook:
   { "webhook": "hmac-sha256" | "token" }. The event's data is "{{trigger.*}}": run.finished: runId, pipeline,
   status, summary, outputs (by step id); application.status: applicationId, status, job { title, company, location,
   url }; recipe.broken: site, recipe, version, reason, fixProposed; email.classified: label, reason, message (an

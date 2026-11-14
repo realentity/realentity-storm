@@ -79,6 +79,8 @@ export function describeTrigger(trigger: Trigger): string {
       return `When a ${trigger.type} is added or changes${trigger.field ? ` (${trigger.field})` : ""}${trigger.stage ? `, moving to ${trigger.stage}` : ""}`;
     case "entity.action":
       return `From an entity's button on its page${trigger.type ? ` (${trigger.type})` : ""}, with the entity`;
+    case "telegram.command":
+      return `When you send /${trigger.command} to the Storm bot, with what follows it and a photo or file sent with it`;
   }
 }
 

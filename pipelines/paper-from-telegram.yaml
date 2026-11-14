@@ -1,0 +1,27 @@
+# A photo or a PDF sent to the Storm bot with /paper and its title as the caption becomes a paper in the Papers App
+# (pipelines/apps/papers.yaml: save it first); read-paper.yaml then reads it and fills in the merchant, the amount and
+# the dates. Switch it on to have /paper in the bot's menu.
+name: Paper from Telegram
+app: Papers
+description: A photo or PDF sent with /paper on Telegram becomes a paper, read for you.
+trigger: { on: telegram.command, command: paper, description: "Keep a receipt or warranty: a photo or PDF with /paper and its title as the caption" }
+steps:
+  - id: keep
+    type: file.keep
+    with: { type: Paper, field: document, telegram: "{{trigger.file}}" }
+  - id: paper
+    type: data.map
+    with:
+      from: { text: "{{trigger.text}}", sentAt: "{{trigger.sentAt}}", document: "{{keep.first}}" }
+      expression: 'document ? { "title": $trim(text) ? $substring($trim(text), 0, 120) : "Paper of " & $substring(sentAt, 0, 10), "document": document }'
+  - id: save
+    type: data.save
+    with: { type: Paper, items: "{{paper.items}}" }
+  - id: kept
+    type: notify.telegram
+    when: "{{save.added}}"
+    with: { text: "Kept: {{paper.value.title}}. Reading it now." }
+  - id: nothing
+    type: notify.telegram
+    when: "{{keep.skipped}}"
+    with: { text: "Not kept: send a photo or a PDF, with /paper and its title as the caption." }

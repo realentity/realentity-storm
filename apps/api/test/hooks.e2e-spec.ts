@@ -525,4 +525,87 @@ describe("M12: the Storm bot and webhooks", () => {
       expect(reply.body.text).toMatch(/^The builder failed: /);
     });
   });
+
+  // M49-U1, I1 (the api's half), S1: a pipeline's command on the bot
+  describe("M49: commands of pipelines", () => {
+    const THING = (command = "thing", name = "Add a thing") => `
+name: ${name}
+trigger: { on: telegram.command, command: ${command}, description: "Add a thing: /${command} milk" }
+steps:
+  - id: tell
+    type: notify.telegram
+    with: { text: "{{trigger.text}}" }
+`;
+    const photo = (caption: string | undefined, from = ME) => ({
+      update_id: ++updates,
+      message: {
+        message_id: updates,
+        from: { id: from },
+        chat: { id: from, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        ...(caption ? { caption } : {}),
+        photo: [
+          { file_id: "small-id", file_size: 900 },
+          { file_id: "large-id", file_size: 90_000 },
+        ],
+      },
+    });
+
+    it("starts its pipeline once it is on, with the text after it and a photo sent with it; the menu follows", async () => {
+      const pipeline = await createPipeline(THING());
+      await telegram(message("/thing milk")).expect(200);
+      expect(sent().at(-1)!.body.text).not.toContain("On it");
+      expect(await db.client.run.count()).toBe(0);
+
+      await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
+      const menu = sent("setMyCommands").at(-1)!.body;
+      expect(menu.scope).toEqual({ type: "chat", chat_id: ME });
+      expect((menu.commands as { command: string }[]).map((c) => c.command)).toEqual(["run", "status", "inbox", "pause", "resume", "new", "edit", "help", "thing"]);
+      expect((menu.commands as { command: string; description: string }[]).at(-1)!.description).toBe("Add a thing: /thing milk");
+
+      await telegram(message("/thing Buy milk\nand bread")).expect(200);
+      const run = await db.client.run.findFirstOrThrow({ where: { pipelineVersion: { pipelineId: pipeline.pipelineId } } });
+      expect(run).toMatchObject({ trigger: "telegram", dryRun: false, status: "QUEUED" });
+      expect(run.triggerData).toMatchObject({ command: "thing", text: "Buy milk\nand bread", file: null });
+      expect(sent().at(-1)!.body.text).toBe("On it: Add a thing.");
+
+      await telegram(photo("/thing Washing machine")).expect(200);
+      const second = await db.client.run.findFirstOrThrow({ where: { pipelineVersion: { pipelineId: pipeline.pipelineId }, runId: { not: run.runId } } });
+      expect(second.triggerData).toMatchObject({ text: "Washing machine", file: { telegramFileId: "large-id", mime: "image/jpeg", size: 90_000 } });
+
+      // A photo without a command; /help lists the pipeline's command.
+      await telegram(photo(undefined)).expect(200);
+      expect(sent().at(-1)!.body.text).toContain("with a command as its caption");
+      await telegram(message("/help")).expect(200);
+      expect(sent().at(-1)!.body.text).toContain("/thing: Add a thing: /thing milk");
+
+      // Off: out of the menu.
+      await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: false }).expect(200);
+      expect((sent("setMyCommands").at(-1)!.body.commands as { command: string }[]).map((c) => c.command)).not.toContain("thing");
+    });
+
+    it("refuses a command another pipeline that is on has, or one of the bot's own", async () => {
+      await createPipeline(THING("thing", "Add a thing"), true);
+      const other = await createPipeline(THING("thing", "Another thing"));
+      const refused = await agent.patch(`/api/pipelines/${other.pipelineId}`).send({ enabled: true }).expect(409);
+      expect((refused.body as { message: string }).message).toBe(
+        `/thing is already "Add a thing"'s command: switch that one off, or give this one another, e.g. another_thing_thing`,
+      );
+      // A new version of a pipeline that is on, taking a command that is taken: refused too.
+      const third = await createPipeline(THING("third", "Third thing"), true);
+      await agent.post(`/api/pipelines/${third.pipelineId}/versions`).send({ source: THING("thing", "Third thing") }).expect(409);
+
+      const own = await agent.post("/api/pipelines").send({ source: THING("inbox", "Inbox thing") }).expect(400);
+      expect(JSON.stringify(own.body)).toContain("that is one of the Storm bot's own commands");
+    });
+
+    it("ignores a command from another chat", async () => {
+      await createPipeline(THING(), true);
+      calls = [];
+      await telegram(message("/thing milk", 999, { id: 999, type: "private" })).expect(200);
+      await telegram(photo("/thing milk", 999)).expect(200);
+      expect(await db.client.run.count()).toBe(0);
+      expect(sent()).toHaveLength(0);
+    });
+  });
 });

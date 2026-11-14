@@ -45,7 +45,9 @@ user id. See [self-hosting.md](self-hosting.md) ("Webhooks and Telegram") for th
 | `/resume` | Turns the kill switch **off**: pipelines run again (stopped runs stay stopped) |
 | `/new` | Starts a new chat with the pipeline builder |
 | `/edit <pipeline>` | Starts a builder chat about an existing pipeline |
-| `/help` (or any unknown command) | Lists the commands |
+| `/help` (or any unknown command) | Lists the commands, your pipelines' too |
+| *your pipelines' commands* | `/task Buy milk`, `/memo …`, `/paper …`: a pipeline triggered by `{ on: telegram.command, command: task }` (see below), while it is on |
+| *a photo or a file with a command as its caption* | The same, with the photo or file: `/paper Washing machine` under a receipt's photo |
 | *any other text* | Goes to the pipeline builder (see §4) |
 | *a reply to a question* | Answers the question (see §3.3) |
 
@@ -54,6 +56,19 @@ Rules:
   them later.
 - Pipeline names don't need to match exactly. `/run price` works if exactly one pipeline starts with "price". If more
   than one matches, or none does, the bot lists your pipelines.
+
+### Your own commands
+
+A pipeline triggered by `{ on: telegram.command, command: task, description: "Add a task" }` is started by `/task`,
+with what follows it as `{{trigger.text}}` and a photo or file sent with it (the command as its caption) as
+`{{trigger.file}}`, which `file.keep` stores in an App. Rules:
+
+- Only while the pipeline is **on**, and only from your own chat, like every command.
+- One pipeline per command: switching on a second pipeline with `/task` is refused, with a name to use instead
+  (`/tasks_task`). The bot's own commands (`/run`, `/inbox`, …) can't be taken.
+- The bot's menu (the `/` button in the chat) follows: Storm updates it when a pipeline with a command is switched on
+  or off, saved, or deleted.
+- The Tasks, Memos and Papers examples come with `/task`, `/memo` and `/paper`: switch those pipelines on.
 
 ### Examples
 
