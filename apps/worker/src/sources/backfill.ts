@@ -74,8 +74,11 @@ export class TopicBackfills {
     const since = new Date(now.getTime());
     since.setMonth(since.getMonth() - backfill.months);
     const [inbox, sent, linked] = await Promise.all([
-      this.mail.recent(backfill.userId, { mailbox: "INBOX", since, limit: HISTORY_EMAILS }),
-      this.mail.recent(backfill.userId, { mailbox: SENT_MAILBOX, since, limit: HISTORY_EMAILS }).catch(() => [] as EmailMessage[]),
+      // M50-T7: the default email account's mailbox.
+      this.mail.recent({ userId: backfill.userId }, { mailbox: "INBOX", since, limit: HISTORY_EMAILS }),
+      this.mail
+        .recent({ userId: backfill.userId }, { mailbox: SENT_MAILBOX, since, limit: HISTORY_EMAILS })
+        .catch(() => [] as EmailMessage[]),
       this.prisma.topicLink.findMany({
         where: { topicId: topic.topicId, status: { in: ["LINKED", "CONFIRMED"] } },
         select: { threadId: true },
@@ -225,7 +228,7 @@ export class TopicBackfills {
     const read = new Map<string, EmailMessage>();
     for (let start = 0; start < found.length; start += IDS_PER_READ) {
       const ids = found.slice(start, start + IDS_PER_READ).map((e) => e.messageId);
-      for (const { message } of await this.mail.thread(backfill.userId, ids)) read.set(message.messageId, message);
+      for (const { message } of await this.mail.thread({ userId: backfill.userId }, ids)) read.set(message.messageId, message);
     }
     // An email no longer in the mailbox keeps its place, empty, so the indexes stay the same.
     const emails = found.map((e) => {

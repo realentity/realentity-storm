@@ -12,6 +12,7 @@ export * from "./builder-api";
 export * from "./bundle";
 export * from "./canonical-json";
 export * from "./credentials";
+export * from "./email-accounts";
 export * from "./env";
 export * from "./events";
 export * from "./examples";

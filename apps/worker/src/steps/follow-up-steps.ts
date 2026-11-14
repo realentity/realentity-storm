@@ -3,7 +3,7 @@ import { type Embeddings, type LlmClient, type ModelRouter } from "@realentity/s
 import { type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
 import { type StepLearning } from "../learning/learning";
-import { SENT_MAILBOX, type MailConnector } from "../mail/mail-connector";
+import { mailWho, SENT_MAILBOX, type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { emailBlock } from "./email-block";
 import { readThread, THREAD_RULE } from "./email-thread";
@@ -24,6 +24,8 @@ interface AwaitingInput {
   sentMailbox?: string;
   maxFollowUps: number;
   limit: number;
+  /** M50-T7: an email slot, or an account's id; default: the default account. */
+  account?: string;
 }
 
 /**
@@ -42,18 +44,22 @@ export class EmailAwaitingStep implements StepExecutor {
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { afterDays, lookbackDays, mailbox, sentMailbox, maxFollowUps, limit } = input as unknown as AwaitingInput;
+    const { afterDays, lookbackDays, mailbox, sentMailbox, maxFollowUps, limit, account } = input as unknown as AwaitingInput;
+    const who = mailWho(context, account);
     const now = Date.now();
     const since = new Date(now - lookbackDays * DAY_MS);
     const [sent, received] = await Promise.all([
-      this.mail.recent(context.userId, { mailbox: sentMailbox ?? SENT_MAILBOX, since, limit: READ_LIMIT }),
-      this.mail.recent(context.userId, { mailbox, since, limit: READ_LIMIT }),
+      this.mail.recent(who, { mailbox: sentMailbox ?? SENT_MAILBOX, since, limit: READ_LIMIT }),
+      this.mail.recent(who, { mailbox, since, limit: READ_LIMIT }),
     ]);
     const mine = new Set(sent.map((m) => m.messageId));
     const told = new Set(
-      (await this.prisma.followUp.findMany({ where: { userId: context.userId, messageId: { in: [...mine] } }, select: { messageId: true } })).map(
-        (f) => f.messageId,
-      ),
+      (
+        await this.prisma.followUp.findMany({
+          where: { userId: context.userId, messageId: { in: [...mine] } },
+          select: { messageId: true },
+        })
+      ).map((f) => f.messageId),
     );
 
     const threads = [...groupBy(sent, (m) => m.threadId).values()].flatMap((emails) => {
@@ -86,7 +92,14 @@ export class EmailAwaitingStep implements StepExecutor {
     const listed = threads.sort((a, b) => b.daysWaiting - a.daysWaiting).slice(0, limit);
     if (!context.dryRun && listed.length > 0) {
       await this.prisma.followUp.createMany({
-        data: listed.map((t) => ({ userId: context.userId, messageId: t.message.messageId, threadId: t.threadId, to: t.to, subject: t.subject, runId: context.runId })),
+        data: listed.map((t) => ({
+          userId: context.userId,
+          messageId: t.message.messageId,
+          threadId: t.threadId,
+          to: t.to,
+          subject: t.subject,
+          runId: context.runId,
+        })),
         skipDuplicates: true,
       });
     }
@@ -101,7 +114,9 @@ function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
 }
 
 function inThread(message: EmailMessage, ids: Set<string>): boolean {
-  return ids.has(message.threadId) || (message.inReplyTo !== null && ids.has(message.inReplyTo)) || message.references.some((id) => ids.has(id));
+  return (
+    ids.has(message.threadId) || (message.inReplyTo !== null && ids.has(message.inReplyTo)) || message.references.some((id) => ids.has(id))
+  );
 }
 
 function time(message: EmailMessage): number {
@@ -124,7 +139,13 @@ export class DraftFollowUpStep extends LlmStep {
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { message, instruction, daysWaiting, signature, topic = "auto" } = input as {
+    const {
+      message,
+      instruction,
+      daysWaiting,
+      signature,
+      topic = "auto",
+    } = input as {
       message: EmailMessage;
       instruction: string;
       daysWaiting?: number;
@@ -140,7 +161,7 @@ export class DraftFollowUpStep extends LlmStep {
         "same thread to its recipient, to be reviewed and sent by the user. Rules:",
       "- Write in the language of the user's email.",
       "- Short: a greeting, two or three sentences, a sign-off. Refer to the user's email; don't repeat it.",
-      "- Polite and without pressure: no guilt, no deadline, no \"just checking in\" filler twice.",
+      '- Polite and without pressure: no guilt, no deadline, no "just checking in" filler twice.',
       "- Add no new facts, dates, prices, offers or commitments (beyond <memory>, if given); where one would be needed, a " +
         "placeholder like [date].",
       "- Plain text, no subject line, no quoted original.",
@@ -159,8 +180,18 @@ export class DraftFollowUpStep extends LlmStep {
       ...(memory.block ? { used: UsedFacts } : {}),
     });
     const email = emailBlock(message);
-    const [examples, thread] = await Promise.all([this.examplesFor(context, email), readThread(this.mail, context.userId, message)]);
-    const draft = await this.call(context, system, `${examples}${thread}${memory.passages}${email}`, schema, true, memory.block || undefined);
+    const [examples, thread] = await Promise.all([
+      this.examplesFor(context, email),
+      readThread(this.mail, mailWho(context, message.account), message),
+    ]);
+    const draft = await this.call(
+      context,
+      system,
+      `${examples}${thread}${memory.passages}${email}`,
+      schema,
+      true,
+      memory.block || undefined,
+    );
     return {
       subject: replySubject(message.subject),
       body: draft.body.trim(),

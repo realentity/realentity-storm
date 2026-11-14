@@ -140,6 +140,7 @@ model User {
   httpCaches       HttpCache[]
   alertStates      AlertState[]
   google           GoogleConnection?
+  emailAccounts    EmailAccount[]
   facts            Fact[]
   questions        Question[]
   topics           Topic[]
@@ -352,6 +353,8 @@ model MailCursor {
   pipelineId   String   @db.Uuid
   pipeline     Pipeline @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
   mailbox      String
+  /// M50-T7: the account it was read from; another account starts again from `since`.
+  emailAccountId String?  @db.Uuid
   uidValidity  BigInt
   lastUid      BigInt
   dateUpdated  DateTime @updatedAt
@@ -1379,6 +1382,8 @@ model TopicSource {
   /// ATTACHMENT: where its email is, to read it again (a rebuild).
   mailbox       String?
   uid           Int?
+  /// M50-T7: the email account the attachment's message is in; null: the default one.
+  emailAccountId String?  @db.Uuid
   /// ATTACHMENT: what to show, "Maria <maria@client.example>: Kickoff". DRIVE: the folder's name, as last read.
   title         String          @default("")
   /// The last commit indexed (ATTACHMENT: "read"; DRIVE: Drive's changes page token): the next read continues from it.
@@ -1572,6 +1577,9 @@ model Binding {
   slot         String
   credentialId String?     @db.Uuid
   credential   Credential? @relation(fields: [credentialId], references: [credentialId], onDelete: Cascade)
+  /// M50-T7: an email slot's account.
+  emailAccountId String?       @db.Uuid
+  emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [emailAccountId], onDelete: Cascade)
   text         String?
   dateCreated  DateTime    @default(now())
   dateUpdated  DateTime    @updatedAt
@@ -1579,4 +1587,34 @@ model Binding {
   @@unique([pipelineId, slot])
   @@unique([appId, slot])
   @@map("Bindings")
+}
+
+/// M50-T7: one of the user's mailboxes (Gmail with an app password, or any IMAP/SMTP server), one the default. Its
+/// password is sealed like a credential's (AAD: emailAccountId) and opened by the worker only for these servers.
+model EmailAccount {
+  emailAccountId String    @id @db.Uuid
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  /// The address: what it signs in with, and what it sends from.
+  address        String
+  label          String?
+  imapHost       String
+  imapPort       Int
+  smtpHost       String
+  smtpPort       Int
+  /// TLS from the first byte (993/465); off only for a local test server.
+  tls            Boolean   @default(true)
+  isDefault      Boolean   @default(false)
+  ciphertext     Bytes
+  iv             Bytes
+  authTag        Bytes
+  wrappedDek     Bytes
+  keyVersion     Int       @default(1)
+  lastUsedAt     DateTime?
+  dateCreated    DateTime  @default(now())
+  dateUpdated    DateTime  @updatedAt
+  bindings       Binding[]
+
+  @@unique([userId, address])
+  @@map("EmailAccounts")
 }

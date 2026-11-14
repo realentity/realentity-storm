@@ -36,7 +36,10 @@ export const TextNeedSchema = z
   })
   .strict();
 
-export const NeedSchema = z.discriminatedUnion("kind", [CredentialNeedSchema, TextNeedSchema]);
+/** M50-T7: one of the user's email accounts; not filled, the default one. */
+export const EmailNeedSchema = z.object({ kind: z.literal("email"), label: Label.optional() }).strict();
+
+export const NeedSchema = z.discriminatedUnion("kind", [CredentialNeedSchema, TextNeedSchema, EmailNeedSchema]);
 export type Need = z.infer<typeof NeedSchema>;
 
 export const NeedsSchema = z
@@ -63,13 +66,17 @@ export interface BindingView {
   credential: { credentialId: string; name: string } | null;
   /** A text setting's value; null: not set. */
   text: string | null;
-  /** M50-T4: a credential slot's candidates: the user's credentials that fit it (its type, its host). */
-  fits: { credentialId: string; name: string }[];
+  /** M50-T7: an email slot's account; null: the default one. */
+  account: { emailAccountId: string; address: string } | null;
+  /** M50-T4: a credential slot's candidates (the user's credentials that fit it), or an email slot's (their accounts). */
+  fits: { id: string; name: string }[];
 }
 
-/** M50-T13: the slots not filled: a setting with no text, a credential slot with none. */
+/** M50-T13: the slots not filled: a setting with no text, a credential slot with none. An email slot is never empty: without one chosen, the default account. */
 export function emptySlots(views: readonly BindingView[]): BindingView[] {
-  return views.filter((v) => (v.need.kind === "credential" ? v.credential === null : v.text === null || v.text === ""));
+  return views.filter((v) =>
+    v.need.kind === "email" ? false : v.need.kind === "credential" ? v.credential === null : v.text === null || v.text === "",
+  );
 }
 
 /** M50: setting one slot: a credential by id, or a text (null clears it). */
@@ -77,6 +84,8 @@ export const BindingRequestSchema = z
   .object({
     credentialId: z.uuid().nullable().optional(),
     text: z.string().max(2000).nullable().optional(),
+    /** M50-T7: an email slot's account. */
+    emailAccountId: z.uuid().nullable().optional(),
   })
   .strict();
 export type BindingRequest = z.infer<typeof BindingRequestSchema>;

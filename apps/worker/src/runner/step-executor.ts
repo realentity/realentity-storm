@@ -35,6 +35,8 @@ export interface StepContext {
    * never by a credential's name.
    */
   credentials?: Readonly<Record<string, string>>;
+  /** M50-T7: the run's email slots, slot → the email account bound to it (by id); not filled: the default account. */
+  emailAccounts?: Readonly<Record<string, string>>;
   /**
    * M47: this check's address is a field of mine (the compiler said so, policy.privateHosts): it may be a private, LAN
    * or Tailscale address. Never a link-local or cloud metadata one.
@@ -75,7 +77,9 @@ export class RunStopped extends Error {}
 export const NO_ATTENTION: Attention = {
   checkpoint: () => Promise.resolve(),
   needMe: (reason, _url, options) =>
-    Promise.reject(new Error(options?.waitsFor ? reason : `${reason}: needs you, and this step has no live view (set headed: true to take over)`)),
+    Promise.reject(
+      new Error(options?.waitsFor ? reason : `${reason}: needs you, and this step has no live view (set headed: true to take over)`),
+    ),
 };
 
 /**

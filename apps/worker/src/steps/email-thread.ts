@@ -1,6 +1,6 @@
 import { Logger } from "@nestjs/common";
 import { type EmailMessage } from "@realentity/storm-steps";
-import { type MailConnector, type ThreadMessage } from "../mail/mail-connector";
+import { type MailConnector, type MailWho, type ThreadMessage } from "../mail/mail-connector";
 import { emailBlock } from "./email-block";
 
 const THREAD_LOG = new Logger("EmailThread");
@@ -58,11 +58,11 @@ export function threadBlock(messages: ThreadMessage[]): string {
 }
 
 /** The earlier messages of `message`'s thread as a <thread> block for a draft; "" when there are none (or no mailbox). */
-export async function readThread(mail: MailConnector | undefined, userId: string, message: EmailMessage): Promise<string> {
+export async function readThread(mail: MailConnector | undefined, who: MailWho, message: EmailMessage): Promise<string> {
   const ids = earlierIds(message);
   if (!mail || ids.length === 0) return "";
   try {
-    return threadBlock(await mail.thread(userId, ids));
+    return threadBlock(await mail.thread(who, ids));
   } catch (error) {
     // The thread helps a draft; a mailbox that can't be searched for it (a server's IMAP quirk) mustn't stop one.
     THREAD_LOG.warn(`The thread couldn't be read, drafting without it: ${error instanceof Error ? error.message : String(error)}`);

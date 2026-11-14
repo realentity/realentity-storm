@@ -298,8 +298,8 @@ steps:
 ```
 
 - **`needs:`** on a pipeline, or on an App (its pipelines share them; each install fills its own): `kind: credential`
-  (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for) or
-  `kind: text` (`example`). A slot a step uses without one is added from where it is used: a database for `db.query`'s
+  (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for),
+  `kind: text` (`example`), or `kind: email`: one of your email accounts (§4.4), the default one until you choose. A slot a step uses without one is added from where it is used: a database for `db.query`'s
   connection, the host of an address written in the step.
 - **Filling them:** the **What it needs** card on the pipeline's page (its own slots; its App's are shown and filled on
   the App's page, once for all its pipelines), on the App's page, and in the builder's chat once a proposal is saved.
@@ -737,14 +737,22 @@ instructions.
 
 ### 4.4 Email
 
-Reading uses IMAP and sending uses SMTP, with the `mail` credential. Reading never marks or moves anything.
+Reading uses IMAP and sending uses SMTP, through one of your **email accounts** (Settings → Email accounts: Gmail
+with an [app password](https://myaccount.google.com/apppasswords), or any server with IMAP and SMTP over TLS; its
+password is stored encrypted, like a credential). One of them is the default. Reading never marks or moves anything.
+
+Which account: an email step's `account` is an email slot, written as a name (`account: work`), which you fill on the
+pipeline's or its App's page, like a credential's (§2.6); left out, or not filled, the default account. Every email
+read carries the `account` it came from, so a reply goes out from the same one: `account: "{{item.account}}"` on
+`email.send`. Steps that open an email again (a thread, its attachments) use its account by themselves.
 
 #### `email.fetch`
 The emails that arrived since this pipeline's last run (the first run looks back `sinceDays`), oldest first, so each
 email is read once. Text only: attachments are listed, not downloaded. `mailbox: Sent` reads your server's Sent folder,
 whatever it is called there (`[Gmail]/Sent Mail`, a translated name): the emails you wrote.
-- In: `mailbox` [INBOX], `limit` [50], `sinceDays` [2].
-- Out: `messages` (uid, messageId, threadId, from, fromName, replyTo, to, cc, subject, date, text, attachments, …).
+- In: `mailbox` [INBOX], `limit` [50], `sinceDays` [2], `account` (an email slot; default: the default account).
+- Out: `messages` (uid, messageId, threadId, from, fromName, replyTo, to, cc, subject, date, text, attachments,
+  account, …).
 
 ```yaml
 - id: fetch
@@ -781,11 +789,13 @@ used is cited at the gate (`docs/adr/0012-database.md @ a1b2c3d`). It never deci
 - Out: `subject`, `body`, `language`, `drewOn` (the facts it used; empty without a topic).
 
 #### `email.send` ⚡
-Sends an email from your mailbox. With `inReplyTo` and `references` it is a reply in the same thread. `to` must come
+Sends an email from one of your email accounts. With `inReplyTo` and `references` it is a reply in the same thread;
+`account: "{{item.account}}"` sends it from the account the email came to. `to` must come
 from real data (e.g. `{{item.from}}`), a literal, or `policy.allowedRecipients`. A reply is never sent to a no-reply
 address or to your own address: the step fails with why.
-- In: `to`, `subject`, `body`, `inReplyTo`, `references`.
-- Out: `messageId`, `accepted`.
+- In: `to`, `subject`, `body`, `inReplyTo`, `references`, `account` (an email slot, or `{{item.account}}`; default:
+  the default account).
+- Out: `messageId`, `accepted`, `from` (the address it went from).
 
 ```yaml
 - id: draft
@@ -810,7 +820,7 @@ limits: { email.send: 20/day }
 Your sent emails that got no answer: threads whose last message is yours, older than `afterDays`, with nothing from the
 other side since. Each email is listed once; a thread comes back only when you write in it again.
 - In: `afterDays` [5], `lookbackDays` [30], `mailbox` [INBOX], `sentMailbox` (default: the server's Sent folder),
-  `maxFollowUps` [1], `limit` [5].
+  `maxFollowUps` [1], `limit` [5], `account` (an email slot; default: the default account).
 - Out: `threads` (threadId, to, subject, sentAt, daysWaiting, followUps, message, references).
 
 #### `email.draftFollowUp` 🧠

@@ -133,32 +133,28 @@ describe("examples: a refused mail password", () => {
   let agent: ReturnType<typeof request.agent>;
   let db: PrismaConnection;
 
-  const imapHost = process.env.IMAP_HOST;
-
   beforeAll(async () => {
     db = createPrismaConnection();
-    // An email account on the server: read when the app starts.
-    process.env.IMAP_HOST = "imap.test";
     api = await createTestApp();
     agent = await api.signedIn();
   });
 
   afterAll(async () => {
-    if (imapHost === undefined) delete process.env.IMAP_HOST;
-    else process.env.IMAP_HOST = imapHost;
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
-    await db.client.credential.deleteMany({ where: { name: "mail" } });
+    await db.client.emailAccount.deleteMany();
     await db.close();
     await api.close();
   });
 
   it("is set up until the last mail read fails, and again once one works", async () => {
-    await agent
-      .post("/api/credentials")
-      .send({ name: "mail", allowedHosts: ["imap.test"], username: "me@example.com", kind: "PASSWORD", secret: "app-password" })
-      .expect(201);
     const setup = async () => (await agent.get("/api/examples/setup").expect(200)).body as SetupView;
+    // M50-T7: no email account yet: not set up.
+    expect(await setup()).toMatchObject({ email: false, emailProblem: null });
+    await agent
+      .post("/api/email-accounts")
+      .send({ address: "me@example.com", imapHost: "imap.example.com", smtpHost: "smtp.example.com", password: "app-password" })
+      .expect(201);
     expect(await setup()).toMatchObject({ email: true, emailProblem: null });
 
     const { userId } = await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } });

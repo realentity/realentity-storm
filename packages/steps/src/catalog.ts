@@ -119,7 +119,16 @@ export const JOB_ENTITY: EntityContract = {
   type: "Job",
   key: "url",
   optional: true,
-  fields: { url: "url", title: "text", company: "text", location: "text", description: "longtext", score: "number", scoreReason: "longtext", source: "text" },
+  fields: {
+    url: "url",
+    title: "text",
+    company: "text",
+    location: "text",
+    description: "longtext",
+    score: "number",
+    scoreReason: "longtext",
+    source: "text",
+  },
   states: ["new", "skipped", "shortlisted", "prepared", "applied", "responded", "interview", "rejected"],
 };
 
@@ -202,7 +211,10 @@ const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
 const FIXED_HEADERS = ["host", "connection", "content-length", "transfer-encoding", "cookie"];
 const HttpHeaders = z
   .record(z.string(), z.string().max(8000))
-  .refine((headers) => Object.keys(headers).every((name) => HEADER_NAME.test(name)), "header names are letters, digits and -, e.g. Authorization")
+  .refine(
+    (headers) => Object.keys(headers).every((name) => HEADER_NAME.test(name)),
+    "header names are letters, digits and -, e.g. Authorization",
+  )
   .refine((headers) => Object.keys(headers).every((name) => !FIXED_HEADERS.includes(name.toLowerCase())), `not ${FIXED_HEADERS.join(", ")}`)
   .optional()
   .describe('request headers, e.g. Authorization: "Bearer {{cred:github}}"');
@@ -231,6 +243,8 @@ export const EmailMessageSchema = z.object({
   date: z.string(),
   text: z.string(),
   attachments: z.array(z.object({ filename: z.string().nullable(), contentType: z.string(), size: z.number().int() })),
+  /** M50-T7: the email account (its id) it was read from: a reply goes out from it. */
+  account: z.string().nullable().optional(),
 });
 export type EmailMessage = z.infer<typeof EmailMessageSchema>;
 
@@ -257,6 +271,19 @@ export const TelegramFileSchema = z.object({
 const FILE_REF_SCHEMA = z.object({ id: z.string(), name: z.string(), mime: z.string(), size: z.number() });
 
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
+
+/**
+ * M50-T7: which of the user's email accounts: an email slot's name (the user picks the account on the pipeline's or
+ * its App's page), or a message's `account` ({{item.account}}: a reply goes out from the account it came to). Left
+ * out: the default account.
+ */
+const EmailAccount = z
+  .string()
+  .min(1)
+  .max(200)
+  .nullable()
+  .optional()
+  .describe('an email slot, e.g. "work" (the user picks the account), or {{item.account}}; default: the default account');
 
 /** A file of a topic's source that changed (M43): git.changes' and drive.changes' output, topic.index's input. */
 const SourceChangeSchema = z.object({
@@ -343,7 +370,10 @@ const Selector = z.string().min(1).max(500);
 const DateTimeText = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/, "an ISO 8601 date and time, e.g. 2026-11-12T10:00:00+02:00");
+  .regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/,
+    "an ISO 8601 date and time, e.g. 2026-11-12T10:00:00+02:00",
+  );
 const TimeZone = z
   .string()
   .default(defaultTimeZone)
@@ -365,7 +395,19 @@ const DocumentName = z.string().regex(DOCUMENT_NAME, 'a document name, e.g. "cv-
 /** Where a value typed into a form came from (M10, M15). */
 export const ANSWER_SOURCES = ["profile", "written", "fact", "asked", "none"] as const;
 
-export const FORM_FIELD_TYPES = ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "file"] as const;
+export const FORM_FIELD_TYPES = [
+  "text",
+  "email",
+  "tel",
+  "url",
+  "number",
+  "date",
+  "textarea",
+  "select",
+  "radio",
+  "checkbox",
+  "file",
+] as const;
 
 /** One field of an external form, as browser.mapForm read it, with the value to type (docs/design.md §2.2, map → gate → act). */
 export const FormFieldSchema = z.object({
@@ -444,7 +486,11 @@ export const CORE_STEPS: StepDefinition[] = [
       from: Items,
       key: z.string().min(1),
       against: z.enum(SAVED_LISTS).optional().describe("also drop items whose key is already saved there (key: the posting's url)"),
-      againstType: z.string().regex(TYPE_NAME).optional().describe("also drop items whose key is already an entity of this type of the pipeline's App"),
+      againstType: z
+        .string()
+        .regex(TYPE_NAME)
+        .optional()
+        .describe("also drop items whose key is already an entity of this type of the pipeline's App"),
     }),
     output: z.object({ items: Items, duplicates: z.number().int() }),
   },
@@ -472,12 +518,26 @@ export const CORE_STEPS: StepDefinition[] = [
       items: Items,
       into: z.enum(SAVED_LISTS).default("JobPosting"),
       status: z.enum(["NEW", "SKIPPED", "SHORTLISTED"]).default("NEW"),
-      collection: z.string().regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. releases").optional().describe("a list of the user's own instead of JobPosting"),
+      collection: z
+        .string()
+        .regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. releases")
+        .optional()
+        .describe("a list of the user's own instead of JobPosting"),
       key: z.string().min(1).optional().describe("the field that identifies an item in the collection, e.g. url or id"),
       fields: z.array(z.string().min(1)).min(1).optional().describe("the fields whose change counts (default: all)"),
       complete: z.boolean().default(false).describe("the items are the whole list: saved ones missing from it are removed"),
-      type: z.string().regex(TYPE_NAME, "a type of the pipeline's App, e.g. Job").optional().describe("an entity type of the pipeline's App instead of a collection"),
-      stage: z.string().trim().min(1).max(40).optional().describe("with type: move each item to this stage, as its type's moves allow a pipeline (M33)"),
+      type: z
+        .string()
+        .regex(TYPE_NAME, "a type of the pipeline's App, e.g. Job")
+        .optional()
+        .describe("an entity type of the pipeline's App instead of a collection"),
+      stage: z
+        .string()
+        .trim()
+        .min(1)
+        .max(40)
+        .optional()
+        .describe("with type: move each item to this stage, as its type's moves allow a pipeline (M33)"),
     }),
     output: z.object({
       /** A dry run: that nothing was saved, and what a run would save (the counts are that). */
@@ -489,7 +549,12 @@ export const CORE_STEPS: StepDefinition[] = [
       added: Items,
       /** Saved before with other values in `fields`: the item, and those fields before and after. */
       changed: z.array(
-        z.object({ key: z.string(), item: z.record(z.string(), z.unknown()), before: z.record(z.string(), z.unknown()), after: z.record(z.string(), z.unknown()) }),
+        z.object({
+          key: z.string(),
+          item: z.record(z.string(), z.unknown()),
+          before: z.record(z.string(), z.unknown()),
+          after: z.record(z.string(), z.unknown()),
+        }),
       ),
       /** With `complete: true`, saved before and missing now (the last saved values). */
       removed: Items,
@@ -501,14 +566,17 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "data.read",
     description:
       "Reads entities of a type of the pipeline's App (M30), as items: their fields, mine included. `where` keeps " +
-      "those matching every condition (as data.filter, on the type's fields), `sort` orders them (\"-salary\": highest " +
+      'those matching every condition (as data.filter, on the type\'s fields), `sort` orders them ("-salary": highest ' +
       "first), `limit` caps them; `removed: true` reads the removed ones instead.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
       type: z.string().regex(TYPE_NAME, "a type of the pipeline's App, e.g. Job"),
       where: z.array(FilterCondition).min(1).optional(),
-      sort: z.string().regex(/^-?[A-Za-z_@][\w.@-]*$/, '"field" or "-field"').optional(),
+      sort: z
+        .string()
+        .regex(/^-?[A-Za-z_@][\w.@-]*$/, '"field" or "-field"')
+        .optional(),
       limit: z.number().int().min(1).max(1000).default(100),
       removed: z.boolean().default(false),
     }),
@@ -520,7 +588,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "Keeps a number per item over time (a price, a count) in `collection` by `key`, and adds `history` to each item: " +
       "previous, change, changePct, min, max, count, direction (new, up, down, same), lowest (the lowest so far), " +
       "usualChange (the median change between the earlier values, once there are 3) and vsUsual (change ÷ usualChange: " +
-      "3 is three times the usual growth). The value may be text such as \"1 299,00 лв.\". Filter on it with " +
+      '3 is three times the usual growth). The value may be text such as "1 299,00 лв.". Filter on it with ' +
       "data.filter, e.g. history.change lt 0, or tell once with data.alert, e.g. history.vsUsual above 3.",
     sideEffect: false,
     saasSafe: true,
@@ -537,8 +605,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "data.map",
     description:
       "Reshapes JSON (an API's answer, a step's items) into `items` with a JSONata expression. One item per hour from " +
-      "parallel arrays: `$map(hourly.time, function($t, $i) { { \"time\": $t, \"temp\": hourly.temperature_2m[$i] } })`; " +
-      "one summary item: `{ \"place\": \"Sofia\", \"min\": $min(hourly.temperature_2m) }`. A list of objects becomes the " +
+      'parallel arrays: `$map(hourly.time, function($t, $i) { { "time": $t, "temp": hourly.temperature_2m[$i] } })`; ' +
+      'one summary item: `{ "place": "Sofia", "min": $min(hourly.temperature_2m) }`. A list of objects becomes the ' +
       "items, one object a single item, anything else { value }. Write `{ {` with a space: `{{` starts a reference. " +
       "It reads only its input: no network, no code, stopped after a second.",
     sideEffect: false,
@@ -661,7 +729,14 @@ export const CORE_STEPS: StepDefinition[] = [
     input: z.object({
       url: z.url({ protocol: /^https?$/ }),
       method: z.enum(["GET", "HEAD"]).default("GET"),
-      expect: z.number().int().min(100).max(599).nullable().optional().describe("the status that means up; default (or null) any 2xx or 3xx"),
+      expect: z
+        .number()
+        .int()
+        .min(100)
+        .max(599)
+        .nullable()
+        .optional()
+        .describe("the status that means up; default (or null) any 2xx or 3xx"),
       ignoreTlsErrors: z.boolean().default(false),
       timeoutSeconds: z.number().int().min(1).max(60).default(10),
     }),
@@ -703,8 +778,16 @@ export const CORE_STEPS: StepDefinition[] = [
     acceptsCredentials: ["connection"],
     input: z.object({
       connection: z.string().regex(/^\{\{\s*cred:[a-z0-9._-]+\s*\}\}$/, "a database credential, {{cred:name}}"),
-      sql: z.string().min(1).max(20_000).describe("one query that reads, e.g. SELECT relname AS table, n_live_tup AS rows FROM pg_stat_user_tables"),
-      params: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).max(50).default([]).describe("the values of $1, $2, …"),
+      sql: z
+        .string()
+        .min(1)
+        .max(20_000)
+        .describe("one query that reads, e.g. SELECT relname AS table, n_live_tup AS rows FROM pg_stat_user_tables"),
+      params: z
+        .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+        .max(50)
+        .default([])
+        .describe("the values of $1, $2, …"),
       maxRows: z.number().int().min(1).max(5000).default(500),
       timeoutSeconds: z.number().int().min(1).max(60).default(10),
     }),
@@ -826,7 +909,7 @@ export const CORE_STEPS: StepDefinition[] = [
     saasSafe: true,
     input: z.object({
       content: z.unknown().optional(),
-      files: z.array(z.unknown()).max(5).optional().describe("an entity's file or image fields, e.g. [\"{{item.scan}}\"]"),
+      files: z.array(z.unknown()).max(5).optional().describe('an entity\'s file or image fields, e.g. ["{{item.scan}}"]'),
       fields: z
         .record(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/), z.string().min(1).max(300))
         .refine((fields) => Object.keys(fields).length >= 1 && Object.keys(fields).length <= 20, "1 to 20 fields")
@@ -903,6 +986,7 @@ export const CORE_STEPS: StepDefinition[] = [
       limit: z.number().int().min(1).max(200).default(50),
       /** The first run of a pipeline looks back this far; later runs continue where the last one stopped. */
       sinceDays: z.number().int().min(1).max(60).default(2),
+      account: EmailAccount,
     }),
     output: z.object({ messages: Messages }),
   },
@@ -1096,7 +1180,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "with its path and commit (a Drive file: its version) and, with an embeddings provider, its embedding; a removed " +
       "file's passages go. Each source is then marked read where it was read to. The index is a cache: deleted (the " +
       "topic's page: Rebuild), the next read makes the same passages. Drafts get the passages closest to the email. " +
-      "Both steps' lists go in as a list of lists: changes: [\"{{repos.changes}}\", \"{{drive.changes}}\"], the same for " +
+      'Both steps\' lists go in as a list of lists: changes: ["{{repos.changes}}", "{{drive.changes}}"], the same for ' +
       "sources. `files`: the changed files with their text, for topic.extract (documents: ...). A dry run reads the " +
       "files and writes nothing.",
     sideEffect: false,
@@ -1105,9 +1189,7 @@ export const CORE_STEPS: StepDefinition[] = [
       changes: z
         .array(z.union([SourceChangeSchema, z.array(SourceChangeSchema)]))
         .describe("git.changes' changes, or a list of git.changes' and drive.changes' changes"),
-      sources: z
-        .array(z.union([SourceReadSchema, z.array(SourceReadSchema)]))
-        .describe("their sources, the same way"),
+      sources: z.array(z.union([SourceReadSchema, z.array(SourceReadSchema)])).describe("their sources, the same way"),
     }),
     output: z.object({
       files: z.array(SourceFileSchema),
@@ -1156,6 +1238,7 @@ export const CORE_STEPS: StepDefinition[] = [
       sentMailbox: z.string().min(1).max(200).optional().describe("default: the server's Sent folder"),
       maxFollowUps: z.number().int().min(1).max(3).default(1).describe("follow-ups in a row without an answer, at most"),
       limit: z.number().int().min(1).max(20).default(5),
+      account: EmailAccount,
     }),
     output: z.object({
       threads: z.array(
@@ -1273,8 +1356,9 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "email.send",
     description:
-      "Sends an email from the user's mailbox (SMTP); with `inReplyTo` (and the original's `references`) a reply in the same " +
-      "thread: the message replied to is added to the references.",
+      "Sends an email from one of the user's email accounts (SMTP); with `inReplyTo` (and the original's `references`) a reply in " +
+      "the same thread: the message replied to is added to the references. A reply goes from the account the email came to: " +
+      "account {{item.message.account}} (or the item's own `account`).",
     sideEffect: true,
     targets: { to: "recipient" },
     saasSafe: true,
@@ -1284,8 +1368,9 @@ export const CORE_STEPS: StepDefinition[] = [
       body: z.string().min(1).max(100_000),
       inReplyTo: z.string().optional(),
       references: z.array(z.string()).max(100).optional(),
+      account: EmailAccount,
     }),
-    output: z.object({ messageId: z.string(), accepted: z.array(z.string()) }),
+    output: z.object({ messageId: z.string(), accepted: z.array(z.string()), from: z.string().describe("the address it went from") }),
   },
   {
     type: "calendar.find",
@@ -1298,7 +1383,13 @@ export const CORE_STEPS: StepDefinition[] = [
     input: z.object({
       from: DateTimeText.optional().describe("default: now"),
       to: DateTimeText.optional().describe("default: durationMinutes after from, else 7 days"),
-      durationMinutes: z.number().int().min(1).max(1440).optional().describe("the window from `from`, e.g. 60: what an event then would clash with"),
+      durationMinutes: z
+        .number()
+        .int()
+        .min(1)
+        .max(1440)
+        .optional()
+        .describe("the window from `from`, e.g. 60: what an event then would clash with"),
       query: z.string().max(200).optional(),
       timeZone: TimeZone,
       maxResults: z.number().int().min(1).max(250).default(50),

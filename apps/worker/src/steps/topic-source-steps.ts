@@ -498,6 +498,7 @@ export class TopicAttachmentsStep implements StepExecutor {
                 path,
                 mailbox,
                 uid: message.uid,
+                emailAccountId: message.account ?? null,
                 title:
                   `${message.fromName ? `${message.fromName} <${message.from}>` : message.from}: ${message.subject || "(no subject)"}`.slice(
                     0,
@@ -517,7 +518,7 @@ export class TopicAttachmentsStep implements StepExecutor {
       : await this.prisma.topicSource.findMany({ where: { userId, kind: "ATTACHMENT", cursor: null, topic: { status: "ACTIVE" } } });
     const byEmail = new Map<string, TopicSource[]>();
     for (const source of unread) {
-      const key = `${source.mailbox ?? ""}\n${source.uid ?? ""}`;
+      const key = `${source.emailAccountId ?? ""}\n${source.mailbox ?? ""}\n${source.uid ?? ""}`;
       byEmail.set(key, [...(byEmail.get(key) ?? []), source]);
     }
     let passages = 0;
@@ -527,7 +528,10 @@ export class TopicAttachmentsStep implements StepExecutor {
       if (!first?.mailbox || first.uid === null) continue;
       let files: { filename: string | null; contentType: string; content: Buffer }[];
       try {
-        files = await this.mail.attachments(userId, { mailbox: first.mailbox, uid: first.uid, maxBytes: ATTACHMENT_MESSAGE_BYTES });
+        files = await this.mail.attachments(
+          { userId, account: first.emailAccountId },
+          { mailbox: first.mailbox, uid: first.uid, maxBytes: ATTACHMENT_MESSAGE_BYTES },
+        );
       } catch (error) {
         problems.push(`${first.title}: ${error instanceof Error ? error.message : String(error)}`);
         continue;

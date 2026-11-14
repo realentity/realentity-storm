@@ -3,7 +3,7 @@ import { FileProblem, readStored, recordFile, storeFile, sweepFiles, detectFile,
 import { downloadTelegramFile, FILE_KINDS, fileRefId, type TelegramConfig } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { type ArtifactStore } from "../browser/artifact-store";
-import { type MailConnector } from "../mail/mail-connector";
+import { mailWho, type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { appType } from "./entity-steps";
 
@@ -72,7 +72,8 @@ export class FileKeepStep implements StepExecutor {
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { type: typeName, field: fieldName, message, mailbox, artifact, telegram, max } = input as unknown as KeepInput;
     const sources = [message, artifact, telegram].filter((s) => s !== undefined);
-    if (sources.length !== 1) throw new Error("file.keep keeps the files of one email (message), one download (artifact) or one Telegram message (telegram)");
+    if (sources.length !== 1)
+      throw new Error("file.keep keeps the files of one email (message), one download (artifact) or one Telegram message (telegram)");
     const { appId, type } = await appType(this.prisma, context, typeName);
     const field = type.fields[fieldName];
     if (!field || !FILE_KINDS.includes(field.type)) throw new Error(`${typeName}.${fieldName} isn't a file or an image`);
@@ -82,14 +83,23 @@ export class FileKeepStep implements StepExecutor {
     const candidates: { name: string; content: Buffer }[] = [];
     if (message) {
       if (message.attachments.length > 0) {
-        const attachments = await this.mail.attachments(context.userId, { mailbox, uid: message.uid, maxBytes: MAX_MESSAGE_BYTES });
+        const attachments = await this.mail.attachments(mailWho(context, message.account), {
+          mailbox,
+          uid: message.uid,
+          maxBytes: MAX_MESSAGE_BYTES,
+        });
         candidates.push(...attachments.map((a) => ({ name: a.filename ?? "attachment", content: a.content })));
       }
     } else if (telegram !== undefined) {
       // A command sent without a photo or file: nothing to keep.
       if (telegram !== null) {
         if (!this.telegram?.config.botToken) throw new Error("Telegram is not configured (TELEGRAM_BOT_TOKEN)");
-        const content = await downloadTelegramFile(this.telegram.config, telegram.telegramFileId, Math.min(this.maxMb * 1_048_576, 20 * 1_048_576), this.telegram.fetch);
+        const content = await downloadTelegramFile(
+          this.telegram.config,
+          telegram.telegramFileId,
+          Math.min(this.maxMb * 1_048_576, 20 * 1_048_576),
+          this.telegram.fetch,
+        );
         candidates.push({ name: telegram.name, content });
       }
     } else {

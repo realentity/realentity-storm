@@ -10,7 +10,7 @@ export interface RotationResult {
 }
 
 /**
- * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens) to the current root key version
+ * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens, email account passwords) to the current root key version
  * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
  * only if its version is still the old one.
  */
@@ -67,6 +67,17 @@ export class KeyRotation {
       const { count } = await this.prisma.googleConnection.updateMany({
         where: { userId: row.userId, keyVersion: row.keyVersion },
         data: rewrap(this.keys, row.userId, row, toVersion),
+      });
+      if (count === 1) rewrapped++;
+      else skipped++;
+    }
+
+    // M50-T7: email accounts' app passwords (AAD emailAccountId).
+    for (const row of await this.prisma.emailAccount.findMany({ where: { keyVersion: { not: toVersion } } })) {
+      fromVersions.add(row.keyVersion);
+      const { count } = await this.prisma.emailAccount.updateMany({
+        where: { emailAccountId: row.emailAccountId, keyVersion: row.keyVersion },
+        data: rewrap(this.keys, row.emailAccountId, row, toVersion),
       });
       if (count === 1) rewrapped++;
       else skipped++;

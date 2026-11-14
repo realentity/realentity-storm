@@ -1,3 +1,6 @@
+import { KeyRing, seal } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
+import { randomUUID } from "node:crypto";
 import { createTransport } from "nodemailer";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
@@ -23,6 +26,34 @@ export interface TestMailServer {
     attachments?: { filename: string; content: string }[];
   }): Promise<string>;
   stop(): Promise<void>;
+}
+
+/**
+ * M50-T7: one of the user's email accounts on the test server (plain text: it is local), its password sealed as the api
+ * seals it. The first one is the default.
+ */
+export async function addEmailAccount(
+  prisma: PrismaClient,
+  userId: string,
+  server: Pick<TestMailServer, "host" | "imapPort" | "smtpPort">,
+  account: { address?: string; password?: string; isDefault?: boolean; imapHost?: string; tls?: boolean } = {},
+): Promise<string> {
+  const emailAccountId = randomUUID();
+  await prisma.emailAccount.create({
+    data: {
+      emailAccountId,
+      userId,
+      address: account.address ?? MAILBOX,
+      imapHost: account.imapHost ?? server.host,
+      imapPort: server.imapPort,
+      smtpHost: account.imapHost ?? server.host,
+      smtpPort: server.smtpPort,
+      tls: account.tls ?? false,
+      isDefault: account.isDefault ?? (await prisma.emailAccount.count({ where: { userId } })) === 0,
+      ...seal(KeyRing.fromEnv(process.env), emailAccountId, account.password ?? APP_PASSWORD),
+    },
+  });
+  return emailAccountId;
 }
 
 /** GreenMail (IMAP + SMTP, plain text, local only) with the user's mailbox and Ana's, each logging in with its full address. */

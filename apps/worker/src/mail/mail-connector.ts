@@ -1,5 +1,26 @@
 import { type EmailMessage } from "@realentity/storm-steps";
 
+/**
+ * M50-T7: whose mailbox: one of the user's email accounts by id (a step's `account` slot, or the account a message came
+ * from), else their default one.
+ */
+export interface MailWho {
+  userId: string;
+  account?: string | null;
+}
+
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whose mailbox a step reads or sends from: `account` is an email slot's name (filled on the pipeline or its App) or an
+ * account's id (a message's `account`); a slot not filled, or none given, is the default account.
+ */
+export function mailWho(context: { userId: string; emailAccounts?: Readonly<Record<string, string>> }, account?: string | null): MailWho {
+  if (!account) return { userId: context.userId };
+  if (ACCOUNT_ID.test(account)) return { userId: context.userId, account };
+  return { userId: context.userId, account: context.emailAccounts?.[account] ?? null };
+}
+
 /** Where a pipeline stopped reading a mailbox (MailCursor). */
 export interface MailboxPosition {
   uidValidity: bigint;
@@ -16,6 +37,8 @@ export interface FetchRequest {
 }
 
 export interface FetchResult {
+  /** The account read (its id): a cursor is per account. */
+  account: string;
   messages: EmailMessage[];
   /** Where the next read continues. */
   position: MailboxPosition;
@@ -55,23 +78,37 @@ export interface OutgoingMail {
 export interface SentMail {
   messageId: string;
   accepted: string[];
+  /** The address it went from. */
+  from: string;
 }
 
 /**
  * A mailbox (docs/design.md §4): v1 is IMAP + SMTP with an app password; the Gmail API can replace it behind this interface.
- * Reading never changes the mailbox (nothing is marked read or moved).
+ * Reading never changes the mailbox (nothing is marked read or moved). Every message read carries its `account`.
  */
 export interface MailConnector {
-  fetch(userId: string, request: FetchRequest): Promise<FetchResult>;
-  recent(userId: string, request: RecentRequest): Promise<EmailMessage[]>;
+  fetch(who: MailWho, request: FetchRequest): Promise<FetchResult>;
+  recent(who: MailWho, request: RecentRequest): Promise<EmailMessage[]>;
   /** One message's attachments, read-only; the message whole up to `maxBytes`. */
-  attachments(userId: string, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]>;
+  attachments(who: MailWho, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]>;
   /**
    * The messages with these Message-IDs (an email's References and In-Reply-To), read-only, oldest first: in All Mail
    * where the server has it (Gmail), else in INBOX and the Sent folder. Ones no longer there are left out.
    */
-  thread(userId: string, messageIds: string[]): Promise<ThreadMessage[]>;
-  send(userId: string, mail: OutgoingMail): Promise<SentMail>;
+  thread(who: MailWho, messageIds: string[]): Promise<ThreadMessage[]>;
+  send(who: MailWho, mail: OutgoingMail): Promise<SentMail>;
+}
+
+/** No email account to read or send with. */
+export class NoEmailAccountError extends Error {
+  constructor(account?: string | null) {
+    super(
+      account
+        ? "That email account is no longer yours (removed?): choose another"
+        : "No email account yet: add one in Settings → Email accounts",
+    );
+    this.name = "NoEmailAccountError";
+  }
 }
 
 /** Text the LLM gets per email: enough to triage and reply, bounded for cost. */

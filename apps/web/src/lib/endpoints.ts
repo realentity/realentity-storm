@@ -1,4 +1,7 @@
 import {
+  type EmailAccountRequest,
+  type EmailAccountUpdate,
+  type EmailAccountView,
   type ApplyTopicBackfillRequest,
   type TopicBackfillRequest,
   type TopicBackfillView,
@@ -160,6 +163,13 @@ export const api = {
       request<ProposalView>("POST", `/proposals/${proposalId}/approve`, body),
     reject: (proposalId: string, reason?: string) => request<ProposalView>("POST", `/proposals/${proposalId}/reject`, { reason }),
     undoReject: (proposalId: string) => request<ProposalView>("POST", `/proposals/${proposalId}/undo-reject`),
+  },
+  emailAccounts: {
+    list: () => request<EmailAccountView[]>("GET", "/email-accounts"),
+    create: (body: EmailAccountRequest) => request<EmailAccountView>("POST", "/email-accounts", body),
+    update: (emailAccountId: string, body: EmailAccountUpdate) =>
+      request<EmailAccountView>("PATCH", `/email-accounts/${emailAccountId}`, body),
+    remove: (emailAccountId: string) => request<void>("DELETE", `/email-accounts/${emailAccountId}`),
   },
   credentials: {
     list: () => request<CredentialView[]>("GET", "/credentials"),

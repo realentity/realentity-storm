@@ -43,5 +43,6 @@ steps:
       body: "{{draft.body}}"
       inReplyTo: "{{item.messageId}}"
       references: "{{item.references}}"
+      account: "{{item.account}}" # from the email account it came to
 limits:
   email.send: 20/day

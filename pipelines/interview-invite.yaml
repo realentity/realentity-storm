@@ -1,7 +1,7 @@
 # M14: every 15 minutes, new mail that invites you to an interview becomes a proposed event in your Google Calendar,
 # with the job and prep notes, and what else is on at that time. Each event waits for your Approve (the compiler adds
 # the gate): the proposal shows the exact title, time and notes. An event already there (the same title at the same
-# start) isn't created again. Needs the "mail" credential and Google Calendar connected (Settings).
+# start) isn't created again. Needs an email account and Google Calendar connected (Settings).
 name: Interview invites
 description: Interview invitations by email become proposed calendar events with prep notes.
 trigger: { schedule: "*/15 * * * *" }

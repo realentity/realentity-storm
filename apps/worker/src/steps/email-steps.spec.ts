@@ -162,7 +162,13 @@ describe("email steps", () => {
         asked.push(ids),
         Promise.resolve([
           { message: earlier(7, { text: "Can you send the spec?" }), mine: false },
-          { message: earlier(8, { from: "me@storm.test", text: "Sent it.\n\nOn Mon, 3 Nov 2026, Sender 7 wrote:\n> Can you send the spec?" }), mine: true },
+          {
+            message: earlier(8, {
+              from: "me@storm.test",
+              text: "Sent it.\n\nOn Mon, 3 Nov 2026, Sender 7 wrote:\n> Can you send the spec?",
+            }),
+            mine: true,
+          },
         ])
       ),
     };
@@ -172,19 +178,27 @@ describe("email steps", () => {
 
     expect(asked).toEqual([["<m7@acme.test>", "<m8@acme.test>"]]);
     const prompt = llm.requests[0].prompt;
-    expect(prompt).toMatch(/^<thread>\n<email>\nFrom: Sender 7[\s\S]*Can you send the spec\?\n<\/email>\n<email mine="true">\nFrom: Sender 8/);
+    expect(prompt).toMatch(
+      /^<thread>\n<email>\nFrom: Sender 7[\s\S]*Can you send the spec\?\n<\/email>\n<email mine="true">\nFrom: Sender 8/,
+    );
     expect(prompt).toContain("Sent it.\n</email>\n</thread>\n\n<email>\nFrom: Sender 9");
     expect(prompt).not.toContain("> Can you send");
     expect(llm.requests[0].system).toContain("<thread>, when given, holds the earlier messages");
 
     // No earlier messages: the mailbox isn't asked.
-    await new DraftReplyStep(llm, router, undefined, mail).execute(input("email.draftReply", { message: email(2), instruction: "Reply" }), context);
+    await new DraftReplyStep(llm, router, undefined, mail).execute(
+      input("email.draftReply", { message: email(2), instruction: "Reply" }),
+      context,
+    );
     expect(asked).toHaveLength(1);
     expect(llm.requests[1].prompt).toMatch(/^<email>/);
 
     // A mailbox that can't be searched for the thread: drafted without it, not failed.
     const broken: MailConnector = { ...mail, thread: () => Promise.reject(new Error("SEARCH not supported")) };
-    const draft = await new DraftReplyStep(llm, router, undefined, broken).execute(input("email.draftReply", { message, instruction: "Reply" }), context);
+    const draft = await new DraftReplyStep(llm, router, undefined, broken).execute(
+      input("email.draftReply", { message, instruction: "Reply" }),
+      context,
+    );
     expect(draft).toMatchObject({ body: "Hi" });
     expect(llm.requests[2].prompt).toMatch(/^<email>/);
   });
@@ -225,13 +239,17 @@ describe("email steps", () => {
       recent: () => Promise.reject(new Error("unused")),
       attachments: () => Promise.reject(new Error("unused")),
       thread: () => Promise.reject(new Error("unused")),
-      send: (_user, message) => (sent.push(message), Promise.resolve({ messageId: "<r@storm.test>", accepted: [message.to] })),
+      send: (_user, message) => (
+        sent.push(message),
+        Promise.resolve({ messageId: "<r@storm.test>", accepted: [message.to], from: "me@storm.test" })
+      ),
     };
     const step = new EmailSendStep(mail);
     const payload = { to: "ana@acme.test", subject: "Re: x", body: "Thanks", inReplyTo: "<b@acme.test>", references: ["<a@acme.test>"] };
     await expect(step.execute(input("email.send", payload), context)).resolves.toEqual({
       messageId: "<r@storm.test>",
       accepted: ["ana@acme.test"],
+      from: "me@storm.test",
     });
     expect(sent[0]?.references).toEqual(["<a@acme.test>", "<b@acme.test>"]);
     await step.execute(input("email.send", { ...payload, references: ["<a@acme.test>", "<b@acme.test>"] }), context);
