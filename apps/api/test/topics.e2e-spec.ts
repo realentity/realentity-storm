@@ -45,6 +45,11 @@ describe("topics", () => {
       await agent.put(`/api/topics/${orion.topicId}`).send({ name: "Orion", description: "Done", status: "ARCHIVED" }).expect(200)
     ).body as TopicView;
     expect(archived).toMatchObject({ status: "ARCHIVED", description: "Done" });
+    // Only what is given changes: a status alone keeps the description, a description alone keeps the status.
+    await agent.put(`/api/topics/${orion.topicId}`).send({ description: "Phase 2" }).expect(200);
+    const reactivated = (await agent.put(`/api/topics/${orion.topicId}`).send({ status: "ACTIVE" }).expect(200)).body as TopicView;
+    expect(reactivated).toMatchObject({ name: "Orion", status: "ACTIVE", description: "Phase 2" });
+    await agent.put(`/api/topics/${orion.topicId}`).send({ status: "ARCHIVED" }).expect(200);
 
     // Active first, then by name.
     expect(((await agent.get("/api/topics").expect(200)).body as TopicView[]).map((t) => t.name)).toEqual(["Billing", "Orion"]);

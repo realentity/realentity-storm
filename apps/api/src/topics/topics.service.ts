@@ -44,10 +44,10 @@ export class TopicsService {
   async update(
     userId: string,
     topicId: string,
-    request: { name: string; description: string; status: Topic["status"] },
+    request: { name?: string; description?: string; status?: Topic["status"] },
   ): Promise<TopicView> {
     await this.own(userId, topicId);
-    await this.nameFree(userId, request.name, topicId);
+    if (request.name !== undefined) await this.nameFree(userId, request.name, topicId);
     await this.prisma.client.topic.update({ where: { topicId }, data: request });
     return this.get(userId, topicId);
   }

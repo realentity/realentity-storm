@@ -60,9 +60,8 @@ export function TopicPage() {
   const { counts } = topic;
 
   const setStatus = async () => {
-    const saved = await action.run(() =>
-      api.topics.update(topic.topicId, { name: topic.name, description: topic.description, status: archived ? "ACTIVE" : "ARCHIVED" }),
-    );
+    // Only the status: the name and description as this page last loaded them may be older than an edit just saved.
+    const saved = await action.run(() => api.topics.update(topic.topicId, { status: archived ? "ACTIVE" : "ARCHIVED" }));
     if (saved) topics.reload();
   };
   const remove = async () => {
@@ -258,8 +257,9 @@ function DirectionForm({ topicId, onAdded }: { topicId: string; onAdded: () => v
       api.topics.addDirection(topicId, { kind, value, about: kind === "PERSON" && about.trim() ? about : null }),
     );
     if (!saved) return;
-    setValue("");
-    setAbout("");
+    // Cleared only if still what was added: the next one may be typed already while this one was saved.
+    setValue((now) => (now === value ? "" : now));
+    setAbout((now) => (now === about ? "" : now));
     onAdded();
   };
   return (

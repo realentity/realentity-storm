@@ -22,6 +22,8 @@ types:
   await page.getByTestId("tab-yaml").click();
   await page.getByTestId("app-source").fill(app);
   await page.getByTestId("save-app").click();
+  // Saved: its own page (the editor shows the name before the save is done).
+  await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name })).toBeVisible();
 
   const pipeline = await createPipeline(
