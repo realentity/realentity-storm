@@ -13,6 +13,7 @@ import { CalendarCreateStep, CalendarFindStep } from "./calendar-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
 import { ReadStep } from "./entity-steps";
 import { type AppFileStore, FileKeepStep } from "./app-file-steps";
+import { HttpCheckStep, NetCheckStep, type CheckOptions } from "./check-steps";
 import { DbQueryStep } from "./db-step";
 import { DigestStep } from "./digest-step";
 import { BrowserDownloadStep, BrowserUploadStep, FileReadStep } from "./file-steps";
@@ -59,6 +60,8 @@ export interface CoreStepDependencies {
   later?: LaterStarts;
   /** M46: an App's files (DOCUMENTS_DIR/app-files): file.keep, data.save's file fields, file.read's and llm.extract's files. */
   appFiles?: AppFileStore;
+  /** http.check and net.check (M47); tests narrow the addresses and stand in for ping. */
+  checks?: CheckOptions;
   /** http.fetch's and shop.product's address checks and DNS; tests reach their local server through them. */
   http?: HttpFetchOptions;
   /** http.fetch's and http.request's API keys, db.query's connections (M29); without it, steps using {{cred:…}} fail. */
@@ -86,6 +89,8 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new AlertStep(deps.prisma),
     new HttpFetchStep(deps.prisma, deps.http, deps.vault),
     new HttpRequestStep(deps.http, deps.vault),
+    new HttpCheckStep(deps.checks),
+    new NetCheckStep(deps.checks),
     new DbQueryStep(deps.vault),
     product,
     new PriceWatchStep(deps.prisma, product),

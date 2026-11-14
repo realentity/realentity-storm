@@ -31,6 +31,11 @@ export interface StepContext {
    */
   allowedDomains?: readonly string[];
   /**
+   * M47: this check's address is a field of mine (the compiler said so, policy.privateHosts): it may be a private, LAN
+   * or Tailscale address. Never a link-local or cloud metadata one.
+   */
+  privateHosts?: boolean;
+  /**
    * Something happened that may start other pipelines (M12-T1): a recipe broke, an application moved, an email was
    * labelled. Never throws; does nothing in a dry run.
    */

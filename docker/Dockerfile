@@ -33,11 +33,15 @@ FROM base AS worker
 WORKDIR /app
 COPY --from=build --chown=node:node /out/worker .
 # The browser stack (docs/design.md §6): Playwright's Chromium with its system libraries, a virtual display (Xvfb + fluxbox),
-# and the live view (x11vnc on localhost, websockify on 6080 for noVNC). DejaVu for Cyrillic pages.
+# and the live view (x11vnc on localhost, websockify on 6080 for noVNC). DejaVu for Cyrillic pages. ping for net.check
+# (M47), copied without its file capability: no-new-privileges refuses to run it with one, and a copy uses unprivileged
+# ICMP sockets (Docker's ping_group_range), so the container keeps every capability dropped. ping for net.check
+# (M47): ICMP datagram sockets, no capability needed.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN node node_modules/playwright/cli.js install --with-deps chromium && \
-    apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc websockify fonts-dejavu-core && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc websockify fonts-dejavu-core iputils-ping && \
+    rm -rf /var/lib/apt/lists/* && \
+    cp /bin/ping /usr/local/bin/ping
 COPY --chmod=755 docker/worker-entrypoint.sh /usr/local/bin/worker-entrypoint
 # HOME on the tmpfs: fluxbox and Chromium write there; the image itself is read-only.
 ENV NODE_ENV=production DISPLAY=:99 HOME=/tmp ARTIFACTS_DIR=/data/artifacts

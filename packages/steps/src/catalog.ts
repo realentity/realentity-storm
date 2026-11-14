@@ -66,6 +66,11 @@ export interface StepDefinition {
    */
   reads?: string[];
   /**
+   * M47: the input field that is the address a check connects to (http.check's url, net.check's host): written in the
+   * pipeline, or a field of mine of an App entity (the user typed it); only the latter may be a private address.
+   */
+  checks?: string;
+  /**
    * The entity types it writes or reads, which its pipeline's App must have (M33): that key, these fields of these
    * kinds, these states when it sets the stage. The App may have more fields; the compiler checks these are there.
    */
@@ -228,6 +233,17 @@ export const EmailMessageSchema = z.object({
   attachments: z.array(z.object({ filename: z.string().nullable(), contentType: z.string(), size: z.number().int() })),
 });
 export type EmailMessage = z.infer<typeof EmailMessageSchema>;
+
+/** M47: what a check says: up or down, how fast, why not; `refused` when the address isn't one it may reach. */
+const CheckResult = z.object({
+  state: z.enum(["up", "down"]),
+  up: z.boolean(),
+  ms: z.number().int().nullable(),
+  error: z.string().nullable(),
+  refused: z.boolean(),
+  checkedAt: z.string(),
+  address: z.string().nullable().describe("the IP it connected to"),
+});
 
 /** M46: a stored file as an entity holds it (FileRef). */
 const FILE_REF_SCHEMA = z.object({ id: z.string(), name: z.string(), mime: z.string(), size: z.number() });
@@ -621,6 +637,49 @@ export const CORE_STEPS: StepDefinition[] = [
       timeoutSeconds: z.number().int().min(2).max(60).default(20),
     }),
     output: z.object({ status: z.number().int(), json: z.unknown(), text: z.string() }),
+  },
+  {
+    type: "http.check",
+    description:
+      "Checks whether a web address answers (M47, an uptime monitor): `state` up or down, the HTTP `status`, `ms` to " +
+      "the answer, and for https the certificate's expiry (`certExpires`, `certDays`). Up: the status is `expect`, else " +
+      "any 2xx or 3xx. It never fails the step (a timeout, a refused connection, a bad certificate are `down` with the " +
+      "`error`) and never reads the page. The address is written in the pipeline or comes from a field of mine of an " +
+      "App entity (a Monitor's url the user typed): only such a one may be a private, LAN or Tailscale address; a " +
+      "cloud's metadata or a link-local address never. `ignoreTlsErrors` for a self-signed certificate on your network.",
+    sideEffect: false,
+    saasSafe: true,
+    checks: "url",
+    input: z.object({
+      url: z.url({ protocol: /^https?$/ }),
+      method: z.enum(["GET", "HEAD"]).default("GET"),
+      expect: z.number().int().min(100).max(599).nullable().optional().describe("the status that means up; default (or null) any 2xx or 3xx"),
+      ignoreTlsErrors: z.boolean().default(false),
+      timeoutSeconds: z.number().int().min(1).max(60).default(10),
+    }),
+    output: CheckResult.extend({
+      status: z.number().int().nullable(),
+      certExpires: z.string().nullable().describe("YYYY-MM-DD"),
+      certDays: z.number().int().nullable().describe("days until the certificate expires"),
+    }),
+  },
+  {
+    type: "net.check",
+    description:
+      "Checks whether a host answers (M47): `kind` tcp (a connection to `port`) or ping (one ICMP echo). `state` up or " +
+      "down, `ms`, `error`. Never fails the step. The host is written in the pipeline or comes from a field of mine of " +
+      "an App entity: only such a one may be a private, LAN or Tailscale address; a cloud's metadata or a link-local " +
+      "address never. Ping needs the system's ping and ICMP allowed: where it isn't, the check says so (use tcp).",
+    sideEffect: false,
+    saasSafe: true,
+    checks: "host",
+    input: z.object({
+      host: z.string().min(1).max(255).describe("a name or an IP address, e.g. nas.home.example or 192.168.1.20"),
+      kind: z.enum(["tcp", "ping"]).default("tcp"),
+      port: z.number().int().min(1).max(65_535).nullable().optional().describe("tcp: the port"),
+      timeoutSeconds: z.number().int().min(1).max(60).default(5),
+    }),
+    output: CheckResult,
   },
   {
     type: "db.query",

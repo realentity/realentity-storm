@@ -137,7 +137,6 @@ export const DataTypeSchema = z
         else if (type.fields[field.currency]?.type !== "text")
           issue([...at, "currency"], `"${field.currency}" is not a text field of this type`);
       }
-      if (field.mine && field.required && !type.mine) issue([...at, "required"], "a field of mine can't be required: pipelines write the entity first");
     }
     if (type.stages) {
       const { field, initial, states, moves } = type.stages;
@@ -344,6 +343,16 @@ const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
 
 /** Pages only on the App's types, and only on their fields, each used as its kind allows. */
 function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, issue: (path: (string | number)[], message: string) => void): void {
+  // A field of mine required: only on a type added by hand (M47: a Monitor's address), where the form makes it;
+  // pipelines write the others first, without it.
+  for (const [typeName, type] of Object.entries(app.types)) {
+    if (type.mine || addedByHand(app, typeName)) continue;
+    for (const [name, field] of Object.entries(type.fields)) {
+      if (field.mine && field.required) {
+        issue(["types", typeName, "fields", name, "required"], "a field of mine can't be required unless its type is added by hand (add: true on its list): pipelines write the entity first");
+      }
+    }
+  }
   const seen = new Set<string>();
   app.pages.forEach((page, i) => {
     const kind = "list" in page ? "list" : "view" in page ? "view" : "form";

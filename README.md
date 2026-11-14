@@ -57,7 +57,7 @@ Apps are typed and versioned, so they keep working as they grow:
 - A change to an App that would break one of its pipelines is refused, naming the pipeline.
 - A change to an entity can start another pipeline: a job reaching *interview*, a price falling, a bill arriving.
 
-Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car and Server ops.
+Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car and Server ops (your monitors, checked every five minutes, and incidents).
 
 Each App's page maps how it connects: what starts its pipelines, which types they write and read, and the pages that
 show them. The Trips App:
@@ -162,7 +162,8 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 - **Secrets never reach the LLM.** Credentials are encrypted in PostgreSQL (envelope encryption, the key in `.env`);
   the LLM sees only references like `{{cred:mail}}`, and only the browser login receives the real value.
 - **Limits you set.** Allowed domains per pipeline, rate limits per step type, a monthly LLM budget, a kill switch.
-  Private and VPN addresses are never fetched.
+  Private and VPN addresses are never fetched. The one exception: an uptime check (`http.check`, `net.check`) of an
+  address you typed yourself on a Monitor, which says only whether it answers; a cloud's metadata address never.
 - **A browser you can watch and take over.** Browser steps run in a real Chromium, visible live in the app. CAPTCHAs,
   2FA and odd dialogs are handed to you; you click and type on the site, then continue.
 - **Everything recorded.** Each run keeps its pipeline version, steps, inputs, outputs, screenshots and traces.

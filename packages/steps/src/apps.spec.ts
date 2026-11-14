@@ -83,11 +83,24 @@ describe("Apps (M30)", () => {
           "types.Job.fields.status.values: an enum needs its values",
           "types.Job.fields.kind.values: only an enum has values",
           'types.Job.fields.salary.currency: "posted" is not a text field of this type',
-          "types.Job.fields.note.required: a field of mine can't be required: pipelines write the entity first",
           'types.Job.fields.company: "company" can\'t be a field and hold fields too',
           "types.Flag.key: a key is text, a url, an email or a number, not yesno",
         ]),
       );
+    });
+
+    // M47: a Monitor's address is mine and required: its type is added by hand, so the form asks for it
+    it("takes a required field of mine only on a type added by hand", () => {
+      const app = (add: boolean) =>
+        AppDefinitionSchema.safeParse({
+          name: "Ops",
+          types: { Monitor: { key: "name", fields: { name: { type: "text", required: true }, address: { type: "text", mine: true, required: true } } } },
+          pages: [{ list: "Monitor", add }],
+        });
+      expect(app(true).success).toBe(true);
+      expect(app(false).error?.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([
+        "types.Monitor.fields.address.required: a field of mine can't be required unless its type is added by hand (add: true on its list): pipelines write the entity first",
+      ]);
     });
   });
 

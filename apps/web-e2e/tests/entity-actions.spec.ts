@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createPipeline, startRun, unique } from "./support";
 
 // M32-E1: a comment on a job, a move to Favorite, then Apply starts its pipeline; a type of mine added by hand
@@ -200,7 +202,9 @@ pages:
   await expect(page.getByRole("heading", { name: "Washing machine" })).toBeVisible();
   const image = page.getByTestId("entity-fields").getByTestId("entity-image").locator("img");
   await expect(image).toHaveAttribute("alt", "warranty.png");
-  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1);
+  // Lazy-loaded: in view, then loaded (slower when the whole suite runs).
+  await image.scrollIntoViewIfNeeded();
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth), { timeout: 15_000 }).toBe(1);
   await expect(page.getByTestId("entity-fields").getByTestId("entity-file")).toHaveText("receipt.pdf");
   const download = page.waitForEvent("download");
   await page.getByTestId("entity-fields").getByTestId("entity-file").click();
@@ -213,4 +217,48 @@ pages:
 
   await page.goto(`/a/${appId}/Paper`);
   await expect(page.getByTestId("entity-row").getByTestId("entity-image")).toHaveCount(1);
+});
+
+// M47-E1: a monitor added on its list, checked by the button; its status, response time chart and incident
+test("Server ops: a monitor added on its form, checked by Check now: its status, chart and incident", async ({ page }) => {
+  const read = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+  const name = unique("Server ops");
+  const checks = unique("Check monitors");
+  const app = read("apps/server-ops.yaml").replace("name: Server ops", `name: ${name}`).replace("run: Check monitors }", `run: "${checks}" }`);
+  const created = await page.request.post("/api/apps", { data: { source: app } });
+  expect(created.status(), await created.text()).toBe(201);
+  const appId = ((await created.json()) as { appId: string }).appId;
+  await createPipeline(page, read("check-monitors.yaml").replace("name: Check monitors", `name: ${checks}`).replace("app: Server ops", `app: ${name}`));
+
+  await page.goto(`/a/${appId}/Monitor`);
+  for (const [monitor, url] of [
+    ["nas", "https://nas.home.example:5001/"],
+    ["shop", "https://down.shop.example/"],
+  ]) {
+    await page.getByTestId("add-entity").click();
+    const form = page.getByTestId("add-form");
+    await form.getByLabel("Name").fill(monitor);
+    await form.getByLabel("Kind").selectOption("http");
+    await form.getByLabel("Address").fill(url);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByRole("heading", { name: monitor })).toBeVisible();
+    await page.goto(`/a/${appId}/Monitor`);
+  }
+
+  await page.getByTestId("entity-action").filter({ hasText: "Check now" }).click();
+  await expect(page).toHaveURL(/\/runs\//);
+  await expect(page.getByTestId("run-status")).toContainText("done", { timeout: 30_000 });
+
+  await page.goto(`/a/${appId}/Monitor`);
+  const row = (monitor: string) => page.getByTestId("entity-row").filter({ hasText: monitor });
+  await expect(row("nas")).toContainText("up");
+  await expect(row("nas")).toContainText("42");
+  await expect(row("shop")).toContainText("down");
+  await row("nas").getByRole("link", { name: "nas", exact: true }).click();
+  await expect(page.getByTestId("entity-fields").first()).toContainText("31 Jan 2027");
+  await expect(page.getByRole("heading", { name: "Response time (ms)" })).toBeVisible();
+
+  await page.goto(`/a/${appId}/Incident`);
+  await expect(page.getByTestId("entity-row")).toHaveCount(1);
+  await expect(page.getByTestId("entity-row")).toContainText("shop is down");
 });

@@ -1,12 +1,31 @@
-# The Server ops App: incidents on what you run, each open until it is resolved: a monitor that goes down
-# (monitor-alerts.yaml, a webhook), a database check that finds trouble (database-check.yaml), the database that can't be
-# reached (database-down.yaml). Each is resolved by itself when the cause is gone, or by you. Open issue on an open
+# The Server ops App: incidents on what you run, each open until it is resolved: a monitor that goes down (your
+# Monitors, checked by check-monitors.yaml, or an outside monitor's webhook, monitor-alerts.yaml), a database check
+# that finds trouble (database-check.yaml), the database that can't be reached (database-down.yaml). Each is resolved by itself when the cause is gone, or by you. Open issue on an open
 # one files it on GitHub, after you approve the request (incident-issue.yaml); every Monday, the week in numbers
 # (ops-week.yaml). No LLM. Save it on the Apps page before its pipelines.
 name: Server ops
-description: Incidents on what you run, from your monitors and database
+description: Your monitors, and incidents on what you run
 icon: cpu
 types:
+  # M47: what you watch, added on its list. Its address is yours (mine): only such an address may be on your network
+  # or Tailscale; Check monitors writes the rest.
+  Monitor:
+    key: name
+    title: name
+    fields:
+      name: { type: text, required: true }
+      kind: { type: enum, values: [http, tcp, ping], required: true, mine: true }
+      url: { type: url, mine: true, label: Address }        # http: https://nas.home.example:5001 or http://192.168.1.20:8080/health
+      host: { type: text, mine: true }                      # tcp and ping: a name or an IP
+      port: { type: number, mine: true }                    # tcp
+      expect: { type: number, mine: true, label: Expected status }   # http; empty: any 2xx or 3xx
+      ignoreTlsErrors: { type: yesno, mine: true, label: Ignore certificate errors }   # a self-signed certificate
+      paused: { type: yesno, mine: true }
+      status: { type: enum, values: [up, down] }
+      ms: { type: number, label: Response time (ms) }
+      error: { type: text, label: Why down }
+      checkedAt: { type: datetime, label: Checked }
+      certExpires: { type: date, label: Certificate until }
   Incident:
     key: id                        # what it is about and when it started: a monitor down twice is two Incidents
     title: title
@@ -31,6 +50,21 @@ types:
       issueUrl: { type: url, label: Issue }
       notes: { type: longtext, mine: true }
 pages:
+  - list: Monitor
+    menu: { label: Monitors, icon: cpu }
+    add: true
+    columns: [name, status, ms, checkedAt, { field: certExpires, due: { days: 14 } }, kind]
+    filters: [status, kind]
+    sort: name
+    actions:
+      - { label: Check now, run: Check monitors }
+  - view: Monitor
+    sections:
+      - { title: Status, fields: [status, error, ms, checkedAt, certExpires] }
+      - { title: What is checked, fields: [kind, url, host, port, expect, ignoreTlsErrors, paused] }
+    history: { collection: monitor-ms, label: Response time (ms) }
+  - form: Monitor
+    fields: [kind, url, host, port, expect, ignoreTlsErrors, paused]
   - list: Incident
     menu: { label: Incidents, icon: cpu }
     columns: [title, source, startedAt, minutes, status]

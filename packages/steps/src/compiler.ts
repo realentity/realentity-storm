@@ -37,6 +37,8 @@ interface CompiledStepInfo {
   output?: TypeInfo;
   /** data.read of a type pipelines write (M32): its items are what pages, feeds and emails said, never a target. */
   untrusted?: string;
+  /** data.read (M47): the type its items are, so a check knows a field of mine in them. */
+  entityType?: string;
 }
 
 /** What a pipeline is compiled against besides the catalog: its App's current version (M30), found by the caller. */
@@ -91,6 +93,7 @@ export class PipelineCompiler {
       allowedRecipients: [...definition.policy.allowedRecipients],
       provenance: [],
     };
+    const privateHosts: string[] = [];
     const app = definition.app && context.app?.name === definition.app ? context.app : undefined;
     if (definition.app && !app) errors.push({ path: "app", message: `there is no App named "${definition.app}"` });
     checkAppTrigger(definition.trigger, app, Boolean(definition.app), errors);
@@ -142,6 +145,7 @@ export class PipelineCompiler {
       const entities = this.checkEntitySteps(scope, Boolean(definition.app), known, errors);
       for (const contract of stepDefinition.entities ?? []) checkContract(stepDefinition, contract, definition.app, app, path, errors);
       if (stepDefinition.sideEffect) this.collectTargets(scope, known, policy, errors);
+      if (stepDefinition.checks && this.checkAddress(scope, stepDefinition.checks, known, errors)) privateHosts.push(step.id);
       known.set(step.id, { definition: stepDefinition, forEach: scope.forEach, ...entities });
     });
 
@@ -157,6 +161,7 @@ export class PipelineCompiler {
     const steps = errors.length === 0 ? this.placeGates(definition.steps, known, errors, warnings) : [];
     if (errors.length > 0) return { ok: false, errors };
 
+    if (privateHosts.length > 0) policy.privateHosts = privateHosts;
     policy.allowedDomains = unique(policy.allowedDomains);
     policy.allowedRecipients = unique(policy.allowedRecipients);
     const compiled: CompiledDefinition = { ...definition, steps };
@@ -239,7 +244,7 @@ export class PipelineCompiler {
     inApp: boolean,
     known: Map<string, CompiledStepInfo>,
     errors: CompileIssue[],
-  ): Pick<CompiledStepInfo, "output" | "untrusted"> {
+  ): Pick<CompiledStepInfo, "output" | "untrusted" | "entityType"> {
     const { step, path } = scope;
     if (step.type === "file.keep") {
       this.checkFileKeep(scope, inApp, errors);
@@ -315,7 +320,52 @@ export class PipelineCompiler {
     return {
       output: { kind: "object", fields: { items: { kind: "array", element: entityTypeInfo(type) }, count: { kind: "number" } } },
       ...(type.mine ? {} : { untrusted: typeName }),
+      entityType: typeName,
     };
+  }
+
+  /**
+   * M47: a check's address (http.check's url, net.check's host) is written in the pipeline, or is exactly a field of mine
+   * of an App entity: {{item.url}} in a loop over data.read's items, or {{trigger.item.url}}. Never from emails, pages,
+   * webhooks or other steps' output, which someone else may have written. True when it is a field of mine: the only
+   * address that may be private.
+   */
+  private checkAddress(scope: Scope, field: string, known: Map<string, CompiledStepInfo>, errors: CompileIssue[]): boolean {
+    const value = scope.step.with[field];
+    if (typeof value !== "string") return false;
+    const at = `${scope.path}.with.${field}`;
+    const whole = WHOLE_REFERENCE.exec(value)?.[1]?.trim();
+    const why =
+      "a check's address is written in the pipeline, or is exactly a field of mine of an App entity (a Monitor's url you " +
+      "typed: {{item.url}} over data.read's items, or {{trigger.item.url}}), never from emails, pages or other steps";
+    if (!whole) {
+      if (referencesIn(value).length > 0) errors.push({ path: at, message: why });
+      return false;
+    }
+    if (this.isMineField(whole, scope, known)) return true;
+    errors.push({ path: at, message: `{{${whole}}} isn't a field of mine: ${why}` });
+    return false;
+  }
+
+  /** {{item.x}} over data.read's items, or {{trigger.item.x}}: x is a field of mine of that type. */
+  private isMineField(source: string, scope: Scope, known: Map<string, CompiledStepInfo>): boolean {
+    if (!scope.app) return false;
+    let typeName: string | undefined;
+    let field: string;
+    if (source.startsWith("item.")) {
+      const [stepId, output, ...rest] = (scope.forEach ?? "").split(".");
+      if (output !== "items" || rest.length > 0) return false;
+      typeName = known.get(stepId ?? "")?.entityType;
+      field = source.slice("item.".length);
+    } else if (source.startsWith("trigger.item.")) {
+      typeName = triggerEntityType(scope.trigger, scope.app) ? (scope.trigger as { type?: string }).type : undefined;
+      field = source.slice("trigger.item.".length);
+    } else {
+      return false;
+    }
+    const type = typeName ? entityTypeOf(scope.app, typeName) : undefined;
+    if (!type || !type.fields[field]) return false;
+    return type.mine || type.fields[field].mine;
   }
 
   /** file.keep (M46-T4): into a file or image field of one of the App's types that pipelines may write. */
