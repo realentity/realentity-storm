@@ -1,6 +1,6 @@
 import { APPLICATION_STATUSES, isEventTrigger, isWebhookTrigger, type Trigger, type TriggerEventName } from "@realentity/storm-shared";
 import { z } from "zod";
-import { EmailMessageSchema } from "./catalog";
+import { EmailMessageSchema, TelegramFileSchema } from "./catalog";
 
 /** {{trigger.*}} of each event (M12-T1): what the worker puts in, and what the compiler checks references against. */
 export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
@@ -54,6 +54,15 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     /** Its stage's move in this change (M32); null when it didn't move. */
     stage: z.object({ from: z.string().nullable(), to: z.string() }).nullable(),
   }),
+  "telegram.command": z.object({
+    command: z.string(),
+    /** What follows the command: the user's own words, data, never a target. */
+    text: z.string(),
+    /** A photo or a file sent with it, for file.keep's `telegram`; null without one. */
+    file: TelegramFileSchema.nullable(),
+    messageId: z.number().int(),
+    sentAt: z.string(),
+  }),
   "entity.action": z.object({
     app: z.string(),
     type: z.string(),
@@ -91,6 +100,7 @@ export function triggerTargetIssue(trigger: Trigger, source: string): string | n
     if (trigger.on === "application.status" && source === "trigger.job.url") return null;
     if (trigger.on === "flow.later") return `{{${source}}} can't be a target: a flow.later's data is written by a pipeline, maybe from LLM text`;
     if (trigger.on === "view.action") return `{{${source}}} can't be a target: a row holds what a pipeline read from pages, feeds or emails`;
+    if (trigger.on === "telegram.command") return `{{${source}}} can't be a target: a message's text is data, not an address`;
     if (trigger.on === "entity.changed" || trigger.on === "entity.action") {
       return `{{${source}}} can't be a target: an entity holds what a pipeline read from pages, feeds or emails (only a type of mine can be)`;
     }
@@ -175,5 +185,7 @@ export function exampleTriggerData(trigger: Trigger): Record<string, unknown> | 
       };
     case "entity.action":
       return { app: "Example", type: trigger.type ?? "Example", key: "example", item: {}, action: "Example" };
+    case "telegram.command":
+      return { command: trigger.command, text: "An example message (dry run)", file: null, messageId: 1, sentAt: now };
   }
 }

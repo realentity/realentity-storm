@@ -58,6 +58,8 @@ export function triggerLabel(trigger: Trigger): string | null {
       return "later, from another pipeline";
     case "view.action":
       return "a button on a pipeline's page";
+    case "telegram.command":
+      return `/${trigger.command} on Telegram`;
   }
 }
 

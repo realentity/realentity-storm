@@ -20,6 +20,7 @@ import { FactsService } from "../facts/facts.service";
 import { ProposalsService } from "../proposals/proposals.service";
 import { RunsService } from "../runs/runs.service";
 import { parseBuilderCallback, TelegramBuilder } from "./telegram-builder";
+import { TelegramCommands, type PipelineCommand } from "./telegram-commands";
 import { forTelegram, TELEGRAM_PROPOSAL_INCLUDE, TelegramNotices } from "./telegram-notices";
 
 /** A command sent while the bot couldn't be reached arrives late; older than this, it's dropped. */
@@ -39,6 +40,12 @@ const UpdateSchema = z.object({
       chat: Chat,
       date: z.number(),
       text: z.string().optional(),
+      /** M49: a photo's or a file's caption: a command with it (/paper Washing machine). */
+      caption: z.string().optional(),
+      /** M49: a photo, in its sizes (the largest last). */
+      photo: z.array(z.object({ file_id: z.string(), file_size: z.number().optional() })).optional(),
+      /** M49: a file sent as a document (a PDF, a photo sent uncompressed). */
+      document: z.object({ file_id: z.string(), file_name: z.string().optional(), mime_type: z.string().optional(), file_size: z.number().optional() }).optional(),
       /** A reply: to a question Storm asked (M15-T3), it is the answer. */
       reply_to_message: z.object({ message_id: z.number() }).optional(),
     })
@@ -63,8 +70,8 @@ const HELP = [
   "/resume: kill switch off",
   "/new: a new chat with the pipeline builder",
   "/edit <pipeline>: change a pipeline with the builder",
-  "Anything else goes to the pipeline builder: say what a pipeline should do.",
-].join("\n");
+];
+const BUILDER_HELP = "Anything else goes to the pipeline builder: say what a pipeline should do.";
 
 /**
  * The Storm bot, inbound (M12-T3/T4): commands and buttons from the user's private chat only (TELEGRAM_CHAT_ID is
@@ -86,6 +93,7 @@ export class TelegramBot {
     private readonly notices: TelegramNotices,
     private readonly facts: FactsService,
     private readonly builder: TelegramBuilder,
+    private readonly commands: TelegramCommands,
   ) {
     this.ownerId = env.TELEGRAM_CHAT_ID ? Number(env.TELEGRAM_CHAT_ID) : null;
   }
@@ -118,10 +126,12 @@ export class TelegramBot {
       if (await this.answer(message.reply_to_message.message_id, message.text)) return;
     }
     if (now.getTime() / 1000 - message.date > MAX_COMMAND_AGE_SECONDS) return;
-    const text = (message.text ?? "").trim();
+    const text = (message.text ?? message.caption ?? "").trim();
     const [word = "", ...rest] = text.split(/\s+/);
     const command = word.toLowerCase().replace(/@\w+$/, "");
     const userId = await this.userId();
+    const file = fileOf(message);
+    if (file && !text.startsWith("/")) return this.tell("Send it with a command as its caption, e.g. /paper Washing machine. /help says which there are.");
     if (text && !text.startsWith("/")) return this.talk(userId, text);
     switch (command) {
       case "/new":
@@ -142,9 +152,39 @@ export class TelegramBot {
       case "/resume":
         await this.controls.setKillSwitch(userId, false);
         return this.tell("Kill switch off: pipelines run again (stopped runs stay stopped).");
-      default:
-        return this.tell(HELP);
+      default: {
+        // M49: a pipeline's command, with what follows it and the photo or file it came with.
+        const pipeline = command.length > 1 ? await this.commands.find(userId, command.slice(1)) : undefined;
+        if (pipeline) return this.byCommand(userId, pipeline, { command: command.slice(1), text: text.slice(word.length).trim(), file, message });
+        return this.tell(await this.help(userId));
+      }
     }
+  }
+
+  /** M49: a command's pipeline started with {{trigger.text}} and {{trigger.file}}. */
+  private async byCommand(
+    userId: string,
+    pipeline: PipelineCommand,
+    sent: { command: string; text: string; file: TelegramFile | null; message: NonNullable<Update["message"]> },
+  ): Promise<void> {
+    try {
+      const run = await this.runs.startVersion(userId, pipeline.pipelineVersionId, false, "telegram", {
+        command: sent.command,
+        text: sent.text,
+        file: sent.file,
+        messageId: sent.message.message_id,
+        sentAt: new Date(sent.message.date * 1000).toISOString(),
+      });
+      await this.say({ text: `On it: ${pipeline.name}.`, buttons: this.open(`/runs/${run.runId}`, "Open the run") });
+    } catch (error) {
+      await this.say(`${pipeline.name} didn't start: ${reasonOf(error)}`);
+    }
+  }
+
+  /** Storm's own commands, then the pipelines'. */
+  private async help(userId: string): Promise<string> {
+    const mine = (await this.commands.registry(userId)).map((c) => `/${c.command}: ${c.description}`);
+    return [...HELP, ...mine, BUILDER_HELP].join("\n");
   }
 
   /** A reply to a question's message: the answer (kept as a fact, the run goes on). False: it replies to something else. */
@@ -328,6 +368,29 @@ export class TelegramBot {
   private async edit(messageId: number, message: TelegramMessage): Promise<void> {
     await editTelegramMessage(this.notices.config, messageId, message, this.notices.send).catch(() => undefined);
   }
+}
+
+/** M49: a photo or a file as a telegram.command brings it ({{trigger.file}}); file.keep downloads it. */
+interface TelegramFile {
+  telegramFileId: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+function fileOf(message: NonNullable<Update["message"]>): TelegramFile | null {
+  const photo = message.photo?.at(-1);
+  if (photo) return { telegramFileId: photo.file_id, name: `photo-${message.date}.jpg`, mime: "image/jpeg", size: photo.file_size ?? 0 };
+  const document = message.document;
+  if (document) {
+    return {
+      telegramFileId: document.file_id,
+      name: document.file_name ?? `file-${message.date}`,
+      mime: document.mime_type ?? "application/octet-stream",
+      size: document.file_size ?? 0,
+    };
+  }
+  return null;
 }
 
 function reasonOf(error: unknown): string {

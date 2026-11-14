@@ -245,6 +245,14 @@ const CheckResult = z.object({
   address: z.string().nullable().describe("the IP it connected to"),
 });
 
+/** M49: a photo or a file sent to the Storm bot, as a telegram.command brings it: file.keep downloads it. */
+export const TelegramFileSchema = z.object({
+  telegramFileId: z.string().min(1).max(300),
+  name: z.string(),
+  mime: z.string(),
+  size: z.number().int(),
+});
+
 /** M46: a stored file as an entity holds it (FileRef). */
 const FILE_REF_SCHEMA = z.object({ id: z.string(), name: z.string(), mime: z.string(), size: z.number() });
 
@@ -1563,8 +1571,9 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "file.keep",
     description:
-      "Keeps an email's attachments (`message`, from `mailbox`) or a file browser.download kept (`artifact`) as files " +
-      "of the pipeline's App, for `type`'s file or image `field` (M46): checked by content (an image field takes only " +
+      "Keeps an email's attachments (`message`, from `mailbox`), a file browser.download kept (`artifact`) or a photo or " +
+      "file sent with a Telegram command (`telegram`: {{trigger.file}}, M49; null keeps nothing) as files of the " +
+      "pipeline's App, for `type`'s file or image `field` (M46): checked by content (an image field takes only " +
       "images), at most `max`. `files` (and `first`) are their references, to put in that field of data.save's items, " +
       "which attaches them to the entity; kept files no entity takes go after a day. Nothing leaves Storm. A dry run " +
       "keeps nothing: `found` says how many it would.",
@@ -1576,6 +1585,7 @@ export const CORE_STEPS: StepDefinition[] = [
       message: EmailMessageSchema.optional(),
       mailbox: z.string().min(1).max(200).default("INBOX").describe("where the message is"),
       artifact: z.uuid().optional().describe("a download's artifactId"),
+      telegram: TelegramFileSchema.nullable().optional().describe("a photo or file sent with a command: {{trigger.file}}"),
       max: z.number().int().min(1).max(10).default(5),
     }),
     output: z.object({

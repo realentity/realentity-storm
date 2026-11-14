@@ -174,6 +174,9 @@ function matches(trigger: EventTrigger, job: EventJob, app: string | undefined, 
     case "entity.action":
       // Started by the api, from an entity's button (M32).
       return false;
+    case "telegram.command":
+      // Started by the api, from the Storm bot (M49).
+      return false;
   }
 }
 

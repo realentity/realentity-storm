@@ -186,24 +186,27 @@ examples:
   - id: tasks
     name: Tasks
     description: >-
-      What you have to do, added on its list with a due date and a tag, open until you mark it done; every morning the
-      ones due today or overdue on Telegram. No LLM.
+      What you have to do, added on its list or with /task on Telegram, with a due date and a tag, open until you mark
+      it done; every morning the ones due today or overdue on Telegram. No LLM.
     needs:
-      - { kind: telegram, label: "Telegram, for the morning list" }
-    files: [apps/tasks.yaml, tasks-due.yaml]
+      - { kind: telegram, label: "Telegram, for /task and the morning list" }
+    files: [apps/tasks.yaml, tasks-due.yaml, task-from-telegram.yaml]
 
   - id: memos
     name: Memos
-    description: Notes to keep, each with a photo if you like, newest first and searchable. Needs nothing set up.
-    needs: []
-    files: [apps/memos.yaml]
+    description: >-
+      Notes to keep, each with a photo if you like, newest first and searchable; added on its list, or with /memo on
+      Telegram (a photo with /memo as its caption).
+    needs:
+      - { kind: telegram, label: "Telegram, for /memo (the page works without it)" }
+    files: [apps/memos.yaml, memo-from-telegram.yaml]
 
   - id: papers
     name: Papers
     description: >-
-      Receipts, invoices and warranties with their photo or PDF: the LLM reads each one and fills in the merchant, the
-      amount and the dates; a warranty's end goes into your calendar after you approve it.
+      Receipts, invoices and warranties with their photo or PDF, added on its list or sent with /paper on Telegram: the
+      LLM reads each one and fills in the merchant, the amount and the dates; a warranty's end goes into your calendar.
     needs:
       - { kind: llm, label: "The LLM, to read the papers" }
       - { kind: google-calendar, label: "Google Calendar, for warranties" }
-    files: [apps/papers.yaml, read-paper.yaml, warranty-in-calendar.yaml]
+    files: [apps/papers.yaml, read-paper.yaml, warranty-in-calendar.yaml, paper-from-telegram.yaml]

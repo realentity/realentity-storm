@@ -1,6 +1,6 @@
 import { type AppFile, type PrismaClient } from "@realentity/storm-db";
 import { FileProblem, readStored, recordFile, storeFile, sweepFiles, detectFile, safeName, type EntityFile } from "@realentity/storm-files";
-import { FILE_KINDS, fileRefId } from "@realentity/storm-shared";
+import { downloadTelegramFile, FILE_KINDS, fileRefId, type TelegramConfig } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { type ArtifactStore } from "../browser/artifact-store";
 import { type MailConnector } from "../mail/mail-connector";
@@ -46,6 +46,7 @@ interface KeepInput {
   message?: EmailMessage;
   mailbox: string;
   artifact?: string;
+  telegram?: { telegramFileId: string; name: string; mime: string; size: number } | null;
   max: number;
 }
 
@@ -64,11 +65,14 @@ export class FileKeepStep implements StepExecutor {
     private readonly mail: MailConnector,
     private readonly artifacts?: ArtifactStore,
     private readonly maxMb = DEFAULT_MAX_MB,
+    /** M49: the bot, to download a file sent with a command; tests give a stand-in fetch. */
+    private readonly telegram?: { config: TelegramConfig; fetch?: typeof fetch },
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { type: typeName, field: fieldName, message, mailbox, artifact, max } = input as unknown as KeepInput;
-    if (!message === !artifact) throw new Error("file.keep keeps the files of one email (message) or one download (artifact)");
+    const { type: typeName, field: fieldName, message, mailbox, artifact, telegram, max } = input as unknown as KeepInput;
+    const sources = [message, artifact, telegram].filter((s) => s !== undefined);
+    if (sources.length !== 1) throw new Error("file.keep keeps the files of one email (message), one download (artifact) or one Telegram message (telegram)");
     const { appId, type } = await appType(this.prisma, context, typeName);
     const field = type.fields[fieldName];
     if (!field || !FILE_KINDS.includes(field.type)) throw new Error(`${typeName}.${fieldName} isn't a file or an image`);
@@ -80,6 +84,13 @@ export class FileKeepStep implements StepExecutor {
       if (message.attachments.length > 0) {
         const attachments = await this.mail.attachments(context.userId, { mailbox, uid: message.uid, maxBytes: MAX_MESSAGE_BYTES });
         candidates.push(...attachments.map((a) => ({ name: a.filename ?? "attachment", content: a.content })));
+      }
+    } else if (telegram !== undefined) {
+      // A command sent without a photo or file: nothing to keep.
+      if (telegram !== null) {
+        if (!this.telegram?.config.botToken) throw new Error("Telegram is not configured (TELEGRAM_BOT_TOKEN)");
+        const content = await downloadTelegramFile(this.telegram.config, telegram.telegramFileId, Math.min(this.maxMb * 1_048_576, 20 * 1_048_576), this.telegram.fetch);
+        candidates.push({ name: telegram.name, content });
       }
     } else {
       if (!this.artifacts) throw new Error("Downloads aren't available here");

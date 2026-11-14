@@ -22,6 +22,7 @@ import { AppsService } from "../apps/apps.service";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";
+import { TelegramCommands } from "../telegram/telegram-commands";
 
 type Compiled = Extract<CompileResult, { ok: true }>;
 
@@ -42,6 +43,7 @@ export class PipelinesService {
     private readonly runs: RunsService,
     private readonly controls: ControlsService,
     private readonly apps: AppsService,
+    private readonly commands: TelegramCommands,
   ) {}
 
   /** Compiles without saving, for the review screen; with a pipeline, also the diff against its current version. */
@@ -93,6 +95,9 @@ export class PipelinesService {
     const current = await this.currentVersion(userId, pipelineId);
     const diff = current ? diffDefinitions(current.definition as unknown as CompiledDefinition, compiled.definition) : null;
     if (diff?.changes.length === 0) throw new UnprocessableEntityException("No changes compared to the current version");
+    // M49: a pipeline that is on keeps its command only while no other has it.
+    const clash = pipeline.enabled ? await this.commands.clash(userId, pipelineId, compiled.definition) : null;
+    if (clash) throw new ConflictException(clash);
 
     await this.guardConcurrentSave(() =>
       this.prisma.client.$transaction(async (tx) => {
@@ -127,6 +132,7 @@ export class PipelinesService {
     );
     // The new version may have another trigger.
     await this.queue.requestScheduleSync();
+    if (pipeline.enabled) await this.commands.sync(userId);
     return this.get(userId, pipelineId);
   }
 
@@ -203,6 +209,7 @@ export class PipelinesService {
       this.prisma.client.pipeline.delete({ where: { pipelineId } }),
     ]);
     if (pipeline.enabled) await this.queue.requestScheduleSync();
+    if (pipeline.enabled) await this.commands.sync(userId);
   }
 
   /** Enabling puts the pipeline on its schedule (the worker syncs pg-boss schedules); disabling takes it off. */
@@ -210,10 +217,15 @@ export class PipelinesService {
     if (body.enabled) {
       const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
       if (pipeline && !pipeline.currentVersionId) throw new ConflictException("Save the pipeline before enabling it");
+      // M49: its command, if another pipeline that is on doesn't have it.
+      const current = pipeline ? await this.currentVersion(userId, pipelineId) : null;
+      const clash = current ? await this.commands.clash(userId, pipelineId, current.definition as unknown as CompiledDefinition) : null;
+      if (clash) throw new ConflictException(clash);
     }
     const updated = await this.prisma.client.pipeline.updateMany({ where: { pipelineId, userId }, data: body });
     if (updated.count === 0) throw new NotFoundException();
     if (body.enabled !== undefined) await this.queue.requestScheduleSync();
+    if (body.enabled !== undefined) await this.commands.sync(userId);
     return this.get(userId, pipelineId);
   }
 

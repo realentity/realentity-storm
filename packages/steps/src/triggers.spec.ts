@@ -11,6 +11,7 @@ describe("example trigger data for dry runs", () => {
     { on: "view.action", collection: "releases" },
     { on: "entity.changed", type: "Job", field: "salary" },
     { on: "entity.action", type: "Job" },
+    { on: "telegram.command", command: "task" },
     { webhook: "token" },
   ];
 
