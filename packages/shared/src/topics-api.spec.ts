@@ -72,6 +72,7 @@ describe("pathMatches", () => {
       kind: "GITHUB",
       location: "acme/orion",
       path: "docs/adr/**",
+      googleAccountId: null,
     });
     expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme" }).success).toBe(false);
     expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme/orion", path: "../secrets/**" }).success).toBe(false);
@@ -99,7 +100,11 @@ describe("pathMatches", () => {
       path: "**",
       branch: null,
       credential: null,
+      googleAccountId: null,
     });
+    // M50-T8: read through one of the user's Google accounts, by id.
+    const googleAccountId = "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c";
+    expect(TopicSourceSchema.parse({ kind: "DRIVE", location: id, googleAccountId }).googleAccountId).toBe(googleAccountId);
     expect(TopicSourceSchema.safeParse({ kind: "DRIVE", location: "acme/orion" }).success).toBe(false);
   });
 });

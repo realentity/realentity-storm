@@ -263,6 +263,8 @@ export interface TopicSourceView {
   branch: string | null;
   path: string;
   credential: string | null;
+  /** M50-T8: a Drive folder's Google account (its address); null: the default one. */
+  googleAccount: { id: string; name: string } | null;
   /** The last commit indexed, short; null until it is read. */
   cursor: string | null;
   readAt: string | null;
@@ -309,6 +311,8 @@ export const TopicSourceSchema = z
       .trim()
       .transform((value) => value || null)
       .nullish(),
+    /** M50-T8: a Drive folder's Google account; left out: the default one. */
+    googleAccountId: z.uuid().nullish(),
   })
   .strict()
   .transform((source, context) => {
@@ -316,11 +320,17 @@ export const TopicSourceSchema = z
       // A folder: its link or id. No branch, and no credential: Drive is read through the Google connection.
       const folder = driveFolderId(source.location);
       if (!folder) context.addIssue({ code: "custom", path: ["location"], message: "A Google Drive folder: its link or id" });
-      return { ...source, location: folder ?? source.location, branch: null, credential: null };
+      return {
+        ...source,
+        location: folder ?? source.location,
+        branch: null,
+        credential: null,
+        googleAccountId: source.googleAccountId ?? null,
+      };
     }
     const repo = source.location.replace(/^https:\/\/github\.com\//i, "").replace(/\.git$|\/$/g, "");
     if (!REPOSITORY.test(repo)) context.addIssue({ code: "custom", path: ["location"], message: "A GitHub repository: owner/repo" });
-    return { ...source, location: repo };
+    return { ...source, location: repo, googleAccountId: null };
   });
 export type TopicSourceRequest = z.input<typeof TopicSourceSchema>;
 

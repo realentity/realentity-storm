@@ -5,6 +5,7 @@ import { type CompiledDefinition } from "@realentity/storm-shared";
 export interface RunBindings {
   credentials: Record<string, string>;
   emailAccounts: Record<string, string>;
+  googleAccounts: Record<string, string>;
   settings: Record<string, string>;
 }
 
@@ -27,11 +28,12 @@ export async function loadBindings(
     where: { OR: [{ pipelineId }, ...(appId ? [{ appId }] : [])] },
     orderBy: { pipelineId: { sort: "asc", nulls: "first" } },
   });
-  const bindings: RunBindings = { credentials: {}, emailAccounts: {}, settings: {} };
+  const bindings: RunBindings = { credentials: {}, emailAccounts: {}, googleAccounts: {}, settings: {} };
   // The App's first, then the pipeline's over them.
   for (const row of [...rows.filter((r) => r.appId), ...rows.filter((r) => r.pipelineId)]) {
     if (row.credentialId) bindings.credentials[row.slot] = row.credentialId;
     if (row.emailAccountId) bindings.emailAccounts[row.slot] = row.emailAccountId;
+    if (row.googleAccountId) bindings.googleAccounts[row.slot] = row.googleAccountId;
     if (row.text !== null) bindings.settings[row.slot] = row.text;
   }
   return bindings;

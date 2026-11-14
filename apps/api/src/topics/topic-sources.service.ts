@@ -17,7 +17,7 @@ export class TopicSourcesService {
     await this.ownTopic(userId, topicId);
     const sources = await this.prisma.client.topicSource.findMany({
       where: { userId, topicId },
-      include: { _count: { select: { passages: true } } },
+      include: { _count: { select: { passages: true } }, googleAccount: ACCOUNT },
       orderBy: { dateCreated: "asc" },
     });
     return sources.map((s) => sourceView(s, s._count.passages));
@@ -26,15 +26,34 @@ export class TopicSourcesService {
   async add(
     userId: string,
     topicId: string,
-    request: { kind: "GITHUB" | "DRIVE"; location: string; branch?: string | null; path: string; credential?: string | null },
+    request: {
+      kind: "GITHUB" | "DRIVE";
+      location: string;
+      branch?: string | null;
+      path: string;
+      credential?: string | null;
+      googleAccountId?: string | null;
+    },
   ): Promise<TopicSourceView> {
     await this.ownTopic(userId, topicId);
     const clash = await this.prisma.client.topicSource.findFirst({ where: { topicId, location: request.location, path: request.path } });
     if (clash) throw new ConflictException("The topic has this source already");
     if (request.kind === "DRIVE") {
-      // Read through the Google connection. Whether it allows Drive shows on the form and on the source's first read.
-      const google = await this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { userId: true } });
-      if (!google) throw new BadRequestException("Connect Google in Settings first (Google Calendar and Drive), and allow Drive");
+      // Read through one of the user's Google accounts (M50-T8), else the default. Whether it allows Drive shows on the
+      // form and on the source's first read.
+      const google = request.googleAccountId
+        ? await this.prisma.client.googleAccount.findFirst({
+            where: { userId, googleAccountId: request.googleAccountId },
+            select: { userId: true },
+          })
+        : await this.prisma.client.googleAccount.findFirst({ where: { userId }, select: { userId: true } });
+      if (!google) {
+        throw new BadRequestException(
+          request.googleAccountId
+            ? "No such Google account"
+            : "Connect Google in Settings first (Google Calendar and Drive), and allow Drive",
+        );
+      }
     }
     if (request.credential) {
       const credential = await this.prisma.client.credential.findFirst({ where: { userId, name: request.credential } });
@@ -52,7 +71,9 @@ export class TopicSourcesService {
         branch: request.branch ?? null,
         path: request.path,
         credential: request.credential ?? null,
+        googleAccountId: request.kind === "DRIVE" ? (request.googleAccountId ?? null) : null,
       },
+      include: { googleAccount: ACCOUNT },
     });
     return sourceView(source, 0);
   }
@@ -67,7 +88,11 @@ export class TopicSourcesService {
     await this.own(userId, topicSourceId);
     const [, source] = await this.prisma.client.$transaction([
       this.prisma.client.topicPassage.deleteMany({ where: { topicSourceId } }),
-      this.prisma.client.topicSource.update({ where: { topicSourceId }, data: { cursor: null, readAt: null } }),
+      this.prisma.client.topicSource.update({
+        where: { topicSourceId },
+        data: { cursor: null, readAt: null },
+        include: { googleAccount: ACCOUNT },
+      }),
     ]);
     return sourceView(source, 0);
   }
@@ -84,7 +109,13 @@ export class TopicSourcesService {
   }
 }
 
-function sourceView(source: TopicSource, passages: number): TopicSourceView {
+/** A Drive source's Google account, as its view shows it. */
+const ACCOUNT = { select: { googleAccountId: true, email: true } } as const;
+
+function sourceView(
+  source: TopicSource & { googleAccount: { googleAccountId: string; email: string } | null },
+  passages: number,
+): TopicSourceView {
   const folder = /[*?{]/.test(source.path) ? source.path.slice(0, source.path.search(/[*?{]/)).replace(/\/[^/]*$/, "") : source.path;
   return {
     topicSourceId: source.topicSourceId,
@@ -95,6 +126,7 @@ function sourceView(source: TopicSource, passages: number): TopicSourceView {
     branch: source.branch,
     path: source.path,
     credential: source.credential,
+    googleAccount: source.googleAccount ? { id: source.googleAccount.googleAccountId, name: source.googleAccount.email } : null,
     // Drive's page token means nothing to show: "read".
     cursor: source.kind === "DRIVE" ? (source.cursor ? "read" : null) : (source.cursor?.slice(0, 7) ?? null),
     readAt: source.readAt?.toISOString() ?? null,

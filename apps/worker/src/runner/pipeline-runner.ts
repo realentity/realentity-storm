@@ -704,6 +704,7 @@ export class PipelineRunner {
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],
       credentials: state.bindings.credentials,
       emailAccounts: state.bindings.emailAccounts,
+      googleAccounts: state.bindings.googleAccounts,
       privateHosts: state.policy.privateHosts?.includes(row.stepKey) ?? false,
       emit: (event, data) => this.emitEvent(state, event, data),
       attention: this.takeovers

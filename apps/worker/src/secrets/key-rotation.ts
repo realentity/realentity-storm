@@ -52,7 +52,7 @@ export class KeyRotation {
       lastId = batch[batch.length - 1]?.credentialId;
     }
 
-    // Webhook secrets (AAD webhookId) and Google refresh tokens (AAD userId): a few rows each.
+    // Webhook secrets (AAD webhookId) and Google refresh tokens (AAD googleAccountId, M50-T8): a few rows each.
     for (const row of await this.prisma.webhook.findMany({ where: { keyVersion: { not: toVersion } } })) {
       fromVersions.add(row.keyVersion);
       const { count } = await this.prisma.webhook.updateMany({
@@ -62,11 +62,11 @@ export class KeyRotation {
       if (count === 1) rewrapped++;
       else skipped++;
     }
-    for (const row of await this.prisma.googleConnection.findMany({ where: { keyVersion: { not: toVersion } } })) {
+    for (const row of await this.prisma.googleAccount.findMany({ where: { keyVersion: { not: toVersion } } })) {
       fromVersions.add(row.keyVersion);
-      const { count } = await this.prisma.googleConnection.updateMany({
-        where: { userId: row.userId, keyVersion: row.keyVersion },
-        data: rewrap(this.keys, row.userId, row, toVersion),
+      const { count } = await this.prisma.googleAccount.updateMany({
+        where: { googleAccountId: row.googleAccountId, keyVersion: row.keyVersion },
+        data: rewrap(this.keys, row.googleAccountId, row, toVersion),
       });
       if (count === 1) rewrapped++;
       else skipped++;

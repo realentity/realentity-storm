@@ -626,7 +626,7 @@ it, and a dismissed suggestion isn't made again):
 
 **Safety.** Email and document text is data: it can lead to a proposed fact or a suggested topic, never write either,
 and a passage reaches a prompt delimited like any untrusted text. Directions come only from you. Source credentials are
-credentials like any other (§7): the GitHub client reaches only `api.github.com`, with the token revealed for that host. A Drive folder is read through the Google connection (the calendar's, its refresh token sealed like a credential), with the read-only Drive scope; Storm never writes to Drive.
+credentials like any other (§7): the GitHub client reaches only `api.github.com`, with the token revealed for that host. A Drive folder is read through one of the user's Google accounts (M50-T8: the one chosen for the source, else the default; its refresh token sealed like a credential, AAD the account's id), with the read-only Drive scope; Storm never writes to Drive.
 With `OPENAI_API_KEY`, passages, facts and the start of an email being answered go to OpenAI for their embeddings.
 
 **Not built yet.**
@@ -928,7 +928,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Google Calendar's refresh token is sealed like a credential (AAD: the user id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
 - [ ] Facts about you are written only by your approvals, your answers and the Profile page, never by a page or the LLM alone; a fact the LLM cites must be one of yours, with your answer
 - [ ] A topic's facts and directions are written only by your approvals and your edits, never by an email's or a document's text or the LLM alone; something that looks like a secret is never proposed as a fact, nor written by you (§8.1)
-- [ ] Topic sources are read with read-only access (a read-only repository token, opened for api.github.com only; Drive through the Google connection's read-only scope), and their passages reach prompts delimited as untrusted data (§8.1)
+- [ ] Topic sources are read with read-only access (a read-only repository token, opened for api.github.com only; Drive through a Google account's read-only scope), and their passages reach prompts delimited as untrusted data (§8.1)
 - [ ] `calendar.create`'s guests can't come from LLM output (they are recipient targets), and Google emails them only after Act
 - [ ] Browser pages that explore or act (agent, upload, submit, shop.product) go only to allowed sites, every redirect checked before it is followed
 - [ ] `data.map` runs only a JSONata expression over its input (no network or code), with a time, depth and length limit

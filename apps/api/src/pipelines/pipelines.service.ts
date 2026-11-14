@@ -62,7 +62,11 @@ export class PipelinesService {
       pipeline && result.definition.name !== pipeline.name
         ? { from: pipeline.name, to: result.definition.name, followers: await this.apps.referrersOf(userId, pipelineId) }
         : undefined;
-    return { result, diff: diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition), ...(renamed ? { renamed } : {}) };
+    return {
+      result,
+      diff: diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition),
+      ...(renamed ? { renamed } : {}),
+    };
   }
 
   /** `builderChatId`: the builder chat the source came from (docs/design.md §2.1), kept with the version. */
@@ -137,7 +141,11 @@ export class PipelinesService {
     );
     // The new version may have another trigger, and other slots: a renamed one keeps its binding (M50-T15).
     await this.queue.requestScheduleSync();
-    await this.bindings.carryOver({ pipelineId }, (current?.definition as unknown as CompiledDefinition | undefined)?.needs ?? {}, compiled.definition.needs ?? {});
+    await this.bindings.carryOver(
+      { pipelineId },
+      (current?.definition as unknown as CompiledDefinition | undefined)?.needs ?? {},
+      compiled.definition.needs ?? {},
+    );
     await this.bindings.fillWhereOneFits(userId, { pipelineId }, compiled.definition.needs ?? {});
     if (pipeline.enabled) await this.commands.sync(userId);
     return this.get(userId, pipelineId);
@@ -207,7 +215,9 @@ export class PipelinesService {
     if (going > 0) throw new ConflictException(`A run of "${pipeline.name}" is still going: stop it or let it finish first`);
     const referrers = await this.apps.referrersOf(userId, pipelineId);
     if (referrers.length > 0) {
-      throw new ConflictException(`${referrers.join(", ")} ${referrers.length === 1 ? "starts" : "start"} "${pipeline.name}": change ${referrers.length === 1 ? "it" : "them"} first`);
+      throw new ConflictException(
+        `${referrers.join(", ")} ${referrers.length === 1 ? "starts" : "start"} "${pipeline.name}": change ${referrers.length === 1 ? "it" : "them"} first`,
+      );
     }
     await this.prisma.client.$transaction([
       this.prisma.client.run.deleteMany({ where: { pipelineVersion: { pipelineId } } }),
@@ -227,7 +237,9 @@ export class PipelinesService {
       // M50-T13: not with a slot empty: it would fail at its first run.
       const empty = pipeline?.currentVersionId ? emptySlots(await this.bindings.ofPipeline(userId, pipelineId)) : [];
       if (empty.length > 0) {
-        throw new ConflictException(`Fill in ${empty.map((s) => `"${s.need.label ?? s.slot}"`).join(", ")} first (its Needs, on its page${empty.some((s) => s.owner === "app") ? " or its App's" : ""})`);
+        throw new ConflictException(
+          `Fill in ${empty.map((s) => `"${s.need.label ?? s.slot}"`).join(", ")} first (its Needs, on its page${empty.some((s) => s.owner === "app") ? " or its App's" : ""})`,
+        );
       }
       // M49: its command, if another pipeline that is on doesn't have it.
       const current = pipeline ? await this.currentVersion(userId, pipelineId) : null;
@@ -292,7 +304,12 @@ export class PipelinesService {
   private async calendarWarnings(userId: string, definition: CompiledDefinition): Promise<CompileIssue[]> {
     const index = definition.steps.findIndex((step) => step.type.startsWith("calendar."));
     if (index < 0) return [];
-    const google = await this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { status: true } });
+    // M50-T8: the default account (a step's own slot is checked on its page).
+    const google = await this.prisma.client.googleAccount.findFirst({
+      where: { userId },
+      orderBy: [{ isDefault: "desc" }, { dateCreated: "asc" }],
+      select: { status: true },
+    });
     if (google?.status === "CONNECTED") return [];
     const state = google ? "needs reconnecting" : "isn't connected";
     return [{ path: `steps[${index}]`, message: `Google Calendar ${state}: connect it in Settings, or the run waits for it there` }];

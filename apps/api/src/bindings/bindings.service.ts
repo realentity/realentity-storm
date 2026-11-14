@@ -1,5 +1,7 @@
 import { type Credential } from "@realentity/storm-db";
 import {
+  CALENDAR_SCOPE,
+  DRIVE_SCOPE,
   hostMatches,
   readAppSource,
   type BindingsRequest,
@@ -79,7 +81,20 @@ export class BindingsService {
         problems.push({ path: slot, message: "takes no email account" });
         continue;
       }
-      if (need.kind === "email") {
+      if (need.kind !== "google" && value.googleAccountId !== undefined) {
+        problems.push({ path: slot, message: "takes no Google account" });
+        continue;
+      }
+      if (need.kind === "google") {
+        if (value.text !== undefined || value.credentialId !== undefined)
+          problems.push({ path: slot, message: "takes one of your Google accounts" });
+        else if (value.googleAccountId) {
+          const account = await this.prisma.client.googleAccount.findFirst({ where: { googleAccountId: value.googleAccountId, userId } });
+          if (!account) problems.push({ path: slot, message: "no such Google account" });
+          else if (!googleFits(need, account.scopes))
+            problems.push({ path: slot, message: `${account.email} doesn't allow ${need.uses?.join(" and ")}: reconnect it and tick it` });
+        }
+      } else if (need.kind === "email") {
         if (value.text !== undefined || value.credentialId !== undefined)
           problems.push({ path: slot, message: "takes one of your email accounts" });
         else if (
@@ -105,25 +120,27 @@ export class BindingsService {
         "pipelineId" in owner ? { pipelineId_slot: { pipelineId: owner.pipelineId, slot } } : { appId_slot: { appId: owner.appId, slot } };
       const credentialId = value.credentialId ?? null;
       const emailAccountId = value.emailAccountId ?? null;
+      const googleAccountId = value.googleAccountId ?? null;
       const text = value.text ?? null;
-      if (credentialId === null && emailAccountId === null && text === null)
+      if (credentialId === null && emailAccountId === null && googleAccountId === null && text === null)
         await this.prisma.client.binding.deleteMany({ where: { ...owner, slot } });
       else
         await this.prisma.client.binding.upsert({
           where,
-          create: { ...owner, slot, credentialId, emailAccountId, text },
-          update: { credentialId, emailAccountId, text },
+          create: { ...owner, slot, credentialId, emailAccountId, googleAccountId, text },
+          update: { credentialId, emailAccountId, googleAccountId, text },
         });
     }
   }
 
   private async views(userId: string, owner: Owner, needs: Needs, kind: BindingView["owner"]): Promise<BindingView[]> {
-    const [bound, credentials, accounts] = await Promise.all([
+    const [bound, credentials, accounts, googles] = await Promise.all([
       this.prisma.client.binding.findMany({
         where: owner,
         include: {
           credential: { select: { credentialId: true, name: true, userId: true } },
           emailAccount: { select: { emailAccountId: true, address: true, userId: true } },
+          googleAccount: { select: { googleAccountId: true, email: true, userId: true } },
         },
       }),
       this.mine(userId),
@@ -131,6 +148,11 @@ export class BindingsService {
         where: { userId },
         select: { emailAccountId: true, address: true },
         orderBy: [{ isDefault: "desc" }, { address: "asc" }],
+      }),
+      this.prisma.client.googleAccount.findMany({
+        where: { userId },
+        select: { googleAccountId: true, email: true, scopes: true },
+        orderBy: [{ isDefault: "desc" }, { email: "asc" }],
       }),
     ]);
     return Object.entries(needs).map(([slot, need]) => {
@@ -141,12 +163,16 @@ export class BindingsService {
           : null;
       const account =
         binding?.emailAccount && binding.emailAccount.userId === userId
-          ? { emailAccountId: binding.emailAccount.emailAccountId, address: binding.emailAccount.address }
-          : null;
+          ? { id: binding.emailAccount.emailAccountId, name: binding.emailAccount.address }
+          : binding?.googleAccount && binding.googleAccount.userId === userId
+            ? { id: binding.googleAccount.googleAccountId, name: binding.googleAccount.email }
+            : null;
       const fitting =
         need.kind === "email"
           ? accounts.map((a) => ({ id: a.emailAccountId, name: a.address }))
-          : credentials.filter((c) => fits(need, c)).map((c) => ({ id: c.credentialId, name: c.name }));
+          : need.kind === "google"
+            ? googles.filter((g) => googleFits(need, g.scopes)).map((g) => ({ id: g.googleAccountId, name: g.email }))
+            : credentials.filter((c) => fits(need, c)).map((c) => ({ id: c.credentialId, name: c.name }));
       return { slot, need, owner: kind, credential, account, text: binding?.text ?? null, fits: fitting };
     });
   }
@@ -207,10 +233,15 @@ export class BindingsService {
   }
 }
 
+/** M50-T8: a Google account fits a slot when it allows what the slot uses (the calendar, Drive). */
+function googleFits(need: Extract<Need, { kind: "google" }>, scopes: string[]): boolean {
+  return (need.uses ?? []).every((use) => scopes.includes(use === "calendar" ? CALENDAR_SCOPE : DRIVE_SCOPE));
+}
+
 /** Two slots ask for the same: the same kind, and for a credential the same type and host. */
 function sameNeed(a: Need, b: Need): boolean {
-  if (a.kind !== b.kind) return false;
-  return a.kind === "text" || a.kind === "email" || (b.kind === "credential" && a.type === b.type && a.for === b.for);
+  if (a.kind === "credential") return b.kind === "credential" && a.type === b.type && a.for === b.for;
+  return a.kind === b.kind;
 }
 
 function describe(need: Extract<Need, { kind: "credential" }>): string {

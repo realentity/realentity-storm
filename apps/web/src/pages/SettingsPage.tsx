@@ -12,7 +12,7 @@ import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { EmailAccountsCard } from "../components/EmailAccountsCard";
-import { GoogleCalendarCard } from "../components/GoogleCalendarCard";
+import { GoogleAccountsCard } from "../components/GoogleAccountsCard";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
@@ -39,7 +39,7 @@ export function SettingsPage() {
         <div className="col-lg-5 d-flex flex-column gap-3">
           <Budget settings={settings.data} spending={spending.data} onSaved={settings.reload} />
           <EmailAccountsCard />
-          <GoogleCalendarCard />
+          <GoogleAccountsCard />
           <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
           <WeeklyReview settings={settings.data} onSaved={settings.reload} />
           <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />

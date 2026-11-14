@@ -403,20 +403,29 @@ export interface SpendingView {
 }
 
 /** Google Calendar (M14-T1): as last seen when the calendar was used; nothing checks it in the background. */
-export interface GoogleStatusView {
-  /** GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set. */
-  configured: boolean;
-  /** The sign-in return address to register on the Google client. */
-  redirectUri: string;
-  connected: boolean;
-  email: string | null;
-  status: "CONNECTED" | "NEEDS_RECONNECT" | null;
+/** M50-T8: one of the user's Google accounts, as Settings shows it. */
+export interface GoogleAccountView {
+  googleAccountId: string;
+  email: string;
+  status: "CONNECTED" | "NEEDS_RECONNECT";
+  isDefault: boolean;
   /** What the user allowed at the sign-in: the calendar, Drive (read-only). */
   calendar: boolean;
   drive: boolean;
   lastWorkedAt: string | null;
   brokenAt: string | null;
   brokenReason: string | null;
+  /** The pipelines and Apps whose google slot is filled with it. */
+  usedBy: { owner: "pipeline" | "app"; id: string; name: string; slot: string }[];
+}
+
+export interface GoogleStatusView {
+  /** GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set. */
+  configured: boolean;
+  /** The sign-in return address to register on the Google client. */
+  redirectUri: string;
+  /** M50-T8: the user's Google accounts, the default first. */
+  accounts: GoogleAccountView[];
 }
 
 /** A pipeline to start later (flow.later, M14-T3). */

@@ -1,5 +1,5 @@
 import { isTextFile } from "@realentity/storm-shared";
-import { type GoogleConnection } from "../google/google-connection";
+import { type GoogleConnection, type GoogleWho } from "../google/google-connection";
 import { textOf } from "../steps/file-steps";
 
 /** Google's own formats, read as text by exporting them. */
@@ -50,17 +50,17 @@ export class DriveClient {
   constructor(private readonly google: GoogleConnection) {}
 
   /** Where Drive's changes start now: read before a first listing, so what changes during it comes next time. */
-  async startToken(userId: string): Promise<string> {
-    const body = await this.json<{ startPageToken: string }>(userId, "/changes/startPageToken", { supportsAllDrives: "true" });
+  async startToken(who: GoogleWho): Promise<string> {
+    const body = await this.json<{ startPageToken: string }>(who, "/changes/startPageToken", { supportsAllDrives: "true" });
     return body.startPageToken;
   }
 
   /** Every change since `token` (all of the user's Drive), and the token to continue from. */
-  async changes(userId: string, token: string): Promise<{ changes: DriveChange[]; next: string }> {
+  async changes(who: GoogleWho, token: string): Promise<{ changes: DriveChange[]; next: string }> {
     const changes: DriveChange[] = [];
     let page = token;
     for (;;) {
-      const body = await this.json<{ changes?: DriveChange[]; nextPageToken?: string; newStartPageToken?: string }>(userId, "/changes", {
+      const body = await this.json<{ changes?: DriveChange[]; nextPageToken?: string; newStartPageToken?: string }>(who, "/changes", {
         pageToken: page,
         pageSize: "1000",
         includeRemoved: "true",
@@ -75,16 +75,16 @@ export class DriveClient {
     }
   }
 
-  async file(userId: string, id: string): Promise<DriveFile> {
-    return this.json<DriveFile>(userId, `/files/${encodeURIComponent(id)}`, { fields: FILE_FIELDS, supportsAllDrives: "true" });
+  async file(who: GoogleWho, id: string): Promise<DriveFile> {
+    return this.json<DriveFile>(who, `/files/${encodeURIComponent(id)}`, { fields: FILE_FIELDS, supportsAllDrives: "true" });
   }
 
   /** The files directly in a folder, not trashed. */
-  async children(userId: string, folderId: string): Promise<DriveFile[]> {
+  async children(who: GoogleWho, folderId: string): Promise<DriveFile[]> {
     const files: DriveFile[] = [];
     let page: string | undefined;
     do {
-      const body = await this.json<{ files?: DriveFile[]; nextPageToken?: string }>(userId, "/files", {
+      const body = await this.json<{ files?: DriveFile[]; nextPageToken?: string }>(who, "/files", {
         q: `'${folderId}' in parents and trashed = false`,
         pageSize: "1000",
         fields: `nextPageToken,files(${FILE_FIELDS})`,
@@ -99,13 +99,13 @@ export class DriveClient {
   }
 
   /** Every file under a folder, its subfolders' too, each with its path from the folder ("Specs/Kickoff"). */
-  async everything(userId: string, folderId: string): Promise<{ file: DriveFile; path: string }[]> {
+  async everything(who: GoogleWho, folderId: string): Promise<{ file: DriveFile; path: string }[]> {
     const found: { file: DriveFile; path: string }[] = [];
     const folders: { id: string; path: string }[] = [{ id: folderId, path: "" }];
     const seen = new Set([folderId]);
     while (folders.length) {
       const folder = folders.shift()!;
-      for (const file of await this.children(userId, folder.id)) {
+      for (const file of await this.children(who, folder.id)) {
         const path = folder.path ? `${folder.path}/${file.name}` : file.name;
         if (file.mimeType === FOLDER) {
           if (!seen.has(file.id) && folders.length + seen.size < MAX_DRIVE_FILES) {
@@ -123,7 +123,7 @@ export class DriveClient {
    * Where a file is under `folderId`: its path ("Specs/Kickoff"), or null when it isn't in that folder (nor in one of
    * its subfolders). `known` keeps the folders looked up, for the other changes of the same read.
    */
-  async pathUnder(userId: string, file: DriveFile, folderId: string, known: Map<string, DriveFile | null>): Promise<string | null> {
+  async pathUnder(who: GoogleWho, file: DriveFile, folderId: string, known: Map<string, DriveFile | null>): Promise<string | null> {
     const names = [file.name];
     let parents = file.parents ?? [];
     for (let depth = 0; depth < MAX_DEPTH && parents.length; depth++) {
@@ -131,7 +131,7 @@ export class DriveClient {
       const [parentId] = parents;
       let parent = known.get(parentId);
       if (parent === undefined) {
-        parent = await this.file(userId, parentId).catch(() => null);
+        parent = await this.file(who, parentId).catch(() => null);
         known.set(parentId, parent);
       }
       if (!parent) return null;
@@ -142,27 +142,27 @@ export class DriveClient {
   }
 
   /** A file's text: a Google Doc as Markdown (its headings kept), Slides as text, a PDF's text layer; null when too large. */
-  async text(userId: string, file: Pick<DriveFile, "id" | "name" | "mimeType">): Promise<string | null> {
+  async text(who: GoogleWho, file: Pick<DriveFile, "id" | "name" | "mimeType">): Promise<string | null> {
     const id = encodeURIComponent(file.id);
     const exported = EXPORTS[file.mimeType];
     const response = exported
-      ? await this.get(userId, `/files/${id}/export`, { mimeType: exported })
-      : await this.get(userId, `/files/${id}`, { alt: "media", supportsAllDrives: "true" });
+      ? await this.get(who, `/files/${id}/export`, { mimeType: exported })
+      : await this.get(who, `/files/${id}`, { alt: "media", supportsAllDrives: "true" });
     const bytes = Buffer.from(await response.arrayBuffer());
     const pdf = file.mimeType === "application/pdf";
     if (bytes.length > (pdf ? PDF_BYTES : TEXT_BYTES)) return null;
     return exported ? bytes.toString("utf8") : textOf(file.mimeType, bytes, file.name);
   }
 
-  private async json<T>(userId: string, path: string, query: Record<string, string>): Promise<T> {
-    return (await (await this.get(userId, path, query)).json()) as T;
+  private async json<T>(who: GoogleWho, path: string, query: Record<string, string>): Promise<T> {
+    return (await (await this.get(who, path, query)).json()) as T;
   }
 
-  private async get(userId: string, path: string, query: Record<string, string>): Promise<Response> {
+  private async get(who: GoogleWho, path: string, query: Record<string, string>): Promise<Response> {
     const url = `${this.google.driveBase}${path}?${new URLSearchParams(query).toString()}`;
     let response: Response;
     try {
-      response = await this.google.request(userId, "drive", url, { redirect: "follow" });
+      response = await this.google.request(who, "drive", url, { redirect: "follow" });
     } catch (error) {
       if (error instanceof Error && error.name !== "TypeError") throw error;
       throw new Error("Google Drive could not be reached");

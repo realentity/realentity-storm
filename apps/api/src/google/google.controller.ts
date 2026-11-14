@@ -1,5 +1,5 @@
 import { type GoogleStatusView } from "@realentity/storm-shared";
-import { Body, Controller, Delete, Get, HttpCode, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { type Request, type Response } from "express";
 import { z } from "zod";
@@ -7,7 +7,8 @@ import { CurrentUser, Public, type AuthenticatedUser } from "../auth/public.deco
 import { ZodBodyPipe } from "../common/zod-body.pipe";
 import { GoogleService } from "./google.service";
 
-const ConnectSchema = z.object({ returnTo: z.string().max(500).optional() }).strict();
+/** `account`: reconnecting that one; left out, choosing an account at Google (another one is added). */
+const ConnectSchema = z.object({ returnTo: z.string().max(500).optional(), account: z.uuid().optional() }).strict();
 
 /** Google Calendar (M14-T1): its state, connecting (the consent screen), Google's way back, and disconnecting. */
 @Controller("google")
@@ -20,8 +21,12 @@ export class GoogleController {
   }
 
   @Post("connect")
-  connect(@CurrentUser() user: AuthenticatedUser, @Req() request: Request, @Body(new ZodBodyPipe(ConnectSchema)) body: z.infer<typeof ConnectSchema>): Promise<{ url: string }> {
-    return this.google.connect(user.userId, originOf(request), body.returnTo);
+  connect(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Body(new ZodBodyPipe(ConnectSchema)) body: z.infer<typeof ConnectSchema>,
+  ): Promise<{ url: string }> {
+    return this.google.connect(user.userId, originOf(request), body.returnTo, body.account);
   }
 
   /**
@@ -39,10 +44,16 @@ export class GoogleController {
     response.redirect(302, await this.google.callback(originOf(request), query));
   }
 
-  @Delete()
+  @Put("accounts/:googleAccountId/default")
   @HttpCode(204)
-  disconnect(@CurrentUser() user: AuthenticatedUser): Promise<void> {
-    return this.google.disconnect(user.userId);
+  makeDefault(@CurrentUser() user: AuthenticatedUser, @Param("googleAccountId", ParseUUIDPipe) googleAccountId: string): Promise<void> {
+    return this.google.makeDefault(user.userId, googleAccountId);
+  }
+
+  @Delete("accounts/:googleAccountId")
+  @HttpCode(204)
+  disconnect(@CurrentUser() user: AuthenticatedUser, @Param("googleAccountId", ParseUUIDPipe) googleAccountId: string): Promise<void> {
+    return this.google.disconnect(user.userId, googleAccountId);
   }
 }
 

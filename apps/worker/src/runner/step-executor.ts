@@ -37,6 +37,8 @@ export interface StepContext {
   credentials?: Readonly<Record<string, string>>;
   /** M50-T7: the run's email slots, slot → the email account bound to it (by id); not filled: the default account. */
   emailAccounts?: Readonly<Record<string, string>>;
+  /** M50-T8: the run's google slots, slot → the Google account bound to it (by id); not filled: the default account. */
+  googleAccounts?: Readonly<Record<string, string>>;
   /**
    * M47: this check's address is a field of mine (the compiler said so, policy.privateHosts): it may be a private, LAN
    * or Tailscale address. Never a link-local or cloud metadata one.

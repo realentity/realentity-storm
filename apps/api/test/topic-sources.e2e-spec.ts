@@ -18,7 +18,7 @@ describe("topic sources", () => {
   afterEach(async () => {
     await db.client.topic.deleteMany();
     await db.client.credential.deleteMany();
-    await db.client.googleConnection.deleteMany();
+    await db.client.googleAccount.deleteMany();
   });
 
   afterAll(async () => {
@@ -41,8 +41,15 @@ describe("topic sources", () => {
     });
     const { userId } = await db.client.user.findFirstOrThrow();
     const sealed = { ciphertext: Buffer.from("x"), iv: Buffer.from("x"), authTag: Buffer.from("x"), wrappedDek: Buffer.from("x") };
-    await db.client.googleConnection.create({
-      data: { userId, email: "ana@gmail.test", scopes: ["https://www.googleapis.com/auth/drive.readonly"], ...sealed },
+    await db.client.googleAccount.create({
+      data: {
+        googleAccountId: "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c",
+        userId,
+        email: "ana@gmail.test",
+        isDefault: true,
+        scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+        ...sealed,
+      },
     });
 
     await add("https://drive.google.com/file/d/abc/view").expect(400);

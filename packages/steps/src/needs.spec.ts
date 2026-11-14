@@ -78,6 +78,20 @@ describe("needs (M50)", () => {
     ).toEqual(['steps[0].with.account: "work" is a credential, not an email account']);
   });
 
+  it("M50-T8: a calendar step's account is a google slot for the calendar; one declared for Drive only is refused", () => {
+    const find = { id: "free", type: "calendar.find", with: { account: "work", calendar: "{{setting.calendar}}" } };
+    expect(ok(compiler.compile({ name: "P", steps: [find] })).definition.needs).toEqual({
+      work: { kind: "google", uses: ["calendar"] },
+      calendar: { kind: "text" },
+    });
+    expect(errorsOf(compiler.compile({ name: "P", needs: { work: { kind: "google", uses: ["drive"] } }, steps: [find] }))).toEqual([
+      'steps[0].with.account: "work" is a Google account for drive: add calendar to its uses',
+    ]);
+    expect(errorsOf(compiler.compile({ name: "P", needs: { work: { kind: "email" } }, steps: [find] }))).toEqual([
+      'steps[0].with.account: "work" is an email account, not a Google account',
+    ]);
+  });
+
   it("uses each slot as what it is: a credential isn't a setting, nor a setting a credential, nor an API key a database", () => {
     expect(
       errorsOf(

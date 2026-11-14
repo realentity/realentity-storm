@@ -9,6 +9,9 @@ import { DriveClient } from "../src/sources/drive";
 import { GitHubClient } from "../src/sources/github";
 import { DriveChangesStep, TopicIndexStep, type SourceChange, type SourceRead } from "../src/steps/topic-source-steps";
 
+/** M50-T8: the user's (default) Google account. */
+const ACCOUNT = "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c";
+
 const DRIVE = "https://drive.test/drive/v3";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
@@ -107,10 +110,10 @@ describe("drive.changes and topic.index", () => {
   });
 
   const connect = async (scopes: string[]) => {
-    const data = { email: "ana@gmail.test", scopes, ...seal(keys, userId, "refresh-1") };
-    await db.client.googleConnection.upsert({
-      where: { userId },
-      create: { userId, ...data },
+    const data = { email: "ana@gmail.test", scopes, ...seal(keys, ACCOUNT, "refresh-1") };
+    await db.client.googleAccount.upsert({
+      where: { googleAccountId: ACCOUNT },
+      create: { googleAccountId: ACCOUNT, userId, isDefault: true, ...data },
       update: { ...data, status: "CONNECTED", brokenAt: null },
     });
   };
@@ -125,7 +128,7 @@ describe("drive.changes and topic.index", () => {
 
   afterEach(async () => {
     await db.client.topic.deleteMany();
-    await db.client.googleConnection.deleteMany();
+    await db.client.googleAccount.deleteMany();
   });
 
   afterAll(async () => {
@@ -226,9 +229,9 @@ describe("drive.changes and topic.index", () => {
     await connect(["openid", "email", CALENDAR_SCOPE]);
     drive.scopes = [CALENDAR_SCOPE];
     const { changed } = await read();
-    expect(changed.problems).toEqual([expect.stringContaining("doesn't include Google Drive: reconnect Google in Settings")]);
+    expect(changed.problems).toEqual([expect.stringContaining("doesn't include Google Drive: reconnect it in Settings")]);
     expect(drive.requests).toEqual([]);
-    expect(await db.client.googleConnection.findUniqueOrThrow({ where: { userId } })).toMatchObject({ status: "CONNECTED" });
+    expect(await db.client.googleAccount.findUniqueOrThrow({ where: { googleAccountId: ACCOUNT } })).toMatchObject({ status: "CONNECTED" });
     expect((await db.client.topicSource.findUniqueOrThrow({ where: { topicSourceId: source } })).cursor).toBeNull();
   });
 
