@@ -771,15 +771,19 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
     Object.hasOwn(own, slot) ? own[slot] : Object.hasOwn(shared, slot) ? shared[slot] : undefined;
   definition.steps.forEach((step, index) => {
     // M50-T7: an email step's `account` written as a name is an email slot (an account's id comes from data: {{…}}).
-    const account = EMAIL_ACCOUNT_STEPS.includes(step.type) ? step.with.account : undefined;
-    if (typeof account === "string" && !account.includes("{{")) {
+    // M50-T8: a calendar step's is a google slot, allowing the calendar.
+    const kind = Object.hasOwn(ACCOUNT_STEPS, step.type) ? ACCOUNT_STEPS[step.type] : undefined;
+    const account = kind ? step.with.account : undefined;
+    if (kind && typeof account === "string" && !account.includes("{{")) {
       const need = declared(account);
       const at = `steps[${index}].with.account`;
+      const what = kind === "email" ? "an email account" : "a Google account";
       if (!SLOT_NAME.test(account))
         errors.push({ path: at, message: `"${account}" isn't a slot name: lowercase letters, digits, _ and -` });
-      else if (!need) own[account] = { kind: "email" };
-      else if (need.kind !== "email")
-        errors.push({ path: at, message: `"${account}" is a ${need.kind === "text" ? "setting" : "credential"}, not an email account` });
+      else if (!need) own[account] = kind === "email" ? { kind: "email" } : { kind: "google", uses: ["calendar"] };
+      else if (need.kind !== kind) errors.push({ path: at, message: `"${account}" is ${KIND_NAMES[need.kind]}, not ${what}` });
+      else if (need.kind === "google" && need.uses && !need.uses.includes("calendar"))
+        errors.push({ path: at, message: `"${account}" is a Google account for ${need.uses.join(", ")}: add calendar to its uses` });
     }
     for (const [field, value] of Object.entries(step.with)) {
       const text = JSON.stringify(value ?? null);
@@ -791,7 +795,8 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
         const url = typeof step.with.url === "string" && !step.with.url.includes("{{") ? step.with.url : undefined;
         const host = url ? /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1]?.toLowerCase() : undefined;
         if (!need) own[slot] = database ? { kind: "credential", type: "database" } : { kind: "credential", ...(host ? { for: host } : {}) };
-        else if (need.kind === "email") errors.push({ path: at, message: `"${slot}" is an email account: an email step's \`account\`` });
+        else if (need.kind === "email" || need.kind === "google")
+          errors.push({ path: at, message: `"${slot}" is ${KIND_NAMES[need.kind]}: a step's \`account\`` });
         else if (need.kind !== "credential")
           errors.push({ path: at, message: `"${slot}" is a setting (text), not a credential: {{setting.${slot}}}` });
         else if (database && need.type && need.type !== "database")
@@ -800,7 +805,8 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
       for (const [, slot] of text.matchAll(/\{\{\s*setting\.([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g)) {
         const need = declared(slot);
         if (!need) own[slot] = { kind: "text" };
-        else if (need.kind === "email") errors.push({ path: at, message: `"${slot}" is an email account: an email step's \`account\`` });
+        else if (need.kind === "email" || need.kind === "google")
+          errors.push({ path: at, message: `"${slot}" is ${KIND_NAMES[need.kind]}: a step's \`account\`` });
         else if (need.kind !== "text") errors.push({ path: at, message: `"${slot}" is a credential, not a setting: {{cred:${slot}}}` });
       }
     }
@@ -808,8 +814,21 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
   return own;
 }
 
-/** M50-T7: the steps that read or send through one of the user's email accounts. */
-const EMAIL_ACCOUNT_STEPS = ["email.fetch", "email.awaiting", "email.send"];
+/** M50-T7, M50-T8: the steps that go through one of the user's accounts, and which kind. */
+const ACCOUNT_STEPS: Record<string, "email" | "google"> = {
+  "email.fetch": "email",
+  "email.awaiting": "email",
+  "email.send": "email",
+  "calendar.find": "google",
+  "calendar.create": "google",
+};
+
+const KIND_NAMES: Record<Need["kind"], string> = {
+  credential: "a credential",
+  text: "a setting",
+  email: "an email account",
+  google: "a Google account",
+};
 
 function formatPath(path: PropertyKey[]): string {
   return path.map((segment, i) => (typeof segment === "number" ? `[${segment}]` : `${i ? "." : ""}${String(segment)}`)).join("");

@@ -142,12 +142,16 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
   const [path, setPath] = useState("docs/**");
   const [branch, setBranch] = useState("");
   const [credential, setCredential] = useState("");
+  const [googleAccountId, setGoogleAccountId] = useState("");
   const [addingToken, setAddingToken] = useState(false);
   const action = useAction();
   const forGitHub = credentials.data?.filter((c) => c.allowedHosts.some((h) => h.toLowerCase() === GITHUB_API)) ?? [];
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const source = kind === "DRIVE" ? { kind, location, path } : { kind, location, path, branch, credential };
+    const source =
+      kind === "DRIVE"
+        ? { kind, location, path, ...(googleAccountId ? { googleAccountId } : {}) }
+        : { kind, location, path, branch, credential };
     if (await action.run(() => api.topics.addSource(topicId, source))) onDone(true);
   };
   const choose = (next: "GITHUB" | "DRIVE") => {
@@ -182,7 +186,14 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
           </button>
         </div>
         {kind === "DRIVE" ? (
-          <DriveFields location={location} setLocation={setLocation} path={path} setPath={setPath} />
+          <DriveFields
+            location={location}
+            setLocation={setLocation}
+            path={path}
+            setPath={setPath}
+            account={googleAccountId}
+            setAccount={setGoogleAccountId}
+          />
         ) : (
           <>
             <div className="row g-2">
@@ -271,22 +282,28 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
 }
 
 /**
- * A Drive folder (M43-T2): its link, and which of its files. Read through the Google connection, which must allow Drive:
- * said here before the source is added.
+ * A Drive folder (M43-T2): its link, which of its files, and (M50-T8) which of the user's Google accounts reads it, the
+ * default unless another is chosen. That account must allow Drive: said here before the source is added.
  */
 function DriveFields({
   location,
   setLocation,
   path,
   setPath,
+  account,
+  setAccount,
 }: {
   location: string;
   setLocation: (value: string) => void;
   path: string;
   setPath: (value: string) => void;
+  account: string;
+  setAccount: (value: string) => void;
 }) {
   const google = useLoad(() => api.google.status(), []);
-  const g = google.data;
+  const accounts = google.data?.accounts ?? [];
+  // The one chosen, else the default (listed first).
+  const reading = accounts.find((a) => a.googleAccountId === account) ?? accounts[0];
   return (
     <>
       <div className="row g-2">
@@ -314,15 +331,30 @@ function DriveFields({
         The folder's link (open it in Drive and copy the address). Its subfolders are read too: Google Docs, Slides, PDFs and text files.
         Files narrows it: ** for all, Specs/** for a subfolder, **/*.pdf.
       </div>
-      {g && (!g.connected || !g.drive || g.status === "NEEDS_RECONNECT") && (
+      {accounts.length > 1 && (
+        <div className="mt-2">
+          <label className="form-label" htmlFor="source-google-account">
+            Google account
+          </label>
+          <select id="source-google-account" className="form-select" value={account} onChange={(e) => setAccount(e.target.value)}>
+            <option value="">The default ({accounts[0].email})</option>
+            {accounts.map((a) => (
+              <option key={a.googleAccountId} value={a.googleAccountId}>
+                {a.email}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {google.data && (!reading || !reading.drive || reading.status === "NEEDS_RECONNECT") && (
         <div className="alert alert-warning mt-2 mb-0" data-testid="source-drive-access">
-          {!g.connected
+          {!reading
             ? "Google isn't connected: "
-            : g.status === "NEEDS_RECONNECT"
-              ? "Google needs reconnecting: "
-              : "Storm's Google access doesn't include Drive: "}
-          <Link to="/settings#google">{g.connected ? "reconnect in Settings" : "connect it in Settings"}</Link>
-          {g.connected ? " and tick Drive on Google's list." : ", and allow Drive."}
+            : reading.status === "NEEDS_RECONNECT"
+              ? `${reading.email} needs reconnecting: `
+              : `Storm's access to ${reading.email} doesn't include Drive: `}
+          <Link to="/settings#google">{reading ? "reconnect in Settings" : "connect it in Settings"}</Link>
+          {reading ? " and tick Drive on Google's list." : ", and allow Drive."}
         </div>
       )}
     </>

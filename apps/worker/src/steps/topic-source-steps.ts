@@ -2,6 +2,7 @@ import { addTopicCosts, type PrismaClient, type TopicSource } from "@realentity/
 import { type Embeddings } from "@realentity/storm-llm";
 import { isTextFile, pathMatches } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
+import { type GoogleWho } from "../google/google-connection";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { passagesOf } from "../sources/chunk";
 import { type MailConnector } from "../mail/mail-connector";
@@ -171,6 +172,8 @@ export class DriveChangesStep implements StepExecutor {
     const folders = new Map<string, DriveFile | null>();
     for (const source of sources) {
       const name = source.title || source.location;
+      // M50-T8: through its Google account, else the default one.
+      const who = { userId, account: source.googleAccountId };
       try {
         const change = (file: DriveFile, path: string, status: SourceChange["status"]): SourceChange => ({
           topic: source.topic.name,
@@ -189,10 +192,10 @@ export class DriveChangesStep implements StepExecutor {
 
         if (!source.cursor) {
           // The first read (or after a rebuild): the token first, so a change made while listing comes next time.
-          const token = await drive.startToken(userId);
-          const folder = await drive.file(userId, source.location);
+          const token = await drive.startToken(who);
+          const folder = await drive.file(who, source.location);
           if (folder.mimeType !== FOLDER) throw new Error(`"${folder.name}" is not a folder`);
-          const files = (await drive.everything(userId, source.location)).filter((f) => wanted(f.file, f.path));
+          const files = (await drive.everything(who, source.location)).filter((f) => wanted(f.file, f.path));
           changes.push(...files.map((f) => change(f.file, f.path, "added")));
           reads.push({
             sourceId: source.topicSourceId,
@@ -206,10 +209,12 @@ export class DriveChangesStep implements StepExecutor {
           continue;
         }
 
-        let list = lists.get(source.cursor);
+        // A page token is its account's: sources read together through one account share it.
+        const listKey = `${source.googleAccountId ?? ""}:${source.cursor}`;
+        let list = lists.get(listKey);
         if (!list) {
-          list = drive.changes(userId, source.cursor);
-          lists.set(source.cursor, list);
+          list = drive.changes(who, source.cursor);
+          lists.set(listKey, list);
         }
         const { changes: listed, next } = await list;
         // What the index has: each file's version.
@@ -235,7 +240,7 @@ export class DriveChangesStep implements StepExecutor {
             folders.set(file.id, file);
             continue;
           }
-          const path = await drive.pathUnder(userId, file, source.location, folders);
+          const path = await drive.pathUnder(who, file, source.location, folders);
           if (path !== null && wanted(file, path)) {
             if (known && known.ref === (file.version ?? file.modifiedTime) && known.path === path) latest.delete(item.fileId);
             else latest.set(item.fileId, change(file, path, known ? "modified" : "added"));
@@ -304,7 +309,7 @@ export class TopicIndexStep implements StepExecutor {
           continue;
         }
         const text = drive
-          ? await this.driveText(userId, change)
+          ? await this.driveText({ userId, account: source.googleAccountId }, change)
           : await this.github.text(
               userId,
               { repo: source.location, branch: source.branch, credential: source.credential },
@@ -362,10 +367,10 @@ export class TopicIndexStep implements StepExecutor {
     return (await this.prisma.topicPassage.deleteMany({ where: { topicSourceId, ...(documentId ? { documentId } : { path }) } })).count;
   }
 
-  private async driveText(userId: string, change: SourceChange): Promise<string | null> {
+  private async driveText(who: GoogleWho, change: SourceChange): Promise<string | null> {
     if (!this.drive) throw new Error("Google Drive isn't available here");
     if (!change.fileId || !change.mimeType) throw new Error("a Drive change without its file");
-    return this.drive.text(userId, { id: change.fileId, name: change.path, mimeType: change.mimeType });
+    return this.drive.text(who, { id: change.fileId, name: change.path, mimeType: change.mimeType });
   }
 }
 

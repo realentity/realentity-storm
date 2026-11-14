@@ -7,8 +7,9 @@ Connects your Google account to Storm, once, in about 15 minutes, for two things
 - **Google Drive, read-only:** a topic reads the Drive folders you link as its sources, for drafts to quote
   ([topics.md](topics.md)). Storm never changes anything in Drive.
 
-One sign-in covers both, and you can allow only one of them. You need the Google account whose calendar and Drive
-Storm should use, and access to Storm's `.env` on your server ([self-hosting.md](self-hosting.md)).
+One sign-in covers both, and you can allow only one of them. You can connect several Google accounts (a personal and a
+work one); one is the default, and a pipeline or a Drive folder can use another. You need access to Storm's `.env` on
+your server ([self-hosting.md](self-hosting.md)).
 
 What you create: a Google Cloud **project**, with the **Calendar API** and the **Drive API** turned on, a **consent
 screen** (what Google shows when you sign in), and an **OAuth client** (an id and a secret that Storm puts in `.env`).
@@ -116,16 +117,20 @@ which key is wrong (`./docker/storm logs api`; it names the key, never the value
 
 ## 6. Connect in Storm
 
-1. Open Storm's **Settings** (`APP_ORIGIN` + `/settings`). The **Google Calendar and Drive** card now has
-   **Connect Google** (it said *Not set up* before step 5).
+1. Open Storm's **Settings** (`APP_ORIGIN` + `/settings`). The **Google accounts** card now has **Connect Google**
+   (it said *Not set up* before step 5).
 2. Press it. Google's sign-in opens: choose your account.
 3. Google says **"Google hasn't verified this app"**. That's your own app (step 3): press **Continue** (or
    **Advanced**, then **Go to Storm (unsafe)**).
 4. Google lists what Storm asks for. **Tick the calendar access** ("See, edit, share, and permanently delete all the
    calendars…" or "View and edit events…") and **the Drive access** ("See and download all your Google Drive
    files"), then **Continue**. Leave one unticked if you don't want it: the other one still works.
-5. You're back on Settings: a green message **Google connected**, and the card says **Connected as you@gmail.com**,
+5. You're back on Settings: a green message **Google connected**, and the card lists **you@gmail.com** (the default),
    with **Calendar: allowed** and **Drive (read-only): allowed**.
+
+**Another account:** **Connect another** on the same card, and choose it at Google's sign-in. The star makes one the
+default; a pipeline's calendar steps and a topic's Drive folder can use any of them (the pipeline's **What it needs**
+card, the Drive folder's form). Signing in again as an account that is already there reconnects it.
 
 Done. Pipelines with calendar steps can now run; the review screen no longer warns about the calendar. A topic can
 now have a Drive folder as a source: on the Topics page, **Sources → Add → Google Drive folder**, and paste the

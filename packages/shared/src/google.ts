@@ -27,7 +27,10 @@ export interface GoogleClient {
   redirectUri: string;
 }
 
-/** The consent screen: offline (a refresh token), always asking, so a reconnect gets a new refresh token. */
+/**
+ * The consent screen: offline (a refresh token), always asking, so a reconnect gets a new refresh token; choosing the
+ * account first (M50-T8: another one can be added), or signing in as `loginHint` (reconnecting that one).
+ */
 export function googleAuthUrl(client: GoogleClient, state: string, codeChallenge: string, loginHint?: string): string {
   const params = new URLSearchParams({
     client_id: client.clientId,
@@ -35,7 +38,7 @@ export function googleAuthUrl(client: GoogleClient, state: string, codeChallenge
     response_type: "code",
     scope: GOOGLE_SCOPES.join(" "),
     access_type: "offline",
-    prompt: "consent",
+    prompt: loginHint ? "consent" : "select_account consent",
     include_granted_scopes: "true",
     state,
     code_challenge: codeChallenge,

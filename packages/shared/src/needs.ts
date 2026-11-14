@@ -39,7 +39,19 @@ export const TextNeedSchema = z
 /** M50-T7: one of the user's email accounts; not filled, the default one. */
 export const EmailNeedSchema = z.object({ kind: z.literal("email"), label: Label.optional() }).strict();
 
-export const NeedSchema = z.discriminatedUnion("kind", [CredentialNeedSchema, TextNeedSchema, EmailNeedSchema]);
+/** What a Google account is used for: its calendar, its Drive (read-only); the user allows each at the sign-in. */
+export const GOOGLE_USES = ["calendar", "drive"] as const;
+export type GoogleUse = (typeof GOOGLE_USES)[number];
+
+/** M50-T8: one of the user's Google accounts, allowing what it `uses`; not filled, the default one. */
+export const GoogleNeedSchema = z
+  .object({ kind: z.literal("google"), uses: z.array(z.enum(GOOGLE_USES)).min(1).optional(), label: Label.optional() })
+  .strict();
+
+/** The kinds of slot an account fills (not a credential, not text): never empty, the default account until one is chosen. */
+export const ACCOUNT_KINDS = ["email", "google"] as const;
+
+export const NeedSchema = z.discriminatedUnion("kind", [CredentialNeedSchema, TextNeedSchema, EmailNeedSchema, GoogleNeedSchema]);
 export type Need = z.infer<typeof NeedSchema>;
 
 export const NeedsSchema = z
@@ -66,16 +78,20 @@ export interface BindingView {
   credential: { credentialId: string; name: string } | null;
   /** A text setting's value; null: not set. */
   text: string | null;
-  /** M50-T7: an email slot's account; null: the default one. */
-  account: { emailAccountId: string; address: string } | null;
-  /** M50-T4: a credential slot's candidates (the user's credentials that fit it), or an email slot's (their accounts). */
+  /** M50-T7, M50-T8: an email or google slot's account (its address); null: the default one. */
+  account: { id: string; name: string } | null;
+  /** M50-T4: a credential slot's candidates (the user's credentials that fit it), or an account slot's (their accounts). */
   fits: { id: string; name: string }[];
 }
 
-/** M50-T13: the slots not filled: a setting with no text, a credential slot with none. An email slot is never empty: without one chosen, the default account. */
+/** M50-T13: the slots not filled: a setting with no text, a credential slot with none. An account slot is never empty: without one chosen, the default account. */
 export function emptySlots(views: readonly BindingView[]): BindingView[] {
   return views.filter((v) =>
-    v.need.kind === "email" ? false : v.need.kind === "credential" ? v.credential === null : v.text === null || v.text === "",
+    v.need.kind === "email" || v.need.kind === "google"
+      ? false
+      : v.need.kind === "credential"
+        ? v.credential === null
+        : v.text === null || v.text === "",
   );
 }
 
@@ -86,6 +102,8 @@ export const BindingRequestSchema = z
     text: z.string().max(2000).nullable().optional(),
     /** M50-T7: an email slot's account. */
     emailAccountId: z.uuid().nullable().optional(),
+    /** M50-T8: a google slot's account. */
+    googleAccountId: z.uuid().nullable().optional(),
   })
   .strict();
 export type BindingRequest = z.infer<typeof BindingRequestSchema>;

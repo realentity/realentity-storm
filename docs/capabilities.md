@@ -299,7 +299,8 @@ steps:
 
 - **`needs:`** on a pipeline, or on an App (its pipelines share them; each install fills its own): `kind: credential`
   (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for),
-  `kind: text` (`example`), or `kind: email`: one of your email accounts (§4.4), the default one until you choose. A slot a step uses without one is added from where it is used: a database for `db.query`'s
+  `kind: text` (`example`), `kind: email`: one of your email accounts (§4.4), or `kind: google` (`uses`: calendar,
+  drive): one of your Google accounts allowing them (§4.7). An account slot is the default account until you choose. A slot a step uses without one is added from where it is used: a database for `db.query`'s
   connection, the host of an address written in the step.
 - **Filling them:** the **What it needs** card on the pipeline's page (its own slots; its App's are shown and filled on
   the App's page, once for all its pipelines), on the App's page, and in the builder's chat once a proposal is saved.
@@ -933,8 +934,8 @@ once its files are indexed, so a failed index is read again next time.
 #### `drive.changes`
 The files changed in your topics' Google Drive sources (on the Topics page: a folder by its link, and optionally a path
 like `Specs/**`) since each was last indexed: Google Docs (exported as Markdown), Slides, PDFs and text files, in the
-folder or its subfolders. It reads through your Google connection, which must allow Drive (read-only; Settings shows
-it, [google-setup.md](google-setup.md)). Seeing that nothing changed is one call to Drive's changes list, no LLM, however
+folder or its subfolders. Each folder is read through the Google account chosen for it when it was added (else your
+default one), which must allow Drive (read-only; Settings shows it, [google-setup.md](google-setup.md)). Seeing that nothing changed is one call to Drive's changes list, no LLM, however
 many folders; the first read lists the folder. A file deleted, binned or moved out of the folder is `removed`; a
 renamed one is `modified` under its new path. It only reads: `topic.index` moves each source on.
 - In: `topics` (only these, by name; default: every active topic).
@@ -1048,19 +1049,23 @@ the unpaid ones due within three days. *Move them here* on the App's page brings
 
 ### 4.7 Google Calendar
 
-Needs Google Calendar connected in Settings (see [google-setup.md](google-setup.md)).
+Needs a Google account connected in Settings, allowing the calendar (see [google-setup.md](google-setup.md)). You can
+connect several; one is the default. A calendar step's `account` is a google slot, written as a name (`account: work`),
+which you fill on the pipeline's or its App's page with one of your accounts that allows the calendar (§2.6); left out,
+or not filled, the default account. `calendar` is which of the account's calendars, by its id (Google Calendar → the
+calendar's settings → Calendar ID): usually a setting, `calendar: "{{setting.calendar}}"`; left out, the primary one.
 
 #### `calendar.find`
 Your events between `from` and `to` (default: the next 7 days), optionally matching `query`. `durationMinutes` gives a
 window from `from`, to see what an event at that time would clash with.
-- In: `from`, `to`, `durationMinutes`, `query`, `timeZone`, `maxResults` [50].
+- In: `from`, `to`, `durationMinutes`, `query`, `timeZone`, `maxResults` [50], `account`, `calendar` [primary].
 - Out: `events` (id, title, start, end, allDay, location, link, meetLink, attendees, organizer), `count`, `none`.
 
 #### `calendar.create` ⚡
 Creates an event. With `attendees`, Google emails them an invitation from your account. An event with the same title at
 the same start isn't created twice.
 - In: `title`, `start`, `end` or `durationMinutes` [60], `timeZone`, `description`, `location`, `attendees`, `meet`
-  [false], `sendInvites` [true].
+  [false], `sendInvites` [true], `account`, `calendar` [primary].
 - Out: `created`, `eventId`, `link`, `meetLink`, `invited`.
 
 ```yaml

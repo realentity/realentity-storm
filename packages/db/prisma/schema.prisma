@@ -139,7 +139,7 @@ model User {
   dataPoints       DataPoint[]
   httpCaches       HttpCache[]
   alertStates      AlertState[]
-  google           GoogleConnection?
+  googleAccounts   GoogleAccount[]
   emailAccounts    EmailAccount[]
   facts            Fact[]
   questions        Question[]
@@ -1018,24 +1018,31 @@ enum GoogleConnectionStatus {
 
 /// The user's Google account for the calendar steps (M14-T1): the refresh token sealed (AAD = userId), the state as last seen
 /// when the calendar was used (no background checks).
-model GoogleConnection {
-  userId       String                 @id @db.Uuid
-  user         User                   @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  email        String
-  scopes       String[]
-  status       GoogleConnectionStatus @default(CONNECTED)
-  ciphertext   Bytes
-  iv           Bytes
-  authTag      Bytes
-  wrappedDek   Bytes
-  keyVersion   Int                    @default(1)
-  lastWorkedAt DateTime?
-  brokenAt     DateTime?
-  brokenReason String?
-  dateCreated  DateTime               @default(now())
-  dateUpdated  DateTime               @updatedAt
+/// M50-T8: one of the user's Google accounts (several, one the default), for the calendar and Drive. Its refresh token
+/// is sealed (AAD: googleAccountId) and opened only by the worker.
+model GoogleAccount {
+  googleAccountId String                 @id @db.Uuid
+  userId          String                 @db.Uuid
+  user            User                   @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  email           String
+  scopes          String[]
+  status          GoogleConnectionStatus @default(CONNECTED)
+  isDefault       Boolean                @default(false)
+  ciphertext      Bytes
+  iv              Bytes
+  authTag         Bytes
+  wrappedDek      Bytes
+  keyVersion      Int                    @default(1)
+  lastWorkedAt    DateTime?
+  brokenAt        DateTime?
+  brokenReason    String?
+  dateCreated     DateTime               @default(now())
+  dateUpdated     DateTime               @updatedAt
+  bindings        Binding[]
+  topicSources    TopicSource[]
 
-  @@map("GoogleConnections")
+  @@unique([userId, email])
+  @@map("GoogleAccounts")
 }
 
 enum ScheduledStartStatus {
@@ -1384,6 +1391,9 @@ model TopicSource {
   uid           Int?
   /// M50-T7: the email account the attachment's message is in; null: the default one.
   emailAccountId String?  @db.Uuid
+  /// M50-T8: a Drive source's Google account; null: the default one.
+  googleAccountId String?        @db.Uuid
+  googleAccount   GoogleAccount? @relation(fields: [googleAccountId], references: [googleAccountId], onDelete: SetNull)
   /// ATTACHMENT: what to show, "Maria <maria@client.example>: Kickoff". DRIVE: the folder's name, as last read.
   title         String          @default("")
   /// The last commit indexed (ATTACHMENT: "read"; DRIVE: Drive's changes page token): the next read continues from it.
@@ -1580,6 +1590,9 @@ model Binding {
   /// M50-T7: an email slot's account.
   emailAccountId String?       @db.Uuid
   emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [emailAccountId], onDelete: Cascade)
+  /// M50-T8: a google slot's account.
+  googleAccountId String?        @db.Uuid
+  googleAccount   GoogleAccount? @relation(fields: [googleAccountId], references: [googleAccountId], onDelete: Cascade)
   text         String?
   dateCreated  DateTime    @default(now())
   dateUpdated  DateTime    @updatedAt

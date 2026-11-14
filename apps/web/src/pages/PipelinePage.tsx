@@ -265,11 +265,12 @@ function Switches({
 /** A pipeline with calendar steps while Google Calendar isn't connected: said before a run waits for it (M14-T1). */
 function CalendarNotice() {
   const google = useLoad(() => api.google.status(), []);
-  const g = google.data;
-  if (!g || g.status === "CONNECTED") return null;
+  // M50-T8: the default account (the first listed); a slot's own account is chosen in What it needs.
+  const account = google.data?.accounts[0];
+  if (!google.data || account?.status === "CONNECTED") return null;
   return (
     <div className="alert alert-warning mb-0" data-testid="calendar-notice">
-      This pipeline uses Google Calendar, which {g.connected ? "needs reconnecting" : "isn't connected"}:{" "}
+      This pipeline uses Google Calendar, which {account ? "needs reconnecting" : "isn't connected"}:{" "}
       <Link to="/settings#google">connect it in Settings</Link>, or its runs wait for it.
     </div>
   );

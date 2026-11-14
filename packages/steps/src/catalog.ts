@@ -273,6 +273,25 @@ const FILE_REF_SCHEMA = z.object({ id: z.string(), name: z.string(), mime: z.str
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
 /**
+ * M50-T8: which of the user's Google accounts: a google slot's name (the user picks the account on the pipeline's or
+ * its App's page). Left out: the default account.
+ */
+const GoogleAccount = z
+  .string()
+  .min(1)
+  .max(200)
+  .nullable()
+  .optional()
+  .describe('a google slot, e.g. "work" (the user picks the account); default: the default account');
+/** M50-T8: a calendar of the account, by its id; usually a setting: {{setting.calendar}}. */
+const CalendarId = z
+  .string()
+  .trim()
+  .max(300)
+  .optional()
+  .describe('the calendar\'s id (Google Calendar → its settings → Calendar ID), e.g. "{{setting.calendar}}"; default: the primary one');
+
+/**
  * M50-T7: which of the user's email accounts: an email slot's name (the user picks the account on the pipeline's or
  * its App's page), or a message's `account` ({{item.account}}: a reply goes out from the account it came to). Left
  * out: the default account.
@@ -1393,6 +1412,8 @@ export const CORE_STEPS: StepDefinition[] = [
       query: z.string().max(200).optional(),
       timeZone: TimeZone,
       maxResults: z.number().int().min(1).max(250).default(50),
+      account: GoogleAccount,
+      calendar: CalendarId,
     }),
     output: z.object({ events: Items, count: z.number().int(), none: z.boolean() }),
   },
@@ -1407,6 +1428,8 @@ export const CORE_STEPS: StepDefinition[] = [
     targets: { attendees: "recipient" },
     saasSafe: true,
     input: z.object({
+      account: GoogleAccount,
+      calendar: CalendarId,
       title: z.string().trim().min(1).max(300),
       start: DateTimeText,
       end: DateTimeText.optional(),

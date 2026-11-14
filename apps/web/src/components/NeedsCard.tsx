@@ -85,14 +85,21 @@ export function NeedsCard({
               <div className="d-flex align-items-baseline gap-2 mb-1">
                 <span className="fw-bold">{label}</span>
                 {view.need.kind === "credential" && view.need.for && <span className="text-secondary small">for {view.need.for}</span>}
+                {view.need.kind === "google" && view.need.uses && (
+                  <span className="text-secondary small">for its {view.need.uses.join(" and ")}</span>
+                )}
                 {readOnly && <span className="badge bg-azure-lt">the App's</span>}
               </div>
               {readOnly ? (
                 <div className="small">
                   {view.credential?.name ??
-                    view.account?.address ??
+                    view.account?.name ??
                     view.text ??
-                    (view.need.kind === "email" ? "the default account" : <span className="text-warning">not set</span>)}
+                    (view.need.kind === "email" || view.need.kind === "google" ? (
+                      "the default account"
+                    ) : (
+                      <span className="text-warning">not set</span>
+                    ))}
                   {" · "}
                   <Link to={`/apps/${app.appId}#needs`}>set on {app.name}</Link>
                 </div>
@@ -113,17 +120,33 @@ export function NeedsCard({
                   ))}
                   <option value={ADD}>Add a new one…</option>
                 </select>
-              ) : view.need.kind === "email" ? (
+              ) : view.need.kind === "email" || view.need.kind === "google" ? (
                 <div className="d-flex gap-2 align-items-center">
                   <select
                     className="form-select form-select-sm"
                     aria-label={label}
-                    value={view.account?.emailAccountId ?? ""}
+                    value={view.account?.id ?? ""}
                     disabled={action.busy}
-                    onChange={(e) => void put({ [view.slot]: { emailAccountId: e.target.value || null } }, "Chosen")}
-                    data-testid={`need-email-${view.slot}`}
+                    onChange={(e) =>
+                      void put(
+                        {
+                          [view.slot]:
+                            view.need.kind === "email"
+                              ? { emailAccountId: e.target.value || null }
+                              : { googleAccountId: e.target.value || null },
+                        },
+                        "Chosen",
+                      )
+                    }
+                    data-testid={`need-${view.need.kind}-${view.slot}`}
                   >
-                    <option value="">{view.fits.length ? "Your default account" : "No email account yet"}</option>
+                    <option value="">
+                      {view.fits.length
+                        ? "Your default account"
+                        : view.need.kind === "email"
+                          ? "No email account yet"
+                          : "No Google account that fits yet"}
+                    </option>
                     {view.fits.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}
@@ -131,7 +154,7 @@ export function NeedsCard({
                     ))}
                   </select>
                   {view.fits.length === 0 && (
-                    <Link to="/settings#email" className="small text-nowrap">
+                    <Link to={view.need.kind === "email" ? "/settings#email" : "/settings#google"} className="small text-nowrap">
                       Add one
                     </Link>
                   )}

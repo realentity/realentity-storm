@@ -18,6 +18,9 @@ import { FlowCancelStep, FlowLaterStep } from "../src/steps/flow-steps";
 import { ExtractStep } from "../src/steps/llm-steps";
 import { Counting, createVersion } from "./support/test-steps";
 
+/** M50-T8: the user's (default) Google account. */
+const ACCOUNT = "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c";
+
 const API = "https://calendar.test/v3";
 
 interface StoredEvent {
@@ -41,7 +44,8 @@ class FakeGoogle {
 
   fetch = async (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<Response> => {
     const url = new URL(input);
-    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     if (url.href === GOOGLE_TOKEN_URL) {
       this.refreshes++;
       const form = new URLSearchParams(init?.body);
@@ -49,7 +53,8 @@ class FakeGoogle {
       expect(form.get("refresh_token")).toBe("refresh-1");
       return json(200, { access_token: `access-${this.refreshes}`, expires_in: 3599, token_type: "Bearer" });
     }
-    if (!new Headers(init?.headers).get("authorization")?.startsWith("Bearer access-")) return json(401, { error: { message: "Invalid Credentials" } });
+    if (!new Headers(init?.headers).get("authorization")?.startsWith("Bearer access-"))
+      return json(401, { error: { message: "Invalid Credentials" } });
     const path = url.pathname.replace(/^\/v3/, "");
     if (path === "/calendars/primary/events" && init?.method === "GET") {
       const from = new Date(url.searchParams.get("timeMin")!).getTime();
@@ -72,7 +77,11 @@ class FakeGoogle {
       return json(200, event);
     }
     const one = /^\/calendars\/primary\/events\/(.+)$/.exec(path);
-    if (one) return json(200, this.events.find((e) => e.id === one[1]));
+    if (one)
+      return json(
+        200,
+        this.events.find((e) => e.id === one[1]),
+      );
     return json(404, { error: { message: "Not found" } });
   };
 }
@@ -102,7 +111,9 @@ steps:
     type: llm.extract
     with:
       content: |
-${INVITE.split("\n").map((line) => `        ${line}`).join("\n")}
+${INVITE.split("\n")
+  .map((line) => `        ${line}`)
+  .join("\n")}
       fields: { start: when it starts, company: the company, place: the video link }
   - id: event
     type: calendar.create
@@ -130,19 +141,44 @@ describe("M14: calendar and later starts", () => {
   });
 
   const connect = async () => {
-    const data = { email: "ana@gmail.test", scopes: ["https://www.googleapis.com/auth/calendar.events"], ...seal(keys, userId, "refresh-1") };
-    await db.client.googleConnection.upsert({ where: { userId }, create: { userId, ...data }, update: { ...data, status: "CONNECTED", brokenAt: null } });
+    const data = {
+      email: "ana@gmail.test",
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+      ...seal(keys, ACCOUNT, "refresh-1"),
+    };
+    await db.client.googleAccount.upsert({
+      where: { googleAccountId: ACCOUNT },
+      create: { googleAccountId: ACCOUNT, userId, isDefault: true, ...data },
+      update: { ...data, status: "CONNECTED", brokenAt: null },
+    });
   };
 
   const build = (llm: LlmClient) => {
-    connection = new GoogleConnection(db.client, keys, { clientId: "client.apps.googleusercontent.com", clientSecret: "secret-123456", fetch: google.fetch as unknown as typeof fetch, apiBase: API });
+    connection = new GoogleConnection(db.client, keys, {
+      clientId: "client.apps.googleusercontent.com",
+      clientSecret: "secret-123456",
+      fetch: google.fetch as unknown as typeof fetch,
+      apiBase: API,
+    });
     const deps = { google: connection, appOrigin: "https://storm.test" };
     const desk = new TakeoverDesk(db.client, () => Promise.resolve(), {
       timeoutMs: 20_000,
       pollMs: 100,
-      notify: (message) => Promise.resolve(void telegram.push(`${message.text} [${(message.buttons ?? []).flat().map((b) => ("url" in b ? `${b.text} ${b.url}` : b.text)).join(", ")}]`)),
+      notify: (message) =>
+        Promise.resolve(
+          void telegram.push(
+            `${message.text} [${(message.buttons ?? [])
+              .flat()
+              .map((b) => ("url" in b ? `${b.text} ${b.url}` : b.text))
+              .join(", ")}]`,
+          ),
+        ),
     });
-    const executors = new ExecutorRegistry([new ExtractStep(llm, new ModelRouter(async () => null)), new CalendarFindStep(deps), new CalendarCreateStep(deps)]);
+    const executors = new ExecutorRegistry([
+      new ExtractStep(llm, new ModelRouter(async () => null)),
+      new CalendarFindStep(deps),
+      new CalendarCreateStep(deps),
+    ]);
     runner = new PipelineRunner(db.client, defaultCatalog(), executors, new RunControls(db.client), undefined, desk);
   };
 
@@ -156,7 +192,7 @@ describe("M14: calendar and later starts", () => {
   afterEach(async () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
-    await db.client.googleConnection.deleteMany();
+    await db.client.googleAccount.deleteMany();
     await db.client.scheduledStart.deleteMany();
     await db.client.userSetting.updateMany({ data: { paused: false } });
   });
@@ -213,10 +249,16 @@ describe("M14: calendar and later starts", () => {
     expect(google.inserts[0].query.get("sendUpdates")).toBe("none");
     const step = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "event" } });
     expect(step.output).toMatchObject({ created: true, link: expect.stringContaining("calendar.google.com") as unknown, invited: [] });
-    expect(await db.client.googleConnection.findUniqueOrThrow({ where: { userId } })).toMatchObject({ status: "CONNECTED", lastWorkedAt: expect.any(Date) as unknown });
+    expect(await db.client.googleAccount.findUniqueOrThrow({ where: { googleAccountId: ACCOUNT } })).toMatchObject({
+      status: "CONNECTED",
+      lastWorkedAt: expect.any(Date) as unknown,
+    });
 
     // The same invite again: the event is there, so it isn't created a second time.
-    const again = await runner.start(await createVersion(db.client, userId, EVENT().replace("Interview event", "Interview event 2"), compiler), { trigger: "manual" });
+    const again = await runner.start(
+      await createVersion(db.client, userId, EVENT().replace("Interview event", "Interview event 2"), compiler),
+      { trigger: "manual" },
+    );
     await runner.advance(again);
     await approve(await proposalOf(again));
     expect(await runner.advance(again)).toBe("DONE");
@@ -242,7 +284,11 @@ describe("M14: calendar and later starts", () => {
   });
 
   it("guests are targets: a guest the user wrote gets Google's invitation; one the LLM read out of the email can't be a guest", async () => {
-    const withGuest = (to: string) => EVENT(`      attendees: [${to}]\n`).replace("name: Interview event", `name: Interview with ${to}\npolicy: { allowedRecipients: [maria@acme.test] }`);
+    const withGuest = (to: string) =>
+      EVENT(`      attendees: [${to}]\n`).replace(
+        "name: Interview event",
+        `name: Interview with ${to}\npolicy: { allowedRecipients: [maria@acme.test] }`,
+      );
     const runId = await runner.start(await createVersion(db.client, userId, withGuest("maria@acme.test"), compiler), { trigger: "manual" });
     await runner.advance(runId);
     await approve(await proposalOf(runId));
@@ -264,12 +310,30 @@ describe("M14: calendar and later starts", () => {
       htmlLink: "https://calendar.google.com/event?eid=standup",
     });
     const find = new CalendarFindStep({ google: connection });
-    const context = { runId: "00000000-0000-4000-8000-000000000001", userId, pipelineId: "p", stepId: "s", stepKey: "k", itemIndex: null, dryRun: false, recordUsage: () => undefined, attention: { checkpoint: () => Promise.resolve(), needMe: () => Promise.reject(new Error("no")) } };
+    const context = {
+      runId: "00000000-0000-4000-8000-000000000001",
+      userId,
+      pipelineId: "p",
+      stepId: "s",
+      stepKey: "k",
+      itemIndex: null,
+      dryRun: false,
+      recordUsage: () => undefined,
+      attention: { checkpoint: () => Promise.resolve(), needMe: () => Promise.reject(new Error("no")) },
+    };
     const input = (raw: Record<string, unknown>) => defaultCatalog().get("calendar.find")!.input.parse(raw);
     expect(await find.execute(input({ from: "2026-11-12T10:00", durationMinutes: 60 }), context)).toMatchObject({
       count: 1,
       none: false,
-      events: [{ id: "standup", title: "Standup", start: "2026-11-12T08:30:00Z", allDay: false, link: "https://calendar.google.com/event?eid=standup" }],
+      events: [
+        {
+          id: "standup",
+          title: "Standup",
+          start: "2026-11-12T08:30:00Z",
+          allDay: false,
+          link: "https://calendar.google.com/event?eid=standup",
+        },
+      ],
     });
     expect(await find.execute(input({ from: "2026-11-12T11:00", durationMinutes: 60 }), context)).toMatchObject({ count: 0, none: true });
     // One token for both calls.
@@ -285,9 +349,18 @@ describe("M14: calendar and later starts", () => {
 
     const wait = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the reconnect wait");
     expect(wait).toMatchObject({ waitsFor: "google", stepKey: "event" });
-    expect(wait.reason).toMatch(/^Google refused the token \(invalid_grant: Token has been expired or revoked\.\): it was revoked or has expired: reconnect it in Settings/);
-    expect(await db.client.googleConnection.findUniqueOrThrow({ where: { userId } })).toMatchObject({ status: "NEEDS_RECONNECT", brokenAt: expect.any(Date) as unknown });
-    expect(telegram).toEqual([expect.stringMatching(/^Storm needs you: Google refused the token .* at event\. \[Reconnect Google Calendar https:\/\/storm\.test\/settings#google\]$/)]);
+    expect(wait.reason).toMatch(
+      /^ana@gmail\.test: Google refused the token \(invalid_grant: Token has been expired or revoked\.\): it was revoked or has expired: reconnect it in Settings/,
+    );
+    expect(await db.client.googleAccount.findUniqueOrThrow({ where: { googleAccountId: ACCOUNT } })).toMatchObject({
+      status: "NEEDS_RECONNECT",
+      brokenAt: expect.any(Date) as unknown,
+    });
+    expect(telegram).toEqual([
+      expect.stringMatching(
+        /^Storm needs you: ana@gmail\.test: Google refused the token .* at event\. \[Reconnect Google Calendar https:\/\/storm\.test\/settings#google\]$/,
+      ),
+    ]);
     expect(google.inserts).toEqual([]);
 
     // What the api's callback does: a new token sealed, the connection CONNECTED, the waits continued.
@@ -336,7 +409,12 @@ steps:
       queued = [];
       later = new LaterStarts(db.client, { enqueueLater: (job, at) => Promise.resolve(void queued.push({ job, at })) });
       reminder = new Counting("notify.telegram", () => ({ sent: true }));
-      runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([new FlowLaterStep(later), new FlowCancelStep(later), reminder]), new RunControls(db.client));
+      runner = new PipelineRunner(
+        db.client,
+        defaultCatalog(),
+        new ExecutorRegistry([new FlowLaterStep(later), new FlowCancelStep(later), reminder]),
+        new RunControls(db.client),
+      );
       triggers = new Triggers(db.client, runner, { enqueueRun: () => Promise.resolve() } as never, keys, later);
       const reminderVersion = await createVersion(db.client, userId, REMINDER, compiler);
       const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: reminderVersion } });
@@ -350,7 +428,10 @@ steps:
     };
     /** The job woke at its time. */
     const fire = async (id: string) => {
-      await db.client.scheduledStart.updateMany({ where: { scheduledStartId: id, status: "PENDING" }, data: { fireAt: new Date(Date.now() - 1000) } });
+      await db.client.scheduledStart.updateMany({
+        where: { scheduledStartId: id, status: "PENDING" },
+        data: { fireAt: new Date(Date.now() - 1000) },
+      });
       const runId = await triggers.fireLater({ scheduledStartId: id });
       if (runId) await runner.advance(runId);
       return runId;
@@ -364,7 +445,8 @@ steps:
         steps: { with: { pipeline?: string } }[];
       };
       const name = named.steps.find((s) => s.with.pipeline)!.with.pipeline!;
-      await db.client.$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { pipelines: { [name]: target.pipelineId } } })}::jsonb WHERE "pipelineVersionId" = ${scheduler}::uuid`;
+      await db.client
+        .$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { pipelines: { [name]: target.pipelineId } } })}::jsonb WHERE "pipelineVersionId" = ${scheduler}::uuid`;
       await db.client.pipeline.update({ where: { pipelineId: target.pipelineId }, data: { name: `${name} renamed` } });
       const runId = await runner.start(scheduler, { trigger: "manual" });
       expect(await runner.advance(runId)).toBe("DONE");
@@ -384,7 +466,10 @@ steps:
       const runId = await fire(row.scheduledStartId);
       expect(runId).toEqual(expect.any(String));
       expect(reminder.calls).toEqual([{ text: "No answer from Acme" }]);
-      expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: row.scheduledStartId } })).toMatchObject({ status: "STARTED", runId });
+      expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: row.scheduledStartId } })).toMatchObject({
+        status: "STARTED",
+        runId,
+      });
       // The job delivered twice: one run.
       expect(await fire(row.scheduledStartId)).toBeNull();
       expect(reminder.calls).toHaveLength(1);
@@ -397,9 +482,21 @@ steps:
       expect(await fire(cancelled.scheduledStartId)).toBeNull();
 
       const byEvent = await schedule();
-      await triggers.fire({ userId, event: "application.status", data: { applicationId: "app-2", status: "RESPONDED" }, source: { depth: 0 } });
-      expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: byEvent.scheduledStartId } })).toMatchObject({ status: "PENDING" });
-      await triggers.fire({ userId, event: "application.status", data: { applicationId: "app-1", status: "RESPONDED" }, source: { depth: 0 } });
+      await triggers.fire({
+        userId,
+        event: "application.status",
+        data: { applicationId: "app-2", status: "RESPONDED" },
+        source: { depth: 0 },
+      });
+      expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: byEvent.scheduledStartId } })).toMatchObject({
+        status: "PENDING",
+      });
+      await triggers.fire({
+        userId,
+        event: "application.status",
+        data: { applicationId: "app-1", status: "RESPONDED" },
+        source: { depth: 0 },
+      });
       expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: byEvent.scheduledStartId } })).toMatchObject({
         status: "CANCELLED",
         reason: "cancelled by application.status",
@@ -407,7 +504,9 @@ steps:
 
       const replaced = await schedule();
       const newer = await schedule(SCHEDULE("3d"));
-      expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: replaced.scheduledStartId } })).toMatchObject({ status: "CANCELLED" });
+      expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: replaced.scheduledStartId } })).toMatchObject({
+        status: "CANCELLED",
+      });
 
       await db.client.userSetting.upsert({ where: { userId }, create: { userId, paused: true }, update: { paused: true } });
       expect(await fire(newer.scheduledStartId)).toBeNull();
@@ -424,9 +523,12 @@ steps:
       const runId = await runner.start(await createVersion(db.client, userId, wrong, compiler), { trigger: "manual" });
       expect(await runner.advance(runId)).toBe("FAILED");
       expect((await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "later" } })).error).toBe(
-        "\"Cancel the follow-up\" can't be started by flow.later: its trigger must be { on: flow.later }",
+        '"Cancel the follow-up" can\'t be started by flow.later: its trigger must be { on: flow.later }',
       );
-      const dry = await runner.start(await createVersion(db.client, userId, SCHEDULE().replace("Schedule a follow-up", "Dry"), compiler), { trigger: "manual", dryRun: true });
+      const dry = await runner.start(await createVersion(db.client, userId, SCHEDULE().replace("Schedule a follow-up", "Dry"), compiler), {
+        trigger: "manual",
+        dryRun: true,
+      });
       expect(await runner.advance(dry)).toBe("DONE");
       expect(await db.client.scheduledStart.count()).toBe(0);
     });

@@ -244,8 +244,11 @@ export const api = {
   },
   google: {
     status: () => request<GoogleStatusView>("GET", "/google"),
-    connect: (returnTo?: string) => request<{ url: string }>("POST", "/google/connect", returnTo ? { returnTo } : {}),
-    disconnect: () => request<void>("DELETE", "/google"),
+    /** `account`: reconnecting that one; left out, choosing an account at Google (M50-T8). */
+    connect: (returnTo?: string, account?: string) =>
+      request<{ url: string }>("POST", "/google/connect", { ...(returnTo ? { returnTo } : {}), ...(account ? { account } : {}) }),
+    makeDefault: (googleAccountId: string) => request<void>("PUT", `/google/accounts/${googleAccountId}/default`),
+    disconnect: (googleAccountId: string) => request<void>("DELETE", `/google/accounts/${googleAccountId}`),
   },
   scheduledStarts: {
     list: (pipelineId?: string) =>

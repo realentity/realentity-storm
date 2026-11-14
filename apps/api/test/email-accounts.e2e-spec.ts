@@ -95,7 +95,7 @@ describe("email accounts", () => {
         .send({ work: { emailAccountId: work.emailAccountId } })
         .expect(200)
     ).body as BindingView[];
-    expect(filled?.account).toEqual({ emailAccountId: work.emailAccountId, address: "me@work.example" });
+    expect(filled?.account).toEqual({ id: work.emailAccountId, name: "me@work.example" });
     expect((await list()).find((a) => a.address === "me@work.example")?.usedBy).toEqual([
       { owner: "pipeline", id: pipeline.pipelineId, name: "Work mail", slot: "work" },
     ]);

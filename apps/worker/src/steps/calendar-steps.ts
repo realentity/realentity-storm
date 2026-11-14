@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
-import { GoogleNeedsMe, type GoogleConnection } from "../google/google-connection";
+import { GoogleNeedsMe, googleWho, type GoogleConnection, type GoogleWho } from "../google/google-connection";
 import { toInstant } from "./time";
 
 type Item = Record<string, unknown>;
@@ -58,7 +58,9 @@ export class CalendarFindStep implements StepExecutor {
   constructor(private readonly deps: CalendarDependencies) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { from, to, durationMinutes, query, timeZone, maxResults } = input as {
+    const { from, to, durationMinutes, query, timeZone, maxResults, account, calendar } = input as {
+      account?: string | null;
+      calendar?: string;
       from?: string;
       to?: string;
       durationMinutes?: number;
@@ -68,7 +70,8 @@ export class CalendarFindStep implements StepExecutor {
     };
     const start = from ? toInstant(from, timeZone) : new Date();
     const end = to ? toInstant(to, timeZone) : new Date(start.getTime() + (durationMinutes ? durationMinutes * 60_000 : WEEK_MS));
-    const events = await withGoogle(this.deps, context, () => listEvents(this.deps.google, context.userId, start, end, query, maxResults));
+    const who = googleWho(context, account);
+    const events = await withGoogle(this.deps, context, () => listEvents(this.deps.google, who, calendar, start, end, query, maxResults));
     const items = events.map(eventItem);
     return { events: items, count: items.length, none: items.length === 0 };
   }
@@ -86,6 +89,8 @@ export class CalendarCreateStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const event = input as {
+      account?: string | null;
+      calendar?: string;
       title: string;
       start: string;
       end?: string;
@@ -101,10 +106,19 @@ export class CalendarCreateStep implements StepExecutor {
     const endsAt = event.end ? toInstant(event.end, event.timeZone) : new Date(startsAt.getTime() + event.durationMinutes * 60_000);
     if (endsAt <= startsAt) throw new Error(`The event ends (${endsAt.toISOString()}) before it starts (${startsAt.toISOString()})`);
     const { google } = this.deps;
-    const userId = context.userId;
+    const who = googleWho(context, event.account);
+    const events = `${calendarPath(event.calendar)}/events`;
 
     return withGoogle(this.deps, context, async () => {
-      const around = await listEvents(google, userId, new Date(startsAt.getTime() - 60_000), new Date(startsAt.getTime() + 60_000), undefined, 50);
+      const around = await listEvents(
+        google,
+        who,
+        event.calendar,
+        new Date(startsAt.getTime() - 60_000),
+        new Date(startsAt.getTime() + 60_000),
+        undefined,
+        50,
+      );
       const same = around.find((e) => sameTitle(e.summary, event.title) && startOf(e)?.getTime() === startsAt.getTime());
       if (same) return { ...created(same, false), invited: [] };
 
@@ -121,17 +135,33 @@ export class CalendarCreateStep implements StepExecutor {
         ...(attendees.length ? { attendees: attendees.map((email) => ({ email })) } : {}),
         ...(event.meet ? { conferenceData: { createRequest: { requestId: id, conferenceSolutionKey: { type: "hangoutsMeet" } } } } : {}),
       };
-      const query = { sendUpdates: attendees.length && event.sendInvites ? "all" : "none", ...(event.meet ? { conferenceDataVersion: "1" } : {}) };
-      const inserted = await google.call<GoogleEvent>(userId, "POST", "/calendars/primary/events", query, body);
+      const query = {
+        sendUpdates: attendees.length && event.sendInvites ? "all" : "none",
+        ...(event.meet ? { conferenceDataVersion: "1" } : {}),
+      };
+      const inserted = await google.call<GoogleEvent>(who, "POST", events, query, body);
       // 409: this step created it before a crash or a retry.
-      const saved = inserted.status === 409 ? (await google.call<GoogleEvent>(userId, "GET", `/calendars/primary/events/${id}`)).body : inserted.body;
+      const saved = inserted.status === 409 ? (await google.call<GoogleEvent>(who, "GET", `${events}/${id}`)).body : inserted.body;
       return { ...created(saved, true), invited: attendees.length && event.sendInvites ? attendees : [] };
     });
   }
 }
 
-export async function listEvents(google: GoogleConnection, userId: string, from: Date, to: Date, query: string | undefined, max: number): Promise<GoogleEvent[]> {
-  const { body } = await google.call<{ items?: GoogleEvent[] }>(userId, "GET", "/calendars/primary/events", {
+/** A calendar of the account: its id (an address, or …@group.calendar.google.com); "primary" by default. */
+function calendarPath(calendar: string | undefined): string {
+  return `/calendars/${encodeURIComponent(calendar?.trim() || "primary")}`;
+}
+
+export async function listEvents(
+  google: GoogleConnection,
+  who: GoogleWho,
+  calendar: string | undefined,
+  from: Date,
+  to: Date,
+  query: string | undefined,
+  max: number,
+): Promise<GoogleEvent[]> {
+  const { body } = await google.call<{ items?: GoogleEvent[] }>(who, "GET", `${calendarPath(calendar)}/events`, {
     timeMin: from.toISOString(),
     timeMax: to.toISOString(),
     singleEvents: "true",
@@ -176,5 +206,8 @@ const sameTitle = (a: string | undefined, b: string): boolean => (a ?? "").trim(
 
 /** Google event ids are base32hex (0-9, a-v), 5 to 1024 characters: hex of the run's step fits. */
 function eventId(context: StepContext): string {
-  return `storm${createHash("sha256").update(`${context.runId}:${context.stepKey}:${context.itemIndex ?? ""}`).digest("hex").slice(0, 40)}`;
+  return `storm${createHash("sha256")
+    .update(`${context.runId}:${context.stepKey}:${context.itemIndex ?? ""}`)
+    .digest("hex")
+    .slice(0, 40)}`;
 }

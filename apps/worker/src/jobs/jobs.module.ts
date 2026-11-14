@@ -54,8 +54,9 @@ function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promis
 /** Today's events for the morning brief; none when Google was never connected. */
 function calendarEvents(db: PrismaService, google: GoogleConnection): TodaysEvents {
   return async (userId, from, to) => {
-    if (!(await db.client.googleConnection.findUnique({ where: { userId }, select: { userId: true } }))) return null;
-    const events = await listEvents(google, userId, from, to, undefined, 20);
+    // M50-T8: the default Google account's primary calendar.
+    if ((await db.client.googleAccount.count({ where: { userId } })) === 0) return null;
+    const events = await listEvents(google, { userId }, undefined, from, to, undefined, 20);
     return events.map((e) => ({
       title: e.summary ?? "(no title)",
       start: new Date(e.start?.dateTime ?? `${e.start?.date ?? ""}T00:00:00`),

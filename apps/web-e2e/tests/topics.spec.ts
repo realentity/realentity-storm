@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createPrismaConnection } from "@realentity/storm-db";
 import { expect, test, type Page } from "@playwright/test";
 import { unique } from "./support";
@@ -335,8 +336,15 @@ test("a topic's source: a Drive folder from its link, with a word when Google's 
   const db = createPrismaConnection();
   const { userId } = await db.client.topic.findUniqueOrThrow({ where: { topicId } });
   const sealed = { ciphertext: Buffer.from("x"), iv: Buffer.from("x"), authTag: Buffer.from("x"), wrappedDek: Buffer.from("x") };
-  await db.client.googleConnection.create({
-    data: { userId, email: "ana@gmail.test", scopes: ["https://www.googleapis.com/auth/calendar.events"], ...sealed },
+  await db.client.googleAccount.create({
+    data: {
+      googleAccountId: randomUUID(),
+      userId,
+      email: "ana@gmail.test",
+      isDefault: true,
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+      ...sealed,
+    },
   });
   try {
     await page.goto("/settings");
@@ -355,9 +363,12 @@ test("a topic's source: a Drive folder from its link, with a word when Google's 
     const row = sources.getByTestId("source-1AbCdEfGhIjKlMnOpQrStUv");
     await expect(row).toContainText("in Google Drive, with its subfolders");
     await expect(row).toContainText("not read yet: the next run of a pipeline with drive.changes reads it");
-    await expect(row.getByRole("link", { name: "Drive folder" })).toHaveAttribute("href", "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv");
+    await expect(row.getByRole("link", { name: "Drive folder" })).toHaveAttribute(
+      "href",
+      "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv",
+    );
   } finally {
-    await db.client.googleConnection.deleteMany({ where: { userId } });
+    await db.client.googleAccount.deleteMany({ where: { userId } });
     await db.close();
   }
 });

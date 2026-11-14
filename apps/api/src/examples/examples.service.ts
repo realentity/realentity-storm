@@ -1,4 +1,5 @@
 import {
+  CALENDAR_SCOPE,
   emptySlots,
   isEventTrigger,
   type BindingView,
@@ -35,7 +36,11 @@ export class ExamplesService {
       this.prisma.client.credential.findMany({ where: { userId }, select: { name: true } }),
       this.prisma.client.emailAccount.count({ where: { userId } }),
       this.prisma.client.siteRecipe.findMany({ where: { userId }, select: { name: true }, distinct: ["name"] }),
-      this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { status: true } }),
+      // M50-T8: a Google account connected, allowing the calendar.
+      this.prisma.client.googleAccount.findFirst({
+        where: { userId, status: "CONNECTED", scopes: { has: CALENDAR_SCOPE } },
+        select: { status: true },
+      }),
       // The last time mail was read: an account that is there but refused (its app password revoked) isn't set up.
       this.prisma.client.step.findFirst({
         where: { type: "email.fetch", status: { in: ["DONE", "FAILED"] }, run: { userId } },
