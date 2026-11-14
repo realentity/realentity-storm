@@ -323,7 +323,8 @@ test("a topic's source: a new GitHub token from the form is stored for api.githu
   await dialog.getByLabel("Token").fill(`github_pat_e2e${Date.now()}`);
   await dialog.getByRole("button", { name: "Store" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(sources.getByTestId("source-form").getByLabel("Token")).toHaveValue(credential);
+  // Chosen by id (M50-T9): the option shows its name.
+  await expect(sources.getByTestId("source-form").getByLabel("Token").locator("option:checked")).toHaveText(credential);
 
   const stored = (await (await page.request.get("/api/credentials")).json()) as { name: string; kind: string; allowedHosts: string[] }[];
   expect(stored.find((c) => c.name === credential)).toMatchObject({ kind: "API_KEY", allowedHosts: ["api.github.com"] });

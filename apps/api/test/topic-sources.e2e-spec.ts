@@ -27,14 +27,18 @@ describe("topic sources", () => {
   });
 
   const credential = (name: string, allowedHosts: string[]) =>
-    agent.post("/api/credentials").send({ name, kind: "API_KEY", secret: "test-token-value", allowedHosts }).expect(201);
+    agent
+      .post("/api/credentials")
+      .send({ name, kind: "API_KEY", secret: "test-token-value", allowedHosts })
+      .expect(201)
+      .then((r) => (r.body as { credentialId: string }).credentialId);
 
   // M43-T2
   it("a Drive folder added from its link, once Google is connected: no branch, no token, its link kept", async () => {
     const { topicId } = (await agent.post("/api/topics").send({ name: "Orion" }).expect(201)).body as TopicView;
     const folder = "1AbCdEfGhIjKlMnOpQrStUv";
     const add = (location: string) =>
-      agent.post(`/api/topics/${topicId}/sources`).send({ kind: "DRIVE", location, credential: "orion-repo" });
+      agent.post(`/api/topics/${topicId}/sources`).send({ kind: "DRIVE", location, credentialId: "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c" });
 
     expect((await add(`https://drive.google.com/drive/folders/${folder}`).expect(400)).body).toMatchObject({
       message: expect.stringContaining("Connect Google in Settings first") as unknown,
@@ -93,13 +97,27 @@ describe("topic sources", () => {
     await add({ location: "acme/orion", path: "docs/adr/**" }).expect(409);
     await add({ location: "not a repository" }).expect(400);
 
-    await credential("elsewhere", ["git.example.com"]);
-    await credential("orion-repo", ["api.github.com"]);
-    expect((await add({ location: "acme/orion-private", credential: "missing" }).expect(400)).body).toMatchObject({
-      message: 'There is no credential "missing"',
+    const elsewhere = await credential("elsewhere", ["git.example.com"]);
+    const repo = await credential("orion-repo", ["api.github.com"]);
+    // M50-T9: the token by id, one of the user's, allowed on api.github.com.
+    expect(
+      (await add({ location: "acme/orion-private", credentialId: "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c" }).expect(400)).body,
+    ).toMatchObject({
+      message: "No such credential",
     });
-    await add({ location: "acme/orion-private", credential: "elsewhere" }).expect(400);
-    await add({ location: "acme/orion-private", credential: "orion-repo" }).expect(201);
+    await add({ location: "acme/orion-private", credentialId: elsewhere }).expect(400);
+    const added = (await add({ location: "acme/orion-private", credentialId: repo }).expect(201)).body as TopicSourceView;
+    expect(added.credential).toEqual({ id: repo, name: "orion-repo" });
+    // Renaming a credential doesn't matter; deleting it leaves the source without a token.
+    await db.client.credential.update({ where: { credentialId: repo }, data: { name: "orion-token" } });
+    expect(
+      ((await agent.get(`/api/topics/${topicId}/sources`).expect(200)).body as TopicSourceView[]).find(
+        (s) => s.location === "acme/orion-private",
+      )?.credential,
+    ).toEqual({
+      id: repo,
+      name: "orion-token",
+    });
 
     // Read once: rebuild forgets where it read to, and its passages.
     await db.client.topicSource.update({

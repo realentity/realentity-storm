@@ -101,7 +101,7 @@ function SourceRow({
             </a>{" "}
             <code>{source.path}</code>
             {source.branch && <span className="text-secondary"> on {source.branch}</span>}
-            {source.credential && <span className="badge bg-secondary-lt ms-2">{source.credential}</span>}
+            {source.credential && <span className="badge bg-secondary-lt ms-2">{source.credential.name}</span>}
           </div>
         )}
         <div className="small text-secondary">
@@ -151,7 +151,7 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
     const source =
       kind === "DRIVE"
         ? { kind, location, path, ...(googleAccountId ? { googleAccountId } : {}) }
-        : { kind, location, path, branch, credential };
+        : { kind, location, path, branch, ...(credential ? { credentialId: credential } : {}) };
     if (await action.run(() => api.topics.addSource(topicId, source))) onDone(true);
   };
   const choose = (next: "GITHUB" | "DRIVE") => {
@@ -235,7 +235,7 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
                 <select id="source-credential" className="form-select" value={credential} onChange={(e) => setCredential(e.target.value)}>
                   <option value="">None: a public repository</option>
                   {forGitHub.map((c) => (
-                    <option key={c.credentialId} value={c.name}>
+                    <option key={c.credentialId} value={c.credentialId}>
                       {c.name}
                     </option>
                   ))}
@@ -273,7 +273,7 @@ function SourceForm({ topicId, onDone }: { topicId: string; onDone: (added: bool
           onSaved={(saved) => {
             setAddingToken(false);
             credentials.reload();
-            setCredential(saved.name);
+            setCredential(saved.credentialId);
           }}
         />
       )}

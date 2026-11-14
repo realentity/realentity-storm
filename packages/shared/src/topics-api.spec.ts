@@ -93,13 +93,18 @@ describe("pathMatches", () => {
     expect(driveFolderId("https://drive.google.com/file/d/abc")).toBeNull();
     expect(driveFolderId("not a folder")).toBeNull();
     expect(
-      TopicSourceSchema.parse({ kind: "DRIVE", location: `https://drive.google.com/drive/folders/${id}`, branch: "main", credential: "x" }),
+      TopicSourceSchema.parse({
+        kind: "DRIVE",
+        location: `https://drive.google.com/drive/folders/${id}`,
+        branch: "main",
+        credentialId: "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c",
+      }),
     ).toEqual({
       kind: "DRIVE",
       location: id,
       path: "**",
       branch: null,
-      credential: null,
+      credentialId: null,
       googleAccountId: null,
     });
     // M50-T8: read through one of the user's Google accounts, by id.

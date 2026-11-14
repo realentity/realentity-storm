@@ -716,6 +716,7 @@ model Credential {
   user         User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
   name         String // the user's name for it; pipelines refer to slots bound to it by id (M50), never to this
   bindings     Binding[]
+  topicSources TopicSource[]
   allowedHosts String[] // e.g. ["linkedin.com", "*.linkedin.com"]
   username     String?
   kind         CredentialKind
@@ -1384,8 +1385,9 @@ model TopicSource {
   branch        String?
   /// Which files: a glob ("docs/adr/**", "**/*.md").
   path          String          @default("**")
-  /// A credential's name: a read-only token for the host (allowedHosts api.github.com); null for a public repository.
-  credential    String?
+  /// M50-T9: a read-only token for the host (a credential allowing api.github.com), by id; null for a public repository.
+  credentialId  String?     @db.Uuid
+  credential    Credential? @relation(fields: [credentialId], references: [credentialId], onDelete: SetNull)
   /// ATTACHMENT: where its email is, to read it again (a rebuild).
   mailbox       String?
   uid           Int?

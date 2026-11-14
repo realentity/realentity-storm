@@ -17,7 +17,7 @@ export class TopicSourcesService {
     await this.ownTopic(userId, topicId);
     const sources = await this.prisma.client.topicSource.findMany({
       where: { userId, topicId },
-      include: { _count: { select: { passages: true } }, googleAccount: ACCOUNT },
+      include: { _count: { select: { passages: true } }, googleAccount: ACCOUNT, credential: TOKEN },
       orderBy: { dateCreated: "asc" },
     });
     return sources.map((s) => sourceView(s, s._count.passages));
@@ -31,7 +31,7 @@ export class TopicSourcesService {
       location: string;
       branch?: string | null;
       path: string;
-      credential?: string | null;
+      credentialId?: string | null;
       googleAccountId?: string | null;
     },
   ): Promise<TopicSourceView> {
@@ -55,11 +55,12 @@ export class TopicSourcesService {
         );
       }
     }
-    if (request.credential) {
-      const credential = await this.prisma.client.credential.findFirst({ where: { userId, name: request.credential } });
-      if (!credential) throw new BadRequestException(`There is no credential "${request.credential}"`);
+    // M50-T9: the token by id, one of the user's, allowed on api.github.com.
+    if (request.credentialId) {
+      const credential = await this.prisma.client.credential.findFirst({ where: { userId, credentialId: request.credentialId } });
+      if (!credential) throw new BadRequestException("No such credential");
       if (!credential.allowedHosts.some((host) => host.toLowerCase() === GITHUB_API)) {
-        throw new BadRequestException(`The credential "${request.credential}" must allow ${GITHUB_API} (its allowed hosts)`);
+        throw new BadRequestException(`The credential "${credential.name}" must allow ${GITHUB_API} (its allowed hosts)`);
       }
     }
     const source = await this.prisma.client.topicSource.create({
@@ -70,10 +71,10 @@ export class TopicSourcesService {
         location: request.location,
         branch: request.branch ?? null,
         path: request.path,
-        credential: request.credential ?? null,
+        credentialId: request.kind === "GITHUB" ? (request.credentialId ?? null) : null,
         googleAccountId: request.kind === "DRIVE" ? (request.googleAccountId ?? null) : null,
       },
-      include: { googleAccount: ACCOUNT },
+      include: { googleAccount: ACCOUNT, credential: TOKEN },
     });
     return sourceView(source, 0);
   }
@@ -91,7 +92,7 @@ export class TopicSourcesService {
       this.prisma.client.topicSource.update({
         where: { topicSourceId },
         data: { cursor: null, readAt: null },
-        include: { googleAccount: ACCOUNT },
+        include: { googleAccount: ACCOUNT, credential: TOKEN },
       }),
     ]);
     return sourceView(source, 0);
@@ -111,9 +112,14 @@ export class TopicSourcesService {
 
 /** A Drive source's Google account, as its view shows it. */
 const ACCOUNT = { select: { googleAccountId: true, email: true } } as const;
+/** A GitHub source's token, as its view shows it: its name, never its value. */
+const TOKEN = { select: { credentialId: true, name: true } } as const;
 
 function sourceView(
-  source: TopicSource & { googleAccount: { googleAccountId: string; email: string } | null },
+  source: TopicSource & {
+    googleAccount: { googleAccountId: string; email: string } | null;
+    credential: { credentialId: string; name: string } | null;
+  },
   passages: number,
 ): TopicSourceView {
   const folder = /[*?{]/.test(source.path) ? source.path.slice(0, source.path.search(/[*?{]/)).replace(/\/[^/]*$/, "") : source.path;
@@ -125,7 +131,7 @@ function sourceView(
     location: source.location,
     branch: source.branch,
     path: source.path,
-    credential: source.credential,
+    credential: source.credential ? { id: source.credential.credentialId, name: source.credential.name } : null,
     googleAccount: source.googleAccount ? { id: source.googleAccount.googleAccountId, name: source.googleAccount.email } : null,
     // Drive's page token means nothing to show: "read".
     cursor: source.kind === "DRIVE" ? (source.cursor ? "read" : null) : (source.cursor?.slice(0, 7) ?? null),

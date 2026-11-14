@@ -81,10 +81,10 @@ export class GitHubClient {
 
   private async request(userId: string, source: GitHubSource, path: string, accept: string): Promise<Response> {
     const headers: Record<string, string> = { accept, "x-github-api-version": "2022-11-28", "user-agent": "realentity-storm" };
-    if (source.credential) {
+    if (source.credentialId) {
       if (!this.vault) throw new Error("No credentials here");
-      // Refused unless the credential's allowedHosts has api.github.com.
-      const { secret } = await this.vault.revealOwn(userId, source.credential, GITHUB_API);
+      // By id (M50-T9); refused unless the credential's allowedHosts has api.github.com.
+      const { secret } = await this.vault.revealById(userId, source.credentialId, GITHUB_API);
       headers.authorization = `Bearer ${secret}`;
     }
     let response: Response;
@@ -107,5 +107,6 @@ export class GitHubClient {
 export interface GitHubSource {
   repo: string;
   branch: string | null;
-  credential: string | null;
+  /** M50-T9: a private repository's token, by its credential's id. */
+  credentialId: string | null;
 }

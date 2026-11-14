@@ -925,7 +925,8 @@ A merged fact is yours (approved wording), pinned if one of the facts it merges 
 The files changed in your topics' GitHub sources (on the Topics page: a repository, a path like `docs/adr/**`, a branch)
 since each was last indexed, at its branch's head: text files under its path only (Markdown, AsciiDoc, plain text). The
 first read lists every one. Seeing that nothing changed is one call to GitHub, no LLM. A private repository needs a
-read-only token, kept as a credential allowed for `api.github.com` only. It only reads: `topic.index` moves each source on
+read-only token, kept as a credential allowed for `api.github.com` only and chosen on the source by id (renaming it
+breaks nothing; deleting it leaves the source without one). It only reads: `topic.index` moves each source on
 once its files are indexed, so a failed index is read again next time.
 - In: `topics` (only these, by name; default: every active topic).
 - Out: `changes` (topic, repo, path, added / modified / removed, commit, its date, link), `sources` (each source read,
