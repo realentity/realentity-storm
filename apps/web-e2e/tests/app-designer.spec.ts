@@ -82,6 +82,8 @@ types:
   await expect(page.getByTestId("app-check")).toContainText("No problems");
 
   await page.getByTestId("save-app").click();
+  // Saved: its own page (the editor shows the name before the save is done).
+  await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name })).toBeVisible();
 });
 
@@ -256,6 +258,8 @@ test("the Bills App made in the designer, as pipelines/apps/bills.yaml has it", 
   expect(viewPageOf(made.definition!, "Bill")).toEqual(viewPageOf(template.definition!, "Bill"));
 
   await page.getByTestId("save-app").click();
+  // Saved: its own page (the editor shows the name before the save is done).
+  await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name })).toBeVisible();
 });
 

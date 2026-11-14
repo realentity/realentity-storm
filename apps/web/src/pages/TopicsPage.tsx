@@ -150,7 +150,7 @@ export function TopicForm({ topic, onDone }: { topic: TopicView | null; onDone: 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const saved = await action.run(() =>
-      topic ? api.topics.update(topic.topicId, { name, description, status: topic.status }) : api.topics.create({ name, description }),
+      topic ? api.topics.update(topic.topicId, { name, description }) : api.topics.create({ name, description }),
     );
     if (!saved) return;
     toast.success(`${saved.name} saved`);

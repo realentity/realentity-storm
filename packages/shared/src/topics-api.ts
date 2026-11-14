@@ -49,7 +49,17 @@ export const TopicSchema = z
   .strict();
 export type TopicRequest = z.input<typeof TopicSchema>;
 
-export const TopicUpdateSchema = TopicSchema.extend({ status: z.enum(TOPIC_STATUSES) }).strict();
+/**
+ * What changes: only the fields given. Archiving sends only its status, so it never writes back a name or a description
+ * the page had before an edit.
+ */
+export const TopicUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    description: z.string().trim().max(2000).optional(),
+    status: z.enum(TOPIC_STATUSES).optional(),
+  })
+  .strict();
 export type TopicUpdateRequest = z.input<typeof TopicUpdateSchema>;
 
 const DOMAIN = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
