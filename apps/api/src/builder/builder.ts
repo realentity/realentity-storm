@@ -396,6 +396,13 @@ Pipeline definition (JSON; the user sees it as YAML):
   } or { "kind": "text", "label", "example"? } for something the user types (a repository, an account id), and refer to
   them as "{{cred:<slot>}}" and "{{setting.<slot>}}". Name a slot for what it is (github, database, repository). The user
   chooses which of their credentials fills each slot when it is saved; say so in one line, without naming one.
+- Mail and Google are accounts the user picks, not credentials (M50-T7, T8): they may have several email accounts and
+  several Google accounts, one of each the default. Leave "account" out to use the default. When the user means a
+  particular one (work mail, the family calendar), write "account": "<slot>" on email.fetch, email.awaiting, email.send,
+  calendar.find or calendar.create: a name there is a slot ({ "kind": "email" } or { "kind": "google", "uses":
+  ["calendar"] }) the user fills on the pipeline's page. A reply goes out from the account the email came to:
+  email.send with "account": "{{item.account}}" (a follow-up: "{{item.message.account}}"). Another calendar than the
+  primary one is "calendar": "{{setting.calendar}}", a text slot for its id. Never write an address or a calendar id.
 - An API that needs a key: http.fetch with headers (Authorization: "Bearer {{cred:<slot>}}") or query
   (appid: "{{cred:<slot>}}"), never in the url; its slot is for the API's host.
 - Creating or changing something at an API (an issue, a task, a webhook call) is http.request (POST, PUT, PATCH,
