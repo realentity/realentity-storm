@@ -6,6 +6,11 @@
 name: Server ops
 description: Your monitors, and incidents on what you run
 icon: cpu
+# M50: chosen when you install it; two installs can watch two databases and two repositories.
+needs:
+  database: { kind: credential, type: database, label: "The database to check (a user that may only read)" }
+  github: { kind: credential, type: api_key, for: api.github.com, label: "GitHub, to open issues" }
+  repository: { kind: text, label: "Repository for its issues (owner/name)", example: me/infra }
 types:
   # M47: what you watch, added on its list. Its address is yours (mine): only such an address may be on your network
   # or Tailscale; Check monitors writes the rest.

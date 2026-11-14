@@ -366,6 +366,7 @@ export class AppsService {
         await tx.app.update({ where: { appId }, data: { currentVersionId: version.appVersionId, name: definition.name } });
       }),
     );
+    await this.bindings.carryOver({ appId }, readAppSource(current.source).needs ?? {}, definition.needs ?? {});
     await this.bindings.fillWhereOneFits(userId, { appId }, definition.needs ?? {});
     return this.get(userId, appId);
   }

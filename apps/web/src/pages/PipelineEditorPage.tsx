@@ -47,6 +47,8 @@ export function PipelineEditorPage() {
   const [undo, setUndo] = useState<string[]>([]);
   const apps = useLoad(() => api.apps.list(), []);
   const pipelines = useLoad(() => api.pipelines.list(), []);
+  // M50-T4: the credentials chosen on the cards, by the slot each made.
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const credentials = useLoad(() => api.credentials.list().catch(() => []), []);
   const appName = (() => {
     try {
@@ -139,10 +141,22 @@ export function PipelineEditorPage() {
   };
 
   const save = async () => {
-    const saved = await action.run(() => (pipelineId ? api.pipelines.addVersion(pipelineId, text) : api.pipelines.create(text)));
+    const saved = await action.run(async () => {
+      const pipeline = pipelineId ? await api.pipelines.addVersion(pipelineId, text) : await api.pipelines.create(text);
+      await fillChosen(pipeline.pipelineId);
+      return pipeline;
+    });
     if (!saved) return;
     toast.success(`Saved as v${saved.currentVersion}`);
     void navigate(`/pipelines/${saved.pipelineId}`);
+  };
+
+  /** M50-T4: the credentials chosen on the cards fill the slots they made (the pipeline's own: its App's are the App's). */
+  const fillChosen = async (id: string) => {
+    if (Object.keys(chosen).length === 0) return;
+    const own = new Set((await api.pipelines.bindings(id)).filter((b) => b.owner === "pipeline").map((b) => b.slot));
+    const body = Object.fromEntries(Object.entries(chosen).filter(([slot]) => own.has(slot)).map(([slot, credentialId]) => [slot, { credentialId }]));
+    if (Object.keys(body).length > 0) await api.pipelines.setBindings(id, body);
   };
 
   const discard = async () => {
@@ -261,6 +275,7 @@ export function PipelineEditorPage() {
                   types={types}
                   pipelines={(pipelines.data ?? []).map((p) => p.name).filter((n) => n !== pipeline?.name)}
                   credentials={credentials.data ?? []}
+                  onCredential={(slot, credentialId) => setChosen((c) => ({ ...c, [slot]: credentialId }))}
                   picker={(stepIndex, input, kind, onPick) => {
                     const loose = loosePipeline(text);
                     if (!loose) return null;

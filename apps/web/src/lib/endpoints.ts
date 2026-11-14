@@ -55,6 +55,8 @@ import {
   type CreateCredentialRequest,
   type CreateRuleRequest,
   type CredentialView,
+  type BindingsRequest,
+  type BindingView,
   type DocumentView,
   type FileRef,
   type DryRunPipelineResponse,
@@ -131,6 +133,9 @@ export const api = {
     discardDraft: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}/draft`),
     update: (pipelineId: string, body: UpdatePipelineRequest) => request<PipelineDetailView>("PATCH", `/pipelines/${pipelineId}`, body),
     run: (pipelineId: string, dryRun: boolean) => request<RunDetailView>("POST", `/pipelines/${pipelineId}/runs`, { dryRun }),
+    /** M50: its slots, its own and its App's, with what fills them. */
+    bindings: (pipelineId: string) => request<BindingView[]>("GET", `/pipelines/${pipelineId}/bindings`),
+    setBindings: (pipelineId: string, body: BindingsRequest) => request<BindingView[]>("PUT", `/pipelines/${pipelineId}/bindings`, body),
     webhook: (pipelineId: string) => request<{ webhook: WebhookView | null }>("GET", `/pipelines/${pipelineId}/webhook`),
     rotateWebhook: (pipelineId: string) => request<WebhookView>("PUT", `/pipelines/${pipelineId}/webhook`),
     removeWebhook: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}/webhook`),
@@ -268,6 +273,9 @@ export const api = {
     create: (source: string) => request<AppDetailView>("POST", "/apps", { source }),
     save: (appId: string, source: string) => request<AppDetailView>("PUT", `/apps/${appId}`, { source }),
     /** The App itself (`remove` is an entity's). */
+    /** M50: the App install's slots, shared by its pipelines. */
+    bindings: (appId: string) => request<BindingView[]>("GET", `/apps/${appId}/bindings`),
+    setBindings: (appId: string, body: BindingsRequest) => request<BindingView[]>("PUT", `/apps/${appId}/bindings`, body),
     removeApp: (appId: string) => request<void>("DELETE", `/apps/${appId}`),
     check: (source: string, appId?: string) => request<AppCheckView>("POST", "/apps/check", appId ? { source, appId } : { source }),
     preview: (source: string, type: string, appId?: string) =>

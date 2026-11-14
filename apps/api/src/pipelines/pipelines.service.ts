@@ -2,6 +2,7 @@ import { pipelineCost } from "../runs/run-costs";
 import { Prisma, type PipelineVersion } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
+  emptySlots,
   canonicalJson,
   type CompiledDefinition,
   type CompiledPolicy,
@@ -134,8 +135,9 @@ export class PipelinesService {
         });
       }),
     );
-    // The new version may have another trigger, and other slots.
+    // The new version may have another trigger, and other slots: a renamed one keeps its binding (M50-T15).
     await this.queue.requestScheduleSync();
+    await this.bindings.carryOver({ pipelineId }, (current?.definition as unknown as CompiledDefinition | undefined)?.needs ?? {}, compiled.definition.needs ?? {});
     await this.bindings.fillWhereOneFits(userId, { pipelineId }, compiled.definition.needs ?? {});
     if (pipeline.enabled) await this.commands.sync(userId);
     return this.get(userId, pipelineId);
@@ -222,6 +224,11 @@ export class PipelinesService {
     if (body.enabled) {
       const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
       if (pipeline && !pipeline.currentVersionId) throw new ConflictException("Save the pipeline before enabling it");
+      // M50-T13: not with a slot empty: it would fail at its first run.
+      const empty = pipeline?.currentVersionId ? emptySlots(await this.bindings.ofPipeline(userId, pipelineId)) : [];
+      if (empty.length > 0) {
+        throw new ConflictException(`Fill in ${empty.map((s) => `"${s.need.label ?? s.slot}"`).join(", ")} first (its Needs, on its page${empty.some((s) => s.owner === "app") ? " or its App's" : ""})`);
+      }
       // M49: its command, if another pipeline that is on doesn't have it.
       const current = pipeline ? await this.currentVersion(userId, pipelineId) : null;
       const clash = current ? await this.commands.clash(userId, pipelineId, current.definition as unknown as CompiledDefinition) : null;

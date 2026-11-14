@@ -212,7 +212,7 @@ steps:
       const source = readFileSync(join(__dirname, "../../../pipelines/failed-run-issue.yaml"), "utf8").replace("https://api.github.com/", `http://api.github.com:${api.port}/`);
       const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()));
       await db.client.credential.updateMany({ data: { allowedHosts: ["api.github.com"] } });
-      await bindSlots(db.client, versionId, { github: credentialId });
+      await bindSlots(db.client, versionId, { github: credentialId }, { repository: "me/infra" });
       const github = (host: string) => (host === "api.github.com" ? Promise.resolve([{ address: "127.0.0.1", family: 4 }]) : Promise.reject(new Error(`ENOTFOUND ${host}`)));
       const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([new HttpRequestStep({ resolve: github, blocked: new BlockList() }, new CredentialVault(db.client, keys))]));
       const runId = await runner.start(versionId, {

@@ -277,7 +277,8 @@ ${extra}`;
     const advancing = runner.advance(runId);
     const takeover = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the pause");
     expect(takeover.reason).toBe('The form changed since you approved it ("Salary expectation" is new and required); nothing was sent');
-    expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).status).toBe("WAITING_FOR_USER");
+    // The runner records the takeover, then the run's status: wait for the status, not just the takeover.
+    await until(async () => (await db.client.run.findUniqueOrThrow({ where: { runId } })).status === "WAITING_FOR_USER", "the run to wait for the user");
 
     // Continue on the same form: still not what the user approved, so the step fails without sending.
     await db.client.takeover.update({ where: { takeoverId: takeover.takeoverId }, data: { status: "CONTINUED", resolvedAt: new Date() } });

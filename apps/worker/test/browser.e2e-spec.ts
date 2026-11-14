@@ -203,7 +203,8 @@ ${extra
 
     const takeover = await until(() => db.client.takeover.findFirst({ where: { runId, status: "OPEN" } }), "the takeover");
     expect(takeover).toMatchObject({ reason: "CAPTCHA", stepKey: "open", url: sites.url("app", "/captcha") });
-    expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).status).toBe("WAITING_FOR_USER");
+    // The runner records the takeover, then the run's status: wait for the status, not just the takeover.
+    await until(async () => (await db.client.run.findUniqueOrThrow({ where: { runId } })).status === "WAITING_FOR_USER", "the run to wait for the user");
     // A job arriving for the run meanwhile doesn't claim it: its step still holds the page.
     expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
 

@@ -50,10 +50,7 @@ export class BindingsService {
   async fillWhereOneFits(userId: string, owner: Owner, needs: Needs): Promise<void> {
     const slots = Object.entries(needs).filter(([, need]) => need.kind === "credential");
     if (slots.length === 0) return;
-    const [credentials, bound] = await Promise.all([
-      this.prisma.client.credential.findMany({ where: { userId, name: { not: { startsWith: "session:" } } }, select: { credentialId: true, kind: true, allowedHosts: true } }),
-      this.prisma.client.binding.findMany({ where: owner }),
-    ]);
+    const [credentials, bound] = await Promise.all([this.mine(userId), this.prisma.client.binding.findMany({ where: owner })]);
     for (const [slot, need] of slots) {
       if (bound.some((b) => b.slot === slot)) continue;
       const fitting = credentials.filter((c) => fits(need, c));
@@ -91,12 +88,47 @@ export class BindingsService {
   }
 
   private async views(userId: string, owner: Owner, needs: Needs, kind: BindingView["owner"]): Promise<BindingView[]> {
-    const bound = await this.prisma.client.binding.findMany({ where: owner, include: { credential: { select: { credentialId: true, name: true, userId: true } } } });
+    const [bound, credentials] = await Promise.all([
+      this.prisma.client.binding.findMany({ where: owner, include: { credential: { select: { credentialId: true, name: true, userId: true } } } }),
+      this.mine(userId),
+    ]);
     return Object.entries(needs).map(([slot, need]) => {
       const binding = bound.find((b) => b.slot === slot);
       const credential = binding?.credential && binding.credential.userId === userId ? { credentialId: binding.credential.credentialId, name: binding.credential.name } : null;
-      return { slot, need, owner: kind, credential, text: binding?.text ?? null };
+      const fitting = credentials.filter((c) => fits(need, c)).map((c) => ({ credentialId: c.credentialId, name: c.name }));
+      return { slot, need, owner: kind, credential, text: binding?.text ?? null, fits: fitting };
     });
+  }
+
+  /** The user's credentials a slot may take: not Storm's own (a site's browser session). */
+  private mine(userId: string) {
+    return this.prisma.client.credential.findMany({
+      where: { userId, name: { not: { startsWith: "session:" } } },
+      select: { credentialId: true, name: true, kind: true, allowedHosts: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  /**
+   * M50-T15: after an edit, a slot that is gone keeps its binding under the new slot that asks for the same (a slot
+   * renamed in the YAML, or rewritten by the builder): when exactly one new, empty slot needs the same kind of thing.
+   */
+  async carryOver(owner: Owner, before: Needs, after: Needs): Promise<void> {
+    const gone = Object.keys(before).filter((slot) => !Object.hasOwn(after, slot));
+    if (gone.length === 0) return;
+    const bound = await this.prisma.client.binding.findMany({ where: owner });
+    for (const slot of gone) {
+      const binding = bound.find((b) => b.slot === slot);
+      if (!binding) continue;
+      const same = Object.entries(after).filter(
+        ([next, need]) => !Object.hasOwn(before, next) && !bound.some((b) => b.slot === next) && sameNeed(before[slot], need),
+      );
+      if (same.length === 1) {
+        const [renamed] = same[0];
+        await this.prisma.client.binding.update({ where: { bindingId: binding.bindingId }, data: { slot: renamed } });
+        bound.splice(bound.indexOf(binding), 1, { ...binding, slot: renamed });
+      }
+    }
   }
 
   private async pipelineNeeds(userId: string, pipelineId: string): Promise<{ own: Needs; app: { appId: string; needs: Needs } | null }> {
@@ -116,6 +148,12 @@ export class BindingsService {
     const version = app.currentVersionId ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } }) : null;
     return version ? (readAppSource(version.source).needs ?? {}) : {};
   }
+}
+
+/** Two slots ask for the same: the same kind, and for a credential the same type and host. */
+function sameNeed(a: Need, b: Need): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind === "text" || (b.kind === "credential" && a.type === b.type && a.for === b.for);
 }
 
 function describe(need: Extract<Need, { kind: "credential" }>): string {

@@ -8,7 +8,8 @@ import { type BundleDocument } from "./bundle";
  * together, and what has to be set up before its pipelines can run.
  */
 
-export const EXAMPLE_NEED_KINDS = ["email", "google-calendar", "telegram", "llm", "credential", "recipe", "entities"] as const;
+/** M50: no `credential` need: an example's credentials are its App's and pipelines' slots, chosen when it is installed. */
+export const EXAMPLE_NEED_KINDS = ["email", "google-calendar", "telegram", "llm", "recipe", "entities"] as const;
 export type ExampleNeedKind = (typeof EXAMPLE_NEED_KINDS)[number];
 
 export const ExampleNeedSchema = z
@@ -21,7 +22,7 @@ export const ExampleNeedSchema = z
     label: z.string().min(1).max(200),
   })
   .strict()
-  .refine((n) => !["credential", "recipe"].includes(n.kind) || n.name, "a credential or a recipe need names it")
+  .refine((n) => n.kind !== "recipe" || n.name, "a recipe need names it")
   .refine((n) => n.kind !== "entities" || n.type, "an entities need names its type");
 export type ExampleNeed = z.infer<typeof ExampleNeedSchema>;
 
@@ -75,8 +76,6 @@ export function needMet(need: ExampleNeed, setup: SetupView, entities = 0): bool
       return setup.telegram;
     case "llm":
       return setup.llm;
-    case "credential":
-      return setup.credentials.includes(need.name!);
     case "recipe":
       return setup.recipes.includes(need.name!);
     case "entities":

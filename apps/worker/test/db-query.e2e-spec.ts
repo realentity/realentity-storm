@@ -143,7 +143,8 @@ describe("M29: db.query", () => {
     const versionId = await createVersion(db.client, userId, readFileSync(join(__dirname, "../../../pipelines/table-growth.yaml"), "utf8"), new PipelineCompiler(defaultCatalog()), {
       app: readAppSource(tables),
     });
-    await bindSlots(db.client, versionId, { "app-db": bound });
+    // The Tables App's database: filled once for its install.
+    await db.client.binding.create({ data: { appId: app.appId, slot: "database", credentialId: bound } });
     const telegram = new Counting("notify.telegram", () => ({ sent: true }));
     const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([step, new SaveStep(db.client), new HistoryStep(db.client), new AlertStep(db.client), telegram]));
     const hour = async (orders: number, users: number) => {

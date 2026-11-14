@@ -1,4 +1,5 @@
 import { type PipelineDetailView } from "@realentity/storm-shared";
+import { NeedsCard } from "../components/NeedsCard";
 import { IconEye, IconLayoutList, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -135,6 +136,18 @@ export function PipelinePage() {
           </div>
         </div>
         <div className="col-lg-4 d-flex flex-column gap-3">
+          {p.current && (
+            <NeedsCard
+              key={p.current.pipelineVersionId}
+              load={() => api.pipelines.bindings(p.pipelineId)}
+              save={(body) => api.pipelines.setBindings(p.pipelineId, body)}
+              app={
+                p.current.definition.refs?.appId && p.current.definition.app
+                  ? { appId: p.current.definition.refs.appId, name: p.current.definition.app }
+                  : undefined
+              }
+            />
+          )}
           <Switches
             pipeline={p}
             busy={action.busy}

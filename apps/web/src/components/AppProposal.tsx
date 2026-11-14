@@ -1,4 +1,5 @@
 import { type BuilderChatView, type BuilderMessageView } from "@realentity/storm-shared";
+import { NeedsCard } from "./NeedsCard";
 import { IconDeviceFloppy, IconPencil } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -73,6 +74,13 @@ export function AppProposal({
       </div>
       <div className="card-body d-flex flex-column gap-2">
         <ErrorAlert error={action.error} />
+        {proposal.savedAppId && (
+          <NeedsCard
+            title="What it needs (shared by its pipelines)"
+            load={() => api.apps.bindings(proposal.savedAppId!)}
+            save={(body) => api.apps.setBindings(proposal.savedAppId!, body)}
+          />
+        )}
         <Part title={`App: ${proposal.app.name}`} isNew={proposal.app.isNew} changes={proposal.app.changes} source={proposal.app.source} />
         {proposal.pipelines.map((p) => (
           <Part key={p.name} title={`Pipeline: ${p.name}`} isNew={p.isNew} changes={p.changes} source={p.source} />

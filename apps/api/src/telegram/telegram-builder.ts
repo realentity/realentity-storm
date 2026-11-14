@@ -1,8 +1,9 @@
-import { type BuilderChatView, type BuilderMessageView, type CompiledDefinition, type ServerEnv, type TelegramMessage, TELEGRAM_MAX_TEXT, type Trigger } from "@realentity/storm-shared";
+import { emptySlots, type BuilderChatView, type BuilderMessageView, type CompiledDefinition, type ServerEnv, type TelegramMessage, TELEGRAM_MAX_TEXT, type Trigger } from "@realentity/storm-shared";
 import { Inject, Injectable } from "@nestjs/common";
 import { BuilderService } from "../builder/builder.service";
 import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
+import { BindingsService } from "../bindings/bindings.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 
 /** The Telegram chat goes on while the user is on it; after this long without a message, the next one starts a new chat. */
@@ -32,6 +33,7 @@ export class TelegramBuilder {
     private readonly builder: BuilderService,
     private readonly pipelines: PipelinesService,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly bindings: BindingsService,
   ) {}
 
   /** A message to the builder: the answer as a Telegram message. Throws what the builder refused (busy, no key, cap). */
@@ -78,13 +80,18 @@ export class TelegramBuilder {
     const chat = await this.builder.save(userId, message.builderChatId, callback.messageId);
     const pipeline = await this.pipelines.get(userId, chat.pipelineId!);
     const trigger = pipeline.current?.definition.trigger ?? "manual";
-    const turnOn = !pipeline.enabled && trigger !== "manual";
+    // M50-T5: what it needs that isn't filled yet is chosen on its page (never named here); until then, no Turn on.
+    const empty = emptySlots(await this.bindings.ofPipeline(userId, pipeline.pipelineId));
+    const turnOn = !pipeline.enabled && trigger !== "manual" && empty.length === 0;
+    const needs = empty.length
+      ? ` It needs ${empty.map((s) => `"${s.need.label ?? s.slot}"`).join(", ")}: choose ${empty.length === 1 ? "it" : "them"} on its page.`
+      : "";
     return {
       answer: "Saved",
       message: {
-        text: `Saved: ${pipeline.name} v${pipeline.currentVersion}. ${
-          turnOn ? `It is off: Turn on to run it ${triggerText(trigger)}.` : pipeline.enabled ? "It is on." : "Start it with /run."
-        }`,
+        text: `Saved: ${pipeline.name} v${pipeline.currentVersion}.${needs} ${
+          turnOn ? `It is off: Turn on to run it ${triggerText(trigger)}.` : pipeline.enabled ? "It is on." : empty.length ? "" : "Start it with /run."
+        }`.trim(),
         buttons: [
           ...(turnOn ? [[{ text: "Turn on", data: `bo:${pipeline.pipelineId}` }]] : []),
           ...(this.open(`/pipelines/${pipeline.pipelineId}`, "Open the pipeline") ?? []),

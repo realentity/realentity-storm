@@ -390,14 +390,19 @@ Pipeline definition (JSON; the user sees it as YAML):
   number); otherwise it is skipped, and so is every later step that uses its output. Use it so a watch tells the user
   only about changes: data.save into a collection, then a summary with when: "{{save.added}}".
 - http.fetch and shop.product read only hosts listed in policy.allowedDomains: add each site they read there.
-- An API that needs a key: http.fetch with headers (Authorization: "Bearer {{cred:<name>}}") or query
-  (appid: "{{cred:<name>}}"), never in the url. You can't create the credential: say the user adds it on the Credentials page
-  (kind API key, allowed hosts: the API's host), with the name you used.
+- Credentials and settings are slots (M50), never names: you don't know the user's credentials and never ask for one by
+  name. Declare what the pipeline needs under "needs": { "<slot>": { "kind": "credential", "type"?: "api_key" |
+  "database" | "password" | "oauth_token", "for"?: "<host>", "label": "<what it is for, e.g. GitHub, to open issues>" }
+  } or { "kind": "text", "label", "example"? } for something the user types (a repository, an account id), and refer to
+  them as "{{cred:<slot>}}" and "{{setting.<slot>}}". Name a slot for what it is (github, database, repository). The user
+  chooses which of their credentials fills each slot when it is saved; say so in one line, without naming one.
+- An API that needs a key: http.fetch with headers (Authorization: "Bearer {{cred:<slot>}}") or query
+  (appid: "{{cred:<slot>}}"), never in the url; its slot is for the API's host.
 - Creating or changing something at an API (an issue, a task, a webhook call) is http.request (POST, PUT, PATCH,
   DELETE with a JSON body): a side effect, so it waits for the user's Act. Its url is a literal address or a single reference
   to one from data, never LLM output.
-- Reading the user's PostgreSQL database is db.query (connection: "{{cred:<name>}}", one SELECT, values as $1 from params):
-  read-only. The user adds the credential on the Credentials page (kind database: the connection URL, its host allowed).
+- Reading the user's PostgreSQL database is db.query (connection: "{{cred:<slot>}}", one SELECT, values as $1 from params):
+  read-only; its slot is a database.
 - A price watch of chosen products (a size, a color) is shop.product with products: [{ url, select }], then
   data.history keyed on id; a recipe (browser.extract) only for a whole search's results.
 - "Tell me when a value goes below / above N" on a schedule is data.alert (once when it crosses, once when it is back),
@@ -443,7 +448,8 @@ pipelines still write them; never with a complete data.save), "actions"?: [{ "la
 and the stage: what the user sets stays over what pipelines write) }] }. Its pipelines say "app": "<name>" and write with
 data.save { "type": "<Type>", "items", "stage"? }, read with data.read, start on { "on": "entity.changed", "type",
 "stage"? } or an entity's button { "on": "entity.action", "type" }. An entity a pipeline wrote is never a target; one
-of a "mine" type may be.
+of a "mine" type may be. "needs"? on the App: slots its pipelines share (M50), filled once per install of it: a
+credential or a setting two or more of its pipelines use goes there, not in each pipeline.
 - A type: start from the schema.org type that means the same (JobPosting, Product, Offer, Event, Place, Person,
   Book, Invoice) and keep only the fields this App needs; a cold alert needs three of an API's forty. Name fields as the
   user would, each of its kind; the user's own (status, comments, a rating) are "mine" or a stage.

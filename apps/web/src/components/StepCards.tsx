@@ -1,4 +1,5 @@
 import {
+  hostMatches,
   addStep,
   allowDomain,
   allowedDomainsOf,
@@ -50,6 +51,7 @@ export function StepCards({
   types,
   pipelines,
   credentials,
+  onCredential,
   picker,
   tryHere,
   marked,
@@ -65,6 +67,8 @@ export function StepCards({
   types: TriggerTypes;
   pipelines: string[];
   credentials: CredentialView[];
+  /** M50-T4: a credential chosen for a step: its slot, filled with it (by id) when the pipeline is saved. */
+  onCredential?: (slot: string, credentialId: string) => void;
   /** M36-T4: the data picker for a step's input: what goes beside it. */
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
   /** M37-T3: under a card, trying the pipeline up to it and what it gave. */
@@ -267,6 +271,7 @@ function StepCard({
   onEdit,
   editable,
   credentials,
+  onCredential,
   picker,
   tryHere,
   marked,
@@ -280,6 +285,7 @@ function StepCard({
   onEdit: (edit: DesignerEdit) => void;
   editable: boolean;
   credentials: CredentialView[];
+  onCredential?: (slot: string, credentialId: string) => void;
   picker?: (step: number, input: string, kind: "whole" | "insert", onPick: (reference: string) => void) => ReactNode;
   tryHere?: (step: LooseStep) => ReactNode;
   marked: boolean;
@@ -300,6 +306,8 @@ function StepCard({
   const stepIssues = issues.filter((i) => !issuePlace(i.path).input || !names.includes(issuePlace(i.path).input!));
   const takesCredential = (field: string) =>
     definition?.credentials === true || (Array.isArray(definition?.credentials) && definition.credentials.includes(field));
+  // M50-T4: only the credentials that fit this step: a database for db.query, the address's host for the others.
+  const fitting = credentials.filter((c) => fitsStep(step, c));
 
   const field = (name: string) => {
     const schema = properties[name];
@@ -320,17 +328,31 @@ function StepCard({
                 picker?.(index, name, kind, (reference) =>
                   set(name, kind === "insert" && typeof step.with[name] === "string" ? `${step.with[name]}${reference}` : reference),
                 )}
-              {editable && takesCredential(name) && credentials.length > 0 && (
+              {editable && takesCredential(name) && fitting.length > 0 && (
                 <select
                   className="form-select form-select-sm w-auto py-0"
                   value=""
-                  onChange={(e) => e.target.value && set(name, `{{cred:${e.target.value}}}`)}
+                  onChange={(e) => {
+                    const chosen = fitting.find((c) => c.credentialId === e.target.value);
+                    if (!chosen) return;
+                    // M50: the step gets a slot for what it is for; the credential fills it, by id, when it is saved.
+                    const slot = slotFor(step, chosen);
+                    const reference = `{{cred:${slot}}}`;
+                    const current = step.with[name];
+                    const map = current && typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
+                    // A header carries it as a bearer token, a query as a parameter to rename; elsewhere it is the value.
+                    if (name === "headers") set(name, { ...map, Authorization: `Bearer ${reference}` });
+                    else if (name === "query") set(name, { ...map, apikey: reference });
+                    else if (name === "login") set(name, { ...map, credential: reference });
+                    else set(name, reference);
+                    onCredential?.(slot, chosen.credentialId);
+                  }}
                   title={HELP.stepCredential}
                   aria-label={`A credential for ${name}`}
                 >
                   <option value="">a credential…</option>
-                  {credentials.map((c) => (
-                    <option key={c.credentialId} value={c.name}>
+                  {fitting.map((c) => (
+                    <option key={c.credentialId} value={c.credentialId}>
                       {c.name}
                     </option>
                   ))}
@@ -540,4 +562,28 @@ function AllowedSites({ source, onEdit, editable }: Readonly<{ source: string; o
       ))}
     </div>
   );
+}
+
+/** The host a step goes to, when its address is written (not a reference). */
+function hostOf(step: LooseStep): string | null {
+  const url = step.with.url;
+  if (typeof url !== "string" || url.includes("{{")) return null;
+  return /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1]?.toLowerCase() ?? null;
+}
+
+/** M50-T4: a credential fits a step: a database for db.query's connection; else not one, allowed on its host if written. */
+function fitsStep(step: LooseStep, credential: CredentialView): boolean {
+  if (step.type === "db.query") return credential.kind === "DATABASE";
+  if (credential.kind === "DATABASE" || credential.kind === "STORAGE_STATE") return false;
+  const host = hostOf(step);
+  return host === null || hostMatches(host, credential.allowedHosts);
+}
+
+/** A slot's name for what it is for: database, github (api.github.com), else the credential's kind. */
+function slotFor(step: LooseStep, credential: CredentialView): string {
+  if (step.type === "db.query") return "database";
+  const host = hostOf(step);
+  const labels = host?.split(".").filter((l) => !["api", "www", "app", "login"].includes(l)) ?? [];
+  const named = labels.length >= 2 ? labels[labels.length - 2] : labels[0];
+  return (named ?? credential.kind.toLowerCase().replace("_", "-")).replace(/[^a-z0-9_-]/g, "").slice(0, 40) || "credential";
 }

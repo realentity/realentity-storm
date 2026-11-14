@@ -90,14 +90,14 @@ export async function createVersion(prisma: PrismaClient, userId: string, source
   return v.pipelineVersionId;
 }
 
-/** M50: a saved version's pipeline's slots filled with credentials, by id (what the pipeline's page does). */
-export async function bindSlots(prisma: PrismaClient, versionId: string, slots: Record<string, string>): Promise<void> {
+/**
+ * M50: a saved version's pipeline's slots filled (what the pipeline's page does): a credential by id, or `settings`'
+ * text.
+ */
+export async function bindSlots(prisma: PrismaClient, versionId: string, slots: Record<string, string>, settings: Record<string, string> = {}): Promise<void> {
   const { pipelineId } = await prisma.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: versionId } });
-  for (const [slot, credentialId] of Object.entries(slots)) {
-    await prisma.binding.upsert({
-      where: { pipelineId_slot: { pipelineId, slot } },
-      create: { pipelineId, slot, credentialId },
-      update: { credentialId },
-    });
+  const fill = { ...Object.fromEntries(Object.entries(slots).map(([slot, credentialId]) => [slot, { credentialId, text: null }])), ...Object.fromEntries(Object.entries(settings).map(([slot, text]) => [slot, { credentialId: null, text }])) };
+  for (const [slot, data] of Object.entries(fill)) {
+    await prisma.binding.upsert({ where: { pipelineId_slot: { pipelineId, slot } }, create: { pipelineId, slot, ...data }, update: data });
   }
 }

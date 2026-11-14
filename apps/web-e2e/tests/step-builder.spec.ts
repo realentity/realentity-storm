@@ -122,7 +122,7 @@ test("table-growth.yaml built on cards compiles the same as the template", async
   await add("db.query", "counts");
   await card(page, "summary").getByTestId("remove-step").click();
   await card(page, "tell").getByTestId("remove-step").click();
-  await fill("counts", "connection", "{{cred:app-db}}");
+  await fill("counts", "connection", "{{cred:database}}");
   await fill("counts", "sql", "SELECT 'orders' AS name, count(*) AS rows FROM orders\nUNION ALL SELECT 'users', count(*) FROM users");
   await add("data.save", "latest");
   await fill("latest", "type", "Table");

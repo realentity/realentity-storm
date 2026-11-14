@@ -90,6 +90,15 @@ export interface CredentialView {
   lastUsedAt: string | null;
   dateCreated: string;
   dateUpdated: string;
+  /** M50-T14: the pipelines and App installs whose slots it fills (deleting it empties them). */
+  usedBy: CredentialUse[];
+}
+
+export interface CredentialUse {
+  owner: "pipeline" | "app";
+  id: string;
+  name: string;
+  slot: string;
 }
 
 /** True when `host` may receive a credential bound to `patterns` (exact match, or a subdomain of an explicit "*." pattern). */

@@ -7,7 +7,8 @@ test("the examples gallery: the starter first, an example installed twice under 
   await expect(cards.first()).toHaveAttribute("data-example", "releases-to-read");
   await expect(cards.first().getByTestId("example-needs")).toContainText("Nothing: it works as it is.");
   const tables = page.locator('[data-testid="example-card"][data-example="tables"]');
-  await expect(tables.getByTestId("example-needs")).toContainText("A database credential named app-db");
+  // M50: chosen when it is installed, never "a credential named …".
+  await expect(tables.getByTestId("example-slot")).toHaveText("You choose: The database whose tables it counts (a user that may only read)");
 
   // Its map, before installing.
   await tables.getByTestId("example-map").click();
