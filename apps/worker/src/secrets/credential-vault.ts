@@ -45,14 +45,23 @@ export class CredentialVault {
   ) {}
 
   /**
-   * One of Storm's own credentials, by the name Storm gave it: a site's browser session (session:<host>), and, until
-   * M50-T7 and T9 replace them, the .env mailbox's and a topic's GitHub source. Never a pipeline's: those go through
-   * slots (revealFor).
+   * One of Storm's own credentials, by the name Storm gave it: a site's browser session (session:<host>). Never a
+   * pipeline's: those go through slots (revealFor).
    */
   async revealOwn(userId: string, name: string, host: string): Promise<RevealedCredential> {
     const row = await this.prisma.credential.findUnique({ where: { userId_name: { userId, name } } });
     if (!row) throw new OwnCredentialMissingError(name);
     if (!hostMatches(host, row.allowedHosts)) throw new CredentialHostMismatchError(name, host);
+    const secret = open(this.keys, row.credentialId, row);
+    await this.prisma.credential.update({ where: { credentialId: row.credentialId }, data: { lastUsedAt: new Date() } });
+    return { username: row.username, secret };
+  }
+
+  /** M50-T9: one of the user's credentials chosen by id outside a pipeline (a topic's GitHub source), for `host` only. */
+  async revealById(userId: string, credentialId: string, host: string): Promise<RevealedCredential> {
+    const row = await this.prisma.credential.findFirst({ where: { credentialId, userId } });
+    if (!row) throw new Error("Its credential is no longer there: choose another");
+    if (!hostMatches(host, row.allowedHosts)) throw new CredentialHostMismatchError(row.name, host);
     const secret = open(this.keys, row.credentialId, row);
     await this.prisma.credential.update({ where: { credentialId: row.credentialId }, data: { lastUsedAt: new Date() } });
     return { username: row.username, secret };
@@ -75,7 +84,8 @@ export class CredentialVault {
   async revealConnection(asker: CredentialAsker, slot: string): Promise<RevealedCredential> {
     const row = await this.bound(asker, slot);
     const name = row.name;
-    if (row.kind !== "DATABASE") throw new Error(`Credential "${name}" isn't a database connection (kind ${row.kind.toLowerCase().replace("_", " ")})`);
+    if (row.kind !== "DATABASE")
+      throw new Error(`Credential "${name}" isn't a database connection (kind ${row.kind.toLowerCase().replace("_", " ")})`);
     const secret = open(this.keys, row.credentialId, row);
     const host = databaseHost(secret);
     if (!host) throw new Error(`Credential "${name}" isn't a postgresql:// connection URL`);

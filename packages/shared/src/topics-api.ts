@@ -262,7 +262,8 @@ export interface TopicSourceView {
   location: string;
   branch: string | null;
   path: string;
-  credential: string | null;
+  /** M50-T9: a private repository's token (the credential, by id, with its name for the page); null: none. */
+  credential: { id: string; name: string } | null;
   /** M50-T8: a Drive folder's Google account (its address); null: the default one. */
   googleAccount: { id: string; name: string } | null;
   /** The last commit indexed, short; null until it is read. */
@@ -306,11 +307,8 @@ export const TopicSourceSchema = z
       .transform((value) => value.replace(/^\/+/, "") || "**")
       .refine((value) => GLOB.test(value) && !value.split("/").includes(".."), "A path like docs/adr/** or **/*.md")
       .default("**"),
-    credential: z
-      .string()
-      .trim()
-      .transform((value) => value || null)
-      .nullish(),
+    /** M50-T9: a private repository's read-only token: one of the user's credentials allowing api.github.com, by id. */
+    credentialId: z.uuid().nullish(),
     /** M50-T8: a Drive folder's Google account; left out: the default one. */
     googleAccountId: z.uuid().nullish(),
   })
@@ -324,7 +322,7 @@ export const TopicSourceSchema = z
         ...source,
         location: folder ?? source.location,
         branch: null,
-        credential: null,
+        credentialId: null,
         googleAccountId: source.googleAccountId ?? null,
       };
     }

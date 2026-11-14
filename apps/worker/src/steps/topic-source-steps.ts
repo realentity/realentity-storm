@@ -95,7 +95,7 @@ export class GitChangesStep implements StepExecutor {
     userId: string,
     source: TopicSource & { topic: { name: string } },
   ): Promise<{ files: ChangedFile[]; read: SourceRead }> {
-    const gh = { repo: source.location, branch: source.branch, credential: source.credential };
+    const gh = { repo: source.location, branch: source.branch, credentialId: source.credentialId };
     const head = await this.github.head(userId, gh);
     const read = {
       sourceId: source.topicSourceId,
@@ -123,7 +123,7 @@ export class GitChangesStep implements StepExecutor {
   private async everything(
     userId: string,
     source: TopicSource,
-    gh: { repo: string; branch: string | null; credential: string | null },
+    gh: { repo: string; branch: string | null; credentialId: string | null },
     read: SourceRead,
     wanted: (path: string) => boolean,
   ): Promise<{ files: ChangedFile[]; read: SourceRead }> {
@@ -312,7 +312,7 @@ export class TopicIndexStep implements StepExecutor {
           ? await this.driveText({ userId, account: source.googleAccountId }, change)
           : await this.github.text(
               userId,
-              { repo: source.location, branch: source.branch, credential: source.credential },
+              { repo: source.location, branch: source.branch, credentialId: source.credentialId },
               change.path,
               change.commit,
             );

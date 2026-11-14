@@ -225,15 +225,17 @@ describe("git.changes and topic.index", () => {
           ...seal(keys, credentialId, `ghp_${name}SecretToken0123456789`),
         },
       });
+      return credentialId;
     };
-    await credential("orion-repo", ["api.github.com"]);
-    await credential("elsewhere", ["git.example.com"]);
+    const repo = await credential("orion-repo", ["api.github.com"]);
+    const elsewhere = await credential("elsewhere", ["git.example.com"]);
 
-    await db.client.topicSource.update({ where: { topicSourceId: source }, data: { credential: "orion-repo" } });
+    // M50-T9: by id.
+    await db.client.topicSource.update({ where: { topicSourceId: source }, data: { credentialId: repo } });
     await read();
     expect(github.requests.every((r) => r.authorization === "Bearer ghp_orion-repoSecretToken0123456789")).toBe(true);
 
-    await db.client.topicSource.update({ where: { topicSourceId: source }, data: { credential: "elsewhere", cursor: null } });
+    await db.client.topicSource.update({ where: { topicSourceId: source }, data: { credentialId: elsewhere, cursor: null } });
     github.requests = [];
     const refused = await read();
     expect(github.requests).toEqual([]);
