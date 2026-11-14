@@ -224,6 +224,7 @@ model Pipeline {
   mailCursors  MailCursor[]
   suggestions  PipelineSuggestion[]
   webhook      Webhook?
+  bindings     Binding[]
   scheduled    ScheduledStart[]
   alertStates  AlertState[]
 
@@ -710,7 +711,8 @@ model Credential {
   credentialId String         @id @db.Uuid
   userId       String         @db.Uuid
   user         User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  name         String // referenced as {{cred:<name>}}
+  name         String // the user's name for it; pipelines refer to slots bound to it by id (M50), never to this
+  bindings     Binding[]
   allowedHosts String[] // e.g. ["linkedin.com", "*.linkedin.com"]
   username     String?
   kind         CredentialKind
@@ -885,6 +887,7 @@ model App {
   entities     DataEntity[]
   builderChats BuilderChat[]
   files        AppFile[]
+  bindings     Binding[]
 
   @@unique([userId, name])
   @@map("Apps")
@@ -1556,4 +1559,24 @@ model UnlinkedEmail {
   @@unique([userId, messageId])
   @@index([userId, date])
   @@map("UnlinkedEmails")
+}
+
+/// M50: what fills a slot ({{cred:github}}, {{setting.repository}}) of a pipeline, or of an App install (its pipelines
+/// share it): one of the user's credentials by id, or a text. Never by a credential's name.
+model Binding {
+  bindingId    String      @id @default(uuid()) @db.Uuid
+  pipelineId   String?     @db.Uuid
+  pipeline     Pipeline?   @relation(fields: [pipelineId], references: [pipelineId], onDelete: Cascade)
+  appId        String?     @db.Uuid
+  app          App?        @relation(fields: [appId], references: [appId], onDelete: Cascade)
+  slot         String
+  credentialId String?     @db.Uuid
+  credential   Credential? @relation(fields: [credentialId], references: [credentialId], onDelete: Cascade)
+  text         String?
+  dateCreated  DateTime    @default(now())
+  dateUpdated  DateTime    @updatedAt
+
+  @@unique([pipelineId, slot])
+  @@unique([appId, slot])
+  @@map("Bindings")
 }

@@ -18,8 +18,14 @@ export class ReferenceError extends Error {}
 export class RunValues {
   private readonly outputs = new Map<string, { forEach?: string; value: unknown }>();
 
-  /** `trigger`: {{trigger.*}}, the event or webhook call that started the run (M12); null for other runs. */
-  constructor(private readonly trigger: unknown = null) {}
+  /**
+   * `trigger`: {{trigger.*}}, the event or webhook call that started the run (M12); null for other runs. `settings`:
+   * {{setting.*}}, what the user typed for the pipeline's or its App's slots (M50).
+   */
+  constructor(
+    private readonly trigger: unknown = null,
+    private readonly settings: Readonly<Record<string, string>> = {},
+  ) {}
 
   set(step: CompiledStep, value: unknown): void {
     this.outputs.set(step.id, { forEach: step.forEach ? sourceOf(step.forEach) : undefined, value });
@@ -47,6 +53,11 @@ export class RunValues {
   lookup(path: string, scope?: ItemScope): unknown {
     const [root, ...rest] = path.split(".");
     if (root === "trigger") return dig(this.trigger, rest, path);
+    if (root === "setting") {
+      const slot = rest[0] ?? "";
+      if (!Object.hasOwn(this.settings, slot)) throw new ReferenceError(`{{${path}}}: "${slot}" isn't set: set it on the pipeline's page (or its App's)`);
+      return this.settings[slot];
+    }
     if (root === "item") {
       if (!scope) throw new ReferenceError(`{{${path}}} outside a forEach step`);
       return dig(scope.item, rest, path);

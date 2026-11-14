@@ -48,10 +48,10 @@ export class DbQueryStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { connection, sql, params, maxRows, timeoutSeconds } = input as unknown as QueryInput;
-    const name = /\{\{\s*cred:([a-z0-9._-]+)\s*\}\}/.exec(connection)?.[1];
-    if (!name) throw new Error("db.query: `connection` is a database credential, {{cred:name}}");
-    if (!this.vault) throw new Error(`db.query can't use credentials here ("${name}")`);
-    const { secret } = await this.vault.revealConnection(context.userId, name);
+    const slot = /\{\{\s*cred:([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/.exec(connection)?.[1];
+    if (!slot) throw new Error("db.query: `connection` is a database credential, {{cred:slot}}");
+    if (!this.vault) throw new Error(`db.query can't use credentials here ("${slot}")`);
+    const { secret } = await this.vault.revealConnection(context, slot);
     const mask = (text: string) => text.split(secret).join("•••");
 
     const timeout = timeoutSeconds * 1000;
@@ -74,7 +74,7 @@ export class DbQueryStep implements StepExecutor {
       const rows = result.rows.slice(0, maxRows).map(plain);
       return { items: rows, rows: rows.length, truncated: result.rows.length > maxRows, columns: result.fields.map((f: FieldDef) => f.name) };
     } catch (error) {
-      throw new Error(`db.query (${name}): ${mask(error instanceof Error ? error.message : String(error))}`);
+      throw new Error(`db.query (${slot}): ${mask(error instanceof Error ? error.message : String(error))}`);
     } finally {
       await client.query("ROLLBACK").catch(() => undefined);
       await client.end().catch(() => undefined);

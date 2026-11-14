@@ -23,6 +23,7 @@ import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";
 import { TelegramCommands } from "../telegram/telegram-commands";
+import { BindingsService } from "../bindings/bindings.service";
 
 type Compiled = Extract<CompileResult, { ok: true }>;
 
@@ -44,6 +45,7 @@ export class PipelinesService {
     private readonly controls: ControlsService,
     private readonly apps: AppsService,
     private readonly commands: TelegramCommands,
+    private readonly bindings: BindingsService,
   ) {}
 
   /** Compiles without saving, for the review screen; with a pipeline, also the diff against its current version. */
@@ -80,6 +82,8 @@ export class PipelinesService {
       });
       return tx.pipeline.update({ where: { pipelineId: created.pipelineId }, data: { currentVersionId: version.pipelineVersionId } });
     });
+    // M50: a slot one of the user's credentials alone fits is filled; the others wait for the user.
+    await this.bindings.fillWhereOneFits(userId, { pipelineId: pipeline.pipelineId }, compiled.definition.needs ?? {});
     return this.get(userId, pipeline.pipelineId);
   }
 
@@ -130,8 +134,9 @@ export class PipelinesService {
         });
       }),
     );
-    // The new version may have another trigger.
+    // The new version may have another trigger, and other slots.
     await this.queue.requestScheduleSync();
+    await this.bindings.fillWhereOneFits(userId, { pipelineId }, compiled.definition.needs ?? {});
     if (pipeline.enabled) await this.commands.sync(userId);
     return this.get(userId, pipelineId);
   }

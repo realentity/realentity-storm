@@ -18,7 +18,7 @@ import { TakeoverDesk } from "../src/runner/takeovers";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { BrowserOpenStep } from "../src/steps/browser-steps";
 import { FILES, PASSWORD, startFixtureSites, USERNAME, type FixtureSites } from "./support/fixture-sites";
-import { createVersion } from "./support/test-steps";
+import { bindSlots, createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
@@ -84,6 +84,9 @@ ${extra
 
   const startRun = async (source: string) => {
     const versionId = await createVersion(db.client, userId, source);
+    // M50: the pipeline's slot "app" filled with the test's credential (by id), as its page would.
+    const made = await db.client.credential.findMany({ where: { userId, name: { not: { startsWith: "session:" } } } });
+    await bindSlots(db.client, versionId, Object.fromEntries(made.map((c) => [c.name, c.credentialId])));
     return runner.start(versionId, { trigger: "manual" });
   };
   const stepOf = (runId: string) => db.client.step.findFirstOrThrow({ where: { runId, stepKey: "open" } });

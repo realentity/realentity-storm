@@ -7,7 +7,7 @@ import { request as httpsRequest } from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
-import { type CredentialVault } from "../secrets/credential-vault";
+import { type CredentialAsker, type CredentialVault } from "../secrets/credential-vault";
 import { valueAt } from "./data-steps";
 
 type Item = Record<string, unknown>;
@@ -82,7 +82,7 @@ interface Document {
 /** Refused before anything was sent: the step fails with this, the reason in plain words. */
 export class FetchRefused extends Error {}
 
-const CREDENTIAL = /\{\{\s*cred:([a-z0-9._-]+)\s*\}\}/g;
+const CREDENTIAL = /\{\{\s*cred:([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g;
 
 /**
  * http.fetch (docs/design.md §2.3, M13-T1): GET without a browser, cookies or credentials. Only hosts on the pipeline's
@@ -112,9 +112,9 @@ export class HttpFetchStep implements StepExecutor {
     const allowed = context.allowedDomains ?? [];
     const documents: Document[] = [];
     for (const address of urls ?? [url!]) {
-      const keyed = await withCredentials(this.vault, this.type, address, headers, query, context.userId);
+      const keyed = await withCredentials(this.vault, this.type, address, headers, query, context);
       try {
-        documents.push(await this.read(address, keyed, context.userId, allowed, { itemsAt, maxBytes: maxKb * 1024, timeout: timeoutSeconds * 1000 }));
+        documents.push(await this.read(address, keyed, context, allowed, { itemsAt, maxBytes: maxKb * 1024, timeout: timeoutSeconds * 1000 }));
       } catch (error) {
         if (!keyed.secrets.length) throw error;
         const masked = keyed.mask(error instanceof Error ? error.message : String(error));
@@ -129,7 +129,8 @@ export class HttpFetchStep implements StepExecutor {
     };
   }
 
-  private async read(url: string, keyed: Keyed, userId: string, allowed: readonly string[], options: { itemsAt?: string; maxBytes: number; timeout: number }): Promise<Document> {
+  private async read(url: string, keyed: Keyed, asker: CredentialAsker, allowed: readonly string[], options: { itemsAt?: string; maxBytes: number; timeout: number }): Promise<Document> {
+    const userId = asker.userId;
     const keys = keyed.secrets.length > 0;
     // A read with a key isn't cached: what it got belongs to that key.
     const cached = keys ? null : await this.prisma.httpCache.findUnique({ where: { userId_url: { userId, url: keyed.target } } });
@@ -144,7 +145,7 @@ export class HttpFetchStep implements StepExecutor {
     // Every hop of a read with a key stays on the hosts each of its credentials allows.
     const onHop = keys
       ? async (hop: URL) => {
-          for (const name of keyed.names) await this.vault!.revealFor(userId, name, hop.hostname.toLowerCase());
+          for (const name of keyed.names) await this.vault!.revealFor(asker, name, hop.hostname.toLowerCase());
         }
       : undefined;
     const response = await this.http.get(keyed.target, headers, allowed, { ...options, onHop });
@@ -181,7 +182,7 @@ async function withCredentials(
   address: string,
   headers: Record<string, string>,
   query: Record<string, string>,
-  userId: string,
+  asker: CredentialAsker,
 ): Promise<Keyed> {
   const host = new URL(address).hostname.toLowerCase();
   const names = new Set<string>();
@@ -190,7 +191,7 @@ async function withCredentials(
     let out = text;
     for (const [reference, name] of text.matchAll(CREDENTIAL)) {
       if (!vault) throw new Error(`${type} can't use credentials here ("${name}")`);
-      const { secret } = await vault.revealFor(userId, name, host);
+      const { secret } = await vault.revealFor(asker, name, host);
       names.add(name);
       secrets.push(secret);
       out = out.replace(reference, secret);
@@ -230,7 +231,7 @@ export class HttpRequestStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { method, url, headers = {}, query = {}, body, timeoutSeconds } = input as unknown as RequestInput;
-    const keyed = await withCredentials(this.vault, this.type, url, headers, query, context.userId);
+    const keyed = await withCredentials(this.vault, this.type, url, headers, query, context);
     const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const sent: Record<string, string> = {
       "user-agent": USER_AGENT,

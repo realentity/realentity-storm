@@ -192,7 +192,7 @@ export class ImapSmtpConnector implements MailConnector {
   }
 
   private async login(userId: string, host: string): Promise<{ user: string; pass: string }> {
-    const credential = await this.vault.revealFor(userId, this.config.credential, host);
+    const credential = await this.vault.revealOwn(userId, this.config.credential, host);
     if (!credential.username) throw new Error(`Credential "${this.config.credential}" needs a username: the email address`);
     return { user: credential.username, pass: credential.secret };
   }

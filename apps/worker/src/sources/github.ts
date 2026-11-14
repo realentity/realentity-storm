@@ -84,7 +84,7 @@ export class GitHubClient {
     if (source.credential) {
       if (!this.vault) throw new Error("No credentials here");
       // Refused unless the credential's allowedHosts has api.github.com.
-      const { secret } = await this.vault.revealFor(userId, source.credential, GITHUB_API);
+      const { secret } = await this.vault.revealOwn(userId, source.credential, GITHUB_API);
       headers.authorization = `Bearer ${secret}`;
     }
     let response: Response;
