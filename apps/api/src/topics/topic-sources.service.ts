@@ -17,7 +17,7 @@ export class TopicSourcesService {
     await this.ownTopic(userId, topicId);
     const sources = await this.prisma.client.topicSource.findMany({
       where: { userId, topicId },
-      include: { _count: { select: { passages: true } }, googleAccount: ACCOUNT, credential: TOKEN },
+      include: { _count: { select: { passages: true } }, googleAccount: ACCOUNT, credential: TOKEN, emailAccount: MAILBOX },
       orderBy: { dateCreated: "asc" },
     });
     return sources.map((s) => sourceView(s, s._count.passages));
@@ -27,17 +27,26 @@ export class TopicSourcesService {
     userId: string,
     topicId: string,
     request: {
-      kind: "GITHUB" | "DRIVE";
+      kind: "GITHUB" | "DRIVE" | "MAILBOX";
       location: string;
       branch?: string | null;
       path: string;
       credentialId?: string | null;
       googleAccountId?: string | null;
+      emailAccountId?: string | null;
     },
   ): Promise<TopicSourceView> {
     await this.ownTopic(userId, topicId);
     const clash = await this.prisma.client.topicSource.findFirst({ where: { topicId, location: request.location, path: request.path } });
     if (clash) throw new ConflictException("The topic has this source already");
+    // M50-T16: one of the user's email accounts.
+    if (request.kind === "MAILBOX") {
+      const account = await this.prisma.client.emailAccount.findFirst({
+        where: { userId, emailAccountId: request.emailAccountId ?? "" },
+        select: { emailAccountId: true },
+      });
+      if (!account) throw new BadRequestException("No such email account");
+    }
     if (request.kind === "DRIVE") {
       // Read through one of the user's Google accounts (M50-T8), else the default. Whether it allows Drive shows on the
       // form and on the source's first read.
@@ -73,8 +82,9 @@ export class TopicSourcesService {
         path: request.path,
         credentialId: request.kind === "GITHUB" ? (request.credentialId ?? null) : null,
         googleAccountId: request.kind === "DRIVE" ? (request.googleAccountId ?? null) : null,
+        emailAccountId: request.kind === "MAILBOX" ? (request.emailAccountId ?? null) : null,
       },
-      include: { googleAccount: ACCOUNT, credential: TOKEN },
+      include: { googleAccount: ACCOUNT, credential: TOKEN, emailAccount: MAILBOX },
     });
     return sourceView(source, 0);
   }
@@ -92,7 +102,7 @@ export class TopicSourcesService {
       this.prisma.client.topicSource.update({
         where: { topicSourceId },
         data: { cursor: null, readAt: null },
-        include: { googleAccount: ACCOUNT, credential: TOKEN },
+        include: { googleAccount: ACCOUNT, credential: TOKEN, emailAccount: MAILBOX },
       }),
     ]);
     return sourceView(source, 0);
@@ -114,11 +124,14 @@ export class TopicSourcesService {
 const ACCOUNT = { select: { googleAccountId: true, email: true } } as const;
 /** A GitHub source's token, as its view shows it: its name, never its value. */
 const TOKEN = { select: { credentialId: true, name: true } } as const;
+/** A MAILBOX source's email account, as its view shows it. */
+const MAILBOX = { select: { emailAccountId: true, address: true } } as const;
 
 function sourceView(
   source: TopicSource & {
     googleAccount: { googleAccountId: string; email: string } | null;
     credential: { credentialId: string; name: string } | null;
+    emailAccount: { emailAccountId: string; address: string } | null;
   },
   passages: number,
 ): TopicSourceView {
@@ -132,13 +145,17 @@ function sourceView(
     branch: source.branch,
     path: source.path,
     credential: source.credential ? { id: source.credential.credentialId, name: source.credential.name } : null,
+    emailAccount:
+      source.kind === "MAILBOX" && source.emailAccount
+        ? { id: source.emailAccount.emailAccountId, name: source.emailAccount.address }
+        : null,
     googleAccount: source.googleAccount ? { id: source.googleAccount.googleAccountId, name: source.googleAccount.email } : null,
     // Drive's page token means nothing to show: "read".
     cursor: source.kind === "DRIVE" ? (source.cursor ? "read" : null) : (source.cursor?.slice(0, 7) ?? null),
     readAt: source.readAt?.toISOString() ?? null,
     passages,
     url:
-      source.kind === "ATTACHMENT"
+      source.kind === "ATTACHMENT" || source.kind === "MAILBOX"
         ? ""
         : source.kind === "DRIVE"
           ? `https://drive.google.com/drive/folders/${source.location}`

@@ -774,7 +774,10 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
     // M50-T8: a calendar step's is a google slot, allowing the calendar.
     const kind = Object.hasOwn(ACCOUNT_STEPS, step.type) ? ACCOUNT_STEPS[step.type] : undefined;
     const account = kind ? step.with.account : undefined;
-    if (kind && typeof account === "string" && !account.includes("{{")) {
+    // M50-T16: email.fetch's "topics" is the mailboxes the user's topics read, not a slot.
+    if (account === "topics" && step.type !== "email.fetch")
+      errors.push({ path: `steps[${index}].with.account`, message: `only email.fetch reads "topics" (the mailboxes your topics read)` });
+    else if (kind && typeof account === "string" && account !== "topics" && !account.includes("{{")) {
       const need = declared(account);
       const at = `steps[${index}].with.account`;
       const what = kind === "email" ? "an email account" : "a Google account";

@@ -11,7 +11,7 @@ trigger: { schedule: "*/15 * * * *" }
 steps:
   - id: fetch
     type: email.fetch
-    with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+    with: { mailbox: INBOX, limit: 50, sinceDays: 2, account: topics } # every mailbox your topics read
   - id: triage
     type: email.classify
     with:

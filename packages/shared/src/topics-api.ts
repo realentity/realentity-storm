@@ -247,7 +247,7 @@ export interface TopicUpkeepView {
   topicsOverRoom: number;
 }
 
-export const TOPIC_SOURCE_KINDS = ["GITHUB", "DRIVE"] as const;
+export const TOPIC_SOURCE_KINDS = ["GITHUB", "DRIVE", "MAILBOX"] as const;
 export type TopicSourceKindName = (typeof TOPIC_SOURCE_KINDS)[number];
 
 /** Where a topic's documents live (M43, docs/design.md §8.1): linked, never copied; its passages are a cache. */
@@ -258,12 +258,14 @@ export interface TopicSourceView {
   kind: TopicSourceKindName | "ATTACHMENT";
   /** ATTACHMENT: its email, "Maria <maria@client.example>: Kickoff". */
   title: string;
-  /** GITHUB: owner/repo. DRIVE: the folder's id (its name is `title`, once read). */
+  /** GITHUB: owner/repo. DRIVE: the folder's id (its name is `title`, once read). MAILBOX: the email account's id. */
   location: string;
   branch: string | null;
   path: string;
   /** M50-T9: a private repository's token (the credential, by id, with its name for the page); null: none. */
   credential: { id: string; name: string } | null;
+  /** M50-T16: a MAILBOX source's email account (its address). */
+  emailAccount: { id: string; name: string } | null;
   /** M50-T8: a Drive folder's Google account (its address); null: the default one. */
   googleAccount: { id: string; name: string } | null;
   /** The last commit indexed, short; null until it is read. */
@@ -311,9 +313,18 @@ export const TopicSourceSchema = z
     credentialId: z.uuid().nullish(),
     /** M50-T8: a Drive folder's Google account; left out: the default one. */
     googleAccountId: z.uuid().nullish(),
+    /** M50-T16: a MAILBOX source's email account. */
+    emailAccountId: z.uuid().nullish(),
   })
   .strict()
   .transform((source, context) => {
+    if (source.kind === "MAILBOX") {
+      // One of the user's email accounts: the topic's mail is read there. Nothing else applies.
+      if (!source.emailAccountId)
+        context.addIssue({ code: "custom", path: ["emailAccountId"], message: "Choose one of your email accounts" });
+      const id = source.emailAccountId ?? "";
+      return { ...source, location: id, path: "**", branch: null, credentialId: null, googleAccountId: null, emailAccountId: id };
+    }
     if (source.kind === "DRIVE") {
       // A folder: its link or id. No branch, and no credential: Drive is read through the Google connection.
       const folder = driveFolderId(source.location);
@@ -324,11 +335,12 @@ export const TopicSourceSchema = z
         branch: null,
         credentialId: null,
         googleAccountId: source.googleAccountId ?? null,
+        emailAccountId: null,
       };
     }
     const repo = source.location.replace(/^https:\/\/github\.com\//i, "").replace(/\.git$|\/$/g, "");
     if (!REPOSITORY.test(repo)) context.addIssue({ code: "custom", path: ["location"], message: "A GitHub repository: owner/repo" });
-    return { ...source, location: repo, googleAccountId: null };
+    return { ...source, location: repo, googleAccountId: null, emailAccountId: null };
   });
 export type TopicSourceRequest = z.input<typeof TopicSourceSchema>;
 

@@ -78,6 +78,21 @@ describe("needs (M50)", () => {
     ).toEqual(['steps[0].with.account: "work" is a credential, not an email account']);
   });
 
+  it("M50-T16: email.fetch's account: topics is the topics' mailboxes, not a slot; on other steps refused", () => {
+    expect(
+      ok(compiler.compile({ name: "P", steps: [{ id: "fetch", type: "email.fetch", with: { account: "topics" } }] })).definition.needs,
+    ).toBeUndefined();
+    expect(
+      errorsOf(
+        compiler.compile({
+          name: "P",
+          policy: { allowedDomains: [], allowedRecipients: ["a@example.org"] },
+          steps: [{ id: "send", type: "email.send", with: { to: "a@example.org", subject: "Hi", body: "Hi", account: "topics" } }],
+        }),
+      ),
+    ).toEqual(['steps[0].with.account: only email.fetch reads "topics" (the mailboxes your topics read)']);
+  });
+
   it("M50-T8: a calendar step's account is a google slot for the calendar; one declared for Drive only is refused", () => {
     const find = { id: "free", type: "calendar.find", with: { account: "work", calendar: "{{setting.calendar}}" } };
     expect(ok(compiler.compile({ name: "P", steps: [find] })).definition.needs).toEqual({

@@ -754,7 +754,9 @@ read carries the `account` it came from, so a reply goes out from the same one: 
 The emails that arrived since this pipeline's last run (the first run looks back `sinceDays`), oldest first, so each
 email is read once. Text only: attachments are listed, not downloaded. `mailbox: Sent` reads your server's Sent folder,
 whatever it is called there (`[Gmail]/Sent Mail`, a translated name): the emails you wrote.
-- In: `mailbox` [INBOX], `limit` [50], `sinceDays` [2], `account` (an email slot; default: the default account).
+- In: `mailbox` [INBOX], `limit` [50], `sinceDays` [2], `account` (an email slot; `topics`: every mailbox your topics
+  read, their **Mailbox** sources, and the default account for a topic without one; default: the default account). Each
+  account it reads keeps its own place.
 - Out: `messages` (uid, messageId, threadId, from, fromName, replyTo, to, cc, subject, date, text, attachments,
   account, …).
 
@@ -857,7 +859,8 @@ Which of your topics (the Topics page; docs/design.md §8.1) each email belongs 
 without an LLM: a word in the subject or text, anyone at a domain, a person; an email whose thread already belongs to a
 topic belongs to it too. The cheap model looks only at emails no direction settles (a thread's later email included, in
 case the conversation moved to another subject), with each topic's description and directions. An email can belong to
-several topics, and to none, which is normal. Found by a direction or the thread: linked; only by the model: suggested,
+several topics, and to none, which is normal; only to the topics that read its mailbox (their Mailbox sources, else the
+default account). Found by a direction or the thread: linked; only by the model: suggested,
 waiting for you. Your own decisions stay: a topic you rejected for an email isn't suggested for it again. Use it after
 triage, not on all mail. An email no topic took is kept for 30 days (its sender, subject and date, never its text), for
 the nightly reflection to suggest a new topic from several of them. A dry run links and keeps nothing.

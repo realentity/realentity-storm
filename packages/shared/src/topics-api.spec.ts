@@ -73,6 +73,7 @@ describe("pathMatches", () => {
       location: "acme/orion",
       path: "docs/adr/**",
       googleAccountId: null,
+      emailAccountId: null,
     });
     expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme" }).success).toBe(false);
     expect(TopicSourceSchema.safeParse({ kind: "GITHUB", location: "acme/orion", path: "../secrets/**" }).success).toBe(false);
@@ -106,11 +107,24 @@ describe("pathMatches", () => {
       branch: null,
       credentialId: null,
       googleAccountId: null,
+      emailAccountId: null,
     });
     // M50-T8: read through one of the user's Google accounts, by id.
     const googleAccountId = "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c";
     expect(TopicSourceSchema.parse({ kind: "DRIVE", location: id, googleAccountId }).googleAccountId).toBe(googleAccountId);
     expect(TopicSourceSchema.safeParse({ kind: "DRIVE", location: "acme/orion" }).success).toBe(false);
+  });
+
+  // M50-T16
+  it("a mailbox source: one of the user's email accounts, by id", () => {
+    const emailAccountId = "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c";
+    expect(TopicSourceSchema.parse({ kind: "MAILBOX", location: "", emailAccountId })).toMatchObject({
+      kind: "MAILBOX",
+      location: emailAccountId,
+      emailAccountId,
+      path: "**",
+    });
+    expect(TopicSourceSchema.safeParse({ kind: "MAILBOX", location: "" }).success).toBe(false);
   });
 });
 

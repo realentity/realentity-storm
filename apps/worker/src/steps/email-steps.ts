@@ -2,7 +2,8 @@ import { type PrismaClient } from "@realentity/storm-db";
 import { type Embeddings, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { isNoReplyAddress, unanswerable, type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
-import { mailWho, type MailConnector } from "../mail/mail-connector";
+import { mailWho, NoEmailAccountError, TOPICS_ACCOUNT, type MailConnector } from "../mail/mail-connector";
+import { topicMailboxes } from "../sources/topic-mailboxes";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock } from "./email-block";
@@ -19,8 +20,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAGE_TEXT = 3_000;
 
 /**
- * email.fetch: new messages since this pipeline's last read (MailCursor), oldest first. A dry run reads but
- * doesn't move the cursor, so the real run still sees the same messages.
+ * email.fetch: new messages since this pipeline's last read (MailCursor, one per account), oldest first. A dry run reads
+ * but doesn't move the cursor, so the real run still sees the same messages. `account: topics` (M50-T16) reads every
+ * mailbox the user's topics read; each message says which it came from.
  */
 export class EmailFetchStep implements StepExecutor {
   readonly type = "email.fetch";
@@ -32,30 +34,45 @@ export class EmailFetchStep implements StepExecutor {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { mailbox, limit, sinceDays, account } = input as { mailbox: string; limit: number; sinceDays: number; account?: string };
-    const where = { pipelineId_mailbox: { pipelineId: context.pipelineId, mailbox } };
-    const cursor = await this.prisma.mailCursor.findUnique({ where });
+    const since = new Date(Date.now() - sinceDays * DAY_MS);
+    const accounts =
+      account === TOPICS_ACCOUNT ? (await topicMailboxes(this.prisma, context.userId)).accounts : [await this.accountOf(context, account)];
+    if (accounts.length === 0) throw new NoEmailAccountError();
+    const messages: EmailMessage[] = [];
+    for (const emailAccountId of accounts) messages.push(...(await this.read(context, emailAccountId, mailbox, limit, since)));
+    // Oldest first across the mailboxes too.
+    return { messages: accounts.length > 1 ? messages.sort((a, b) => a.date.localeCompare(b.date)) : messages };
+  }
+
+  /** The account a step reads: its slot's, an id from data, else the default one. */
+  private async accountOf(context: StepContext, account: string | undefined): Promise<string> {
     const who = mailWho(context, account);
-    // A cursor is per account: another account (the slot filled with another one) starts again from `since`.
-    const same = cursor && (cursor.emailAccountId === null || who.account === undefined || cursor.emailAccountId === who.account);
-    const result = await this.mail.fetch(who, {
-      mailbox,
-      after: cursor && same ? { uidValidity: cursor.uidValidity, lastUid: Number(cursor.lastUid) } : null,
-      since: new Date(Date.now() - sinceDays * DAY_MS),
-      limit,
+    if (who.account) return who.account;
+    const fallback = await this.prisma.emailAccount.findFirst({
+      where: { userId: context.userId },
+      orderBy: [{ isDefault: "desc" }, { dateCreated: "asc" }],
+      select: { emailAccountId: true },
     });
+    if (!fallback) throw new NoEmailAccountError();
+    return fallback.emailAccountId;
+  }
+
+  private async read(context: StepContext, emailAccountId: string, mailbox: string, limit: number, since: Date): Promise<EmailMessage[]> {
+    // Its cursor, or one kept from before cursors had an account (it continues for the account it then read).
+    const cursor = await this.prisma.mailCursor.findFirst({
+      where: { pipelineId: context.pipelineId, mailbox, OR: [{ emailAccountId }, { emailAccountId: null }] },
+      orderBy: { emailAccountId: { sort: "asc", nulls: "last" } },
+    });
+    const result = await this.mail.fetch(
+      { userId: context.userId, account: emailAccountId },
+      { mailbox, after: cursor ? { uidValidity: cursor.uidValidity, lastUid: Number(cursor.lastUid) } : null, since, limit },
+    );
     if (!context.dryRun) {
-      const position = {
-        uidValidity: result.position.uidValidity,
-        lastUid: BigInt(result.position.lastUid),
-        emailAccountId: result.account,
-      };
-      await this.prisma.mailCursor.upsert({
-        where,
-        create: { userId: context.userId, pipelineId: context.pipelineId, mailbox, ...position },
-        update: position,
-      });
+      const position = { uidValidity: result.position.uidValidity, lastUid: BigInt(result.position.lastUid), emailAccountId };
+      if (cursor) await this.prisma.mailCursor.update({ where: { mailCursorId: cursor.mailCursorId }, data: position });
+      else await this.prisma.mailCursor.create({ data: { userId: context.userId, pipelineId: context.pipelineId, mailbox, ...position } });
     }
-    return { messages: result.messages };
+    return result.messages;
   }
 }
 

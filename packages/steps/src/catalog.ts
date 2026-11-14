@@ -994,10 +994,13 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "email.fetch",
+    // M50-T16: which mailbox it reads is shown up front.
+    primary: ["mailbox", "account"],
     description:
       "Reads the emails that arrived since this pipeline's last run (its first run looks back `sinceDays`), oldest first, " +
       "so each email is read once; read-only (IMAP), nothing is marked or moved. `mailbox: Sent` reads the server's Sent " +
-      "folder, whatever it is called there (the user's own emails).",
+      "folder, whatever it is called there (the user's own emails). `account: topics` reads every mailbox the user's topics " +
+      "read (their Mailbox sources; the default account for a topic without one): for topic.match.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({

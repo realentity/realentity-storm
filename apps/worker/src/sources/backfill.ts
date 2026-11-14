@@ -4,6 +4,7 @@ import { matchDirections } from "@realentity/storm-shared";
 import { type EmailMessage, type TopicProposal } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { SENT_MAILBOX, type MailConnector } from "../mail/mail-connector";
+import { topicMailboxes } from "./topic-mailboxes";
 import { type RunControls } from "../runner/run-controls";
 import {
   addProposals,
@@ -31,6 +32,8 @@ const GIVE_UP_MS = 25 * 60 * 60 * 1000;
 interface FoundEmail {
   messageId: string;
   date: string;
+  /** M50-T16: the email account it was found in; absent: the default one. */
+  account?: string | null;
 }
 
 interface FoundFile {
@@ -73,11 +76,17 @@ export class TopicBackfills {
     const topic = await this.prisma.topic.findUniqueOrThrow({ where: { topicId: backfill.topicId }, include: { directions: true } });
     const since = new Date(now.getTime());
     since.setMonth(since.getMonth() - backfill.months);
+    // M50-T16: the topic's mailboxes (its MAILBOX sources), else the default email account.
+    const own = (await topicMailboxes(this.prisma, backfill.userId, [topic.topicId])).ofTopic.get(topic.topicId) ?? [];
+    const accounts: (string | undefined)[] = own.length > 0 ? own : [undefined];
+    const read = (mailbox: string) =>
+      Promise.all(
+        accounts.map((account) => this.mail.recent({ userId: backfill.userId, account }, { mailbox, since, limit: HISTORY_EMAILS })),
+      );
     const [inbox, sent, linked] = await Promise.all([
-      // M50-T7: the default email account's mailbox.
-      this.mail.recent({ userId: backfill.userId }, { mailbox: "INBOX", since, limit: HISTORY_EMAILS }),
-      this.mail
-        .recent({ userId: backfill.userId }, { mailbox: SENT_MAILBOX, since, limit: HISTORY_EMAILS })
+      read("INBOX").then((lists) => lists.flat()),
+      read(SENT_MAILBOX)
+        .then((lists) => lists.flat())
         .catch(() => [] as EmailMessage[]),
       this.prisma.topicLink.findMany({
         where: { topicId: topic.topicId, status: { in: ["LINKED", "CONFIRMED"] } },
@@ -116,7 +125,11 @@ export class TopicBackfills {
       where: { topicBackfillId: backfill.topicBackfillId },
       data: {
         status: "ESTIMATED",
-        emails: emails.map((m): FoundEmail => ({ messageId: m.messageId, date: m.date })) as unknown as Prisma.InputJsonValue,
+        emails: emails.map((m): FoundEmail => ({
+          messageId: m.messageId,
+          date: m.date,
+          account: m.account ?? null,
+        })) as unknown as Prisma.InputJsonValue,
         files: files.map((f): FoundFile => ({ topicSourceId: f.topicSourceId, path: f.path })) as unknown as Prisma.InputJsonValue,
         // The Batch API's half price.
         estimateUsd: Math.round((screenCost + writeCost) * 0.5 * 10_000) / 10_000,
@@ -226,9 +239,15 @@ export class TopicBackfills {
     const topics = [{ topicId: topic.topicId, name: topic.name, description: topic.description }];
     const found = backfill.emails as unknown as FoundEmail[];
     const read = new Map<string, EmailMessage>();
-    for (let start = 0; start < found.length; start += IDS_PER_READ) {
-      const ids = found.slice(start, start + IDS_PER_READ).map((e) => e.messageId);
-      for (const { message } of await this.mail.thread({ userId: backfill.userId }, ids)) read.set(message.messageId, message);
+    // Each read again from the mailbox it was found in (M50-T16).
+    const byAccount = new Map<string, FoundEmail[]>();
+    for (const email of found) byAccount.set(email.account ?? "", [...(byAccount.get(email.account ?? "") ?? []), email]);
+    for (const [account, emails] of byAccount) {
+      for (let start = 0; start < emails.length; start += IDS_PER_READ) {
+        const ids = emails.slice(start, start + IDS_PER_READ).map((e) => e.messageId);
+        const who = { userId: backfill.userId, account: account || undefined };
+        for (const { message } of await this.mail.thread(who, ids)) read.set(message.messageId, message);
+      }
     }
     // An email no longer in the mailbox keeps its place, empty, so the indexes stay the same.
     const emails = found.map((e) => {

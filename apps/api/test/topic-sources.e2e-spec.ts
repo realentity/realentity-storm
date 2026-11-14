@@ -19,6 +19,7 @@ describe("topic sources", () => {
     await db.client.topic.deleteMany();
     await db.client.credential.deleteMany();
     await db.client.googleAccount.deleteMany();
+    await db.client.emailAccount.deleteMany();
   });
 
   afterAll(async () => {
@@ -149,5 +150,31 @@ describe("topic sources", () => {
     expect(((await agent.get(`/api/topics/${topicId}/sources`).expect(200)).body as TopicSourceView[]).map((s) => s.location)).toEqual([
       "acme/orion-private",
     ]);
+  });
+
+  // M50-T16
+  it("a mailbox: one of the user's email accounts; removing the account removes the topic's mailbox", async () => {
+    const { topicId } = (await agent.post("/api/topics").send({ name: "Acme" }).expect(201)).body as TopicView;
+    const add = (body: Record<string, unknown>) =>
+      agent.post(`/api/topics/${topicId}/sources`).send({ kind: "MAILBOX", location: "", ...body });
+    await add({}).expect(400);
+    await add({ emailAccountId: "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c" }).expect(400);
+    const account = (
+      await agent
+        .post("/api/email-accounts")
+        .send({ address: "work@example.com", imapHost: "imap.example.com", smtpHost: "smtp.example.com", password: "app-password" })
+        .expect(201)
+    ).body as { emailAccountId: string };
+    const source = (await add({ emailAccountId: account.emailAccountId }).expect(201)).body as TopicSourceView;
+    expect(source).toMatchObject({
+      kind: "MAILBOX",
+      location: account.emailAccountId,
+      emailAccount: { id: account.emailAccountId, name: "work@example.com" },
+      url: "",
+    });
+    await add({ emailAccountId: account.emailAccountId }).expect(409);
+
+    await agent.delete(`/api/email-accounts/${account.emailAccountId}`).expect(204);
+    expect((await agent.get(`/api/topics/${topicId}/sources`).expect(200)).body).toEqual([]);
   });
 });

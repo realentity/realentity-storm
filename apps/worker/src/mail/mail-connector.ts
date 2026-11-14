@@ -9,6 +9,9 @@ export interface MailWho {
   account?: string | null;
 }
 
+/** M50-T16: `account: topics` on email.fetch: every mailbox the user's topics read. */
+export const TOPICS_ACCOUNT = "topics";
+
 const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**

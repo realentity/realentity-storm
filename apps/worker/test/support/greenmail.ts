@@ -18,6 +18,8 @@ export interface TestMailServer {
   /** Puts a message into the mailbox, as any outside sender could. */
   deliver(mail: {
     from: string;
+    /** Whose mailbox: the user's by default; OTHER_MAILBOX for Ana's (M50-T16: a second account). */
+    to?: string;
     subject: string;
     text: string;
     messageId?: string;
