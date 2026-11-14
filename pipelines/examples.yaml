@@ -182,3 +182,28 @@ examples:
       - database-down.yaml
       - incident-issue.yaml
       - ops-week.yaml
+
+  - id: tasks
+    name: Tasks
+    description: >-
+      What you have to do, added on its list with a due date and a tag, open until you mark it done; every morning the
+      ones due today or overdue on Telegram. No LLM.
+    needs:
+      - { kind: telegram, label: "Telegram, for the morning list" }
+    files: [apps/tasks.yaml, tasks-due.yaml]
+
+  - id: memos
+    name: Memos
+    description: Notes to keep, each with a photo if you like, newest first and searchable. Needs nothing set up.
+    needs: []
+    files: [apps/memos.yaml]
+
+  - id: papers
+    name: Papers
+    description: >-
+      Receipts, invoices and warranties with their photo or PDF: the LLM reads each one and fills in the merchant, the
+      amount and the dates; a warranty's end goes into your calendar after you approve it.
+    needs:
+      - { kind: llm, label: "The LLM, to read the papers" }
+      - { kind: google-calendar, label: "Google Calendar, for warranties" }
+    files: [apps/papers.yaml, read-paper.yaml, warranty-in-calendar.yaml]

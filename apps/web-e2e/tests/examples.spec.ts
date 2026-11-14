@@ -75,3 +75,65 @@ test("the starter: installed, tried, switched on and run; its releases on its pa
   await page.getByTestId("entity-row").first().getByRole("button", { name: "read" }).click();
   await expect(page.getByTestId("entity-row").first()).toContainText("read");
 });
+
+// M48-E1: Tasks, Memos and Papers installed from the gallery; a task, a memo and a paper added by hand
+test("Tasks, Memos and Papers: installed from the gallery, one of each added on its page", async ({ page }) => {
+  const install = async (id: string) => {
+    await page.goto("/apps");
+    await page.locator(`[data-testid="example-card"][data-example="${id}"]`).getByTestId("example-install").click();
+    await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
+    return new URL(page.url()).pathname.split("/").pop()!;
+  };
+  const add = async (appId: string, type: string, fill: (form: ReturnType<typeof page.getByTestId>) => Promise<void>, title: string) => {
+    await page.goto(`/a/${appId}/${type}`);
+    await page.getByTestId("add-entity").click();
+    const form = page.getByTestId("add-form");
+    await fill(form);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    // Its key was made by Storm: the page's address ends with it.
+    expect(page.url()).toMatch(new RegExp(`/a/${appId}/${type}/[a-z0-9]{12}$`));
+  };
+
+  const tasks = await install("tasks");
+  await add(
+    tasks,
+    "Task",
+    async (form) => {
+      await form.getByLabel("Title").fill("Renew the passport");
+      await form.getByLabel("Due").fill("2026-12-01");
+      await form.getByLabel("Tag").selectOption("errands");
+    },
+    "Renew the passport",
+  );
+  await page.getByTestId("stage-move").filter({ hasText: "done" }).click();
+  await expect(page.getByTestId("stage-value")).toHaveText("done");
+
+  const memos = await install("memos");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await add(
+    memos,
+    "Memo",
+    async (form) => {
+      await form.getByLabel("Title").fill("Wi-Fi at the cottage");
+      await form.getByLabel("Text").fill("Network: Cottage, password on the router's back.");
+      await form.getByLabel("Photo").setInputFiles({ name: "router.png", mimeType: "image/png", buffer: png });
+      await expect(form.getByTestId("file-photo").getByRole("link", { name: "router.png" })).toBeVisible();
+    },
+    "Wi-Fi at the cottage",
+  );
+
+  const papers = await install("papers");
+  await add(
+    papers,
+    "Paper",
+    async (form) => {
+      await form.getByLabel("Title").fill("Washing machine");
+      await form.getByLabel("Document").setInputFiles({ name: "receipt.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% a receipt\n%%EOF\n") });
+      await expect(form.getByTestId("file-document").getByRole("link", { name: "receipt.pdf" })).toBeVisible();
+      await form.getByLabel("Warranty until").fill("2028-11-10");
+    },
+    "Washing machine",
+  );
+  await expect(page.getByTestId("entity-fields").last()).toContainText("receipt.pdf");
+});

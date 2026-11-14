@@ -57,7 +57,7 @@ Apps are typed and versioned, so they keep working as they grow:
 - A change to an App that would break one of its pipelines is refused, naming the pipeline.
 - A change to an entity can start another pipeline: a job reaching *interview*, a price falling, a bill arriving.
 
-Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car and Server ops (your monitors, checked every five minutes, and incidents).
+Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos and Papers (receipts and warranties, read from their photo or PDF).
 
 Each App's page maps how it connects: what starts its pipelines, which types they write and read, and the pages that
 show them. The Trips App:

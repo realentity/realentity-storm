@@ -430,7 +430,8 @@ pipelines that change. An App definition (JSON): { "name", "description"?, "icon
 "status", "initial", "states": [...], "moves": [{ "from": "<state>" | [...], "to": [...], "by"?: ["me", "pipeline"] }] },
 "fields": { "<name>": { "type": text|longtext|number|money|date|datetime|url|email|yesno|enum|list|file|image (uploaded on the form, or kept by a pipeline's
 file.keep: an email's attachments), "required"?,
-"mine"? (the user's to set, never a pipeline's), "values"? (enum), "currency"? (money: the field with its code), "label"? } } } },
+"mine"? (the user's to set, never a pipeline's), "auto"? (the key only: Storm makes it, so a
+task's or a note's title can change), "values"? (enum), "currency"? (money: the field with its code), "label"? } } } },
 "pages"?: [{ "list": "<Type>", "menu"?, "columns"?, "filters"?, "sort"?, "group"?: { "by", "period"?, "totals"? },
 "moves"?: true, "add"?: true (the user adds and deletes them by hand too, on a form of the key and the form's fields;
 pipelines still write them; never with a complete data.save), "actions"?: [{ "label", "run" }] }, { "view": "<Type>",

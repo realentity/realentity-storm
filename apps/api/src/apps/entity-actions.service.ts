@@ -3,6 +3,8 @@ import { JobQueue } from "@realentity/storm-queue";
 import {
   actionApplies,
   addedByHand,
+  autoKey,
+  newKey,
   canMove,
   canonicalJson,
   checkFormValues,
@@ -116,6 +118,8 @@ export class EntityActionsService {
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
     const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
     let checked = this.check(type, allowed, values);
+    // M48: a key Storm makes.
+    if (autoKey(type)) checked = { ...checked, [type.key]: await this.freshKey(appId, typeName) };
     const missing = Object.entries(type.fields).filter(
       ([name, f]) => (f.required || name === type.key) && allowed.includes(name) && (checked[name] ?? null) === null,
     );
@@ -157,6 +161,14 @@ export class EntityActionsService {
       stage ? { from: null, to: stage } : null,
     );
     return key;
+  }
+
+  /** M48: a key no entity of the type has yet. */
+  private async freshKey(appId: string, typeName: string): Promise<string> {
+    for (;;) {
+      const key = newKey();
+      if (!(await this.prisma.client.dataEntity.findUnique({ where: { appId_type_key: { appId, type: typeName, key } } }))) return key;
+    }
   }
 
   /** An entity deleted by hand: of a type of mine, or one added by hand (M45). */

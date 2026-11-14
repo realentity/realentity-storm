@@ -167,7 +167,7 @@ function FileInput({
     <div data-testid={`file-${field.field}`}>
       {file && (
         <div className="d-flex align-items-center gap-2 mb-2">
-          {field.kind === "image" ? (
+          {file.mime.startsWith("image/") ? (
             <img src={api.apps.thumbUrl(file.id)} alt={file.name} className="rounded border" style={{ maxHeight: "4rem" }} />
           ) : (
             <IconPaperclip size={18} className="text-secondary" />

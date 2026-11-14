@@ -57,9 +57,26 @@ export const EntityFieldSchema = z
     values: z.array(z.string().trim().min(1).max(60)).min(1).max(50).optional(),
     /** money: the field holding the currency code. */
     currency: z.string().regex(ENTITY_FIELD).optional(),
+    /**
+     * M48: the key, made by Storm when an entity is added (on its list, or by a pipeline's item without it): a task or a
+     * memo is named by its title, which can change. Only on a text key.
+     */
+    auto: z.boolean().optional(),
   })
   .strict();
 export type EntityField = z.output<typeof EntityFieldSchema>;
+
+/** M48: a key Storm makes (an `auto` key): 12 lowercase letters and digits. */
+export function newKey(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+/** M48: the type's key is made by Storm. */
+export function autoKey(type: Pick<DataType, "key" | "fields">): boolean {
+  return type.fields[type.key]?.auto === true;
+}
 
 export const STAGE_ACTORS = ["me", "pipeline"] as const;
 export type StageActor = (typeof STAGE_ACTORS)[number];
@@ -126,12 +143,14 @@ export const DataTypeSchema = z
     if (!key) issue(["key"], `"${type.key}" is not one of the fields`);
     else if (!KEY_KINDS.includes(key.type)) issue(["key"], `a key is text, a url, an email or a number, not ${key.type}`);
     else if (key.mine) issue(["key"], "the key is written by pipelines, so it can't be mine");
+    else if (key.auto && key.type !== "text") issue(["fields", type.key, "auto"], "a key Storm makes is text");
     if (type.title && !type.fields[type.title]) issue(["title"], `"${type.title}" is not one of the fields`);
     for (const [name, field] of Object.entries(type.fields)) {
       const at = ["fields", name];
       if (names.some((other) => other.startsWith(`${name}.`))) issue(at, `"${name}" can't be a field and hold fields too`);
       if (field.type === "enum" && !field.values) issue([...at, "values"], "an enum needs its values");
       if (field.type !== "enum" && field.values) issue([...at, "values"], "only an enum has values");
+      if (field.auto && name !== type.key) issue([...at, "auto"], "only the key is made by Storm");
       if (field.currency !== undefined) {
         if (field.type !== "money") issue([...at, "currency"], "only money has a currency");
         else if (type.fields[field.currency]?.type !== "text")
@@ -392,7 +411,7 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
       if (page.add && !type.mine) {
         const form = app.pages.find((p): p is FormPage => "form" in p && p.form === typeName);
         const fields = addFieldNames(type, form);
-        const missing = Object.entries(type.fields).filter(([name, f]) => f.required && name !== type.stages?.field && !fields.includes(name));
+        const missing = Object.entries(type.fields).filter(([name, f]) => f.required && !f.auto && name !== type.stages?.field && !fields.includes(name));
         for (const [name] of missing) issue([...at, "add"], `${typeName}.${name} is required: put it on ${typeName}'s form to add one by hand`);
       }
       page.columns?.forEach((c, j) => {
@@ -442,8 +461,10 @@ export function formFieldNames(type: DataType, form: FormPage | undefined): stri
 
 /** M45: the fields of the form that adds one by hand: a type of mine's every field; another's key, then its form's. */
 export function addFieldNames(type: DataType, form: FormPage | undefined): string[] {
-  if (type.mine) return Object.keys(type.fields).filter((name) => name !== type.stages?.field);
-  return [type.key, ...formFieldNames(type, form).filter((name) => name !== type.key)];
+  // M48: a key Storm makes isn't asked for.
+  const key = autoKey(type) ? [] : [type.key];
+  if (type.mine) return Object.keys(type.fields).filter((name) => name !== type.stages?.field && !(autoKey(type) && name === type.key));
+  return [...key, ...formFieldNames(type, form).filter((name) => name !== type.key)];
 }
 
 /** A field set on a form: one marked mine, or any of a type of mine, never the stage (moved by its buttons). */
@@ -582,6 +603,11 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
       continue;
     }
     const raw = entityValueAt(value, name);
+    if ((raw === undefined || raw === null || raw === "") && name === type.key && field.auto) {
+      // M48: a new entity's key, made here (a task from a message).
+      setAt(value, name, newKey());
+      continue;
+    }
     if (raw === undefined || raw === null || raw === "") {
       deleteAt(value, name);
       if (field.required || name === type.key) {

@@ -57,7 +57,8 @@ export function ViewValue({
       const file = asFileRef(value);
       if (!file) return <>{asText(value)}</>;
       const href = api.apps.fileUrl(file.id);
-      if (column.as === "image" && file.mime.startsWith("image/")) {
+      // An image shows its thumbnail, in a file field too (a paper's photo).
+      if (file.mime.startsWith("image/")) {
         return (
           <a href={href} target="_blank" rel="noopener noreferrer" title={file.name} data-testid="entity-image">
             <img src={api.apps.thumbUrl(file.id)} alt={file.name} className="rounded border" style={{ maxHeight: full ? "16rem" : "2.5rem", maxWidth: "100%" }} loading="lazy" />

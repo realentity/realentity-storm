@@ -1,0 +1,36 @@
+# M48: the Papers App: receipts, invoices, warranties and contracts, each with its photo or PDF. Add one on its list
+# with its document: read-paper.yaml reads it and fills in what it says (what it is, the merchant, the amount, the
+# dates); what you typed stays over what it read. warranty-in-calendar.yaml puts a warranty's end in your calendar,
+# after you Act. A paper's key is made by Storm.
+name: Papers
+description: Receipts, invoices and warranties, read for you, with their dates
+icon: receipt
+types:
+  Paper:
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      document: { type: file }                  # a photo or a PDF
+      kind: { type: enum, values: [receipt, invoice, warranty, contract, other] }
+      merchant: { type: text }
+      amount: { type: money, currency: currency }
+      currency: { type: text }
+      date: { type: date }
+      warrantyUntil: { type: date, label: Warranty until }
+      notes: { type: longtext }
+pages:
+  - list: Paper
+    menu: { label: Papers, icon: receipt }
+    add: true
+    columns: [document, title, kind, merchant, amount, date, { field: warrantyUntil, due: { days: 30 } }]
+    filters: [kind]
+    search: [title, merchant, notes]
+    sort: -date
+  - view: Paper
+    sections:
+      - { title: Paper, fields: [kind, merchant, amount, date, warrantyUntil, notes] }
+      - { title: Document, fields: [document] }
+  - form: Paper
+    fields: [title, document, kind, merchant, amount, currency, date, warrantyUntil, notes]
