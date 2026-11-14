@@ -1,0 +1,106 @@
+# Your Monitors, in the Server ops App (pipelines/apps/server-ops.yaml: save it first), checked every five minutes:
+# a web address (http.check: its status, response time and certificate), a port (net.check tcp) or a ping. Each
+# monitor's status is kept on it, its response time as a chart on its page. One that goes down opens an Incident and
+# tells you on Telegram; up again, the Incident is resolved with how long it lasted. A paused one isn't checked.
+# The addresses are the ones you typed on the Monitors page (fields of mine): only those may be on your network or
+# Tailscale. No LLM.
+name: Check monitors
+app: Server ops
+description: Checks your monitors every five minutes; one down opens an incident, up again resolves it.
+trigger: { schedule: "*/5 * * * *" }
+steps:
+  - id: web
+    type: data.read
+    with:
+      type: Monitor
+      where:
+        - { field: kind, op: eq, value: http }
+        - { field: paused, op: neq, value: true }
+  - id: webCheck
+    type: http.check
+    forEach: "{{web.items}}"
+    with: { url: "{{item.url}}", expect: "{{item.expect}}", ignoreTlsErrors: "{{item.ignoreTlsErrors}}" }
+  - id: net
+    type: data.read
+    with:
+      type: Monitor
+      where:
+        - { field: kind, op: in, value: [tcp, ping] }
+        - { field: paused, op: neq, value: true }
+  - id: netCheck
+    type: net.check
+    forEach: "{{net.items}}"
+    with: { host: "{{item.host}}", kind: "{{item.kind}}", port: "{{item.port}}" }
+  - id: results
+    type: data.map
+    with:
+      from: { web: "{{web.items}}", webCheck: "{{webCheck}}", net: "{{net.items}}", netCheck: "{{netCheck}}" }
+      # Each monitor with what its check said.
+      expression: |-
+        $append(
+          $map(web, function($m, $i) { $merge([{ "name": $m.name }, webCheck[$i]]) }),
+          $map(net, function($m, $i) { $merge([{ "name": $m.name }, netCheck[$i]]) })
+        ).{
+          "name": name,
+          "status": state,
+          "ms": ms,
+          "error": error,
+          "checkedAt": checkedAt,
+          "certExpires": certExpires
+        }
+  - id: monitors
+    type: data.save
+    with: { items: "{{results.items}}", type: Monitor }
+  - id: times
+    type: data.history
+    with: { items: "{{results.items}}", collection: monitor-ms, key: name, value: ms, keep: 365 }
+  - id: open
+    type: data.read
+    with:
+      type: Incident
+      where:
+        - { field: source, op: eq, value: monitor }
+        - { field: status, op: in, value: [open, acknowledged] }
+  - id: incident
+    type: data.map
+    with:
+      from: { results: "{{results.items}}", open: "{{open.items}}" }
+      # A monitor down without an open Incident opens one; up again with one resolves it, with how long it lasted.
+      expression: |-
+        (
+          $at := $now();
+          $map(results, function($r) {(
+            $current := open[subject = $r.name][0];
+            $kept := $sift($current, function($v, $k) { $not($k in ["status", "notes"]) });
+            $down := $r.status = "down";
+            $down and $current ? undefined
+            : $down ? {
+                "id": "monitor:" & $r.name & ":" & $at,
+                "title": $r.name & " is down",
+                "source": "monitor",
+                "subject": $r.name,
+                "detail": $r.error,
+                "startedAt": $at,
+                "status": "open"
+              }
+            : $current ? $merge([$kept, {
+                "resolvedAt": $at,
+                "minutes": $round(($toMillis($at) - $toMillis($current.startedAt)) / 60000),
+                "status": "resolved"
+              }])
+          )})
+        )
+  - id: save
+    type: data.save
+    with: { items: "{{incident.items}}", type: Incident }
+  - id: resolved
+    type: data.filter
+    with: { items: "{{save.changed}}", where: [{ field: item.status, op: eq, value: resolved }] }
+  - id: down
+    type: notify.telegram
+    forEach: "{{save.added}}"
+    with: { text: "Down: {{item.subject}}. {{item.detail}}" }
+  - id: up
+    type: notify.telegram
+    forEach: "{{resolved.items}}"
+    with: { text: "Up again: {{item.item.subject}}, after {{item.item.minutes}} minutes." }

@@ -17,6 +17,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | Lists of data | Deduplicate, filter, save and compare with last time, read back an App's entities, track a number over time, reshape an API's JSON, tell once when a number crosses a line | `data.dedupe`, `data.filter`, `data.save`, `data.read`, `data.history`, `data.map`, `data.alert` |
 | Databases | Read your own PostgreSQL database with one query, read-only | `db.query` |
 | The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
+| Uptime | Check whether a web address, a port or a host answers, how fast, and when its certificate expires; on your network too | `http.check`, `net.check` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
 | Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub, Google Drive) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `topic.tidy`, `git.changes`, `drive.changes`, `topic.index`, `topic.attachments` |
@@ -89,6 +90,10 @@ pipeline can be saved.
   `policy`. `to: "{{draft.body}}"` is rejected.
 - **Domains are allowlisted.** `http.fetch`, `shop.product` and the browser steps only go to hosts the pipeline names
   in `policy.allowedDomains` (or a host literally written in the step). Private and VPN addresses are never read.
+- **Checks reach only addresses you chose (M47).** `http.check`'s and `net.check`'s address is written in the pipeline
+  or is exactly a field of mine of an App entity (a Monitor's address you typed); never from emails, pages, webhooks or
+  other steps. Only the latter may be a private, LAN or Tailscale address; loopback, link-local and a cloud's metadata
+  service never. A check says only whether it answers: it never reads the page.
 - **Credentials only go to the browser.** `{{cred:…}}` is accepted only by `browser.open`'s `login`, and only on the
   hosts the credential allows. LLM steps never see one.
 - **Budget.** Steps that call the LLM stop once the monthly LLM budget is spent, unless the pipeline is marked
@@ -484,6 +489,36 @@ steps:
       url: https://api.github.com/repos/<owner>/<repo>/issues
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
       body: { title: "Storm: {{trigger.pipeline}} failed", body: "{{trigger.summary}}", labels: [storm] }
+```
+
+#### `http.check`
+Whether a web address answers (an uptime monitor, M47): `state` up or down, the HTTP `status`, `ms` to the answer, and
+for https the certificate's expiry. Up: the status is `expect`, else any 2xx or 3xx; redirects are followed (each
+address checked again), at most 5. It never fails the step: a timeout, a refused connection or a bad certificate are
+`down`, with the `error`. It never reads the page. The address is written in the pipeline or is exactly a field of
+mine of an App entity (`{{item.url}}` over `data.read`'s items, `{{trigger.item.url}}`): only such an address may be
+private, on your LAN or Tailscale; loopback, link-local and a cloud's metadata never (`refused`: true).
+- In: `url`, `method` [GET; or HEAD], `expect`, `ignoreTlsErrors` [false: a self-signed certificate is down],
+  `timeoutSeconds` [10].
+- Out: `state`, `up`, `status`, `ms`, `error`, `refused`, `checkedAt`, `address` (the IP it connected to),
+  `certExpires` (YYYY-MM-DD), `certDays`.
+
+#### `net.check`
+Whether a host answers: `kind: tcp`, a connection to `port`, or `kind: ping`, one ICMP echo. The same address rules
+and output as `http.check` (without status and certificate). Ping works in the Docker image without any capability
+(unprivileged ICMP); where it can't, the check says so: check a port instead.
+- In: `host`, `kind` [tcp], `port`, `timeoutSeconds` [5].
+- Out: `state`, `up`, `ms`, `error`, `refused`, `checkedAt`, `address`.
+
+```yaml
+# Your Monitors (Server ops), checked every five minutes: pipelines/check-monitors.yaml
+- id: web
+  type: data.read
+  with: { type: Monitor, where: [{ field: kind, op: eq, value: http }] }
+- id: check
+  type: http.check
+  forEach: "{{web.items}}"
+  with: { url: "{{item.url}}", expect: "{{item.expect}}" }   # url is mine: you typed it on the Monitors page
 ```
 
 #### `db.query`
@@ -1300,7 +1335,7 @@ What the steps add up to, with the pipeline that does it:
 | Keep your online orders from the shops' emails, each email merged into its order, with a reminder before the return window closes | `email.fetch` → `email.classify` → `data.read` → `llm.extract` → `data.map` (merged into the saved entity: `data.save` writes it whole) → `data.save`; `entity.changed` → `data.map` → `flow.later` / `flow.cancel` | the Orders App ([orders.yaml](../pipelines/apps/orders.yaml)) with [orders.yaml](../pipelines/orders.yaml), [return-window.yaml](../pipelines/return-window.yaml), [return-reminder.yaml](../pipelines/return-reminder.yaml), [return-request.yaml](../pipelines/return-request.yaml) |
 | Keep what you pay for every month or year, with its price history, a reminder before a trial ends or a yearly renewal, and a monthly review | `email.fetch` → `email.classify` → `data.read` → `llm.extract` → `data.map` (merged, a month's price) → `data.history` → `data.filter` → `data.save`; `entity.changed` → `data.map` → `flow.later` / `flow.cancel`; `data.read` → `data.map` (totals per currency) → `llm.generate` | the Subscriptions App ([subscriptions.yaml](../pipelines/apps/subscriptions.yaml)) with [subscriptions.yaml](../pipelines/subscriptions.yaml), [renewal-watch.yaml](../pipelines/renewal-watch.yaml), [renewal-reminder.yaml](../pipelines/renewal-reminder.yaml), [subscription-review.yaml](../pipelines/subscription-review.yaml), [cancel-subscription.yaml](../pipelines/cancel-subscription.yaml) |
 | Your car's papers and services: told a month and a week before one runs out (or 1 000 km before a service) and when it's renewed, each date in your calendar | `data.read` (two `mine` types) → `data.map` (days and km left) → `data.alert` → `notify.telegram`; `entity.changed { field }` → `data.map` → `calendar.create` | the Car App ([car.yaml](../pipelines/apps/car.yaml)) with [car-papers-due.yaml](../pipelines/car-papers-due.yaml), [paper-in-calendar.yaml](../pipelines/paper-in-calendar.yaml) |
-| Incidents on what you run, each resolved when its cause is gone: a monitor down, a database check above 0, the database out of reach; a GitHub issue after you approve it, and the week in numbers | `{ webhook: token }` → `data.read` → `data.map` → `data.save`; `db.query` → `data.alert` → `data.map` → `data.save`; `run.finished { status: [FAILED] }` → `data.save`; `entity.action` → `http.request` → `data.save { stage }` | the Server ops App ([server-ops.yaml](../pipelines/apps/server-ops.yaml)) with [monitor-alerts.yaml](../pipelines/monitor-alerts.yaml), [database-check.yaml](../pipelines/database-check.yaml), [database-down.yaml](../pipelines/database-down.yaml), [incident-issue.yaml](../pipelines/incident-issue.yaml), [ops-week.yaml](../pipelines/ops-week.yaml) |
+| Your monitors (web addresses, ports, ping; on your network too) checked every five minutes, with their response times; incidents on what you run, each resolved when its cause is gone: a monitor down, a database check above 0, the database out of reach; a GitHub issue after you approve it, and the week in numbers | `schedule` → `data.read` → `http.check`, `net.check` → `data.map` → `data.save`, `data.history`; `{ webhook: token }` → `data.read` → `data.map` → `data.save`; `db.query` → `data.alert` → `data.map` → `data.save`; `run.finished { status: [FAILED] }` → `data.save`; `entity.action` → `http.request` → `data.save { stage }` | the Server ops App ([server-ops.yaml](../pipelines/apps/server-ops.yaml)) with [check-monitors.yaml](../pipelines/check-monitors.yaml), [monitor-alerts.yaml](../pipelines/monitor-alerts.yaml), [database-check.yaml](../pipelines/database-check.yaml), [database-down.yaml](../pipelines/database-down.yaml), [incident-issue.yaml](../pipelines/incident-issue.yaml), [ops-week.yaml](../pipelines/ops-week.yaml) |
 | Tell you when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../pipelines/prices.yaml) |
 | Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../pipelines/price-watch.yaml), [product-watch.yaml](../pipelines/product-watch.yaml) |
 | New releases of your stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../pipelines/release-watch.yaml), [release-notes.yaml](../pipelines/release-notes.yaml) |

@@ -176,6 +176,11 @@ export interface CompiledPolicy {
   allowedRecipients: string[];
   /** Targets that must come from an earlier step's actual output, never from LLM text. */
   provenance: ProvenanceRule[];
+  /**
+   * M47: the ids of the checks (http.check, net.check) whose address is a field of mine of an App entity, which the
+   * user typed: only these may reach a private, LAN or Tailscale address. Set by the compiler alone.
+   */
+  privateHosts?: string[];
 }
 
 export type TargetKind = "domain" | "recipient";

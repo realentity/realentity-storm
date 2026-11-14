@@ -60,6 +60,20 @@ export const TEST_EXECUTORS = [
       return Promise.resolve({ items, json: null, text: "", documents: [] });
     },
   },
+  // M47-E1: the browser stack has no Telegram; a message is taken as sent.
+  {
+    type: "notify.telegram",
+    execute: () => Promise.resolve({ sent: true }),
+  },
+  // M47-E1: checks that reach nothing: an address with "down" in it is down, any other up in 42 ms.
+  {
+    type: "http.check",
+    execute: (input: Record<string, unknown>) => Promise.resolve(check(String(input.url), { status: String(input.url).includes("down") ? 503 : 200, certExpires: "2027-01-31", certDays: 78 })),
+  },
+  {
+    type: "net.check",
+    execute: (input: Record<string, unknown>) => Promise.resolve(check(String(input.host))),
+  },
   {
     type: "browser.fillAndSubmit",
     execute: (input: Record<string, unknown>) =>
@@ -86,3 +100,8 @@ export const TEST_EXECUTORS = [
     },
   },
 ];
+
+function check(address: string, extra: Record<string, unknown> = {}) {
+  const up = !address.includes("down");
+  return { state: up ? "up" : "down", up, ms: up ? 42 : null, error: up ? null : "status 503", refused: false, checkedAt: new Date().toISOString(), address: "203.0.113.7", ...extra };
+}
