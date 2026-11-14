@@ -2,7 +2,7 @@ import { type PrismaClient } from "@realentity/storm-db";
 import { type Embeddings, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { isNoReplyAddress, unanswerable, type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
-import { type MailConnector } from "../mail/mail-connector";
+import { mailWho, type MailConnector } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock } from "./email-block";
@@ -31,17 +31,24 @@ export class EmailFetchStep implements StepExecutor {
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { mailbox, limit, sinceDays } = input as { mailbox: string; limit: number; sinceDays: number };
+    const { mailbox, limit, sinceDays, account } = input as { mailbox: string; limit: number; sinceDays: number; account?: string };
     const where = { pipelineId_mailbox: { pipelineId: context.pipelineId, mailbox } };
     const cursor = await this.prisma.mailCursor.findUnique({ where });
-    const result = await this.mail.fetch(context.userId, {
+    const who = mailWho(context, account);
+    // A cursor is per account: another account (the slot filled with another one) starts again from `since`.
+    const same = cursor && (cursor.emailAccountId === null || who.account === undefined || cursor.emailAccountId === who.account);
+    const result = await this.mail.fetch(who, {
       mailbox,
-      after: cursor ? { uidValidity: cursor.uidValidity, lastUid: Number(cursor.lastUid) } : null,
+      after: cursor && same ? { uidValidity: cursor.uidValidity, lastUid: Number(cursor.lastUid) } : null,
       since: new Date(Date.now() - sinceDays * DAY_MS),
       limit,
     });
     if (!context.dryRun) {
-      const position = { uidValidity: result.position.uidValidity, lastUid: BigInt(result.position.lastUid) };
+      const position = {
+        uidValidity: result.position.uidValidity,
+        lastUid: BigInt(result.position.lastUid),
+        emailAccountId: result.account,
+      };
       await this.prisma.mailCursor.upsert({
         where,
         create: { userId: context.userId, pipelineId: context.pipelineId, mailbox, ...position },
@@ -167,9 +174,19 @@ export class DraftReplyStep extends LlmStep {
     });
     const email = emailBlock(message);
     // Examples are found by the email alone: the thread is what was said, not what kind of reply it needs.
-    const [examples, thread] = await Promise.all([this.examplesFor(context, email), readThread(this.mail, context.userId, message)]);
+    const [examples, thread] = await Promise.all([
+      this.examplesFor(context, email),
+      readThread(this.mail, mailWho(context, message.account), message),
+    ]);
     // The topic's memory changes less often than the email: a cached start of the prompt.
-    const draft = await this.call(context, system, `${examples}${thread}${memory.passages}${email}`, schema, true, memory.block || undefined);
+    const draft = await this.call(
+      context,
+      system,
+      `${examples}${thread}${memory.passages}${email}`,
+      schema,
+      true,
+      memory.block || undefined,
+    );
     return {
       subject: replySubject(message.subject),
       body: draft.body.trim(),
@@ -191,19 +208,20 @@ export class EmailSendStep implements StepExecutor {
   constructor(private readonly mail: MailConnector) {}
 
   execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { to, subject, body, inReplyTo, references } = input as {
+    const { to, subject, body, inReplyTo, references, account } = input as {
       to: string;
       subject: string;
       body: string;
       inReplyTo?: string;
       references?: string[];
+      account?: string | null;
     };
     // Never a reply to an address nobody reads, whatever the pipeline says (the user's own address: the connector refuses).
     if (inReplyTo && isNoReplyAddress(to))
       return Promise.reject(new Error(`Not sent: ${to} is a no-reply address, nobody reads replies to it`));
     // The thread is the original's references plus the message replied to (RFC 5322 §3.6.4).
     const thread = inReplyTo ? [...(references ?? []).filter((id) => id !== inReplyTo), inReplyTo] : references;
-    return this.mail.send(context.userId, { to, subject, body, inReplyTo, references: thread });
+    return this.mail.send(mailWho(context, account), { to, subject, body, inReplyTo, references: thread });
   }
 }
 

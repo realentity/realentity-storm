@@ -703,6 +703,7 @@ export class PipelineRunner {
       budgetStops: () => this.controls.budgetStops(state.controlled),
       allowedDomains: [...state.policy.allowedDomains, ...approvedDomains],
       credentials: state.bindings.credentials,
+      emailAccounts: state.bindings.emailAccounts,
       privateHosts: state.policy.privateHosts?.includes(row.stepKey) ?? false,
       emit: (event, data) => this.emitEvent(state, event, data),
       attention: this.takeovers

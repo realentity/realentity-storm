@@ -19,5 +19,14 @@ export async function checkCredentials(prisma: PrismaClient, keys: KeyRing): Pro
       result.failed.push({ name: row.name, keyVersion: row.keyVersion });
     }
   }
+  // M50-T7: email accounts' app passwords, by their address.
+  for (const row of await prisma.emailAccount.findMany({ orderBy: { address: "asc" } })) {
+    try {
+      open(keys, row.emailAccountId, row);
+      result.ok.push(`email ${row.address}`);
+    } catch {
+      result.failed.push({ name: `email ${row.address}`, keyVersion: row.keyVersion });
+    }
+  }
   return result;
 }

@@ -31,11 +31,12 @@ export class ExamplesService {
   ) {}
 
   async setup(userId: string): Promise<SetupView> {
-    const [credentials, recipes, google, lastRead] = await Promise.all([
+    const [credentials, accounts, recipes, google, lastRead] = await Promise.all([
       this.prisma.client.credential.findMany({ where: { userId }, select: { name: true } }),
+      this.prisma.client.emailAccount.count({ where: { userId } }),
       this.prisma.client.siteRecipe.findMany({ where: { userId }, select: { name: true }, distinct: ["name"] }),
       this.prisma.client.googleConnection.findUnique({ where: { userId }, select: { status: true } }),
-      // The last time mail was read: a credential that is there but refused isn't set up.
+      // The last time mail was read: an account that is there but refused (its app password revoked) isn't set up.
       this.prisma.client.step.findFirst({
         where: { type: "email.fetch", status: { in: ["DONE", "FAILED"] }, run: { userId } },
         orderBy: { finishedAt: "desc" },
@@ -43,7 +44,8 @@ export class ExamplesService {
       }),
     ]);
     const names = credentials.map((c) => c.name);
-    const configured = Boolean(this.env.IMAP_HOST) && names.includes(this.env.MAIL_CREDENTIAL);
+    // M50-T7: an email account in Settings.
+    const configured = accounts > 0;
     const emailProblem = configured && lastRead?.status === "FAILED" ? (lastRead.error ?? "reading mail failed") : null;
     return {
       email: configured && !emailProblem,
@@ -71,7 +73,8 @@ export class ExamplesService {
       items.push({ label: need.label, done: needMet(need, setup, entities), ...where(need, appId), ...problem });
     }
     // M50-T6: each slot not filled yet, the App's (on its page) and its pipelines' (on theirs).
-    for (const slot of emptySlots(await this.bindings.ofApp(userId, appId))) items.push({ label: slotLabel(slot), done: false, link: `/apps/${appId}#needs` });
+    for (const slot of emptySlots(await this.bindings.ofApp(userId, appId)))
+      items.push({ label: slotLabel(slot), done: false, link: `/apps/${appId}#needs` });
     const detail = await this.apps.get(userId, appId);
     for (const { pipelineId } of detail.pipelines) {
       const own = (await this.bindings.ofPipeline(userId, pipelineId)).filter((v) => v.owner === "pipeline");
@@ -102,7 +105,7 @@ function slotLabel(slot: BindingView): string {
 function where(need: ExampleNeed, appId: string): { link: string | null; note?: string } {
   switch (need.kind) {
     case "email":
-      return { link: "/credentials" };
+      return { link: "/settings#email" };
     case "google-calendar":
       return { link: "/settings" };
     case "recipe":

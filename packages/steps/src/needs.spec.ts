@@ -47,7 +47,35 @@ describe("needs (M50)", () => {
       feed: { kind: "credential", for: "api.example.org" },
     });
     // Without slots, none.
-    expect(ok(compiler.compile({ name: "P", steps: [{ id: "t", type: "notify.telegram", with: { text: "hi" } }] })).definition.needs).toBeUndefined();
+    expect(
+      ok(compiler.compile({ name: "P", steps: [{ id: "t", type: "notify.telegram", with: { text: "hi" } }] })).definition.needs,
+    ).toBeUndefined();
+  });
+
+  it("M50-T7: an email step's account written as a name is an email slot; one from data ({{…}}) is not; a credential slot isn't one", () => {
+    const reply = {
+      id: "send",
+      type: "email.send",
+      forEach: "{{fetch.messages}}",
+      with: { to: "a@example.org", subject: "Hi", body: "Hi", account: "{{item.account}}" },
+    };
+    const result = ok(
+      compiler.compile({
+        name: "P",
+        policy: { allowedDomains: [], allowedRecipients: ["a@example.org"] },
+        steps: [{ id: "fetch", type: "email.fetch", with: { account: "work" } }, reply],
+      }),
+    );
+    expect(result.definition.needs).toEqual({ work: { kind: "email" } });
+    expect(
+      errorsOf(
+        compiler.compile({
+          name: "P",
+          needs: { work: { kind: "credential" } },
+          steps: [{ id: "fetch", type: "email.fetch", with: { account: "work" } }],
+        }),
+      ),
+    ).toEqual(['steps[0].with.account: "work" is a credential, not an email account']);
   });
 
   it("uses each slot as what it is: a credential isn't a setting, nor a setting a credential, nor an API key a database", () => {
@@ -64,9 +92,9 @@ describe("needs (M50)", () => {
       'steps[0].with.headers: "github" is a setting (text), not a credential: {{setting.github}}',
       'steps[1].with.connection: "db" is a api_key credential; db.query\'s connection is a database',
     ]);
-    expect(errorsOf(compiler.compile({ name: "P", steps: [{ id: "t", type: "notify.telegram", with: { text: "{{setting.a.b}}" } }] }))[0]).toContain(
-      "is not a setting: {{setting.<slot>}}",
-    );
+    expect(
+      errorsOf(compiler.compile({ name: "P", steps: [{ id: "t", type: "notify.telegram", with: { text: "{{setting.a.b}}" } }] }))[0],
+    ).toContain("is not a setting: {{setting.<slot>}}");
   });
 
   it("leaves a slot its App declares to the App: each install fills it", () => {

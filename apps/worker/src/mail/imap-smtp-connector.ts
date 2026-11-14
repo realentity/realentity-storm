@@ -1,17 +1,21 @@
+import { type KeyRing, open } from "@realentity/storm-crypto";
+import { type PrismaClient } from "@realentity/storm-db";
+import { LOCAL_MAIL_HOSTS } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { ImapFlow, type FetchMessageObject, type MessageStructureObject } from "imapflow";
 import { simpleParser, type AddressObject } from "mailparser";
 import { createTransport } from "nodemailer";
-import { type CredentialVault } from "../secrets/credential-vault";
 import {
   boundedText,
   messageIds,
   threadIdOf,
   withoutSecret,
+  NoEmailAccountError,
   type FetchRequest,
   type FetchResult,
   type MailAttachment,
   type MailConnector,
+  type MailWho,
   type OutgoingMail,
   type RecentRequest,
   type SentMail,
@@ -22,15 +26,16 @@ import {
 /** Gmail's All Mail: every message once, archived or sent. */
 const ALL_MAILBOX = "\\All";
 
-export interface MailServerConfig {
-  imapHost?: string;
+/** One email account, opened: its servers, and the address and app password it signs in with. */
+interface Account {
+  emailAccountId: string;
+  user: string;
+  pass: string;
+  imapHost: string;
   imapPort: number;
-  smtpHost?: string;
+  smtpHost: string;
   smtpPort: number;
-  /** TLS from the first byte (993/465); off only for a local test server (checked in the environment schema). */
   tls: boolean;
-  /** The credential with the address (username) and the app password. */
-  credential: string;
 }
 
 /** Text is parsed from at most this much of a message; attachments are listed from BODYSTRUCTURE, never downloaded. */
@@ -38,30 +43,30 @@ const SOURCE_LIMIT = 2_000_000;
 const TIMEOUT_MS = 30_000;
 
 /**
- * IMAP (imapflow) and SMTP (nodemailer) with an app password (docs/design.md §4). The password is decrypted per operation,
- * only for the configured server's host (the credential's allowedHosts), and never appears in errors.
+ * IMAP (imapflow) and SMTP (nodemailer) with an app password (docs/design.md §4), per email account (M50-T7). The
+ * password is opened per operation, only for that account's own servers, and never appears in errors.
  */
 export class ImapSmtpConnector implements MailConnector {
   constructor(
-    private readonly config: MailServerConfig,
-    private readonly vault: CredentialVault,
+    private readonly prisma: PrismaClient,
+    private readonly keys: KeyRing,
   ) {}
 
-  async recent(userId: string, request: RecentRequest): Promise<EmailMessage[]> {
-    return this.imap(userId, async (client) => {
+  async recent(who: MailWho, request: RecentRequest): Promise<EmailMessage[]> {
+    return this.imap(who, async (client, _user, account) => {
       const name = request.mailbox === SENT_MAILBOX ? await sentMailbox(client) : request.mailbox;
       const lock = await client.getMailboxLock(name, { readOnly: true });
       try {
         const found = (await client.search({ since: request.since }, { uid: true })) || [];
-        return await fetchMessages(client, found.sort((a, b) => a - b).slice(-request.limit));
+        return await fetchMessages(client, found.sort((a, b) => a - b).slice(-request.limit), account);
       } finally {
         lock.release();
       }
     });
   }
 
-  async attachments(userId: string, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]> {
-    return this.imap(userId, async (client) => {
+  async attachments(who: MailWho, request: { mailbox: string; uid: number; maxBytes: number }): Promise<MailAttachment[]> {
+    return this.imap(who, async (client) => {
       const lock = await client.getMailboxLock(request.mailbox, { readOnly: true });
       try {
         const fetched = await client.fetchOne(String(request.uid), { source: { maxLength: request.maxBytes } }, { uid: true });
@@ -74,10 +79,10 @@ export class ImapSmtpConnector implements MailConnector {
     });
   }
 
-  async thread(userId: string, messageIds: string[]): Promise<ThreadMessage[]> {
+  async thread(who: MailWho, messageIds: string[]): Promise<ThreadMessage[]> {
     const wanted = new Set(messageIds);
     if (wanted.size === 0) return [];
-    return this.imap(userId, async (client, user) => {
+    return this.imap(who, async (client, user, account) => {
       const boxes = await client.list();
       const all = boxes.find((box) => box.specialUse === ALL_MAILBOX)?.path;
       const sent = sentPath(boxes);
@@ -90,7 +95,7 @@ export class ImapSmtpConnector implements MailConnector {
         const lock = await client.getMailboxLock(name, { readOnly: true });
         try {
           const uids = ((await client.search(query, { uid: true })) || []).sort((a, b) => a - b);
-          for (const message of await fetchMessages(client, uids)) {
+          for (const message of await fetchMessages(client, uids, account)) {
             if (wanted.has(message.messageId) && !found.has(message.messageId)) found.set(message.messageId, message);
           }
         } finally {
@@ -103,14 +108,12 @@ export class ImapSmtpConnector implements MailConnector {
   }
 
   /** A read-only IMAP session; errors without the password. */
-  private async imap<T>(userId: string, work: (client: ImapFlow, user: string) => Promise<T>): Promise<T> {
-    const host = this.config.imapHost;
-    if (!host) throw new Error("Mail is not configured (IMAP_HOST)");
-    const login = await this.login(userId, host);
+  private async imap<T>(who: MailWho, work: (client: ImapFlow, user: string, account: string) => Promise<T>): Promise<T> {
+    const login = await this.account(who);
     const client = new ImapFlow({
-      host,
-      port: this.config.imapPort,
-      secure: this.config.tls,
+      host: login.imapHost,
+      port: login.imapPort,
+      secure: login.tls,
       auth: { user: login.user, pass: login.pass },
       logger: false,
       connectionTimeout: TIMEOUT_MS,
@@ -119,7 +122,7 @@ export class ImapSmtpConnector implements MailConnector {
     });
     try {
       await client.connect();
-      return await work(client, login.user);
+      return await work(client, login.user, login.emailAccountId);
     } catch (error) {
       throw new Error(`IMAP: ${withoutSecret(message(error), login.pass)}`);
     } finally {
@@ -127,8 +130,8 @@ export class ImapSmtpConnector implements MailConnector {
     }
   }
 
-  async fetch(userId: string, request: FetchRequest): Promise<FetchResult> {
-    return this.imap(userId, async (client) => {
+  async fetch(who: MailWho, request: FetchRequest): Promise<FetchResult> {
+    return this.imap(who, async (client, _user, account) => {
       // "Sent" is the server's Sent folder, whatever it is called there ([Gmail]/Sent Mail, a translated name).
       const name = /^sent$/i.test(request.mailbox) || request.mailbox === SENT_MAILBOX ? await sentMailbox(client) : request.mailbox;
       // Read-only: EXAMINE, so even fetching a body doesn't set \Seen.
@@ -146,28 +149,26 @@ export class ImapSmtpConnector implements MailConnector {
           .filter((uid) => uid > floor)
           .sort((a, b) => a - b)
           .slice(0, request.limit);
-        const messages = await fetchMessages(client, uids);
+        const messages = await fetchMessages(client, uids, account);
         // Next time: after the last message returned, or (nothing new) after everything the mailbox has now.
         const lastUid = uids.length > 0 ? uids[uids.length - 1] : Math.max(floor, mailbox.uidNext - 1);
-        return { messages, position: { uidValidity: mailbox.uidValidity, lastUid } };
+        return { account, messages, position: { uidValidity: mailbox.uidValidity, lastUid } };
       } finally {
         lock.release();
       }
     });
   }
 
-  async send(userId: string, mail: OutgoingMail): Promise<SentMail> {
-    const host = this.config.smtpHost;
-    if (!host) throw new Error("Mail is not configured (SMTP_HOST)");
-    const login = await this.login(userId, host);
+  async send(who: MailWho, mail: OutgoingMail): Promise<SentMail> {
+    const login = await this.account(who);
     // A reply to the user's own address answers mail they sent themselves (Storm's own messages): never sent.
     if (mail.inReplyTo && mail.to.trim().toLowerCase() === login.user.trim().toLowerCase()) {
       throw new Error("Not sent: a reply to your own address (mail you sent yourself)");
     }
     const transport = createTransport({
-      host,
-      port: this.config.smtpPort,
-      secure: this.config.tls,
+      host: login.smtpHost,
+      port: login.smtpPort,
+      secure: login.tls,
       auth: { user: login.user, pass: login.pass },
       connectionTimeout: TIMEOUT_MS,
       greetingTimeout: TIMEOUT_MS,
@@ -183,7 +184,7 @@ export class ImapSmtpConnector implements MailConnector {
         ...(mail.references?.length ? { references: mail.references } : {}),
       });
       const accepted = (info.accepted as (string | { address: string })[]).map((a) => (typeof a === "string" ? a : a.address));
-      return { messageId: String(info.messageId), accepted };
+      return { messageId: String(info.messageId), accepted, from: login.user };
     } catch (error) {
       throw new Error(`SMTP: ${withoutSecret(message(error), login.pass)}`);
     } finally {
@@ -191,15 +192,27 @@ export class ImapSmtpConnector implements MailConnector {
     }
   }
 
-  private async login(userId: string, host: string): Promise<{ user: string; pass: string }> {
-    const credential = await this.vault.revealOwn(userId, this.config.credential, host);
-    if (!credential.username) throw new Error(`Credential "${this.config.credential}" needs a username: the email address`);
-    return { user: credential.username, pass: credential.secret };
+  /** The account asked for (the user's), else their default one; its password opened for this use only. */
+  private async account(who: MailWho): Promise<Account> {
+    const row = who.account
+      ? await this.prisma.emailAccount.findFirst({ where: { emailAccountId: who.account, userId: who.userId } })
+      : await this.prisma.emailAccount.findFirst({
+          where: { userId: who.userId },
+          orderBy: [{ isDefault: "desc" }, { dateCreated: "asc" }],
+        });
+    if (!row) throw new NoEmailAccountError(who.account);
+    // The api refuses it too: the app password never travels unencrypted to anything but a local test server.
+    if (!row.tls && ![row.imapHost, row.smtpHost].every((host) => LOCAL_MAIL_HOSTS.includes(host))) {
+      throw new Error(`${row.address}: TLS is off for a server that isn't local`);
+    }
+    const pass = open(this.keys, row.emailAccountId, row);
+    await this.prisma.emailAccount.update({ where: { emailAccountId: row.emailAccountId }, data: { lastUsedAt: new Date() } });
+    return { ...row, user: row.address, pass };
   }
 }
 
-/** The messages with these UIDs, in UID order. */
-async function fetchMessages(client: ImapFlow, uids: number[]): Promise<EmailMessage[]> {
+/** The messages with these UIDs, in UID order, each marked with the account read. */
+async function fetchMessages(client: ImapFlow, uids: number[], account: string): Promise<EmailMessage[]> {
   const messages: EmailMessage[] = [];
   if (uids.length === 0) return messages;
   for await (const message of client.fetch(
@@ -207,7 +220,7 @@ async function fetchMessages(client: ImapFlow, uids: number[]): Promise<EmailMes
     { uid: true, bodyStructure: true, internalDate: true, source: { maxLength: SOURCE_LIMIT } },
     { uid: true },
   )) {
-    messages.push(await toEmailMessage(message));
+    messages.push({ ...(await toEmailMessage(message)), account });
   }
   return messages.sort((a, b) => a.uid - b.uid);
 }

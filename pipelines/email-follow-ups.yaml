@@ -24,4 +24,5 @@ steps:
       body: "{{draft.body}}"
       inReplyTo: "{{item.message.messageId}}"
       references: "{{item.references}}"
+      account: "{{item.message.account}}" # from the account it was sent from
 limits: { email.send: 10/day }

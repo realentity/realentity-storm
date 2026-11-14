@@ -11,6 +11,7 @@ import {
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
+import { EmailAccountsCard } from "../components/EmailAccountsCard";
 import { GoogleCalendarCard } from "../components/GoogleCalendarCard";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { useCatalog } from "../lib/catalog";
@@ -37,6 +38,7 @@ export function SettingsPage() {
         </div>
         <div className="col-lg-5 d-flex flex-column gap-3">
           <Budget settings={settings.data} spending={spending.data} onSaved={settings.reload} />
+          <EmailAccountsCard />
           <GoogleCalendarCard />
           <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
           <WeeklyReview settings={settings.data} onSaved={settings.reload} />
@@ -81,8 +83,8 @@ function TelegramApprovals({ settings, onSaved }: { settings: SettingsView; onSa
           />
           <span className="form-check-label">Approve on Telegram</span>
           <div className="small text-secondary">
-            The Storm bot's messages get Approve and Reject when the whole payload fits in the message and nothing new is targeted.
-            Off: they only link here.
+            The Storm bot's messages get Approve and Reject when the whole payload fits in the message and nothing new is targeted. Off:
+            they only link here.
           </div>
         </label>
       </div>
@@ -295,8 +297,8 @@ function Budget({ settings, spending, onSaved }: { settings: SettingsView; spend
         </div>
         <div className="form-hint">
           {settings.budgetSource === "env" && "Currently from LLM_MONTHLY_BUDGET_USD. "}
-          When this month's LLM cost reaches it, non-essential pipelines stop before their next LLM step. Telegram tells you at 80% and
-          when it is reached. Empty: back to .env (or no limit).
+          When this month's LLM cost reaches it, non-essential pipelines stop before their next LLM step. Telegram tells you at 80% and when
+          it is reached. Empty: back to .env (or no limit).
         </div>
         {spending && <MonthSpent spending={spending} />}
       </div>

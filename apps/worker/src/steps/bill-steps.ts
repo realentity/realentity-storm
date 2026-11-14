@@ -1,7 +1,7 @@
 import { type PrismaClient } from "@realentity/storm-db";
 import { billValue, type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
-import { type MailConnector } from "../mail/mail-connector";
+import { mailWho, type MailConnector, type MailWho } from "../mail/mail-connector";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { appType } from "./entity-steps";
 import { emailBlock } from "./email-block";
@@ -17,7 +17,11 @@ const PDF_CHARS = 8_000;
 const USUAL_OF = 6;
 
 const BillAnswerSchema = z.object({
-  isBill: z.boolean().describe("an amount the user has to pay: an invoice, a utility bill, a payment request; not a receipt of a payment already made, an offer or a newsletter"),
+  isBill: z
+    .boolean()
+    .describe(
+      "an amount the user has to pay: an invoice, a utility bill, a payment request; not a receipt of a payment already made, an offer or a newsletter",
+    ),
   issuer: z.string().max(200).describe("who bills, short: the company name as the bill gives it"),
   amount: z.number().nonnegative().describe("the total to pay, as a number"),
   currency: z.string().max(8).describe("ISO 4217 code, e.g. BGN, EUR"),
@@ -51,7 +55,7 @@ export class BillReadStep extends LlmStep {
     const bills = [];
     let notBills = 0;
     for (const message of messages) {
-      const pdfs = await this.pdfsOf(context.userId, mailbox, message);
+      const pdfs = await this.pdfsOf(mailWho(context, message.account), mailbox, message);
       const prompt = [emailBlock(message), ...pdfs.map((text, i) => `<attachment index="${i}">\n${text}\n</attachment>`)].join("\n\n");
       const answer = await this.call(context, SYSTEM, prompt, BillAnswerSchema, true);
       if (!answer.isBill || answer.amount <= 0) {
@@ -74,12 +78,14 @@ export class BillReadStep extends LlmStep {
   }
 
   /** The text of the email's PDF attachments; a PDF that can't be read is left out, not a failure. */
-  private async pdfsOf(userId: string, mailbox: string, message: EmailMessage): Promise<string[]> {
+  private async pdfsOf(who: MailWho, mailbox: string, message: EmailMessage): Promise<string[]> {
     const listed = message.attachments.filter((a) => a.contentType === "application/pdf" || /\.pdf$/i.test(a.filename ?? ""));
     if (listed.length === 0) return [];
-    const attachments = await this.mail.attachments(userId, { mailbox, uid: message.uid, maxBytes: MAX_MESSAGE_BYTES });
+    const attachments = await this.mail.attachments(who, { mailbox, uid: message.uid, maxBytes: MAX_MESSAGE_BYTES });
     const texts: string[] = [];
-    for (const attachment of attachments.filter((a) => a.contentType === "application/pdf" || /\.pdf$/i.test(a.filename ?? "")).slice(0, MAX_PDFS)) {
+    for (const attachment of attachments
+      .filter((a) => a.contentType === "application/pdf" || /\.pdf$/i.test(a.filename ?? ""))
+      .slice(0, MAX_PDFS)) {
       const text = await pdfText(attachment.content).catch(() => "");
       if (text.trim()) texts.push(text.trim().slice(0, PDF_CHARS));
     }
@@ -135,7 +141,16 @@ export class BillSaveStep implements StepExecutor {
       const now = new Date();
       await this.prisma.dataEntity.upsert({
         where,
-        create: { appId, type: "Bill", key: billKey, value, stage: "due", stageDates: { due: now.toISOString() }, firstSeenAt: now, lastSeenAt: now },
+        create: {
+          appId,
+          type: "Bill",
+          key: billKey,
+          value,
+          stage: "due",
+          stageDates: { due: now.toISOString() },
+          firstSeenAt: now,
+          lastSeenAt: now,
+        },
         update: { value, lastSeenAt: now, removedAt: null },
       });
       if (!existing) {
@@ -154,9 +169,16 @@ export class BillSaveStep implements StepExecutor {
     }
     const remind = added
       .filter((bill) => bill.dueDate)
-      .map((bill) => ({ ...bill, remindAt: `${shiftDays(bill.dueDate!, -remindDaysBefore)}T09:00:00`, title: `Pay ${bill.issuer}: ${bill.amount.toFixed(2)} ${bill.currency}` }));
+      .map((bill) => ({
+        ...bill,
+        remindAt: `${shiftDays(bill.dueDate!, -remindDaysBefore)}T09:00:00`,
+        title: `Pay ${bill.issuer}: ${bill.amount.toFixed(2)} ${bill.currency}`,
+      }));
     const jumpText = jumps
-      .map((j) => `${j.issuer}: ${j.amount.toFixed(2)} ${j.currency}, ${j.percent}% above the usual ${j.usual.toFixed(2)}${j.period ? ` (${j.period})` : ""}`)
+      .map(
+        (j) =>
+          `${j.issuer}: ${j.amount.toFixed(2)} ${j.currency}, ${j.percent}% above the usual ${j.usual.toFixed(2)}${j.period ? ` (${j.period})` : ""}`,
+      )
       .join("\n");
     return { added, updated, remind, jumps, jumpText: jumpText ? `Bills higher than usual:\n${jumpText}` : "" };
   }
@@ -164,7 +186,11 @@ export class BillSaveStep implements StepExecutor {
   /** The median of the issuer's last six bills in this currency, or null with fewer than two. */
   private async usual(appId: string, issuerKey: string, currency: string): Promise<number | null> {
     const earlier = await this.prisma.dataEntity.findMany({
-      where: { appId, type: "Bill", AND: [{ value: { path: ["issuerKey"], equals: issuerKey } }, { value: { path: ["currency"], equals: currency } }] },
+      where: {
+        appId,
+        type: "Bill",
+        AND: [{ value: { path: ["issuerKey"], equals: issuerKey } }, { value: { path: ["currency"], equals: currency } }],
+      },
       orderBy: { firstSeenAt: "desc" },
       take: 50,
       select: { value: true, firstSeenAt: true },

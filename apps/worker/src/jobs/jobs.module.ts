@@ -1,4 +1,14 @@
-import { ClaudeBatches, ClaudeChat, ClaudeClient, LlmError, ModelRouter, OpenAiEmbeddings, emptyUsage, type LlmChat, type LlmClient } from "@realentity/storm-llm";
+import {
+  ClaudeBatches,
+  ClaudeChat,
+  ClaudeClient,
+  LlmError,
+  ModelRouter,
+  OpenAiEmbeddings,
+  emptyUsage,
+  type LlmChat,
+  type LlmClient,
+} from "@realentity/storm-llm";
 import { TopicBackfills } from "../sources/backfill";
 import { JobQueue, publishEvent } from "@realentity/storm-queue";
 import { KeyRing } from "@realentity/storm-crypto";
@@ -135,10 +145,26 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       useFactory: (db: PrismaService, keys: KeyRing, env: ServerEnv) =>
         new GoogleConnection(db.client, keys, { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }),
     },
-    { provide: LaterStarts, inject: [PrismaService, JobQueue], useFactory: (db: PrismaService, queue: JobQueue) => new LaterStarts(db.client, queue) },
+    {
+      provide: LaterStarts,
+      inject: [PrismaService, JobQueue],
+      useFactory: (db: PrismaService, queue: JobQueue) => new LaterStarts(db.client, queue),
+    },
     {
       provide: STEP_EXECUTORS,
-      inject: [PrismaService, SERVER_ENV, CredentialVault, ModelRouter, Learning, BrowserPool, SessionStore, ArtifactStore, GoogleConnection, LaterStarts],
+      inject: [
+        PrismaService,
+        SERVER_ENV,
+        CredentialVault,
+        ModelRouter,
+        Learning,
+        BrowserPool,
+        SessionStore,
+        ArtifactStore,
+        GoogleConnection,
+        LaterStarts,
+        KeyRing,
+      ],
       useFactory: (
         db: PrismaService,
         env: ServerEnv,
@@ -150,6 +176,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         artifacts: ArtifactStore,
         google: GoogleConnection,
         later: LaterStarts,
+        keys: KeyRing,
       ): StepExecutor[] => {
         return coreSteps({
           google,
@@ -173,17 +200,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           appFiles: new AppFileStore(env.DOCUMENTS_DIR),
           router,
           telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },
-          mail: new ImapSmtpConnector(
-            {
-              imapHost: env.IMAP_HOST,
-              imapPort: env.IMAP_PORT,
-              smtpHost: env.SMTP_HOST,
-              smtpPort: env.SMTP_PORT,
-              tls: env.MAIL_TLS,
-              credential: env.MAIL_CREDENTIAL,
-            },
-            vault,
-          ),
+          mail: new ImapSmtpConnector(db.client, keys),
           prisma: db.client,
           learning,
           vault,
@@ -303,17 +320,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             brief: new MorningBrief(db.client, notifier(env), calendarEvents(db, google), env.APP_ORIGIN),
             backfills: new TopicBackfills(
               db.client,
-              new ImapSmtpConnector(
-                {
-                  imapHost: env.IMAP_HOST,
-                  imapPort: env.IMAP_PORT,
-                  smtpHost: env.SMTP_HOST,
-                  smtpPort: env.SMTP_PORT,
-                  tls: env.MAIL_TLS,
-                  credential: env.MAIL_CREDENTIAL,
-                },
-                vault,
-              ),
+              new ImapSmtpConnector(db.client, keys),
               env.ANTHROPIC_API_KEY ? ClaudeBatches.fromApiKey(env.ANTHROPIC_API_KEY) : null,
               router,
               controls,

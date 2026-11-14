@@ -1,4 +1,4 @@
-import { KeyRing, seal } from "@realentity/storm-crypto";
+import { KeyRing } from "@realentity/storm-crypto";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
 import { type EmailMessage } from "@realentity/storm-steps";
@@ -9,9 +9,8 @@ import { join } from "node:path";
 import { type z } from "zod";
 import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
-import { CredentialVault } from "../src/secrets/credential-vault";
 import { BillReadStep, BillSaveStep } from "../src/steps/bill-steps";
-import { APP_PASSWORD, MAILBOX, startMailServer, type TestMailServer } from "./support/greenmail";
+import { addEmailAccount, startMailServer, type TestMailServer } from "./support/greenmail";
 import { pdfWithText } from "./support/pdf";
 
 jest.setTimeout(60_000);
@@ -24,7 +23,15 @@ class BillReader implements LlmClient {
     const found = /Total (\d+\.\d{2}) ([A-Z]{3}), due (\d{4}-\d{2}-\d{2}), invoice ([\w-]+)/.exec(request.prompt);
     const issuer = /From: (?:.*<)?[^@\s<]+@([^>\s]+)/.exec(request.prompt)?.[1] ?? "";
     const answer = found
-      ? { isBill: true, issuer, amount: Number(found[1]), currency: found[2], dueDate: found[3], period: found[3].slice(0, 7), reference: found[4] }
+      ? {
+          isBill: true,
+          issuer,
+          amount: Number(found[1]),
+          currency: found[2],
+          dueDate: found[3],
+          period: found[3].slice(0, 7),
+          reference: found[4],
+        }
       : { isBill: false, issuer: "", amount: 0, currency: "", dueDate: null, period: null, reference: null };
     return Promise.resolve({ output: request.schema.parse(answer), usage: { ...emptyUsage(), calls: 1, costUsd: 0.001 } });
   }
@@ -44,15 +51,8 @@ describe("bills", () => {
     server = await startMailServer();
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
-    const keys = KeyRing.fromEnv(process.env);
-    const credentialId = randomUUID();
-    await db.client.credential.create({
-      data: { credentialId, userId, name: "mail", kind: "PASSWORD", username: MAILBOX, allowedHosts: [server.host], ...seal(keys, credentialId, APP_PASSWORD) },
-    });
-    connector = new ImapSmtpConnector(
-      { imapHost: server.host, imapPort: server.imapPort, smtpHost: server.host, smtpPort: server.smtpPort, tls: false, credential: "mail" },
-      new CredentialVault(db.client, keys),
-    );
+    await addEmailAccount(db.client, userId, server);
+    connector = new ImapSmtpConnector(db.client, KeyRing.fromEnv(process.env));
   }, 120_000);
 
   let appId: string;
@@ -69,7 +69,7 @@ describe("bills", () => {
   });
 
   afterAll(async () => {
-    await db.client.credential.deleteMany();
+    await db.client.emailAccount.deleteMany();
     await db.close();
     await server.stop();
   });
@@ -87,7 +87,8 @@ describe("bills", () => {
     attention: NO_ATTENTION,
   });
   const bills = () => db.client.dataEntity.findMany({ where: { appId, type: "Bill" }, orderBy: { key: "asc" } });
-  const inbox = async () => (await connector.fetch(userId, { mailbox: "INBOX", after: null, since: new Date(Date.now() - 86_400_000), limit: 50 })).messages;
+  const inbox = async () =>
+    (await connector.fetch({ userId }, { mailbox: "INBOX", after: null, since: new Date(Date.now() - 86_400_000), limit: 50 })).messages;
   const save = (bills: unknown[], dryRun = false) =>
     new BillSaveStep(db.client).execute({ bills, remindDaysBefore: 3, jumpPercent: 30 }, context(dryRun)) as Promise<{
       added: { issuer: string }[];
@@ -99,7 +100,11 @@ describe("bills", () => {
 
   // M23-I1
   it("reads a bill in the text and one in a PDF; a newsletter isn't a bill; saved with their fields, a reminder each", async () => {
-    await server.deliver({ from: "billing@evn.test", subject: "Your electricity bill", text: "Dear customer, Total 84.20 BGN, due 2026-11-20, invoice E-1001." });
+    await server.deliver({
+      from: "billing@evn.test",
+      subject: "Your electricity bill",
+      text: "Dear customer, Total 84.20 BGN, due 2026-11-20, invoice E-1001.",
+    });
     await server.deliver({
       from: "invoices@telco.test",
       subject: "Invoice for October",
@@ -107,10 +112,15 @@ describe("bills", () => {
       attachments: [{ filename: "invoice.pdf", content: pdfWithText("Total 120.50 EUR, due 2026-11-25, invoice T-77").toString("latin1") }],
     });
     await server.deliver({ from: "news@shop.test", subject: "Black Friday deals", text: "Everything 30% off this week." });
-    const messages = (await inbox()).filter((m: EmailMessage) => ["billing@evn.test", "invoices@telco.test", "news@shop.test"].includes(m.from));
+    const messages = (await inbox()).filter((m: EmailMessage) =>
+      ["billing@evn.test", "invoices@telco.test", "news@shop.test"].includes(m.from),
+    );
 
     const llm = new BillReader();
-    const read = (await new BillReadStep(connector, llm, new ModelRouter(() => Promise.resolve(null))).execute({ messages, mailbox: "INBOX" }, context())) as {
+    const read = (await new BillReadStep(connector, llm, new ModelRouter(() => Promise.resolve(null))).execute(
+      { messages, mailbox: "INBOX" },
+      context(),
+    )) as {
       bills: { issuer: string; amount: number; currency: string; dueDate: string; reference: string }[];
       notBills: number;
     };
@@ -133,7 +143,15 @@ describe("bills", () => {
       [
         "evn.test|E-1001",
         "due",
-        expect.objectContaining({ issuer: "evn.test", issuerKey: "evn.test", amount: 84.2, currency: "BGN", dueDate: "2026-11-20", month: "2026-11-01", period: "2026-11" }),
+        expect.objectContaining({
+          issuer: "evn.test",
+          issuerKey: "evn.test",
+          amount: 84.2,
+          currency: "BGN",
+          dueDate: "2026-11-20",
+          month: "2026-11-01",
+          period: "2026-11",
+        }),
       ],
       ["telco.test|T-77", "due", expect.objectContaining({ issuerKey: "telco.test", amount: 120.5, currency: "EUR", reference: "T-77" })],
     ]);
@@ -171,8 +189,8 @@ describe("bills", () => {
   });
 
   it("needs a pipeline in an App with a Bill type", async () => {
-    await expect(new BillSaveStep(db.client).execute({ bills: [], remindDaysBefore: 3, jumpPercent: 30 }, { ...context(), app: undefined })).rejects.toThrow(
-      "Bill is an App's type, and this pipeline has no app:",
-    );
+    await expect(
+      new BillSaveStep(db.client).execute({ bills: [], remindDaysBefore: 3, jumpPercent: 30 }, { ...context(), app: undefined }),
+    ).rejects.toThrow("Bill is an App's type, and this pipeline has no app:");
   });
 });

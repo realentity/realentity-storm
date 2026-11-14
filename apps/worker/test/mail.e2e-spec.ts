@@ -1,4 +1,4 @@
-import { KeyRing, payloadHash, seal } from "@realentity/storm-crypto";
+import { KeyRing, payloadHash } from "@realentity/storm-crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
 import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
@@ -13,11 +13,18 @@ import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
 import { type MailConnector } from "../src/mail/mail-connector";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry, NO_ATTENTION } from "../src/runner/step-executor";
-import { CredentialVault } from "../src/secrets/credential-vault";
 import { coreSteps } from "../src/steps/core-steps";
 import { EmailFetchStep } from "../src/steps/email-steps";
 import { DraftFollowUpStep, EmailAwaitingStep } from "../src/steps/follow-up-steps";
-import { APP_PASSWORD, MAILBOX, OTHER_MAILBOX, OTHER_PASSWORD, startMailServer, type TestMailServer } from "./support/greenmail";
+import {
+  addEmailAccount,
+  APP_PASSWORD,
+  MAILBOX,
+  OTHER_MAILBOX,
+  OTHER_PASSWORD,
+  startMailServer,
+  type TestMailServer,
+} from "./support/greenmail";
 import { createVersion } from "./support/test-steps";
 
 /** Claude stand-in: keeps every email, and drafts whatever `draft` writes (it may "obey" an email). */
@@ -63,35 +70,14 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
   let db: PrismaConnection;
   let userId: string;
   let connector: ImapSmtpConnector;
+  let accountId: string;
 
   beforeAll(async () => {
     server = await startMailServer();
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
-    const keys = KeyRing.fromEnv(process.env);
-    const credentialId = randomUUID();
-    await db.client.credential.create({
-      data: {
-        credentialId,
-        userId,
-        name: "mail",
-        kind: "PASSWORD",
-        username: MAILBOX,
-        allowedHosts: [server.host],
-        ...seal(keys, credentialId, APP_PASSWORD),
-      },
-    });
-    connector = new ImapSmtpConnector(
-      {
-        imapHost: server.host,
-        imapPort: server.imapPort,
-        smtpHost: server.host,
-        smtpPort: server.smtpPort,
-        tls: false,
-        credential: "mail",
-      },
-      new CredentialVault(db.client, keys),
-    );
+    accountId = await addEmailAccount(db.client, userId, server);
+    connector = new ImapSmtpConnector(db.client, KeyRing.fromEnv(process.env));
   }, 120_000);
 
   afterEach(async () => {
@@ -100,7 +86,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
   });
 
   afterAll(async () => {
-    await db.client.credential.deleteMany();
+    await db.client.emailAccount.deleteMany();
     await db.close();
     await server.stop();
   });
@@ -123,7 +109,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       attachments: [{ filename: "role.pdf", content: "%PDF-1.4 secret attachment body" }],
     });
 
-    const initial = await connector.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 50 });
+    const initial = await connector.fetch({ userId }, { mailbox: "INBOX", after: null, since: since(), limit: 50 });
     expect(initial.messages.map((m) => m.subject)).toEqual(["Senior .NET role", "Re: Senior .NET role"]);
     const [root, followUp] = initial.messages as [EmailMessage, EmailMessage];
     expect(root).toMatchObject({
@@ -139,16 +125,16 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     expect(JSON.stringify(followUp)).not.toContain("secret attachment body");
     expect(initial.position.lastUid).toBe(followUp.uid);
 
-    const again = await connector.fetch(userId, { mailbox: "INBOX", after: initial.position, since: since(), limit: 50 });
+    const again = await connector.fetch({ userId }, { mailbox: "INBOX", after: initial.position, since: since(), limit: 50 });
     expect(again.messages).toEqual([]);
     expect(again.position).toEqual(initial.position);
 
     await server.deliver({ from: "bob@other.test", subject: "Contract work", text: "Got a project for you." });
-    const newer = await connector.fetch(userId, { mailbox: "INBOX", after: initial.position, since: since(), limit: 50 });
+    const newer = await connector.fetch({ userId }, { mailbox: "INBOX", after: initial.position, since: since(), limit: 50 });
     expect(newer.messages.map((m) => m.subject)).toEqual(["Contract work"]);
 
     // A limit takes the oldest new ones; the rest come next time.
-    const limited = await connector.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 2 });
+    const limited = await connector.fetch({ userId }, { mailbox: "INBOX", after: null, since: since(), limit: 2 });
     expect(limited.messages.map((m) => m.subject)).toEqual(["Senior .NET role", "Re: Senior .NET role"]);
 
     // Read-only: nothing got \Seen.
@@ -184,33 +170,19 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       inReplyTo: "<follow-up@acme.test>",
       references: ["<root@acme.test>", "<follow-up@acme.test>"],
     };
-    const sent = await connector.send(userId, outgoing);
+    const sent = await connector.send({ userId }, outgoing);
     expect(sent.accepted).toEqual([OTHER_MAILBOX]);
     // Never a reply to the user's own address: that answers mail they sent themselves (Storm's own messages).
-    await expect(connector.send(userId, { ...outgoing, to: MAILBOX.toUpperCase() })).rejects.toThrow(
+    await expect(connector.send({ userId }, { ...outgoing, to: MAILBOX.toUpperCase() })).rejects.toThrow(
       "Not sent: a reply to your own address",
     );
 
-    // What Ana got, read from her mailbox.
-    const keys = KeyRing.fromEnv(process.env);
-    const credentialId = randomUUID();
-    await db.client.credential.create({
-      data: {
-        credentialId,
-        userId,
-        name: "ana",
-        kind: "PASSWORD",
-        username: OTHER_MAILBOX,
-        allowedHosts: [server.host],
-        ...seal(keys, credentialId, OTHER_PASSWORD),
-      },
-    });
-    const ana = new ImapSmtpConnector(
-      { imapHost: server.host, imapPort: server.imapPort, smtpHost: server.host, smtpPort: server.smtpPort, tls: false, credential: "ana" },
-      new CredentialVault(db.client, keys),
-    );
-    const all = await ana.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
-    await db.client.credential.delete({ where: { credentialId } });
+    // What Ana got, read from her mailbox: another of the user's accounts.
+    const ana = await addEmailAccount(db.client, userId, server, { address: OTHER_MAILBOX, password: OTHER_PASSWORD });
+    const all = await connector.fetch({ userId, account: ana }, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
+    expect(all.account).toBe(ana);
+    expect(all.messages.every((m) => m.account === ana)).toBe(true);
+    await db.client.emailAccount.delete({ where: { emailAccountId: ana } });
     const reply = all.messages.find((m) => m.messageId === sent.messageId);
     expect(reply).toMatchObject({
       from: MAILBOX,
@@ -223,37 +195,24 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
   });
 
   it("never puts the app password in an error, even when the server refuses it", async () => {
-    const keys = KeyRing.fromEnv(process.env);
     const wrong = "wrong-app-password-Zr81";
-    const credentialId = randomUUID();
-    await db.client.credential.create({
-      data: {
-        credentialId,
-        userId,
-        name: "bad",
-        kind: "PASSWORD",
-        username: MAILBOX,
-        allowedHosts: [server.host],
-        ...seal(keys, credentialId, wrong),
-      },
-    });
-    const bad = new ImapSmtpConnector(
-      { imapHost: server.host, imapPort: server.imapPort, smtpHost: server.host, smtpPort: server.smtpPort, tls: false, credential: "bad" },
-      new CredentialVault(db.client, keys),
-    );
-    const failure = await bad.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 5 }).catch((e: Error) => e);
+    const bad = await addEmailAccount(db.client, userId, server, { address: "bad@storm.test", password: wrong });
+    const failure = await connector
+      .fetch({ userId, account: bad }, { mailbox: "INBOX", after: null, since: since(), limit: 5 })
+      .catch((e: Error) => e);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toMatch(/^IMAP: /);
     expect((failure as Error).message).not.toContain(wrong);
-    // The credential is bound to its hosts: another host never gets it.
-    const elsewhere = new ImapSmtpConnector(
-      { imapHost: "imap.evil.test", imapPort: 993, smtpPort: 465, tls: true, credential: "mail" },
-      new CredentialVault(db.client, keys),
+    // The password never travels unencrypted to a server that isn't local (the api refuses such an account too).
+    const plain = await addEmailAccount(db.client, userId, server, { address: "plain@storm.test", imapHost: "imap.evil.test", tls: false });
+    await expect(connector.fetch({ userId, account: plain }, { mailbox: "INBOX", after: null, since: since(), limit: 5 })).rejects.toThrow(
+      /TLS is off/,
     );
-    await expect(elsewhere.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 5 })).rejects.toThrow(
-      /not allowed on imap\.evil\.test/,
-    );
-    await db.client.credential.delete({ where: { credentialId } });
+    // Another user's account (or one removed) is never opened: a slot filled with it doesn't fall back to the default.
+    await expect(
+      connector.fetch({ userId, account: randomUUID() }, { mailbox: "INBOX", after: null, since: since(), limit: 5 }),
+    ).rejects.toThrow(/no longer yours/);
+    await db.client.emailAccount.deleteMany({ where: { emailAccountId: { in: [bad, plain] } } });
   });
 
   describe("the recruiter-replies pipeline", () => {
@@ -282,7 +241,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     async function freshPipeline(source = REPLIES): Promise<string> {
       const pipelineVersionId = await createVersion(db.client, userId, source);
       const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId } });
-      const mailbox = await connector.fetch(userId, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
+      const mailbox = await connector.fetch({ userId }, { mailbox: "INBOX", after: null, since: since(), limit: 200 });
       await db.client.mailCursor.create({
         data: {
           userId,
@@ -345,7 +304,13 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       const pipelineVersionId = await freshPipeline();
       await server.deliver({ from: "ana@acme.test", subject: "Interview", text: "When can we talk?" });
       let sends = 0;
-      const counting: MailConnector = { fetch: (u, r) => connector.fetch(u, r), recent: (u, r) => connector.recent(u, r), attachments: (u, r) => connector.attachments(u, r), send: (u, m) => (sends++, connector.send(u, m)), thread: (u, ids) => connector.thread(u, ids) };
+      const counting: MailConnector = {
+        fetch: (u, r) => connector.fetch(u, r),
+        recent: (u, r) => connector.recent(u, r),
+        attachments: (u, r) => connector.attachments(u, r),
+        send: (u, m) => (sends++, connector.send(u, m)),
+        thread: (u, ids) => connector.thread(u, ids),
+      };
       const run = runner(new FakeLlm(), counting);
       const runId = await run.start(pipelineVersionId, { trigger: "manual" });
       await run.advance(runId);
@@ -407,7 +372,10 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     const ago = (days: number) => new Date(Date.now() - days * DAY);
     let n = 0;
     /** A message as a server keeps it: in `mailbox`, dated `date` (the user's sent ones in Sent, like Gmail's). */
-    async function put(mailbox: string, m: { from?: string; to?: string; subject: string; id: string; inReplyTo?: string; references?: string[]; date: Date }) {
+    async function put(
+      mailbox: string,
+      m: { from?: string; to?: string; subject: string; id: string; inReplyTo?: string; references?: string[]; date: Date },
+    ) {
       const raw = [
         `From: ${m.from ?? MAILBOX}`,
         `To: ${m.to ?? MAILBOX}`,
@@ -422,7 +390,13 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
         `Message ${++n}.`,
         "",
       ].join("\r\n");
-      const client = new ImapFlow({ host: server.host, port: server.imapPort, secure: false, auth: { user: MAILBOX, pass: APP_PASSWORD }, logger: false });
+      const client = new ImapFlow({
+        host: server.host,
+        port: server.imapPort,
+        secure: false,
+        auth: { user: MAILBOX, pass: APP_PASSWORD },
+        logger: false,
+      });
       await client.connect();
       try {
         if (!(await client.list()).some((box) => box.path === mailbox)) await client.mailboxCreate(mailbox);
@@ -435,17 +409,33 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       new EmailAwaitingStep(connector, db.client).execute(
         { afterDays: 5, lookbackDays: 30, mailbox: "INBOX", maxFollowUps: 1, limit: 5, ...input },
         { ...baseContext(userId, randomUUID()), runId: randomUUID(), dryRun },
-      ) as Promise<{ threads: { to: string; subject: string; daysWaiting: number; followUps: number; message: EmailMessage; references: string[] }[] }>;
+      ) as Promise<{
+        threads: { to: string; subject: string; daysWaiting: number; followUps: number; message: EmailMessage; references: string[] }[];
+      }>;
 
     beforeAll(async () => {
       // A: waits 6 days. B: answered. C: too recent. D: to a no-reply address. E: already followed up once.
       await put("Sent", { to: "ana@acme.test", subject: "Contract proposal", id: "<a1@storm.test>", date: ago(6) });
       await put("Sent", { to: "bob@corp.test", subject: "Invoice question", id: "<b1@storm.test>", date: ago(8) });
-      await put("INBOX", { from: "bob@corp.test", subject: "Re: Invoice question", id: "<b2@corp.test>", inReplyTo: "<b1@storm.test>", references: ["<b1@storm.test>"], date: ago(7) });
+      await put("INBOX", {
+        from: "bob@corp.test",
+        subject: "Re: Invoice question",
+        id: "<b2@corp.test>",
+        inReplyTo: "<b1@storm.test>",
+        references: ["<b1@storm.test>"],
+        date: ago(7),
+      });
       await put("Sent", { to: "cat@x.test", subject: "Lunch?", id: "<c1@storm.test>", date: ago(2) });
       await put("Sent", { to: "noreply@shop.test", subject: "Order 42", id: "<d1@storm.test>", date: ago(10) });
       await put("Sent", { to: "eve@y.test", subject: "Quote", id: "<e1@storm.test>", date: ago(20) });
-      await put("Sent", { to: "eve@y.test", subject: "Re: Quote", id: "<e2@storm.test>", inReplyTo: "<e1@storm.test>", references: ["<e1@storm.test>"], date: ago(9) });
+      await put("Sent", {
+        to: "eve@y.test",
+        subject: "Re: Quote",
+        id: "<e2@storm.test>",
+        inReplyTo: "<e1@storm.test>",
+        references: ["<e1@storm.test>"],
+        date: ago(9),
+      });
     });
 
     afterEach(async () => {
@@ -459,18 +449,22 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       expect(dry.threads[0]?.references).toEqual(["<a1@storm.test>"]);
 
       expect((await awaiting()).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
-      expect(await db.client.followUp.findMany({ select: { messageId: true, to: true } })).toEqual([{ messageId: "<a1@storm.test>", to: "ana@acme.test" }]);
+      expect(await db.client.followUp.findMany({ select: { messageId: true, to: true } })).toEqual([
+        { messageId: "<a1@storm.test>", to: "ana@acme.test" },
+      ]);
       // Proposed once: rejected or not, it doesn't come back.
       expect((await awaiting()).threads).toEqual([]);
 
       // Two follow-ups in a row allowed: E's second is due.
       const more = await awaiting(true, { maxFollowUps: 2 });
-      expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]]]);
+      expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([
+        ["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]],
+      ]);
     });
 
     // M42: topic upkeep reads the user's sent mail too
     it('email.fetch reads "Sent": the server\'s Sent folder, whatever its name, read-only', async () => {
-      const read = await connector.fetch(userId, { mailbox: "sent", after: null, since: ago(30), limit: 50 });
+      const read = await connector.fetch({ userId }, { mailbox: "sent", after: null, since: ago(30), limit: 50 });
       expect(read.messages.map((m) => m.messageId)).toEqual(
         expect.arrayContaining(["<a1@storm.test>", "<b1@storm.test>", "<e2@storm.test>"]),
       );
@@ -480,19 +474,19 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
 
     // M41-T1
     it("a thread's earlier messages, read-only, from INBOX and Sent, oldest first; the user's marked; ones gone left out", async () => {
-      const thread = await connector.thread(userId, ["<b1@storm.test>", "<b2@corp.test>", "<gone@corp.test>"]);
+      const thread = await connector.thread({ userId }, ["<b1@storm.test>", "<b2@corp.test>", "<gone@corp.test>"]);
       expect(thread.map((t) => [t.message.messageId, t.message.subject, t.mine])).toEqual([
         ["<b1@storm.test>", "Invoice question", true],
         ["<b2@corp.test>", "Re: Invoice question", false],
       ]);
       // A Message-ID that is only part of another one isn't it.
-      expect(await connector.thread(userId, ["<b1@storm"])).toEqual([]);
-      expect(await connector.thread(userId, [])).toEqual([]);
+      expect(await connector.thread({ userId }, ["<b1@storm"])).toEqual([]);
+      expect(await connector.thread({ userId }, [])).toEqual([]);
       expect(await seenFlags()).not.toContain(true);
 
       // The follow-up to E's second email sees the first.
       const llm = new FakeLlm(() => "Hi Eve, any news on the quote? Best");
-      const e2 = (await connector.thread(userId, ["<e2@storm.test>"]))[0].message;
+      const e2 = (await connector.thread({ userId }, ["<e2@storm.test>"]))[0].message;
       await new DraftFollowUpStep(llm, new ModelRouter(() => Promise.resolve(null)), undefined, connector).execute(
         { message: e2, instruction: "A short nudge" },
         { ...baseContext(userId, randomUUID()), runId: randomUUID(), dryRun: true },
@@ -506,7 +500,13 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       const source = await readFile(join(__dirname, "../../../pipelines/email-follow-ups.yaml"), "utf8");
       const pipelineVersionId = await createVersion(db.client, userId, source);
       const llm = new FakeLlm(() => "Hi Ana, did you have a chance to look at my proposal? Best");
-      const steps = coreSteps({ llm, router: new ModelRouter(() => Promise.resolve(null)), telegram: {}, mail: connector, prisma: db.client });
+      const steps = coreSteps({
+        llm,
+        router: new ModelRouter(() => Promise.resolve(null)),
+        telegram: {},
+        mail: connector,
+        prisma: db.client,
+      });
       const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry(steps));
       const runId = await runner.start(pipelineVersionId, { trigger: "manual" });
       await expect(runner.advance(runId)).resolves.toBe("WAITING_FOR_USER");
@@ -519,6 +519,8 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
           body: "Hi Ana, did you have a chance to look at my proposal? Best",
           inReplyTo: "<a1@storm.test>",
           references: ["<a1@storm.test>"],
+          // M50-T7: sent from the account the user's email was sent from.
+          account: accountId,
         },
       ]);
       expect(llm.requests[0]?.system).toContain("an email they sent that got no answer");

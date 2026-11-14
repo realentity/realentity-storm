@@ -9,6 +9,7 @@ import { ExamplesModule } from "./examples/examples.module";
 import { serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { ControlsModule } from "./controls/controls.module";
 import { CredentialsModule } from "./credentials/credentials.module";
+import { EmailAccountsModule } from "./email-accounts/email-accounts.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { EventsModule } from "./events/events.module";
 import { PrismaService } from "./database/prisma.service";
@@ -45,6 +46,7 @@ export class CoreModule {}
     AuthModule,
     EventsModule,
     CredentialsModule,
+    EmailAccountsModule,
     PipelinesModule,
     ProposalsModule,
     RunsModule,

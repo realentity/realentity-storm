@@ -1,4 +1,11 @@
-import { CredentialKind, emptySlots, type BindingsRequest, type BindingView, type CredentialView, type Need } from "@realentity/storm-shared";
+import {
+  CredentialKind,
+  emptySlots,
+  type BindingsRequest,
+  type BindingView,
+  type CredentialView,
+  type Need,
+} from "@realentity/storm-shared";
 import { IconKey, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -82,7 +89,10 @@ export function NeedsCard({
               </div>
               {readOnly ? (
                 <div className="small">
-                  {view.credential?.name ?? view.text ?? <span className="text-warning">not set</span>}
+                  {view.credential?.name ??
+                    view.account?.address ??
+                    view.text ??
+                    (view.need.kind === "email" ? "the default account" : <span className="text-warning">not set</span>)}
                   {" · "}
                   <Link to={`/apps/${app.appId}#needs`}>set on {app.name}</Link>
                 </div>
@@ -97,12 +107,35 @@ export function NeedsCard({
                 >
                   <option value="">{view.fits.length ? "Choose one…" : "None of yours fits yet"}</option>
                   {view.fits.map((c) => (
-                    <option key={c.credentialId} value={c.credentialId}>
+                    <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                   <option value={ADD}>Add a new one…</option>
                 </select>
+              ) : view.need.kind === "email" ? (
+                <div className="d-flex gap-2 align-items-center">
+                  <select
+                    className="form-select form-select-sm"
+                    aria-label={label}
+                    value={view.account?.emailAccountId ?? ""}
+                    disabled={action.busy}
+                    onChange={(e) => void put({ [view.slot]: { emailAccountId: e.target.value || null } }, "Chosen")}
+                    data-testid={`need-email-${view.slot}`}
+                  >
+                    <option value="">{view.fits.length ? "Your default account" : "No email account yet"}</option>
+                    {view.fits.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  {view.fits.length === 0 && (
+                    <Link to="/settings#email" className="small text-nowrap">
+                      Add one
+                    </Link>
+                  )}
+                </div>
               ) : (
                 <form
                   className="d-flex gap-2"

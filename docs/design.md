@@ -425,7 +425,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 - **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<name>}}`. Password fields are filled last and masked in traces where possible.
 - **Masked for the LLM:** before an accessibility snapshot or screenshot is sent to the LLM (e.g. by `browser.agent`), the worker strips `input[type=password]` values and every field it filled from a `{{cred:*}}`, and blurs those fields in screenshots.
 - **Domain binding:** the worker refuses to fill a credential on a page whose host isn't in the credential's `allowedHosts` (exact host match, or an explicit `*.example.com` wildcard; never substring matching). Multiple hosts cover SSO redirects. This protects against phishing pages and prompt-injected redirects.
-- **Same mechanism for** the IMAP app password (later the Gmail refresh token), TOTP seeds, API keys, database connections (M29: an API key goes only to its credential's hosts, a database is reachable only through a credential naming it, and `db.query` is read-only), and Playwright `storageState`.
+- **Same mechanism for** email accounts' app passwords (M50-T7: an EmailAccount row, AAD its id, opened only for its own IMAP and SMTP servers), TOTP seeds, API keys, database connections (M29: an API key goes only to its credential's hosts, a database is reachable only through a credential naming it, and `db.query` is read-only), and Playwright `storageState`.
 - **Back up `ENCRYPTION_KEY` separately from DB backups** (personal password manager or printed). Losing the key loses every secret; storing it next to the backups defeats the encryption.
 
 ### Implementation (`packages/crypto`)
@@ -839,16 +839,8 @@ LLM_MONTHLY_BUDGET_USD=
 OPENAI_API_KEY=
 EMBEDDINGS_MODEL=text-embedding-3-large
 
-# Mail: v1 uses IMAP/SMTP with a Google app password, stored encrypted in the DB (not here): a credential named
-# MAIL_CREDENTIAL (username = the address; allowed hosts = imap.gmail.com, smtp.gmail.com)
-MAIL_CONNECTOR=imap
-IMAP_HOST=imap.gmail.com
-IMAP_PORT=993
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-# TLS from the first byte; "false" only for a local test server
-MAIL_TLS=true
-MAIL_CREDENTIAL=mail
+# Mail: nothing here (M50-T7). Email accounts are added in Settings: their servers, and the app password stored
+# encrypted in the DB (an EmailAccount, sealed like a credential; TLS off only for a local test server).
 # Later, Gmail API (OAuth app; refresh token stored encrypted in the DB)
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
@@ -909,9 +901,9 @@ pnpm test:web                  # browser tests (Playwright) against the composed
 pnpm --filter @realentity/storm-worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
 ```
 
-**Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. On the Credentials page add a
-`password` credential named `mail` with the Gmail address as username, the app password as secret, and allowed hosts
-`imap.gmail.com, smtp.gmail.com`. Then paste [pipelines/recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) on
+**Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. In Settings → Email accounts
+add the Gmail address with that app password (several accounts are fine: one is the default, and a pipeline's email
+slot picks another; M50-T7). Then paste [pipelines/recruiter-replies.yaml](../pipelines/recruiter-replies.yaml) on
 the Pipelines page, dry run, save and enable. Every reply waits in the inbox until you press Act.
 
 ---

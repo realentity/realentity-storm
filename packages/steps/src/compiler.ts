@@ -135,7 +135,10 @@ export class PipelineCompiler {
         for (const [at, url] of literalUrls(step.with[field])) {
           const host = /^https?:\/\/([^/{}?#:]+)/i.exec(url)?.[1]?.toLowerCase();
           if (host && !definition.policy.allowedDomains.some((allowed) => hostMatches(host, [allowed]))) {
-            errors.push({ path: `${path}.with.${field}${at}`, message: `${host} isn't in policy.allowedDomains: add it there to read from it` });
+            errors.push({
+              path: `${path}.with.${field}${at}`,
+              message: `${host} isn't in policy.allowedDomains: add it there to read from it`,
+            });
           }
         }
       }
@@ -267,7 +270,10 @@ export class PipelineCompiler {
     if (!scope.app) return {}; // the missing App is already said
     const type = entityTypeOf(scope.app, typeName);
     if (!type) {
-      errors.push({ path: `${at}.type`, message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})` });
+      errors.push({
+        path: `${at}.type`,
+        message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})`,
+      });
       return {};
     }
     const fieldIssue = (field: unknown, where: string, extra: string[] = []) => {
@@ -285,7 +291,10 @@ export class PipelineCompiler {
       if (typeof stage === "string" && referencesIn(stage).length === 0) {
         if (!type.stages) errors.push({ path: `${at}.stage`, message: `${typeName} has no stages` });
         else if (!type.stages.states.includes(stage)) {
-          errors.push({ path: `${at}.stage`, message: `"${stage}" is not a state of ${typeName} (states: ${type.stages.states.join(", ")})` });
+          errors.push({
+            path: `${at}.stage`,
+            message: `"${stage}" is not a state of ${typeName} (states: ${type.stages.states.join(", ")})`,
+          });
         }
       }
       if (type.mine) {
@@ -294,10 +303,15 @@ export class PipelineCompiler {
       }
       // M45: what I added by hand isn't in a pipeline's whole list, and a complete save would mark it removed.
       if (step.with.complete === true && addedByHand(scope.app, typeName)) {
-        errors.push({ path: `${at}.complete`, message: `${typeName} is added by hand too: a pipeline's list isn't the whole of it, so it can't be complete` });
+        errors.push({
+          path: `${at}.complete`,
+          message: `${typeName} is added by hand too: a pipeline's list isn't the whole of it, so it can't be complete`,
+        });
       }
-      if (step.with.collection !== undefined) errors.push({ path: `${at}.collection`, message: "saves into a type or a collection, not both" });
-      if (step.with.key !== undefined) errors.push({ path: `${at}.key`, message: `${typeName}'s key (${type.key}) identifies its entities` });
+      if (step.with.collection !== undefined)
+        errors.push({ path: `${at}.collection`, message: "saves into a type or a collection, not both" });
+      if (step.with.key !== undefined)
+        errors.push({ path: `${at}.key`, message: `${typeName}'s key (${type.key}) identifies its entities` });
       if (Array.isArray(step.with.fields)) step.with.fields.forEach((field, i) => fieldIssue(field, `${at}.fields[${i}]`));
       const items = typeof step.with.items === "string" ? WHOLE_REFERENCE.exec(step.with.items)?.[1]?.trim() : undefined;
       const resolved = items ? this.resolve(items, scope, known) : undefined;
@@ -385,13 +399,19 @@ export class PipelineCompiler {
     if (!scope.app || typeof typeName !== "string" || typeof fieldName !== "string") return;
     const type = entityTypeOf(scope.app, typeName);
     if (!type) {
-      errors.push({ path: `${at}.type`, message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})` });
+      errors.push({
+        path: `${at}.type`,
+        message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})`,
+      });
       return;
     }
     const field = type.fields[fieldName];
     const files = Object.entries(type.fields).flatMap(([name, f]) => (FILE_KINDS.includes(f.type) ? [name] : []));
     if (!field || !FILE_KINDS.includes(field.type)) {
-      errors.push({ path: `${at}.field`, message: `${typeName}.${fieldName} isn't a file or an image (${files.length ? `those: ${files.join(", ")}` : "it has none"})` });
+      errors.push({
+        path: `${at}.field`,
+        message: `${typeName}.${fieldName} isn't a file or an image (${files.length ? `those: ${files.join(", ")}` : "it has none"})`,
+      });
     } else if (type.mine || field.mine) {
       errors.push({ path: `${at}.field`, message: `${typeName}.${fieldName} is mine: a pipeline can't write it` });
     }
@@ -542,7 +562,10 @@ function checkContract(
   const verb = contract.mine ? "reads" : "writes";
   if (!appName && contract.optional) return;
   if (!appName) {
-    errors.push({ path: at, message: `${step.type} ${verb} ${contract.type} entities: say which App with \`app:\` (one with a ${contract.type} type)` });
+    errors.push({
+      path: at,
+      message: `${step.type} ${verb} ${contract.type} entities: say which App with \`app:\` (one with a ${contract.type} type)`,
+    });
     return;
   }
   if (!app) return; // the missing App is already said
@@ -565,24 +588,34 @@ function checkAppTrigger(trigger: Trigger, app: AppDefinition | undefined, inApp
   if (!app || trigger.type === undefined) return;
   const type = entityTypeOf(app, trigger.type);
   if (!type) {
-    errors.push({ path: "trigger.type", message: `"${app.name}" has no type "${trigger.type}" (types: ${Object.keys(app.types).join(", ")})` });
+    errors.push({
+      path: "trigger.type",
+      message: `"${app.name}" has no type "${trigger.type}" (types: ${Object.keys(app.types).join(", ")})`,
+    });
     return;
   }
   if (trigger.on !== "entity.changed") return;
   if (trigger.field && !(trigger.field in type.fields)) {
-    errors.push({ path: "trigger.field", message: `${trigger.type} has no field "${trigger.field}" (fields: ${Object.keys(type.fields).join(", ")})` });
+    errors.push({
+      path: "trigger.field",
+      message: `${trigger.type} has no field "${trigger.field}" (fields: ${Object.keys(type.fields).join(", ")})`,
+    });
   }
   if (trigger.stage !== undefined) {
     if (!type.stages) errors.push({ path: "trigger.stage", message: `${trigger.type} has no stages` });
     else if (!type.stages.states.includes(trigger.stage)) {
-      errors.push({ path: "trigger.stage", message: `"${trigger.stage}" is not a state of ${trigger.type} (states: ${type.stages.states.join(", ")})` });
+      errors.push({
+        path: "trigger.stage",
+        message: `"${trigger.stage}" is not a state of ${trigger.type} (states: ${type.stages.states.join(", ")})`,
+      });
     }
   }
 }
 
 /** The entity type of an entity.changed or entity.action trigger, when it names one of its App's. */
 function triggerEntityType(trigger: Trigger, app: AppDefinition | undefined) {
-  if (!isEventTrigger(trigger) || (trigger.on !== "entity.changed" && trigger.on !== "entity.action") || !trigger.type || !app) return undefined;
+  if (!isEventTrigger(trigger) || (trigger.on !== "entity.changed" && trigger.on !== "entity.action") || !trigger.type || !app)
+    return undefined;
   return entityTypeOf(app, trigger.type);
 }
 
@@ -604,7 +637,9 @@ function entityTargetIssue(value: unknown, scope: Scope, known: Map<string, Comp
   const root = source.split(".")[0] ?? "";
   const step = root === "item" ? scope.forEach?.split(".")[0] : root;
   const untrusted = step ? known.get(step)?.untrusted : undefined;
-  return untrusted ? `{{${source}}} can't be a target: ${untrusted} is written by pipelines, from what pages, feeds or emails said; only a type of mine can be` : null;
+  return untrusted
+    ? `{{${source}}} can't be a target: ${untrusted} is written by pipelines, from what pages, feeds or emails said; only a type of mine can be`
+    : null;
 }
 
 /**
@@ -614,7 +649,9 @@ function entityTargetIssue(value: unknown, scope: Scope, known: Map<string, Comp
 function checkView(definition: PipelineDefinition, errors: CompileIssue[]): void {
   const view = definition.view!;
   const written = (type: string) =>
-    new Set(definition.steps.filter((s) => s.type === type && typeof s.with.collection === "string").map((s) => s.with.collection as string));
+    new Set(
+      definition.steps.filter((s) => s.type === type && typeof s.with.collection === "string").map((s) => s.with.collection as string),
+    );
   if (!written("data.save").has(view.collection)) {
     errors.push({ path: "view.collection", message: `no data.save step of this pipeline writes the collection "${view.collection}"` });
   }
@@ -631,11 +668,15 @@ function checkView(definition: PipelineDefinition, errors: CompileIssue[]): void
   });
   const labels = new Set<string>();
   view.actions.forEach((action, i) => {
-    if (labels.has(action.label)) errors.push({ path: `view.actions[${i}].label`, message: `"${action.label}" is used by an earlier button` });
+    if (labels.has(action.label))
+      errors.push({ path: `view.actions[${i}].label`, message: `"${action.label}" is used by an earlier button` });
     labels.add(action.label);
     const self = action.run === "self" || action.run === definition.name;
     if (self && action.row) {
-      errors.push({ path: `view.actions[${i}].run`, message: "a row's button starts another pipeline, one triggered by { on: view.action }" });
+      errors.push({
+        path: `view.actions[${i}].run`,
+        message: "a row's button starts another pipeline, one triggered by { on: view.action }",
+      });
     } else if (self && (isEventTrigger(definition.trigger) || isWebhookTrigger(definition.trigger))) {
       errors.push({ path: `view.actions[${i}].run`, message: "a pipeline started by an event or a webhook can't be run from a button" });
     }
@@ -726,8 +767,20 @@ function referencePath(wholeReference: string): string {
 function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undefined, errors: CompileIssue[]): Needs {
   const own: Needs = { ...(definition.needs ?? {}) };
   const shared: Needs = app?.needs ?? {};
-  const declared = (slot: string): Need | undefined => (Object.hasOwn(own, slot) ? own[slot] : Object.hasOwn(shared, slot) ? shared[slot] : undefined);
+  const declared = (slot: string): Need | undefined =>
+    Object.hasOwn(own, slot) ? own[slot] : Object.hasOwn(shared, slot) ? shared[slot] : undefined;
   definition.steps.forEach((step, index) => {
+    // M50-T7: an email step's `account` written as a name is an email slot (an account's id comes from data: {{…}}).
+    const account = EMAIL_ACCOUNT_STEPS.includes(step.type) ? step.with.account : undefined;
+    if (typeof account === "string" && !account.includes("{{")) {
+      const need = declared(account);
+      const at = `steps[${index}].with.account`;
+      if (!SLOT_NAME.test(account))
+        errors.push({ path: at, message: `"${account}" isn't a slot name: lowercase letters, digits, _ and -` });
+      else if (!need) own[account] = { kind: "email" };
+      else if (need.kind !== "email")
+        errors.push({ path: at, message: `"${account}" is a ${need.kind === "text" ? "setting" : "credential"}, not an email account` });
+    }
     for (const [field, value] of Object.entries(step.with)) {
       const text = JSON.stringify(value ?? null);
       const at = `steps[${index}].with.${field}`;
@@ -738,18 +791,25 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
         const url = typeof step.with.url === "string" && !step.with.url.includes("{{") ? step.with.url : undefined;
         const host = url ? /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1]?.toLowerCase() : undefined;
         if (!need) own[slot] = database ? { kind: "credential", type: "database" } : { kind: "credential", ...(host ? { for: host } : {}) };
-        else if (need.kind !== "credential") errors.push({ path: at, message: `"${slot}" is a setting (text), not a credential: {{setting.${slot}}}` });
-        else if (database && need.type && need.type !== "database") errors.push({ path: at, message: `"${slot}" is a ${need.type} credential; db.query's connection is a database` });
+        else if (need.kind === "email") errors.push({ path: at, message: `"${slot}" is an email account: an email step's \`account\`` });
+        else if (need.kind !== "credential")
+          errors.push({ path: at, message: `"${slot}" is a setting (text), not a credential: {{setting.${slot}}}` });
+        else if (database && need.type && need.type !== "database")
+          errors.push({ path: at, message: `"${slot}" is a ${need.type} credential; db.query's connection is a database` });
       }
       for (const [, slot] of text.matchAll(/\{\{\s*setting\.([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g)) {
         const need = declared(slot);
         if (!need) own[slot] = { kind: "text" };
+        else if (need.kind === "email") errors.push({ path: at, message: `"${slot}" is an email account: an email step's \`account\`` });
         else if (need.kind !== "text") errors.push({ path: at, message: `"${slot}" is a credential, not a setting: {{cred:${slot}}}` });
       }
     }
   });
   return own;
 }
+
+/** M50-T7: the steps that read or send through one of the user's email accounts. */
+const EMAIL_ACCOUNT_STEPS = ["email.fetch", "email.awaiting", "email.send"];
 
 function formatPath(path: PropertyKey[]): string {
   return path.map((segment, i) => (typeof segment === "number" ? `[${segment}]` : `${i ? "." : ""}${String(segment)}`)).join("");

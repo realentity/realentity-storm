@@ -177,7 +177,7 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 | **PostgreSQL 17** with the `vector` (pgvector) and `citext` extensions | Storm's data. A bundled container works for trying it out | Required (bundled) |
 | **An authenticator app** | The login: a password and a one-time code | Required |
 | **A way to reach it over HTTPS**: Tailscale, a reverse proxy, or a VPN | Using it from other devices. Not needed on `localhost` | On a server |
-| **A mailbox** with IMAP and SMTP (for Gmail, an app password) | The email steps | Optional |
+| **A mailbox** with IMAP and SMTP (for Gmail, an app password), added in Settings | The email steps | Optional |
 | **A Telegram bot** of your own, from @BotFather | Approvals and notifications on your phone. Commands and buttons also need a public address for webhooks | Optional |
 | **A Google Cloud OAuth client** | Google Calendar steps | Optional |
 | **An OpenAI API key** | Past replies as examples in new drafts (embeddings). The email text then also goes to OpenAI | Optional |
@@ -290,7 +290,6 @@ to start with an invalid value and names the key, never the value.
 | `TZ` | Your time zone, for schedules, the morning brief and the weekly review. Empty: UTC in the containers | Recommended |
 | `LLM_MONTHLY_BUDGET_USD` | Pauses non-essential pipelines when the month's LLM cost reaches it (also in Settings) | Recommended |
 | `VNC_PASSWORD`, `VNC_VIEW_PASSWORD` | Watching and taking over browser runs live. Empty: browser runs still work, unwatched | Browser steps |
-| `IMAP_HOST`, `SMTP_HOST` and ports | Your mail servers; Gmail's are the default. The address and password go on the **Credentials** page, not here | Email steps |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `HOOKS_PUBLIC_URL` | The bot, your Telegram user id, and the webhook address ([docs/telegram.md](docs/telegram.md)) | Telegram, webhooks |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-setup.md](docs/google-setup.md) | Calendar steps |
 | `OPENAI_API_KEY` | Embeddings: your most similar replies as examples in drafts, and the passages and facts of your topics closest to an email (without it, by their words) | Optional |
