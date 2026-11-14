@@ -106,3 +106,16 @@ test("a GitHub token: the steps to make one, api.github.com as its only host, a 
   await row.getByRole("button", { name: "Replace" }).click();
   await expect(page.getByLabel("New token")).toBeVisible();
 });
+
+// Gmail and Google aren't credentials (M50-T7, T8): the page and the form say where they go
+test("the credential form points Gmail and Google to Settings", async ({ page }) => {
+  await page.goto("/credentials");
+  await expect(page.getByTestId("accounts-note")).toContainText("Gmail or another mailbox");
+  await page.getByTestId("add-credential").click();
+  const note = page.getByRole("dialog").getByTestId("accounts-note");
+  await expect(note).toContainText("Google Calendar");
+  await note.getByRole("link", { name: "Google accounts" }).click();
+  await expect(page).toHaveURL(/\/settings#google$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("google-accounts")).toBeVisible();
+});
