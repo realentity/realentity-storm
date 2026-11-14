@@ -83,6 +83,16 @@ export class PipelinesController {
     return this.pipelines.discardDraft(user.userId, pipelineId);
   }
 
+  /** M50-T12: one of its own slots becomes its App's, filled once for the App's pipelines. */
+  @Post(":pipelineId/needs/:slot/app")
+  moveSlotToApp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("pipelineId", ParseUUIDPipe) pipelineId: string,
+    @Param("slot") slot: string,
+  ): Promise<PipelineDetailView> {
+    return this.pipelines.moveSlotToApp(user.userId, pipelineId, slot);
+  }
+
   @Post(":pipelineId/versions")
   addVersion(
     @CurrentUser() user: AuthenticatedUser,

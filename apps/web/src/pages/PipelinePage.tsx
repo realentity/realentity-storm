@@ -146,6 +146,11 @@ export function PipelinePage() {
                   ? { appId: p.current.definition.refs.appId, name: p.current.definition.app }
                   : undefined
               }
+              onMoveToApp={async (slot) => {
+                await api.pipelines.moveSlotToApp(p.pipelineId, slot);
+                toast.success(`"${slot}" is ${p.current?.definition.app ?? "the App"}'s now: set it on its page`);
+                pipeline.reload();
+              }}
             />
           )}
           <Switches

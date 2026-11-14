@@ -36,7 +36,7 @@ export type UpdatePipelineRequest = z.infer<typeof UpdatePipelineSchema>;
 
 /** One change between two compiled versions (v3 → v4), computed in @realentity/storm-steps. */
 export type DefinitionChange =
-  | { kind: "pipeline"; field: "name" | "description" | "app" | "trigger" | "view"; before: unknown; after: unknown }
+  | { kind: "pipeline"; field: "name" | "description" | "app" | "trigger" | "view" | "needs"; before: unknown; after: unknown }
   | { kind: "limit"; stepType: string; before?: string; after?: string }
   | { kind: "policy"; list: "allowedDomains" | "allowedRecipients"; added: string[]; removed: string[] }
   | { kind: "step-added"; stepId: string; type: string; autoInserted: boolean }

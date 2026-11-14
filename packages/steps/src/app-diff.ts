@@ -29,6 +29,13 @@ export function diffApps(before: AppDefinition, after: AppDefinition): string[] 
     if (!was.has(name)) lines.push(`${name} added`);
     else if (canonicalJson(was.get(name)) !== canonicalJson(page)) lines.push(`${name} changed`);
   }
+  // M50: its slots (shared by its pipelines).
+  const [needsBefore, needsAfter] = [before.needs ?? {}, after.needs ?? {}];
+  for (const slot of Object.keys(needsBefore)) if (!(slot in needsAfter)) lines.push(`slot ${slot} removed`);
+  for (const [slot, need] of Object.entries(needsAfter)) {
+    if (!(slot in needsBefore)) lines.push(`slot ${slot} added (${need.kind})`);
+    else if (canonicalJson(needsBefore[slot]) !== canonicalJson(need)) lines.push(`slot ${slot} changed`);
+  }
   return lines;
 }
 

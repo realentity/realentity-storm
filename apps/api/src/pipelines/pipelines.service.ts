@@ -4,6 +4,9 @@ import { JobQueue } from "@realentity/storm-queue";
 import {
   emptySlots,
   canonicalJson,
+  definitionToSource,
+  editAppSource,
+  readAppSource,
   type CompiledDefinition,
   type CompiledPolicy,
   type CompilePipelineResponse,
@@ -298,6 +301,55 @@ export class PipelinesService {
     const result = await this.apps.compileSource(userId, source);
     if (!result.ok) throw new BadRequestException({ message: "The pipeline doesn't compile", errors: result.errors });
     return result;
+  }
+
+  /**
+   * M50-T12: one of a pipeline's own slots becomes its App's, filled once for the App's pipelines: the App gets the
+   * slot (unless it has it already), the pipeline a version without it, and what filled it goes to the App unless the
+   * App's is filled already. Each is saved as its next version, so the App's and the pipeline's history say so.
+   */
+  async moveSlotToApp(userId: string, pipelineId: string, slot: string): Promise<PipelineDetailView> {
+    const current = await this.currentVersion(userId, pipelineId);
+    if (!current) throw new NotFoundException();
+    const definition = current.definition as unknown as CompiledDefinition;
+    const own = definition.needs ?? {};
+    if (!Object.hasOwn(own, slot)) throw new NotFoundException(`"${slot}" isn't one of its own slots`);
+    const appId =
+      definition.refs?.appId ??
+      (definition.app
+        ? (await this.prisma.client.app.findUnique({ where: { userId_name: { userId, name: definition.app } }, select: { appId: true } }))
+            ?.appId
+        : undefined);
+    if (!appId) throw new BadRequestException("It isn't in an App");
+    const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
+    const appVersion = app?.currentVersionId
+      ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
+      : null;
+    if (!app || !appVersion) throw new NotFoundException();
+
+    const need = own[slot];
+    const shared = readAppSource(appVersion.source).needs ?? {};
+    if (Object.hasOwn(shared, slot)) {
+      if (shared[slot].kind !== need.kind)
+        throw new ConflictException(`${app.name} has a slot "${slot}" for something else: rename one of them`);
+    } else {
+      // "kind" first, as slots are written.
+      const { kind, ...rest } = need;
+      const source = editAppSource(appVersion.source, (document) =>
+        document.setIn(["needs", slot], document.createNode({ kind, ...rest }, { flow: true })),
+      );
+      await this.apps.save(userId, appId, source);
+    }
+
+    // What filled it goes with it, unless the App's is filled already (then the App's is used, as for its other pipelines).
+    const mine = await this.prisma.client.binding.findUnique({ where: { pipelineId_slot: { pipelineId, slot } } });
+    const theirs = await this.prisma.client.binding.findUnique({ where: { appId_slot: { appId, slot } } });
+    if (mine && !theirs)
+      await this.prisma.client.binding.update({ where: { bindingId: mine.bindingId }, data: { pipelineId: null, appId } });
+    else if (mine) await this.prisma.client.binding.delete({ where: { bindingId: mine.bindingId } });
+
+    const { [slot]: _moved, ...rest } = own;
+    return this.addVersion(userId, pipelineId, definitionToSource({ ...definition, needs: rest }));
   }
 
   /** Calendar steps while Google Calendar isn't connected (M14-T1): said on the review screen, before a run waits for it. */

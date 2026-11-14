@@ -6,7 +6,7 @@ import {
   type CredentialView,
   type Need,
 } from "@realentity/storm-shared";
-import { IconKey, IconPencil } from "@tabler/icons-react";
+import { IconArrowUp, IconKey, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -33,6 +33,7 @@ export function NeedsCard({
   app,
   title = "What it needs",
   onChanged,
+  onMoveToApp,
 }: Readonly<{
   load: () => Promise<BindingView[]>;
   save: (body: BindingsRequest) => Promise<BindingView[]>;
@@ -40,6 +41,8 @@ export function NeedsCard({
   app?: { appId: string; name: string };
   title?: string;
   onChanged?: (views: BindingView[]) => void;
+  /** M50-T12: on a pipeline in an App, one of its own slots made the App's (shared by its pipelines). */
+  onMoveToApp?: (slot: string) => Promise<unknown>;
 }>) {
   const loaded = useLoad(load, []);
   const [shown, setShown] = useState<BindingView[] | null>(null);
@@ -89,6 +92,19 @@ export function NeedsCard({
                   <span className="text-secondary small">for its {view.need.uses.join(" and ")}</span>
                 )}
                 {readOnly && <span className="badge bg-azure-lt">the App's</span>}
+                {view.owner === "pipeline" && app && onMoveToApp && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost-secondary ms-auto"
+                    disabled={action.busy}
+                    title={`Make it ${app.name}'s, filled once for all its pipelines`}
+                    onClick={() => void action.run(() => onMoveToApp(view.slot))}
+                    data-testid={`need-to-app-${view.slot}`}
+                  >
+                    <IconArrowUp size={16} className="me-1" />
+                    To {app.name}
+                  </button>
+                )}
               </div>
               {readOnly ? (
                 <div className="small">

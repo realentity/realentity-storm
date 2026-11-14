@@ -125,6 +125,9 @@ export const api = {
     list: () => request<PipelineSummaryView[]>("GET", "/pipelines"),
     get: (pipelineId: string) => request<PipelineDetailView>("GET", `/pipelines/${pipelineId}`),
     remove: (pipelineId: string) => request<void>("DELETE", `/pipelines/${pipelineId}`),
+    /** M50-T12: one of its own slots made its App's. */
+    moveSlotToApp: (pipelineId: string, slot: string) =>
+      request<PipelineDetailView>("POST", `/pipelines/${pipelineId}/needs/${encodeURIComponent(slot)}/app`),
     version: (pipelineId: string, version: number) => request<PipelineVersionView>("GET", `/pipelines/${pipelineId}/versions/${version}`),
     compile: (source: string, pipelineId?: string) =>
       request<CompilePipelineResponse>("POST", "/pipelines/compile", { source, pipelineId }),

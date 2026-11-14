@@ -107,6 +107,33 @@ describe("bindings", () => {
     expect(slots((await agent.get(`/api/apps/${first.appId}/bindings`).expect(200)).body as BindingView[])).toMatchObject({ database: null });
   });
 
+  // M50-T12: a pipeline's own slot made its App's, with what fills it; the App's other pipelines share it
+  it("moves a pipeline's own slot up to its App, with its credential, as the next version of each", async () => {
+    const feed = await credential("status-key", "API_KEY", ["status.example.org"]);
+    const app = (await agent.post("/api/apps").send({ source: OPS("Ops four") }).expect(201)).body as AppDetailView;
+    const pipeline = (await agent.post("/api/pipelines").send({ source: ISSUE("Ops four") }).expect(201)).body as PipelineDetailView;
+    expect(((await agent.get(`/api/pipelines/${pipeline.pipelineId}/bindings`).expect(200)).body as BindingView[])[0]).toMatchObject({
+      slot: "status",
+      owner: "pipeline",
+      credential: { name: "status-key" },
+    });
+
+    const moved = (await agent.post(`/api/pipelines/${pipeline.pipelineId}/needs/status/app`).expect(201)).body as PipelineDetailView;
+    expect(moved.current?.version).toBe(2);
+    expect(moved.current?.definition.needs).toBeUndefined();
+    const views = (await agent.get(`/api/pipelines/${pipeline.pipelineId}/bindings`).expect(200)).body as BindingView[];
+    expect(views.find((v) => v.slot === "status")).toMatchObject({ owner: "app", need: { kind: "credential", for: "status.example.org" }, credential: { name: "status-key" } });
+    const shared = (await agent.get(`/api/apps/${app.appId}/bindings`).expect(200)).body as BindingView[];
+    expect(shared.find((v) => v.slot === "status")?.credential?.credentialId).toBe(feed.credentialId);
+    const appVersion = await db.client.appVersion.findFirstOrThrow({ where: { appId: app.appId }, orderBy: { version: "desc" } });
+    expect(appVersion.version).toBe(2);
+    expect(appVersion.source).toMatch(/status: \{ ?kind: credential, for: status\.example\.org ?\}/);
+
+    // Its App's, or not a slot of it: refused.
+    await agent.post(`/api/pipelines/${pipeline.pipelineId}/needs/github/app`).expect(404);
+    await agent.post(`/api/pipelines/${pipeline.pipelineId}/needs/nope/app`).expect(404);
+  });
+
   it("never fills a slot with another user's credential, and shows no binding the user can't see", async () => {
     const app = (await agent.post("/api/apps").send({ source: OPS("Ops three") }).expect(201)).body as AppDetailView;
     await agent.put(`/api/apps/${app.appId}/bindings`).send({ github: { credentialId: "1b671a64-40d5-491e-99b0-da01e8a64ba1" } }).expect(400);

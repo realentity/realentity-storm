@@ -10,6 +10,8 @@ export function definitionToSource(definition: CompiledDefinition): string {
   if (definition.description) authored.description = definition.description;
   if (definition.app) authored.app = definition.app;
   if (definition.trigger !== "manual") authored.trigger = definition.trigger;
+  // M50: its slots, as declared or as the compiler found them, so an edit keeps their labels and what they ask for.
+  if (definition.needs && Object.keys(definition.needs).length > 0) authored.needs = definition.needs;
   if (Object.keys(definition.limits).length > 0) authored.limits = definition.limits;
   const { allowedDomains, allowedRecipients } = definition.policy;
   if (allowedDomains.length > 0 || allowedRecipients.length > 0) {

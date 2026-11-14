@@ -36,4 +36,21 @@ describe("definitionToSource", () => {
     });
     expect(parse(source)).toMatchObject({ trigger: { schedule: "0 8 * * 1-5", tz: "Europe/Sofia" }, limits: { "email.send": "10/day" } });
   });
+
+  // M50: an edit keeps the slots as they were declared (their labels, what they ask for)
+  it("keeps the pipeline's slots", () => {
+    const needs = {
+      github: { kind: "credential" as const, type: "api_key" as const, for: "api.github.com", label: "GitHub, to open issues" },
+      work: { kind: "google" as const, uses: ["calendar" as const], label: "The work calendar" },
+    };
+    const source = definitionToSource({
+      name: "Issues",
+      trigger: "manual",
+      limits: {},
+      policy: { allowedDomains: [], allowedRecipients: [] },
+      needs,
+      steps: [{ id: "tell", type: "notify.telegram", with: { text: "hi" } }],
+    });
+    expect(parse(source)).toMatchObject({ needs });
+  });
 });
