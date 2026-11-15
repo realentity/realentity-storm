@@ -214,10 +214,10 @@ the Docker network): leave it as it is.
 authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, …). Both live in `.env`, so they have to
 be there before Storm starts.
 
-1. Make the folders for run files and your documents:
+1. Make the folders for run files, your documents and your Apps' files:
 
    ```bash
-   mkdir -p data/artifacts data/documents && sudo chown -R 1000:1000 data
+   mkdir -p data/artifacts data/documents/app-files && sudo chown -R 1000:1000 data
    ```
 
 2. Run the login setup. The first time, this builds the images (a few minutes). It asks for a password (at least 12

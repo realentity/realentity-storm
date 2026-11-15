@@ -87,6 +87,12 @@ services:
         target: /data/documents
         read_only: true
         bind: { create_host_path: false }
+      # Except your Apps' files and images (M46): file.keep writes them here (a photo sent with /paper, an email's
+      # attachment), so this one folder is writable. Your CV and letters stay read-only.
+      - type: bind
+        source: ${STORM_DATA_DIR:-../data}/documents/app-files
+        target: /data/documents/app-files
+        bind: { create_host_path: false }
     # The browser stack (docs/design.md §6): Chromium needs a large /dev/shm; tini reaps Chromium's and Xvfb's processes.
     # Port 6080 (websockify, the live view) is reachable only on the compose network, through Caddy's /vnc.
     shm_size: 1gb
