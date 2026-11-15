@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { EmailAccountsCard } from "../components/EmailAccountsCard";
 import { GoogleAccountsCard } from "../components/GoogleAccountsCard";
+import { TelegramCommandsCard } from "../components/TelegramCommandsCard";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
@@ -41,6 +42,7 @@ export function SettingsPage() {
           <EmailAccountsCard />
           <GoogleAccountsCard />
           <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
+          <TelegramCommandsCard />
           <WeeklyReview settings={settings.data} onSaved={settings.reload} />
           <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
         </div>

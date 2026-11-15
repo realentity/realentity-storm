@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TelegramCommands } from "./telegram-commands";
+import { TelegramController } from "./telegram.controller";
 import { TELEGRAM_FETCH, TelegramNotices } from "./telegram-notices";
 
 /**
@@ -7,6 +8,7 @@ import { TELEGRAM_FETCH, TelegramNotices } from "./telegram-notices";
  * receives its updates.
  */
 @Module({
+  controllers: [TelegramController],
   providers: [TelegramNotices, TelegramCommands, { provide: TELEGRAM_FETCH, useValue: fetch }],
   exports: [TelegramNotices, TelegramCommands],
 })

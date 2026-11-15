@@ -1,6 +1,6 @@
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { QUEUES } from "@realentity/storm-queue";
-import { type PipelineDetailView, type WebhookView } from "@realentity/storm-shared";
+import { type PipelineDetailView, type TelegramCommandsView, type WebhookView } from "@realentity/storm-shared";
 import { defaultCatalog, type StepDefinition } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { createHmac } from "node:crypto";
@@ -710,6 +710,34 @@ steps:
       // Off: out of the menu.
       await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: false }).expect(200);
       expect((sent("setMyCommands").at(-1)!.body.commands as { command: string }[]).map((c) => c.command)).not.toContain("thing");
+    });
+
+    it("Settings lists every command: Storm's own, then the pipelines', those off too and who has a command now", async () => {
+      const commands = async () => (await agent.get("/api/telegram/commands").expect(200)).body as TelegramCommandsView;
+      const first = await createPipeline(THING("thing", "Add a thing"));
+      const second = await createPipeline(THING("thing", "Another thing"));
+
+      const before = await commands();
+      expect(before.configured).toBe(true);
+      expect(before.commands.filter((c) => c.pipeline === null).map((c) => c.command)).toEqual(["run", "status", "inbox", "pause", "resume", "new", "edit", "help"]);
+      expect(before.commands.filter((c) => c.pipeline !== null)).toEqual([
+        {
+          command: "thing",
+          description: "Add a thing: /thing milk",
+          pipeline: { pipelineId: first.pipelineId, name: "Add a thing", enabled: false },
+          answers: false,
+          takenBy: null,
+        },
+        expect.objectContaining({ command: "thing", pipeline: expect.objectContaining({ name: "Another thing" }) as unknown, answers: false, takenBy: null }),
+      ]);
+
+      // One on: it answers, listed first; the other says who has its command.
+      await agent.patch(`/api/pipelines/${second.pipelineId}`).send({ enabled: true }).expect(200);
+      expect((await commands()).commands.filter((c) => c.pipeline !== null).map((c) => [c.pipeline!.name, c.answers, c.takenBy])).toEqual([
+        ["Another thing", true, null],
+        ["Add a thing", false, "Another thing"],
+      ]);
+      await request(api.http).get("/api/telegram/commands").expect(401);
     });
 
     it("refuses a command another pipeline that is on has, or one of the bot's own", async () => {
