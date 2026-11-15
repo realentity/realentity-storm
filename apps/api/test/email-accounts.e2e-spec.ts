@@ -1,5 +1,5 @@
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
-import { type BindingView, type EmailAccountView, type PipelineDetailView } from "@realentity/storm-shared";
+import { type BindingView, type EmailAccountView, type PipelineDetailView, type ProposalView } from "@realentity/storm-shared";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
@@ -9,6 +9,14 @@ steps:
   - id: fetch
     type: email.fetch
     with: { account: work }
+`;
+
+const SENDER = `
+name: Work replies
+steps:
+  - id: send
+    type: email.send
+    with: { to: ana@acme.test, subject: Hi, body: Hello, account: work }
 `;
 
 // M50-T7: several email accounts, one the default; the password sealed, never returned; an email slot filled by id
@@ -111,5 +119,49 @@ describe("email accounts", () => {
     // Removing the account clears the slot: back to the default.
     await agent.delete(`/api/email-accounts/${work.emailAccountId}`).expect(204);
     expect(((await agent.get(bindings).expect(200)).body as BindingView[])[0]?.account).toBeNull();
+  });
+
+  it("an email waiting for Act says whom it goes from: the account it names, by id or slot, else the default", async () => {
+    const home = await add("me@example.com");
+    const work = await add("me@work.example", { label: "Work" });
+    const pipeline = (await agent.post("/api/pipelines").send({ source: SENDER }).expect(201)).body as PipelineDetailView;
+    await agent
+      .put(`/api/pipelines/${pipeline.pipelineId}/bindings`)
+      .send({ work: { emailAccountId: work.emailAccountId } })
+      .expect(200);
+    const { userId } = await db.client.pipeline.findUniqueOrThrow({ where: { pipelineId: pipeline.pipelineId } });
+    const run = await db.client.run.create({
+      data: { userId, pipelineVersionId: pipeline.current!.pipelineVersionId, trigger: "manual", status: "WAITING_FOR_USER" },
+    });
+    const proposal = async (account?: string) => {
+      const gate = await db.client.step.create({
+        data: { runId: run.runId, stepKey: `gate-${account ?? "none"}`, type: "gate.act", status: "WAITING", startedAt: new Date() },
+      });
+      const payload = { to: "ana@acme.test", subject: "Hi", body: "Hello", ...(account ? { account } : {}) };
+      return (
+        await db.client.proposal.create({
+          data: { userId, runId: run.runId, stepId: gate.stepId, stepKey: "send", status: "PENDING_REVIEW", target: "ana@acme.test", originalPayload: payload },
+        })
+      ).proposalId;
+    };
+    const bySlot = await proposal("work");
+    const byId = await proposal(home.emailAccountId);
+    const byDefault = await proposal();
+    const unbound = await proposal("personal");
+    const gone = await proposal("00000000-0000-4000-8000-000000000000");
+
+    const from = async (proposalId: string) => ((await agent.get(`/api/proposals/${proposalId}`).expect(200)).body as ProposalView).from;
+    expect(await from(bySlot)).toEqual({ emailAccountId: work.emailAccountId, address: "me@work.example", label: "Work" });
+    expect((await from(byId))?.address).toBe("me@example.com");
+    expect((await from(byDefault))?.address).toBe("me@example.com");
+    // A slot nothing fills: the default, as the worker sends it.
+    expect((await from(unbound))?.address).toBe("me@example.com");
+    // An account that is gone: none, the send would fail.
+    expect(await from(gone)).toBeNull();
+    // The inbox's list says the same.
+    const list = (await agent.get("/api/proposals").expect(200)).body as ProposalView[];
+    expect(list.find((p) => p.proposalId === bySlot)?.from?.address).toBe("me@work.example");
+
+    await db.client.run.deleteMany({ where: { runId: run.runId } });
   });
 });

@@ -26,7 +26,8 @@ export interface EmailFields {
 /** Sorts an email payload's fields into the parts of an email, whatever order the pipeline wrote them in. */
 export function emailFields(payload: Record<string, unknown>): EmailFields {
   const fields = Object.keys(payload);
-  const known = new Set<string>([...HEADERS, "body", ...THREAD]);
+  // `account` is whom it goes from: shown resolved, as From (ProposalView.from), and not edited here.
+  const known = new Set<string>([...HEADERS, "body", ...THREAD, "account"]);
   return {
     headers: HEADERS.filter((field) => fields.includes(field)),
     body: fields.includes("body") ? "body" : null,

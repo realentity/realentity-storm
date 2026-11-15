@@ -18,7 +18,7 @@ import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { questionView } from "../facts/facts.service";
-import { PROPOSAL_INCLUDE, proposalView } from "../proposals/proposal-view";
+import { emailSenders, PROPOSAL_INCLUDE, proposalView } from "../proposals/proposal-view";
 import { runCosts } from "./run-costs";
 
 /** The Costs page lists at most this many runs, newest first. */
@@ -209,6 +209,7 @@ export class RunsService {
     });
     if (!run) throw new NotFoundException();
     const usage = run.steps.map((s) => stepUsage(s.llmUsage));
+    const senders = await emailSenders(this.prisma.client, userId, run.proposals);
     const takeover = run.takeovers[0];
     const costUsd = Math.round(usage.reduce((sum, u) => sum + (u?.costUsd ?? 0), 0) * 1_000_000) / 1_000_000;
     return {
@@ -242,7 +243,7 @@ export class RunsService {
         finishedAt: s.finishedAt?.toISOString() ?? null,
         llmUsage: usage[index] ?? null,
       })),
-      proposals: run.proposals.map(proposalView),
+      proposals: run.proposals.map((p) => proposalView(p, senders.get(p.proposalId))),
     };
   }
 }
