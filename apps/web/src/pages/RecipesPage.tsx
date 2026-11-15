@@ -1,8 +1,9 @@
 import { type RecipeSummaryView } from "@realentity/storm-shared";
-import { IconAlertTriangle, IconFileImport, IconSchool } from "@tabler/icons-react";
+import { IconAlertTriangle, IconDownload, IconFileImport, IconPencil, IconSchool } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { stringify } from "yaml";
 import { Empty, ErrorAlert, Json, Loading, Modal, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
@@ -124,12 +125,48 @@ function Health({ recipe }: { recipe: Pick<RecipeSummaryView, "brokenAt" | "brok
   );
 }
 
-/** One recipe's versions, newest first. */
+const RECIPE_ORDER = ["url", "params", "item", "fields", "key", "empty", "next", "maxPages", "delayMs"];
+const FIELD_ORDER = ["selector", "attr", "required"];
+const NEXT_ORDER = ["kind", "selector", "url", "start"];
+
+/** `keys` first, in that order, then the rest as they are (the database keeps no order). */
+function ordered(value: unknown, keys: string[]): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const entries = Object.entries(value as Record<string, unknown>);
+  const rank = (key: string) => (keys.includes(key) ? keys.indexOf(key) : keys.length);
+  return Object.fromEntries(entries.sort(([a], [b]) => rank(a) - rank(b)));
+}
+
+/** A recipe as the YAML it is imported and edited as, its keys in the order of recipes/example-jobs.yaml. */
+export function recipeYaml(recipe: unknown): string {
+  const top = ordered(recipe, RECIPE_ORDER) as Record<string, unknown> | null;
+  if (top && typeof top === "object") {
+    if (top.fields && typeof top.fields === "object") {
+      top.fields = Object.fromEntries(Object.entries(top.fields as Record<string, unknown>).map(([field, spec]) => [field, ordered(spec, FIELD_ORDER)]));
+    }
+    if (top.next) top.next = ordered(top.next, NEXT_ORDER);
+  }
+  return stringify(top, { lineWidth: 0 });
+}
+
+/** Saves a recipe as `<site>_<what>.yaml`, ready to import elsewhere. */
+function downloadYaml(name: string, recipe: unknown) {
+  const blob = new Blob([recipeYaml(recipe)], { type: "application/yaml" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${name.replace("/", "_")}.yaml`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+/** One recipe's versions, newest first: each one as YAML, editable into the next version. */
 export function RecipePage() {
   const { site = "", what = "" } = useParams();
   const name = `${site}/${what}`;
   const recipe = useLoad(() => api.recipes.get(name), [name], (signal) => signal.type === "run");
   const action = useAction();
+  const [editing, setEditing] = useState<{ from: number; source: string } | null>(null);
+  const [teaching, setTeaching] = useState(false);
   const latest = recipe.data?.versions[0];
   const decide = async (approve: boolean) => {
     const saved = await action.run(() => (approve ? api.recipes.approveFix(name) : api.recipes.discardFix(name)));
@@ -137,10 +174,71 @@ export function RecipePage() {
     toast.success(approve ? `Saved as v${saved.versions[0].version}` : "Fix discarded");
     recipe.reload();
   };
+  const saveEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editing) return;
+    const saved = await action.run(() => api.recipes.import({ name, source: editing.source }));
+    if (!saved) return;
+    toast.success(`Saved as v${saved.versions[0].version}`);
+    setEditing(null);
+    recipe.reload();
+  };
   return (
     <>
-      <PageHeader title={<code>{name}</code>} pretitle={<Link to="/recipes">Recipes</Link>} />
-      <ErrorAlert error={recipe.error ?? action.error} />
+      <PageHeader
+        title={<code>{name}</code>}
+        pretitle={<Link to="/recipes">Recipes</Link>}
+        actions={
+          <button type="button" className="btn" onClick={() => setTeaching(true)}>
+            <IconSchool size={18} className="me-1" />
+            Teach again
+          </button>
+        }
+      />
+      <ErrorAlert error={recipe.error ?? (editing ? undefined : action.error)} />
+      {teaching && <TeachRecipe initialName={name} onClose={() => setTeaching(false)} />}
+      {editing && latest && (
+        <form className="card mb-3 border-primary" data-testid="recipe-editor" onSubmit={(e) => void saveEdit(e)}>
+          <div className="card-header">
+            <h3 className="card-title">
+              Edit {editing.from === latest.version ? `v${editing.from}` : `from v${editing.from}`}
+            </h3>
+          </div>
+          <div className="card-body">
+            <ErrorAlert error={action.error} />
+            <label className="form-label" htmlFor="recipe-source">
+              Recipe (YAML)
+            </label>
+            <textarea
+              id="recipe-source"
+              className="form-control font-monospace"
+              rows={Math.min(30, Math.max(12, editing.source.split("\n").length + 2))}
+              value={editing.source}
+              onChange={(e) => setEditing({ ...editing, source: e.target.value })}
+              spellCheck={false}
+              required
+            />
+            <div className="form-hint">
+              Checked before it is saved, like an import. Saved as v{latest.version + 1}, which runs use from then on; the versions before it stay.
+            </div>
+          </div>
+          <div className="card-footer d-flex gap-2 justify-content-end">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                action.clearError();
+                setEditing(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={action.busy}>
+              Save as v{latest.version + 1}
+            </button>
+          </div>
+        </form>
+      )}
       {!recipe.data && recipe.loading && <Loading />}
       {latest?.proposed != null && (
         <div className="card mb-3 border-warning" data-testid="proposed-fix">
@@ -155,7 +253,7 @@ export function RecipePage() {
               v{latest.version} stopped matching the page; this recipe read it again and runs read with it until you decide. Approved, it is saved
               as v{latest.version + 1}.
             </p>
-            <Json value={latest.proposed} />
+            <Json value={recipeYaml(latest.proposed)} />
           </div>
           <div className="card-footer d-flex gap-2 justify-content-end">
             <button type="button" className="btn btn-outline-danger" disabled={action.busy} onClick={() => void decide(false)}>
@@ -174,15 +272,38 @@ export function RecipePage() {
               v{version.version}
               {index === 0 && <span className="badge bg-blue-lt ms-2">in use</span>}
             </h3>
-            <div className="card-actions small text-secondary">
-              {version.taughtInRunId ? <Link to={`/runs/${version.taughtInRunId}`}>taught</Link> : "imported"} {formatDateTime(version.dateCreated)}
+            <div className="card-actions d-flex align-items-center gap-2">
+              <span className="small text-secondary">
+                {version.taughtInRunId ? <Link to={`/runs/${version.taughtInRunId}`}>taught</Link> : "imported or edited"} {formatDateTime(version.dateCreated)}
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => downloadYaml(name, version.recipe)}
+                title="This version as a YAML file, to import elsewhere"
+                aria-label={`Download v${version.version}`}
+              >
+                <IconDownload size={16} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  action.clearError();
+                  setEditing({ from: version.version, source: recipeYaml(version.recipe) });
+                  window.scrollTo({ top: 0 });
+                }}
+              >
+                <IconPencil size={16} className="me-1" />
+                {index === 0 ? "Edit" : "Edit from here"}
+              </button>
             </div>
           </div>
           <div className="card-body">
             <div className="mb-2">
               <Health recipe={version} />
             </div>
-            <Json value={version.recipe} />
+            <Json value={recipeYaml(version.recipe)} />
           </div>
         </div>
       ))}
