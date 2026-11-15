@@ -138,7 +138,7 @@ function ordered(value: unknown, keys: string[]): unknown {
 }
 
 /** A recipe as the YAML it is imported and edited as, its keys in the order of recipes/example-jobs.yaml. */
-export function recipeYaml(recipe: unknown): string {
+function recipeYaml(recipe: unknown): string {
   const top = ordered(recipe, RECIPE_ORDER) as Record<string, unknown> | null;
   if (top && typeof top === "object") {
     if (top.fields && typeof top.fields === "object") {
