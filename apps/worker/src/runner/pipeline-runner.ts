@@ -12,6 +12,7 @@ import {
 import { type EventJob } from "@realentity/storm-queue";
 import { referencesIn, type StepCatalog, type StepDefinition } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
+import { inputError } from "./input-errors";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
 import { loadBindings, type RunBindings } from "./bindings";
@@ -456,7 +457,7 @@ export class PipelineRunner {
     try {
       input = definition.input.parse(state.values.resolve(step.with, scope));
     } catch (error) {
-      await this.fail(state, step, row, scope, `Invalid input: ${message(error)}`);
+      await this.fail(state, step, row, scope, `Invalid input: ${inputError(error, step.with)}`);
       return { kind: "failed" };
     }
     const running = await this.markRunning(state, step, row, scope, input);
@@ -513,7 +514,7 @@ export class PipelineRunner {
         step,
         row,
         scope,
-        error instanceof PolicyViolation ? error.message : `Invalid payload for ${target.id}: ${message(error)}`,
+        error instanceof PolicyViolation ? error.message : `Invalid payload for ${target.id}: ${inputError(error, target.with)}`,
       );
       return { kind: "failed" };
     }
@@ -571,7 +572,7 @@ export class PipelineRunner {
     try {
       input = definition.input.parse(state.values.resolve(step.with, scope)) as { items: unknown[]; title?: string };
     } catch (error) {
-      await this.fail(state, step, row, scope, `Invalid input: ${message(error)}`);
+      await this.fail(state, step, row, scope, `Invalid input: ${inputError(error, step.with)}`);
       return { kind: "failed" };
     }
     const reviewRow = await this.markRunning(state, step, row, scope, input);
@@ -646,7 +647,7 @@ export class PipelineRunner {
         step,
         row,
         scope,
-        error instanceof PolicyViolation ? error.message : `Invalid approved payload: ${message(error)}`,
+        error instanceof PolicyViolation ? error.message : `Invalid approved payload: ${inputError(error, payload)}`,
       );
       await this.setProposalStatus(state, proposal.proposalId, "FAILED");
       return { kind: "failed" };

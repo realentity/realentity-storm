@@ -295,6 +295,15 @@ steps:
     expect(telegram.calls).toHaveLength(0);
   });
 
+  it("says which field didn't fit and the reference it came from, not the validator's JSON", async () => {
+    const source = "name: Briefing\ntrigger: { on: flow.later }\nsteps:\n  - id: tell\n    type: notify.telegram\n    with: { text: \"{{trigger.data.trip.destination}}\" }\n";
+    const runId = await runner.start(await version(source), { trigger: "event", triggerData: { data: {} } });
+    await expect(runner.advance(runId)).resolves.toBe("FAILED");
+    const failed = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "tell" } });
+    expect(failed.error).toBe("Invalid input: text expected string, received undefined (from {{trigger.data.trip.destination}})");
+    expect(telegram.calls).toHaveLength(0);
+  });
+
   // M2-I6
   it("dry run: proposals are previews, side-effect executors are never called", async () => {
     const runId = await runner.start(await version(APPLY), { trigger: "dry-run", dryRun: true });
