@@ -82,6 +82,16 @@ test("the starter: installed, tried, switched on and run; its releases on its pa
   await expect(page.getByTestId("entity-row").first()).toContainText("new");
   await page.getByTestId("entity-row").first().getByRole("button", { name: "read" }).click();
   await expect(page.getByTestId("entity-row").first()).toContainText("read");
+
+  // The pipelines list by App: found by the App's name, under its heading, which opens it.
+  const appName = ((await (await page.request.get(`/api/apps/${appId}`)).json()) as { name: string }).name;
+  await page.goto("/pipelines");
+  await page.getByTestId("pipelines-search").fill(appName);
+  const heading = page.locator(`[data-testid="pipelines-group"]:has(a[href="/apps/${appId}"])`);
+  await expect(heading).toContainText("1");
+  await expect(page.getByTestId("pipeline-row").first()).toBeVisible();
+  await page.getByTestId("pipelines-search").fill("no pipeline is called like this");
+  await expect(page.getByTestId("pipeline-row")).toHaveCount(0);
 });
 
 // M48-E1: Tasks, Memos and Papers installed from the gallery; a task, a memo and a paper added by hand

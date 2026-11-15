@@ -139,6 +139,8 @@ export interface PipelineSummaryView {
   /** null: never saved (only a draft so far). */
   currentVersion: number | null;
   hasDraft: boolean;
+  /** The App it belongs to (its current version's, else its draft's), under the App's name now; null: none. */
+  app: { appId: string; name: string } | null;
   dateCreated: string;
   dateUpdated: string;
 }

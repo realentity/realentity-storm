@@ -22,6 +22,7 @@ import {
 } from "@realentity/storm-shared";
 import { diffDefinitions } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
+import { appOf } from "../apps/app-pipelines";
 import { AppsService } from "../apps/apps.service";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
@@ -259,11 +260,20 @@ export class PipelinesService {
   async list(userId: string): Promise<PipelineSummaryView[]> {
     const pipelines = await this.prisma.client.pipeline.findMany({
       where: { userId },
-      include: { versions: { where: { savedAt: null }, select: { pipelineVersionId: true } } },
+      include: { versions: { where: { savedAt: null }, select: { pipelineVersionId: true, definition: true } } },
       orderBy: { name: "asc" },
     });
-    const versions = await this.versionNumbers(pipelines.map((p) => p.currentVersionId));
-    return pipelines.map((p) => summary(p, versions.get(p.currentVersionId ?? "") ?? null, p.versions.length > 0));
+    const current = await this.prisma.client.pipelineVersion.findMany({
+      where: { pipelineVersionId: { in: pipelines.flatMap((p) => (p.currentVersionId ? [p.currentVersionId] : [])) } },
+      select: { pipelineVersionId: true, version: true, definition: true },
+    });
+    const byId = new Map(current.map((v) => [v.pipelineVersionId, v]));
+    const apps = await this.prisma.client.app.findMany({ where: { userId }, select: { appId: true, name: true } });
+    return pipelines.map((p) => {
+      const version = byId.get(p.currentVersionId ?? "");
+      const definition = (version?.definition ?? p.versions[0]?.definition) as unknown as CompiledDefinition | undefined;
+      return summary(p, version?.version ?? null, p.versions.length > 0, appOf(definition, apps));
+    });
   }
 
   async get(userId: string, pipelineId: string): Promise<PipelineDetailView> {
@@ -280,8 +290,14 @@ export class PipelinesService {
       const view = versionView(v);
       return { ...view, definition: withCurrentNames(view.definition, names, pipeline.currentVersionId ? pipeline.name : undefined) };
     };
+    const apps = await this.prisma.client.app.findMany({ where: { userId }, select: { appId: true, name: true } });
     return {
-      ...summary(pipeline, current?.version ?? null, draft !== null),
+      ...summary(
+        pipeline,
+        current?.version ?? null,
+        draft !== null,
+        appOf((current ?? draft)?.definition as CompiledDefinition | undefined, apps),
+      ),
       current: current ? now(current) : null,
       draft: draft ? now(draft) : null,
       versions: pipeline.versions.filter((v) => v.savedAt).map(versionSummary),
@@ -405,14 +421,6 @@ export class PipelinesService {
       throw error;
     }
   }
-
-  private async versionNumbers(ids: (string | null)[]): Promise<Map<string, number>> {
-    const rows = await this.prisma.client.pipelineVersion.findMany({
-      where: { pipelineVersionId: { in: ids.filter((id): id is string => id !== null) } },
-      select: { pipelineVersionId: true, version: true },
-    });
-    return new Map(rows.map((r) => [r.pipelineVersionId, r.version]));
-  }
 }
 
 function toJson(value: CompiledDefinition | CompiledPolicy): Prisma.InputJsonValue {
@@ -427,6 +435,7 @@ function summary(
   p: { pipelineId: string; name: string; enabled: boolean; essential: boolean; dateCreated: Date; dateUpdated: Date },
   currentVersion: number | null,
   hasDraft: boolean,
+  app: { appId: string; name: string } | null,
 ): PipelineSummaryView {
   return {
     pipelineId: p.pipelineId,
@@ -435,6 +444,7 @@ function summary(
     essential: p.essential,
     currentVersion,
     hasDraft,
+    app,
     dateCreated: p.dateCreated.toISOString(),
     dateUpdated: p.dateUpdated.toISOString(),
   };
