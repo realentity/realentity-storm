@@ -75,4 +75,20 @@ fields:
   await expect(page.getByTestId("recipe-editor")).toBeHidden();
   await expect(page.getByRole("heading", { name: "v2 in use" })).toBeVisible();
   await expect(page.getByText("empty: .no-results")).toBeVisible();
+
+  // Tried with a search: the items it reads, in place; a page that doesn't match says what didn't
+  const tryCard = page.getByTestId("try-recipe");
+  await expect(tryCard.getByRole("heading", { name: "Try v2" })).toBeVisible();
+  await tryCard.getByLabel("query").fill("net");
+  await tryCard.getByRole("button", { name: "Try" }).click();
+  await expect(page.getByTestId("try-result")).toContainText("2 items on 2 pages.");
+  await expect(page.getByTestId("try-items").getByRole("link", { name: "https://example.org/jobs/net-1" })).toBeVisible();
+  await expect(page.getByTestId("try-items")).toContainText("net developer 2");
+
+  await tryCard.getByLabel("query").fill("redesigned");
+  await tryCard.getByRole("button", { name: "Try" }).click();
+  await expect(page.getByTestId("try-result")).toContainText(`Recipe ${name} v1 doesn't match the page: "article.job" matched nothing`);
+  // A try changes nothing: still not run
+  await page.goto("/recipes");
+  await expect(page.getByTestId("recipes").locator("tr", { hasText: name })).toContainText("Not run yet");
 });

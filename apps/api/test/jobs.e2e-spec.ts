@@ -132,6 +132,26 @@ describe("jobs and recipes", () => {
     await agent.post("/api/recipes/teach").send({ ...body, name: "not a name" }).expect(400);
     await agent.post("/api/recipes/teach").send({ ...body, url: "javascript:alert(1)" }).expect(400);
   });
+
+  it("Try is a dry run of the recipe's Try pipeline: browser.extract with its params, reused next time", async () => {
+    await agent.post("/api/recipes/dev.bg/search/try").send({}).expect(404);
+    await agent.post("/api/recipes").send({ name: "dev.bg/search", source: RECIPE }).expect(201);
+
+    const first = (await agent.post("/api/recipes/dev.bg/search/try").send({ params: { category: "net" } }).expect(201)).body as TeachStartedView;
+    const run = await db.client.run.findUniqueOrThrow({ where: { runId: first.runId }, include: { pipelineVersion: { include: { pipeline: true } } } });
+    expect(run).toMatchObject({ dryRun: true, headed: false, status: "QUEUED" });
+    expect(run.pipelineVersion.pipeline.name).toBe("Try dev.bg/search");
+    expect(run.pipelineVersion.definition).toMatchObject({
+      steps: [{ id: "read", type: "browser.extract", with: { recipes: ["dev.bg/search"], params: { category: "net" }, maxItems: 50 } }],
+    });
+
+    const again = (await agent.post("/api/recipes/dev.bg/search/try").send({ params: { category: "java" }, maxItems: 10 }).expect(201)).body as TeachStartedView;
+    expect(again.pipelineId).toBe(first.pipelineId);
+    expect(await db.client.pipelineVersion.count({ where: { pipelineId: first.pipelineId } })).toBe(2);
+
+    await agent.post("/api/recipes/dev.bg/search/try").send({ maxItems: 1000 }).expect(400);
+    await agent.post("/api/recipes/dev.bg/search/try").send({ params: { "bad name": "x" } }).expect(400);
+  });
   // M16-I1: the dashboard's counts against known postings and applications.
   describe("M16: insight and outcomes", () => {
     const DAY = 86_400_000;

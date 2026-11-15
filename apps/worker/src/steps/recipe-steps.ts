@@ -46,7 +46,7 @@ export function searches(params: Record<string, string | string[]>): Record<stri
  * browser.extract (docs/design.md §2.4): a list read with saved recipes, headless and without an LLM. A recipe that no longer
  * matches the page fails the step with what didn't match, is marked broken and the user gets a Telegram message the first
  * time (M9-T7); one that works is marked verified. One that only ever finds its "no results" page for QUIET_DAYS is
- * told once too (M18-T2): the site may have changed so that the list looks empty.
+ * told once too (M18-T2): the site may have changed so that the list looks empty. A dry run only reads.
  */
 export class BrowserExtractStep implements StepExecutor {
   readonly type = "browser.extract";
@@ -101,7 +101,11 @@ export class BrowserExtractStep implements StepExecutor {
         await lease.close();
       }
 
-      if (broken === null) {
+      if (context.dryRun) {
+        // A try (the Recipes page's Try, a pipeline's dry run): it reads the same, but leaves the recipe as it is:
+        // not verified, not broken, no message, no event, and no fallback (its agent, LLM and proposal).
+        if (broken !== null) throw new Error(`Recipe ${name} v${row.version} doesn't match the page: ${broken}`);
+      } else if (broken === null) {
         const now = new Date();
         const found = items.length > before;
         await this.deps.prisma.siteRecipe.update({

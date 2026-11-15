@@ -1129,6 +1129,8 @@ Reads a list (e.g. job postings) from a site with a saved **recipe** (Recipes pa
 the recipe's limit. A list value in `params` runs one search per value. When the site changes and the recipe no longer
 matches, the step fails clearly and marks the recipe broken (event `recipe.broken`). With `fallback: true`,
 `browser.agent` finds the list instead, a fixed recipe is proposed for you to approve, and the run continues with it.
+In a dry run (a recipe's **Try**, or Try in the pipeline editor) it reads the same but leaves the recipe as it is: not
+marked as working or broken, nobody told, no `recipe.broken`, no fallback.
 - In: `recipes` (1–5), `params`, `maxItems` [200], `fallback` [false], `timeoutSeconds` [30].
 - Out: `items` (the recipe's fields plus `source`), `pages`.
 

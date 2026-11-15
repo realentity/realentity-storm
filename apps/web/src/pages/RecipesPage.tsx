@@ -1,5 +1,5 @@
 import { type RecipeSummaryView } from "@realentity/storm-shared";
-import { IconAlertTriangle, IconDownload, IconFileImport, IconPencil, IconSchool } from "@tabler/icons-react";
+import { IconAlertTriangle, IconDownload, IconFileImport, IconLoader2, IconPencil, IconPlayerPlay, IconSchool } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -159,6 +159,153 @@ function downloadYaml(name: string, recipe: unknown) {
   URL.revokeObjectURL(link.href);
 }
 
+const FINISHED = new Set(["DONE", "FAILED", "ABORTED"]);
+
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/** The latest version's params, with their descriptions and defaults (a recipe the page can't read: none). */
+function paramsOf(recipe: unknown): [string, { description?: string; default?: string }][] {
+  const params = (recipe as { params?: unknown } | null)?.params;
+  return params && typeof params === "object" ? Object.entries(params as Record<string, { description?: string; default?: string }>) : [];
+}
+
+/**
+ * Try: a dry run with the latest version and the params given here, its items shown in place. It reads the site as a
+ * run does, and changes nothing: the recipe isn't marked as working or broken, and nobody is told.
+ */
+function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: unknown; version: number }>) {
+  const params = paramsOf(recipe);
+  const fields = Object.keys((recipe as { fields?: Record<string, unknown> } | null)?.fields ?? {});
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [maxItems, setMaxItems] = useState(50);
+  const [runId, setRunId] = useState<string | null>(null);
+  const action = useAction();
+  const run = useLoad(
+    () => (runId ? api.runs.get(runId) : Promise.resolve(null)),
+    [runId],
+    (signal) => runId !== null && (signal.type === "run" || signal.type === "step") && signal.runId === runId,
+  );
+  const tried = run.data ?? null;
+  const running = runId !== null && (!tried || !FINISHED.has(tried.status));
+  const step = tried?.steps.find((s) => s.stepKey === "read");
+  const output = step?.status === "DONE" ? (step.output as { items: Record<string, string>[]; pages: number }) : null;
+  const screenshot = tried?.artifacts.find((a) => a.kind === "screenshot");
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const filled = Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim() !== ""));
+    const started = await action.run(() => api.recipes.try(name, { params: filled, maxItems }));
+    if (started) setRunId(started.runId);
+  };
+
+  return (
+    <form className="card mb-3" data-testid="try-recipe" onSubmit={(e) => void submit(e)}>
+      <div className="card-header">
+        <h3 className="card-title">Try v{version}</h3>
+      </div>
+      <div className="card-body">
+        <p className="text-secondary small">
+          Reads the list now, as a run would, and shows what it finds. It changes nothing: the recipe isn&apos;t marked as working or broken,
+          nobody is told, and the agent doesn&apos;t step in when it doesn&apos;t match. It still opens the site, at the recipe&apos;s pace.
+        </p>
+        <ErrorAlert error={action.error} />
+        <div className="row g-2 align-items-end">
+          {params.map(([param, spec]) => (
+            <div className="col-sm-6 col-lg-4" key={param}>
+              <label className={`form-label${spec.default === undefined ? " required" : ""}`} htmlFor={`try-${param}`}>
+                {param}
+              </label>
+              <input
+                id={`try-${param}`}
+                className="form-control"
+                placeholder={spec.default ?? ""}
+                value={values[param] ?? ""}
+                onChange={(e) => setValues({ ...values, [param]: e.target.value })}
+                required={spec.default === undefined}
+              />
+              {spec.description && <div className="form-hint">{spec.description}</div>}
+            </div>
+          ))}
+          <div className="col-sm-4 col-lg-2">
+            <label className="form-label" htmlFor="try-max-items">
+              Items at most
+            </label>
+            <input
+              id="try-max-items"
+              type="number"
+              className="form-control"
+              min={1}
+              max={200}
+              value={maxItems}
+              onChange={(e) => setMaxItems(Number(e.target.value))}
+            />
+          </div>
+          <div className="col-auto">
+            <button type="submit" className="btn btn-primary" disabled={action.busy || running}>
+              {running ? <IconLoader2 size={18} className="me-1" /> : <IconPlayerPlay size={18} className="me-1" />}
+              {running ? "Reading…" : "Try"}
+            </button>
+          </div>
+        </div>
+      </div>
+      {tried && FINISHED.has(tried.status) && (
+        <div className="card-body border-top" data-testid="try-result">
+          {output && (
+            <>
+              <p>
+                {output.items.length === 0
+                  ? `Nothing found on ${count(output.pages, "page")}: its "no results" page. Try a broader search.`
+                  : `${count(output.items.length, "item")} on ${count(output.pages, "page")}.`}{" "}
+                <Link to={`/runs/${tried.runId}`}>The run</Link>
+              </p>
+              {output.items.length > 0 && (
+                <div className="table-responsive" style={{ maxHeight: 480 }}>
+                  <table className="table table-sm table-vcenter" data-testid="try-items">
+                    <thead>
+                      <tr>
+                        {fields.map((field) => (
+                          <th key={field}>{field}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {output.items.map((item, index) => (
+                        <tr key={`${index}-${item.url ?? ""}`}>
+                          {fields.map((field) => (
+                            <td key={field} className="text-break">
+                              {field === "url" && item[field] ? (
+                                <a href={item[field]} target="_blank" rel="noreferrer noopener">
+                                  {item[field]}
+                                </a>
+                              ) : (
+                                (item[field] ?? <span className="text-secondary">—</span>)
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+          {!output && (
+            <>
+              <div className="text-danger mb-2">
+                {step?.error ?? `The try ended ${tried.status.toLowerCase()}.`} <Link to={`/runs/${tried.runId}`}>The run</Link>
+              </div>
+              {screenshot && <img src={api.artifactUrl(screenshot.artifactId)} alt="The page as the recipe saw it" className="img-fluid border rounded" />}
+            </>
+          )}
+        </div>
+      )}
+    </form>
+  );
+}
+
 /** One recipe's versions, newest first: each one as YAML, editable into the next version. */
 export function RecipePage() {
   const { site = "", what = "" } = useParams();
@@ -265,6 +412,7 @@ export function RecipePage() {
           </div>
         </div>
       )}
+      {latest && <TryRecipe key={latest.version} name={name} recipe={latest.recipe} version={latest.version} />}
       {recipe.data?.versions.map((version, index) => (
         <div className="card mb-3" key={version.version}>
           <div className="card-header">

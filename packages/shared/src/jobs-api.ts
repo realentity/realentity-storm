@@ -181,4 +181,17 @@ export interface TeachStartedView {
   pipelineId: string;
 }
 
+/**
+ * Try a recipe: a dry run of the "Try <name>" pipeline, browser.extract with its latest version, which reads the list and
+ * leaves the recipe as it is (not verified, not broken, nobody told).
+ */
+export const TryRecipeSchema = z
+  .object({
+    /** A value for each of the recipe's params (those with a default may be left out). */
+    params: z.record(z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/), z.string().trim().min(1).max(200)).default({}),
+    maxItems: z.number().int().min(1).max(200).default(50),
+  })
+  .strict();
+export type TryRecipeRequest = z.infer<typeof TryRecipeSchema>;
+
 // #endregion
