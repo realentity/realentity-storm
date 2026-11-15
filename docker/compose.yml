@@ -39,7 +39,7 @@ services:
       DOCUMENTS_DIR: /data/documents
     depends_on:
       migrate: { condition: service_completed_successfully }
-    # Under STORM_DATA_DIR (default: the repository's data/ folder; create artifacts/ and documents/ in it, owned by uid
+    # Under STORM_DATA_DIR (default: the repository's data/ folder; create artifacts/, documents/ and documents/app-files/ in it, owned by uid
     # 1000). Long form on purpose: a missing folder (say, an unmounted disk) stops the container instead of files
     # landing somewhere else.
     volumes:

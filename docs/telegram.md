@@ -4,7 +4,8 @@ Storm has its own Telegram bot. It does three jobs:
 
 1. **It tells you things**: proposals waiting for approval, runs that need you, questions only you can answer,
    alerts, and a brief every morning, a digest every evening and a review every week.
-2. **It takes commands**: start a pipeline, check status, read the inbox, use the kill switch.
+2. **It takes commands**: start a pipeline, check status, read the inbox, use the kill switch, and your pipelines' own
+   commands (`/task`, `/memo`, `/paper` with a photo).
 3. **It builds pipelines**: a message that isn't a command goes to the pipeline builder, and you can save or dry-run
    what it proposes without leaving the chat.
 
@@ -173,7 +174,7 @@ the builder instead. The answer is saved on the Profile page as a fact.
 
 ### 3.4 Scheduled messages
 
-| Message | When (Europe/Sofia) | Contents | Switch |
+| Message | When (your `TZ`) | Contents | Switch |
 | --- | --- | --- | --- |
 | Morning brief | every day 07:30 | Today's calendar (if Google is connected), what waits for you, failures in the last day, unpaid bills due within 3 days | Settings |
 | Daily digest | every day 19:00 | What ran, what waits, what failed, suggestions, LLM cost | the `Daily digest` pipeline ([pipelines/daily-digest.yaml](../pipelines/daily-digest.yaml)) |
@@ -321,7 +322,8 @@ Other pipelines that use Telegram: [release-watch.yaml](../pipelines/release-wat
   complete, unchanged proposals whose targets you've approved before.
 - **Message length:** Telegram's limit is 4096 characters. Longer proposals are cut off and must be decided in Storm.
   Longer builder answers are truncated.
-- **No images, files or voice.** It handles text only.
+- **No voice, and images or files only with a command:** a photo or file captioned with a pipeline's command
+  (`/paper …`) goes to that pipeline; any other image, file or voice message is ignored.
 - **Item picking (`gate.review`) is done in Storm**, not in the chat.
 - **Late commands are dropped** (older than 5 minutes). Button presses and replies are still handled.
 
@@ -330,8 +332,8 @@ Other pipelines that use Telegram: [release-watch.yaml](../pipelines/release-wat
 | Symptom | Cause |
 | --- | --- |
 | Nothing is ever sent | `TELEGRAM_BOT_TOKEN` or `TELEGRAM_CHAT_ID` is missing |
-| Notifications arrive, but the bot doesn't respond | The webhook isn't set up, or `TELEGRAM_WEBHOOK_SECRET` doesn't match the gateway (`forwarded: 404` in its log) |
-| The gateway forwarded (`forwarded: 200`) but the bot is silent | `TELEGRAM_CHAT_ID` isn't your user id |
+| Notifications arrive, but the bot doesn't respond | The webhook isn't set up, or `TELEGRAM_WEBHOOK_SECRET` doesn't match the `secret_token` the webhook was registered with (the hooks site answers 404) |
+| Calls arrive but the bot is silent | `TELEGRAM_CHAT_ID` isn't your user id |
 | No Approve button | The payload was too long, it's a `gate.review`, or *Approve on Telegram* is off |
 | "It changed since this message" | The payload was edited after the message was sent: decide in Storm |
 | A reply to a question went to the builder | It was a new message, not a Telegram *reply* to the question |

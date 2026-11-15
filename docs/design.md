@@ -126,7 +126,7 @@ limits:
 
 ### 2.3 Step catalog
 
-The builder can only use these. Each step type is a TypeScript class in the worker with zod schemas for inputs and outputs, and these schemas are what the builder is given (rendered into its system prompt) and what its proposals are compiled against, so a step or parameter it invents never becomes a pipeline.
+The builder can only use these (the full list, with every input: [capabilities.md](capabilities.md) §1). Each step type is a TypeScript class in the worker with zod schemas for inputs and outputs, and these schemas are what the builder is given (rendered into its system prompt) and what its proposals are compiled against, so a step or parameter it invents never becomes a pipeline.
 
 | Group | Steps | Side effect? |
 | --- | --- | --- |
@@ -135,14 +135,17 @@ The builder can only use these. Each step type is a TypeScript class in the work
 | Browser | `browser.open`, `browser.extract`, `browser.download`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.upload`, `browser.agent`, `browser.submit` | `fillAndSubmit`, `upload`, `submit`* |
 | LLM | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` (named fields out of an email or page: times as ISO 8601 with their offset); `llm.score` with `outcomes: true` calibrates on your applications' outcomes (interviews, rejections, no answer in 3 weeks) | no |
 | Applications | `application.outcome`: what an email says about one of your submitted applications (replied, interview, rejected), matched by the company first; the application moves forward only, the date of each outcome kept, and `application.status` emitted | no (internal DB) |
-| Data | `data.dedupe`, `data.filter`, `data.save` (job postings, or a collection of yours with `added` / `changed` / `removed`), `data.history` (a number per key over time: previous, change, min, max, lowest, the usual change and this one against it), `data.map` (JSONata over an API's JSON into items), `data.alert` (once when a number crosses a line, once when it is back), `data.lookup` | no (internal DB only) |
+| Data | `data.dedupe`, `data.filter`, `data.save` (job postings, or a collection of yours with `added` / `changed` / `removed`), `data.history` (a number per key over time: previous, change, min, max, lowest, the usual change and this one against it), `data.map` (JSONata over an API's JSON into items), `data.alert` (once when a number crosses a line, once when it is back), `data.read` (an App's entities) | no (internal DB only) |
 | HTTP | `http.fetch`: GET without a browser; RSS/Atom feeds become items, JSON stays data, pages become text; only hosts on `policy.allowedDomains`, never private or VPN addresses (also after DNS and redirects); an unchanged address (ETag / Last-Modified, 304) reuses what was read; an API key as `{{cred:name}}` in `headers` or `query` only (M29). `http.request` (M29): one POST, PUT, PATCH or DELETE with a JSON body, its host a domain target, no redirect followed, keys as in `http.fetch` | `request` |
 | Database | `db.query` (M29): one read of a PostgreSQL database through a database credential (its connection URL, the server among its allowed hosts: the only way to reach a private or VPN address); the query runs as a subquery, through the extended protocol (one statement), in a READ ONLY transaction rolled back afterwards, with a statement timeout and a row cap; values as `$1` from `params` | no (reads only) |
 | Shop | `shop.product`: the price of a product, or of one variant (`select: { size: M, color: Black }`), from its page: the page's schema.org data (Product, ProductGroup and its variants) or price meta tags, without a browser; a page without them, or one that refuses plain requests, in the headless browser; with no data there either, the cheap model reads the price from the text. `id` (product + variant) is the key for `data.history`. Same host and address rules as `http.fetch`; in the browser, every page and redirect is checked before it is followed | no |
-| Files | `file.read` (a document's or a download's text: text files, PDFs, parsed in a child process); your documents (CV, cover letters) are uploaded on the Profile page, not generated or stored by a step | no |
+| Files | `file.read` (a document's, a download's or an App's file's text: text files, PDFs, parsed in a child process), `file.keep` (an email's attachments, a download or a Telegram photo into an App's file field, under `documents/app-files`); your CV and cover letters are uploaded on the Profile page | no |
+| Uptime | `http.check`, `net.check` (tcp, ping): whether an address answers, its response time and certificate expiry; the address written in the pipeline or typed by you on a Monitor (M47) | no |
+| Topics (§8.1) | `topic.match`, `topic.extract`, `topic.apply`, `topic.tidy`, `topic.index`, `topic.attachments`, `git.changes`, `drive.changes` | no (internal DB only) |
+| Notify | `notify.telegram`, `notify.digest` | no (only to you) |
 | Calendar | `calendar.find` (your Google Calendar's events in a window), `calendar.create` (an event; with `attendees`, Google emails them an invitation from your account; guests are recipients, like `email.send`'s `to`; the same title at the same start isn't created twice) | `create` |
 | Flow | `flow.later` (start another pipeline later with data, once, unless `flow.cancel` with its key or an event matching `cancelOn` cancels it first), `flow.cancel` | no |
-| Gates | `gate.review`, `gate.act`, `gate.takeover` | — |
+| Gates | `gate.review`, `gate.act` | — |
 | Notify | `notify.digest`, `notify.telegram` | to you only |
 
 \* `browser.agent` sends nothing itself: what it would submit is the payload of `browser.submit`, behind a gate.
@@ -220,6 +223,8 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 | `{ on: view.action, collection: releases }` | you press a row's button on a pipeline's page (M27), started by the api, not an event | `collection`, `key`, `item` (the row), `action` |
 | `{ on: entity.changed, type: Job, field: salary }` | An entity of the pipeline's App is added or changed by another pipeline or by you (M30); `field`: only changes of it; `stage`: only a move into it (M32) | `app`, `type`, `key`, `item`, `before`, `changed`, `by`, `stage` |
 | `{ on: entity.action, type: Job }` | you press an entity's button on its page (M32), started by the api | `app`, `type`, `key`, `item`, `action` |
+| `{ on: telegram.command, command: task }` | you send `/task …` to the bot, maybe as a photo's caption (M49); one pipeline per command, only while on | `command`, `text`, `file`, `messageId`, `sentAt` |
+| `{ on: flow.later }` | another pipeline's `flow.later` step, after its delay | `data` |
 | `{ webhook: hmac-sha256 }` or `{ webhook: token }` | a call to the pipeline's webhook address | `body` (JSON, or the text), `event` (`X-GitHub-Event`), `receivedAt` |
 
 - **Only enabled pipelines** start on a trigger, never with the kill switch on, never on their own event, and a chain of triggered runs stops at depth 3. Dry runs trigger nothing.
@@ -230,7 +235,7 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 
 - **Tells you** what a run waits for: each new proposal with **Approve / Reject / Open** (one message for a gate with more than 5), "needs you" with **Open the live view**, a broken recipe with **Open the recipe**. When you decide anywhere, the message says so and loses its buttons.
 - **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens Storm. **Settings → Approve on Telegram** turns the buttons off.
-- **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`. Only from your private chat (`TELEGRAM_CHAT_ID` is your user id); commands older than 5 minutes are dropped.
+- **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`, and each enabled pipeline's own command (`telegram.command`), kept in the bot's menu. Only from your private chat (`TELEGRAM_CHAT_ID` is your user id); commands older than 5 minutes are dropped.
 - **The builder (M21):** any other message goes to the pipeline builder, and its answer comes back with the proposal (what it does, when, its steps, the warnings) and Save, Dry run and Open in Storm. The chat goes on while you're on it (two hours); `/new` starts over, `/edit <pipeline>` talks about one pipeline. A saved pipeline is off until you press Turn on. The answer comes in the background ("typing…" meanwhile), since a turn can take longer than Telegram waits.
 
 **How it reaches Storm,** which stays off the Internet: Telegram and webhook callers → your public hooks address (a tunnel, a proxy, or a gateway of your own that checks paths and secrets first; e.g. `hooks.example.com`) → the **hooks-only site** on `127.0.0.1:7101`, a second Caddy site that serves only `POST /hooks/*` → the api's `/api/hooks/*`. The api checks Telegram's secret header and your user id. The public address reaches nothing else of Storm ([self-hosting.md](self-hosting.md) §5).
@@ -324,7 +329,7 @@ Decisions go through `POST /api/proposals/:id/approve` (optionally with an edite
 
 ### Why these choices
 
-- **Email via IMAP/SMTP, not Playwright.** It's reliable, fast and doesn't trip bot detection. Playwright is only for sites without APIs. v1 uses a Google **app password** (stored as an encrypted credential) behind a `MailConnector` interface. The Gmail API (OAuth) can replace it later if labels, threading or push are needed. Check Google's current rules for unverified apps first: refresh tokens of OAuth apps in "Testing" status have expired after ~7 days.
+- **Email via IMAP/SMTP, not Playwright.** It's reliable, fast and doesn't trip bot detection. Playwright is only for sites without APIs. v1 uses an **app password** (stored sealed on an email account added in Settings; several, one the default) behind a `MailConnector` interface. The Gmail API (OAuth) can replace it later if labels, threading or push are needed. Check Google's current rules for unverified apps first: refresh tokens of OAuth apps in "Testing" status have expired after ~7 days.
 - **Playwright in Node.** It's first-class, so Python isn't needed for browsing.
 - **pg-boss** keeps the queue in Postgres, with one less service to run.
 - **Secrets in Postgres** with envelope encryption, so there's no separate vault service to run.
@@ -354,8 +359,8 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
 - **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices) and builder turn (`BuilderMessage.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
 - **Watching the host (M26):** the host's own jobs (a nightly backup, a monthly restore test, a `health-alert` check of disk use and failed services every 4 hours) report their result to Storm (`POST /hooks/health` on the hooks-only site, with `HEALTH_REPORT_TOKEN`). A report that isn't ok, or one that stops coming (the backup after 26 hours, `health-alert` after 5, the restore test after 35 days), is told on the Storm bot once, and once when it is fine again; the worker keeps its own watchdog. The **Health** page shows them all.
-- **Morning brief (M25):** every day at 07:30 (Europe/Sofia), on the Storm bot: today's calendar (when Google is connected), what waits for you (proposals to approve per pipeline, runs paused in the live view), the runs that failed in the last day, and unpaid bills due within three days or overdue. A day with none of it is one line. Off in Settings.
-- **Weekly review:** Sunday 19:00 (Europe/Sofia), on the Storm bot: the week's digest (runs, failures, what waits for you, reflection's suggestions, broken recipes, LLM cost), the budget so far, the three most expensive step types and models, application outcomes and quiet recipes. Off in Settings.
+- **Morning brief (M25):** every day at 07:30 (your `TZ`), on the Storm bot: today's calendar (when Google is connected), what waits for you (proposals to approve per pipeline, runs paused in the live view), the runs that failed in the last day, and unpaid bills due within three days or overdue. A day with none of it is one line. Off in Settings.
+- **Weekly review:** Sunday 19:00 (your `TZ`), on the Storm bot: the week's digest (runs, failures, what waits for you, reflection's suggestions, broken recipes, LLM cost), the budget so far, the three most expensive step types and models, application outcomes and quiet recipes. Off in Settings.
 
 **Embeddings:** Anthropic doesn't provide an embeddings model. Storm uses **OpenAI** `text-embedding-3-large` (multilingual) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](../packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
 
@@ -422,7 +427,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 - **Only the worker decrypts,** at the moment of `fill()`. The API only encrypts on create/update.
 - **Credentials are write-only in the UI.** Values are never returned by the API. There's a "Replace" button, and optionally "Reveal" protected by TOTP.
-- **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<name>}}`. Password fields are filled last and masked in traces where possible.
+- **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<slot>}}`: a slot, filled by a credential chosen by id, never by name (capabilities.md §2.6). Password fields are filled last and masked in traces where possible.
 - **Masked for the LLM:** before an accessibility snapshot or screenshot is sent to the LLM (e.g. by `browser.agent`), the worker strips `input[type=password]` values and every field it filled from a `{{cred:*}}`, and blurs those fields in screenshots.
 - **Domain binding:** the worker refuses to fill a credential on a page whose host isn't in the credential's `allowedHosts` (exact host match, or an explicit `*.example.com` wildcard; never substring matching). Multiple hosts cover SSO redirects. This protects against phishing pages and prompt-injected redirects.
 - **Same mechanism for** email accounts' app passwords (M50-T7: an EmailAccount row, AAD its id, opened only for its own IMAP and SMTP servers), TOTP seeds, API keys, database connections (M29: an API key goes only to its credential's hosts, a database is reachable only through a credential naming it, and `db.query` is read-only), and Playwright `storageState`.
@@ -446,7 +451,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 1. **Decision capture.** Every proposal stores `originalPayload` and `finalPayload` plus a diff, a decision (`APPROVED`, `EDITED`, `REJECTED`) and an optional reason.
 2. **Few-shot retrieval.** When you approve a proposal (as drafted or edited), each payload field that is exactly the output an LLM step writes for you (`{{draft.body}}`; the catalog marks it with `learns`) becomes an `Example` of that step type: the step's input (the incoming email) as context, your approved text as output, embedded with pgvector. When drafting, `email.draftReply` and `llm.generate` retrieve your 3 most similar approved outputs of the same step type (cosine distance) as `<examples>`: tone, length and structure, never facts.
-3. **Rules.** A nightly reflection (03:30 Europe/Sofia; also "Reflect now" on the Rules page) sends your edits and rejections since the last one to Claude Opus through the Batch API and **suggests** rules ("Shorten recruiter replies; drop 'I hope this finds you well'"). Suggestions are checked (known step types, your own pipelines, no duplicates) and saved as `SUGGESTED`; nothing is active before you approve or edit it on the Rules page. Active rules go into the cached system prompt of every LLM step of their step type (or every step) and pipeline (or every pipeline), after the step's own rules, which they never override.
+3. **Rules.** A nightly reflection (03:30 your `TZ`; also "Reflect now" on the Rules page) sends your edits and rejections since the last one to Claude Opus through the Batch API and **suggests** rules ("Shorten recruiter replies; drop 'I hope this finds you well'"). Suggestions are checked (known step types, your own pipelines, no duplicates) and saved as `SUGGESTED`; nothing is active before you approve or edit it on the Rules page. Active rules go into the cached system prompt of every LLM step of their step type (or every step) and pipeline (or every pipeline), after the step's own rules, which they never override.
 4. **Pipeline improvements.** Reflection can also suggest a change to a pipeline (tighter filter, different threshold); it is listed on the Rules page and in that pipeline's chat, where "Turn into a change" has the builder make it a diff for approval. Saving that diff marks the suggestion done.
 5. **Run feedback.** After each run and in the daily digest: failure patterns, selectors that broke, rules worth adding.
 
@@ -654,7 +659,7 @@ The schema is [packages/db/prisma/schema.prisma](../packages/db/prisma/schema.pr
 | Runs | `Run` (`resumeAt` when held back by a rate limit), `Step`, `Proposal` (linked to its gate `Step` and `forEach` item), `Decision`, `Takeover` (the live browser waiting for you), `Artifact` (screenshots, traces, downloads) |
 | Learning | `Rule`, `Example` (`embedding vector(1024)`) |
 | Topics (§8.1) | `Topic`, `TopicDirection`, `TopicSource` (a link and the last commit or changes token read), `TopicPassage` (the index: a cache, `embedding vector(1024)`), `TopicLink` (an email and a topic: how it was found, suggested or confirmed), `TopicFact` (statement, source, source date, status, what superseded it, pinned; its embedding, made when a draft first needs it), `TopicChange` (every change to a topic, for its history and undo; a split's or merge's moves), `TopicBackfill` (reading a topic's history: the estimate, the batches, the proposals), `TopicSuggestion` (suggested directions, topics and facts; a dismissed one is never made again), `TopicCost` (what the topic steps cost, by topic, day and step), `UnlinkedEmail` (triaged email no topic took: sender, subject and date, 30 days) |
-| Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
+| Secrets & settings | `Credential` (envelope-encrypted, `allowedHosts`), `EmailAccount`, `GoogleAccount` (sealed tokens), `Binding` (what fills a pipeline's or App's slot), `ModelSetting`, `UserSetting` (kill switch, global rate limits, budget) |
 | Jobs | `JobPosting`, `Application`, `Document` (your CV and cover letters, under `DOCUMENTS_DIR`; replaced by name, old files kept for approved payloads) |
 
 ---
@@ -841,9 +846,9 @@ EMBEDDINGS_MODEL=text-embedding-3-large
 
 # Mail: nothing here (M50-T7). Email accounts are added in Settings: their servers, and the app password stored
 # encrypted in the DB (an EmailAccount, sealed like a credential; TLS off only for a local test server).
-# Later, Gmail API (OAuth app; refresh token stored encrypted in the DB)
-# GOOGLE_CLIENT_ID=
-# GOOGLE_CLIENT_SECRET=
+# Google Calendar and Drive (topics): an OAuth client; accounts are connected in Settings (docs/google-setup.md)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 
 # API
 API_HOST=127.0.0.1
@@ -858,7 +863,7 @@ APP_TOTP_SECRET=
 SESSION_TTL_HOURS=168
 
 # Browser / live view (the worker image sets DISPLAY=:99 and ARTIFACTS_DIR=/data/artifacts)
-# Your documents (CV, cover letters) that application forms attach: the api writes, the worker only reads
+# Your documents (CV, cover letters) that application forms attach: the api writes, the worker only reads (except documents/app-files, which file.keep writes)
 DOCUMENTS_DIR=data/documents
 # Run files (screenshots, traces) older than this are deleted nightly; 0 keeps them. STORM_DATA_DIR can put both
 # folders on another disk (docker/compose.yml)
@@ -925,7 +930,7 @@ the Pipelines page, dry run, save and enable. Every reply waits in the inbox unt
 - [ ] Executed payload must match the hash of the approved payload
 - [ ] Untrusted content (email/page/file text) is clearly delimited in prompts and never treated as instructions
 - [ ] `shop.product` reads like `http.fetch`, and its browser pages go only to allowed hosts
-- [ ] Google Calendar's refresh token is sealed like a credential (AAD: the user id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
+- [ ] Each Google account's refresh token is sealed like a credential (AAD: the account's id) and opened only by the worker; a refused connection pauses the run for a reconnect instead of failing it
 - [ ] Facts about you are written only by your approvals, your answers and the Profile page, never by a page or the LLM alone; a fact the LLM cites must be one of yours, with your answer
 - [ ] A topic's facts and directions are written only by your approvals and your edits, never by an email's or a document's text or the LLM alone; something that looks like a secret is never proposed as a fact, nor written by you (§8.1)
 - [ ] Topic sources are read with read-only access (a read-only repository token, opened for api.github.com only; Drive through a Google account's read-only scope), and their passages reach prompts delimited as untrusted data (§8.1)
