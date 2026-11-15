@@ -15,6 +15,11 @@ export interface ProposalForTelegram {
   payload: Record<string, unknown>;
   /** SHA-256 of the payload, hex. */
   payloadHash: string;
+  /**
+   * An email's sender (email.send): the account it goes out from, said as From instead of the payload's `account` id;
+   * null: no account to send it from. Absent for any other step.
+   */
+  from?: { address: string; label: string | null } | null;
 }
 
 /** Room left for the header and Telegram's own limit (4096). */
@@ -36,7 +41,7 @@ export function hashMatches(payloadHash: string, shown: string): boolean {
 
 /** The message for a proposal waiting for the user; `approvals: false` (the setting) leaves only Open. */
 export function proposalMessage(proposal: ProposalForTelegram, options: { approvals: boolean; appOrigin?: string }): TelegramMessage {
-  const payload = payloadText(proposal.payload);
+  const payload = shownText(proposal);
   const complete = payload.length <= MAX_PAYLOAD_TEXT;
   const item = proposal.itemIndex === null ? "" : ` (item ${proposal.itemIndex + 1})`;
   const header =
@@ -58,6 +63,16 @@ export function proposalMessage(proposal: ProposalForTelegram, options: { approv
 export function decidedMessage(proposal: ProposalForTelegram, outcome: string): TelegramMessage {
   const { text } = proposalMessage(proposal, { approvals: false });
   return { text: `${outcome}\n\n${text}`.slice(0, TELEGRAM_MAX_TEXT), buttons: [] };
+}
+
+/** An email's sender first and its fields without the account's id; any other payload as it is. */
+function shownText(proposal: ProposalForTelegram): string {
+  if (proposal.from === undefined) return payloadText(proposal.payload);
+  const { account: _account, ...rest } = proposal.payload;
+  const from = proposal.from
+    ? `From: ${proposal.from.address}${proposal.from.label ? ` (${proposal.from.label})` : ""}`
+    : "From: no email account to send it from (Settings → Email accounts)";
+  return `${from}\n${payloadText(rest)}`;
 }
 
 /** Every field, as it will be sent: text as it is, anything else as JSON. */

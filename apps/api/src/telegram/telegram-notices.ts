@@ -1,5 +1,5 @@
 import { payloadHash } from "@realentity/storm-crypto";
-import { type Prisma } from "@realentity/storm-db";
+import { emailSenders, stepTypeIn, type Prisma, type PrismaClient } from "@realentity/storm-db";
 import {
   decidedMessage,
   editTelegramMessage,
@@ -16,14 +16,35 @@ import { PrismaService } from "../database/prisma.service";
 export const TELEGRAM_FETCH = Symbol("TELEGRAM_FETCH");
 
 export const TELEGRAM_PROPOSAL_INCLUDE = {
-  run: { select: { dryRun: true, pipelineVersion: { select: { definition: true, pipeline: { select: { name: true } } } } } },
+  run: {
+    select: { dryRun: true, pipelineVersion: { select: { pipelineId: true, definition: true, pipeline: { select: { name: true } } } } },
+  },
   step: { select: { type: true } },
 } satisfies Prisma.ProposalInclude;
 
 export type ProposalForBot = Prisma.ProposalGetPayload<{ include: typeof TELEGRAM_PROPOSAL_INCLUDE }>;
 
-/** A proposal as the Storm bot shows it (M12-T4). */
-export function forTelegram(proposal: ProposalForBot): ProposalForTelegram {
+type Sender = ProposalForTelegram["from"];
+
+/** Whom each of these that is an email goes out from (by proposal); the others aren't in it. */
+export async function telegramSenders(prisma: PrismaClient, proposals: readonly ProposalForBot[]): Promise<Map<string, Sender>> {
+  const senders = new Map<string, Sender>();
+  for (const userId of new Set(proposals.map((p) => p.userId))) {
+    const emails = proposals
+      .filter((p) => p.userId === userId && stepTypeIn(p.run.pipelineVersion.definition, p.stepKey) === "email.send")
+      .map((p) => ({
+        key: p.proposalId,
+        pipelineId: p.run.pipelineVersion.pipelineId,
+        definition: p.run.pipelineVersion.definition,
+        payload: p.originalPayload as Record<string, unknown>,
+      }));
+    for (const [key, sender] of await emailSenders(prisma, userId, emails)) senders.set(key, sender);
+  }
+  return senders;
+}
+
+/** A proposal as the Storm bot shows it (M12-T4); an email with whom it goes from (`senders`, telegramSenders). */
+export function forTelegram(proposal: ProposalForBot, senders?: ReadonlyMap<string, Sender>): ProposalForTelegram {
   const payload = proposal.originalPayload as Record<string, unknown>;
   const definition = proposal.run.pipelineVersion.definition as unknown as CompiledDefinition;
   return {
@@ -35,6 +56,7 @@ export function forTelegram(proposal: ProposalForBot): ProposalForTelegram {
     itemIndex: proposal.itemIndex,
     payload,
     payloadHash: payloadHash(payload),
+    ...(senders?.has(proposal.proposalId) ? { from: senders.get(proposal.proposalId) } : {}),
   };
 }
 
@@ -61,8 +83,11 @@ export class TelegramNotices {
     if (!this.configured) return;
     const proposal = await this.prisma.client.proposal.findUnique({ where: { proposalId }, include: TELEGRAM_PROPOSAL_INCLUDE });
     if (proposal?.telegramMessageId == null) return;
-    await editTelegramMessage(this.config, proposal.telegramMessageId, decidedMessage(forTelegram(proposal), outcome), this.send).catch(
-      (error: Error) => this.logger.warn(`Telegram message of proposal ${proposalId} not updated: ${error.message}`),
-    );
+    await editTelegramMessage(
+      this.config,
+      proposal.telegramMessageId,
+      decidedMessage(forTelegram(proposal, await telegramSenders(this.prisma.client, [proposal])), outcome),
+      this.send,
+    ).catch((error: Error) => this.logger.warn(`Telegram message of proposal ${proposalId} not updated: ${error.message}`));
   }
 }
