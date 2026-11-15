@@ -50,7 +50,7 @@ steps:
   - id: tell
     type: notify.telegram
     when: "{{feeds.items}}"              # skip the step when the value is empty
-    with: { text: "{{feeds.items}}" }
+    with: { text: "New releases: {{feeds.items}}" }
 view: ...                                # optional: a page in the menu for a saved collection (§2.4)
 ```
 
@@ -82,8 +82,8 @@ pipeline can be saved.
 
 ### 2.3 Safety rules the compiler enforces
 
-- **Every side effect waits for you.** `email.send`, `calendar.create`, `browser.fillAndSubmit`, `browser.upload` and
-  `browser.submit` always get a `gate.act` before them. If you don't write one, the compiler inserts it. The run pauses
+- **Every side effect waits for you.** `http.request`, `email.send`, `calendar.create`, `browser.fillAndSubmit`,
+  `browser.upload` and `browser.submit` always get a `gate.act` before them. If you don't write one, the compiler inserts it. The run pauses
   and shows the exact payload (recipient, subject, body, form fields). Nothing goes out until you press **Act**, in the
   app or on Telegram.
 - **Targets never come from LLM text.** The recipient of an email, the guests of an event and the address of a form
@@ -95,7 +95,7 @@ pipeline can be saved.
   or is exactly a field of mine of an App entity (a Monitor's address you typed); never from emails, pages, webhooks or
   other steps. Only the latter may be a private, LAN or Tailscale address; loopback, link-local and a cloud's metadata
   service never. A check says only whether it answers: it never reads the page.
-- **Credentials only go where a step takes them.** `{{cred:…}}` is accepted only by `browser.open`'s `login`,
+- **Credentials only go where a step takes them.** `{{cred:…}}` is accepted only by `browser.open` (for its `login`),
   `http.fetch`'s and `http.request`'s `headers` and `query`, and `db.query`'s `connection`, and opened only on the
   hosts the credential allows. LLM steps never see one, nor its name (§2.6).
 - **Budget.** Steps that call the LLM stop once the monthly LLM budget is spent, unless the pipeline is marked
@@ -294,21 +294,23 @@ steps:
       method: POST
       url: "https://api.github.com/repos/{{setting.repository}}/issues"
       headers: { Authorization: "Bearer {{cred:github}}" }
-      body: { title: "{{trigger.pipeline}} failed" }
+      body: { title: "The nightly backup failed" }
 ```
 
 - **`needs:`** on a pipeline, or on an App (its pipelines share them; each install fills its own): `kind: credential`
   (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for),
   `kind: text` (`example`), `kind: email`: one of your email accounts (§4.4), or `kind: google` (`uses`: calendar,
-  drive): one of your Google accounts allowing them (§4.7). An account slot is the default account until you choose. A slot a step uses without one is added from where it is used: a database for `db.query`'s
-  connection, the host of an address written in the step.
+  drive): one of your Google accounts allowing them (§4.7). An account slot is the default account until you choose. A
+  slot a step uses without one is added from where it is used: a database for `db.query`'s connection, the host of an
+  address written in the step, an email or Google account for an email or calendar step's `account: <name>`, and text
+  for `{{setting.<name>}}`. At most 20 slots; `account: topics` (every mailbox the topics read) only on `email.fetch`.
 - **Filling them:** the **What it needs** card on the pipeline's page (its own slots; its App's are shown and filled on
   the App's page, once for all its pipelines), on the App's page, and in the builder's chat once a proposal is saved.
   Each credential slot offers only your credentials that fit (its type, the host it is for), or **Add a new one**,
   which opens the credential form with that kind and host filled in and chooses it once stored. When a pipeline or an
   App is saved, a slot exactly one of your credentials fits is filled with it; one that two fit waits for you. The api:
   `GET` and `PUT /api/pipelines/:id/bindings`, `/api/apps/:id/bindings` (`{ slot: { credentialId } }`, `{ slot: { text } }`,
-  null clears one).
+  `{ slot: { emailAccountId } }`, `{ slot: { googleAccountId } }`, null clears one).
 - **To the App:** on a pipeline in an App, **To <App>** next to one of its own slots makes it the App's: the App gets
   the slot, the pipeline a version without it, and what filled it goes along (unless the App's is filled already),
   so the App's other pipelines can use it too.
@@ -328,7 +330,7 @@ steps:
 | Trigger | Starts when | `{{trigger.*}}` holds |
 | --- | --- | --- |
 | `manual` (default) | You press Run, or send `/run <name>` on Telegram | — |
-| `{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }` | A five-field cron time | — |
+| `{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }` | A five-field cron time, in `tz` (default: the server's time zone) | — |
 | `{ on: run.finished, pipeline: Bills, status: [FAILED] }` | Another pipeline's run ends (default: only `DONE`) | `runId`, `pipeline`, `status`, `summary`, `outputs` |
 | `{ on: application.status, status: [SUBMITTED] }` | One of your applications changes status | `applicationId`, `status`, `job` (title, company, location, url) |
 | `{ on: recipe.broken, site: jobs.example.com }` | A browser recipe stops matching its site | `site`, `recipe`, `version`, `reason`, `fixProposed` |
@@ -393,6 +395,7 @@ Saves items and says what changed since the last save.
 - **With `type`** (a type of the pipeline's App, §2.5): as entities, by the type's key; each field as its kind, your
   (`mine`) fields never written. `fields` and `complete` as with a collection; `key` and `collection` aren't taken.
   `stage` (M33) moves every item to that stage, as the type's moves allow a pipeline (`stage: skipped` for the agencies).
+- In: `items`, `into` [JobPosting], `status` [NEW], `collection`, `key`, `fields`, `complete` [false], `type`, `stage`.
 - Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`, `invalid` (with
   `type`: `key`, `saved`, `problems`). In a dry run nothing is saved: `preview` says so first, and the counts are what
   a run would save.
@@ -609,7 +612,8 @@ is rolled back, and is stopped after `timeoutSeconds`. Still, give it a database
 The price of a product, or of one variant (`select: { size: M, color: Black }`), read from its page. It uses the
 page's schema.org data or price meta tags; if there are none, it opens the page in the headless browser, and as a last
 resort the cheap model reads the price from the text.
-- In: `url`, `urls` or `products` (each with its own `select`), `browser` [`fallback`, or `always`/`never`], `llm` [true].
+- In: `url`, `urls` or `products` (each with its own `select`), `browser` [`fallback`, or `always`/`never`], `llm` [true],
+  `timeoutSeconds` [30].
 - Out: `items` (id, url, title, brand, price, currency, availability, inStock, variant, problem), `problems`, `report`.
 - `id` identifies product + variant: use it as the `key` for `data.history`.
 
@@ -717,7 +721,7 @@ Reads named fields out of text (an email, a page). `fields` maps each name to wh
 as ISO 8601 with an offset. `files` (M46): up to 5 of an entity's images and PDFs (its App's file and image fields),
 which the model sees as well: a receipt's photo, a warranty's PDF. Like any content, they are data, never
 instructions.
-- In: `content` and/or `files`, `fields`, `instruction`, `timeZone` [Europe/Sofia].
+- In: `content` and/or `files`, `fields`, `instruction`, `timeZone` [the server's time zone].
 - Out: `values` (each as text, `""` when not found), `missing`, `found` (true when nothing is missing).
 
 ```yaml
@@ -731,11 +735,11 @@ instructions.
       company: the company
       place: the address, or the video call link
 
-# What a receipt's photo says (an App's Paper with an image field)
+# What a receipt says (an App's Paper, read from its document field: a photo or a PDF)
 - id: read
   type: llm.extract
   with:
-    files: ["{{trigger.item.scan}}"]
+    files: ["{{trigger.item.document}}"]
     fields: { merchant: the shop, amount: the total paid, warrantyUntil: when the warranty ends }
 ```
 
@@ -796,7 +800,8 @@ used is cited at the gate (`docs/adr/0012-database.md @ a1b2c3d`). It never deci
 
 #### `email.send` ⚡
 Sends an email from one of your email accounts. With `inReplyTo` and `references` it is a reply in the same thread;
-`account: "{{item.account}}"` sends it from the account the email came to. `to` must come
+`account: "{{item.account}}"` sends it from the account the email came to (for `email.awaiting`'s threads,
+`{{item.message.account}}`). `to` must come
 from real data (e.g. `{{item.from}}`), a literal, or `policy.allowedRecipients`. A reply is never sent to a no-reply
 address or to your own address: the step fails with why.
 - In: `to`, `subject`, `body`, `inReplyTo`, `references`, `account` (an email slot, or `{{item.account}}`; default:
@@ -852,6 +857,7 @@ reads the thread's earlier messages too, and the memory of the thread's topics (
     body: "{{draft.body}}"
     inReplyTo: "{{item.message.messageId}}"
     references: "{{item.references}}"
+    account: "{{item.message.account}}"   # from the account the thread is in
 ```
 
 #### `topic.match` 🧠
@@ -1283,20 +1289,20 @@ leaves Storm. A dry run keeps nothing and says how many it would.
 - id: keep
   type: file.keep
   forEach: "{{receipts.kept}}"
-  with: { type: Paper, field: receipt, message: "{{item}}" }
+  with: { type: Paper, field: document, message: "{{item}}" }
 - id: save
   type: data.save
   forEach: "{{receipts.kept}}"
   with:
     type: Paper
-    items: [{ title: "{{item.subject}}", receipt: "{{keep.first}}" }]   # this email's file
+    items: [{ title: "{{item.subject}}", document: "{{keep.first}}" }]   # this email's file
 ```
 
 ### 4.10 You in the loop
 
 #### `gate.review`
 Pauses the run and shows a list; you pick which items go on.
-- In: `items`, `title`.
+- In: `items`, `title`, `mode` [select].
 - Out: `selected`.
 
 ```yaml
@@ -1350,7 +1356,8 @@ steps:
 Starts another pipeline (whose trigger is `{ on: flow.later }`) `after` a while (`30m`, `36h`, `7d`) or `at` a time,
 with `data` as its `{{trigger.data}}`. It fires once, unless cancelled first by `flow.cancel` with its `key`, or by an
 event matching `cancelOn`. Another `flow.later` with the same key replaces it.
-- In: `pipeline`, `after` or `at`, `timeZone`, `data`, `key`, `cancelOn` (`{ event, match }`).
+- In: `pipeline`, `after` or `at`, `timeZone`, `data`, `key`, `cancelOn` (`{ event, match }`; `event`: run.finished,
+  application.status, recipe.broken or email.classified).
 - Out: `scheduledStartId`, `fireAt`, `replaced`.
 
 #### `flow.cancel`
@@ -1426,7 +1433,8 @@ What the steps add up to, with the pipeline that does it:
   approve.
 - Send, submit, upload or create events without your approval.
 - Message anyone on Telegram but you.
-- Read hosts that aren't allowed, or private network addresses.
+- Read hosts that aren't allowed, or private network addresses (a check only asks whether an address you typed
+  answers, §2.3).
 - Pay bills, move or delete emails, or mark them read.
 - Reach a server on your private network or VPN (Home Assistant, a NAS) with `http.fetch` or `http.request`. A
   database there is reachable with `db.query`, because its credential names the host.

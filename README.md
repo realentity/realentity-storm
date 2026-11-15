@@ -56,8 +56,10 @@ Apps are typed and versioned, so they keep working as they grow:
 - Fields you own are never overwritten by a pipeline.
 - A change to an App that would break one of its pipelines is refused, naming the pipeline.
 - A change to an entity can start another pipeline: a job reaching *interview*, a price falling, a bill arriving.
+- Forms take files and images, and pipelines can keep them too: an email's attachment, a download or a photo sent to
+  the bot is kept on an entity and read back.
 
-Ready-made Apps install from **Apps → Examples**: Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos and Papers (receipts and warranties, read from their photo or PDF).
+Ready-made Apps install from **Apps → Examples**: Releases to read (the starter: it needs nothing set up), Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos and Papers (receipts and warranties, read from their photo or PDF).
 
 Each App's page maps how it connects: what starts its pipelines, which types they write and read, and the pages that
 show them. The Trips App:
@@ -115,15 +117,16 @@ with their steps, and [pipelines/](pipelines) has them ready to paste.
 ## How it works
 
 1. **You describe it** in the builder chat, in the app or on Telegram.
-2. **Storm compiles it** into a pipeline made only of steps from a fixed catalog of over 40 step types: mail, browser,
-   HTTP and RSS, LLM, data, database, calendar, documents, Telegram, timers and approval gates. The LLM can combine
-   these steps but can't add new ones or write code. The compiler checks every reference, domain and recipient before
-   a pipeline can be saved. You can read and edit the YAML or use the visual editor, and dry-run it before switching
-   it on.
+2. **Storm compiles it** into a pipeline made only of steps from a fixed catalog of over 50 step types: mail, browser,
+   HTTP and RSS, uptime checks, LLM, data, database, calendar, topics, files, Telegram, timers and approval gates. The
+   LLM can combine these steps but can't add new ones or write code. The compiler checks every reference, domain and
+   recipient before a pipeline can be saved. You can read and edit the YAML or use the visual editor, and dry-run it
+   before switching it on.
 
    ![The Job board pipeline's page: its steps as a graph by data flow, what it may do (here nothing leaves Storm) and the domains it may reach](docs/images/pipeline.png)
 
-3. **It runs** on a schedule, on new email, from a webhook, when an App's data changes, or when you press a button.
+3. **It runs** on a schedule, on new email, from a webhook, on a Telegram command (`/task Buy milk`, or a photo
+   captioned `/paper`), when an App's data changes, or when you press a button.
 4. **It proposes, you act.** Every side effect (an email, a form submission, an upload, a calendar invite, an API
    call) waits behind a gate that shows exactly what will go out. Edit it if needed, then press **Act** in the app or
    on Telegram.
@@ -160,7 +163,11 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 - **Untrusted input is data.** Emails, pages and downloads never trigger actions. Recipients, guests and form
   addresses come from real data or from the pipeline, never from LLM text.
 - **Secrets never reach the LLM.** Credentials are encrypted in PostgreSQL (envelope encryption, the key in `.env`);
-  the LLM sees only references like `{{cred:mail}}`, and only the browser login receives the real value.
+  the LLM sees only references like `{{cred:github}}`; the real value is opened only for the step that uses it, and
+  only on the hosts it is for. Email passwords and Google tokens are sealed the same way.
+- **You choose what each pipeline uses.** A pipeline names what it needs (a credential, an email or Google account, a
+  setting), never your credentials themselves; you fill it on its **What it needs** card, once per pipeline or per
+  App. Several email and Google accounts are fine, one the default.
 - **Limits you set.** Allowed domains per pipeline, rate limits per step type, a monthly LLM budget, a kill switch.
   Private and VPN addresses are never fetched. The one exception: an uptime check (`http.check`, `net.check`) of an
   address you typed yourself on a Monitor, which says only whether it answers; a cloud's metadata address never.
@@ -179,7 +186,7 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 | **A way to reach it over HTTPS**: Tailscale, a reverse proxy, or a VPN | Using it from other devices. Not needed on `localhost` | On a server |
 | **A mailbox** with IMAP and SMTP (for Gmail, an app password), added in Settings | The email steps | Optional |
 | **A Telegram bot** of your own, from @BotFather | Approvals and notifications on your phone. Commands and buttons also need a public address for webhooks | Optional |
-| **A Google Cloud OAuth client** | Google Calendar steps | Optional |
+| **A Google Cloud OAuth client** | Google Calendar steps and topics' Drive folders (several accounts, connected in Settings) | Optional |
 | **An OpenAI API key** | Past replies as examples in new drafts (embeddings). The email text then also goes to OpenAI | Optional |
 
 ## Setup
@@ -291,7 +298,7 @@ to start with an invalid value and names the key, never the value.
 | `LLM_MONTHLY_BUDGET_USD` | Pauses non-essential pipelines when the month's LLM cost reaches it (also in Settings) | Recommended |
 | `VNC_PASSWORD`, `VNC_VIEW_PASSWORD` | Watching and taking over browser runs live. Empty: browser runs still work, unwatched | Browser steps |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `HOOKS_PUBLIC_URL` | The bot, your Telegram user id, and the webhook address ([docs/telegram.md](docs/telegram.md)) | Telegram, webhooks |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-setup.md](docs/google-setup.md) | Calendar steps |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-setup.md](docs/google-setup.md) | Calendar steps, Drive folders |
 | `OPENAI_API_KEY` | Embeddings: your most similar replies as examples in drafts, and the passages and facts of your topics closest to an email (without it, by their words) | Optional |
 | `HEALTH_REPORT_TOKEN` | Lets the server's own jobs (backups, disk checks) report to the Health page | Optional |
 

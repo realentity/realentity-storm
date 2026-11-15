@@ -83,7 +83,7 @@ run lists it among its problems until you reconnect, then reads what changed.
    ```
 
    That is your `APP_ORIGIN` followed by `/api/google/callback`. It must match exactly: `https`, the same host and
-   port, no slash at the end. Storm's **Settings → Google Calendar and Drive** shows the address it uses, if you want
+   port, no slash at the end. Storm's **Settings → Google accounts** shows the address it uses, if you want
    to compare.
 6. Press **Create**.
 7. A dialog shows the **Client ID** (ends in `.apps.googleusercontent.com`) and the **Client secret** (starts with
@@ -145,9 +145,9 @@ not allowed**. Do step 2's second line and step 3's fourth scope, then **Reconne
 
 - **"Google Calendar needs reconnecting"** (Telegram, or the card shows it in red): the connection was ended, in
   Testing every 7 days (or you removed Storm's access, or changed something in Google's security settings). Press
-  **Reconnect Google Calendar** in the message or on Settings and sign in again. A run that was waiting goes on by
+  **Reconnect Google Calendar** in the message, or **Reconnect** next to the account on Settings, and sign in again. A run that was waiting goes on by
   itself.
-- **To stop Storm using your calendar:** Settings → **Disconnect** (Storm forgets the token), and remove **Storm** at
+- **To stop Storm using your calendar:** the account's remove button on Settings (Storm forgets the token), and remove **Storm** at
   <https://myaccount.google.com/permissions> (Google forgets the access).
 - **A new client secret:** Google Cloud → **Clients** → `storm` → **Add secret**, put it in `.env`,
   `./docker/storm up`, then disable the old secret there.
@@ -164,7 +164,7 @@ To stop the weekly reconnect, publish the app. Google asks for two public pages 
    **Authorized domains**. **Save**. (If Google asks you to verify the domain, do it in Google Search Console with
    a DNS record.)
 3. **Audience → Publish app → Confirm**: **In production**. Skip verification: for you alone, an unverified app works.
-4. In Storm, **Settings → Reconnect** once. From then on, the connection lasts until you remove it.
+4. In Storm, **Reconnect** each account once on Settings. From then on, the connection lasts until you remove it.
 
 ## If something goes wrong
 
