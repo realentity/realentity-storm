@@ -60,6 +60,19 @@ fields:
 
   await row.getByRole("link", { name }).click();
   await expect(page.getByText("in use")).toBeVisible();
-  await expect(page.getByText("imported")).toBeVisible();
-  await expect(page.getByText('"item": "article.job"')).toBeVisible();
+  await expect(page.getByText("imported or edited")).toBeVisible();
+  await expect(page.getByText("item: article.job")).toBeVisible();
+
+  // Edited in place: a recipe that doesn't hold up is refused, a fixed one is saved as v2
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const source = page.getByLabel("Recipe (YAML)");
+  await expect(source).toHaveValue(/^url: https:\/\/example\.org\/jobs\?q=\{query\}\nparams:/);
+  await source.fill((await source.inputValue()).replace("key: url", "key: link"));
+  await page.getByRole("button", { name: "Save as v2" }).click();
+  await expect(page.getByTestId("recipe-editor")).toContainText('key "link" is not one of the fields');
+  await source.fill((await source.inputValue()).replace("key: link", "key: url\nempty: .no-results"));
+  await page.getByRole("button", { name: "Save as v2" }).click();
+  await expect(page.getByTestId("recipe-editor")).toBeHidden();
+  await expect(page.getByRole("heading", { name: "v2 in use" })).toBeVisible();
+  await expect(page.getByText("empty: .no-results")).toBeVisible();
 });
