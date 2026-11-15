@@ -79,11 +79,11 @@ TZ=Europe/London
 
 **Files.** Run artifacts (screenshots, traces, downloads) and your documents (CVs, letters that forms attach; the files
 and images on your Apps' entities, under `documents/app-files`) live in
-`STORM_DATA_DIR` (empty: the repository's `data/`). Both folders must exist and belong to uid 1000; the containers
+`STORM_DATA_DIR` (empty: the repository's `data/`). The folders must exist and belong to uid 1000; the containers
 refuse to start without them, so nothing lands elsewhere if a disk isn't mounted:
 
 ```bash
-mkdir -p data/artifacts data/documents && sudo chown -R 1000:1000 data     # or under your STORM_DATA_DIR
+mkdir -p data/artifacts data/documents/app-files && sudo chown -R 1000:1000 data     # or under your STORM_DATA_DIR
 ```
 
 **The login** (one user: a password and an authenticator code). This builds the images the first time (a few
@@ -181,11 +181,12 @@ it on. The builder (describe what you want) makes new ones.
 |---|---|
 | `migrate` fails with `permission denied to create extension` | the extensions in step 1, as the superuser |
 | `migrate` fails with `P1001` / `Can't reach database server` | the `DATABASE_URL` host (`host.docker.internal` for the host's PostgreSQL) and `pg_hba.conf` |
-| `bind source path does not exist` | create `artifacts/` and `documents/` under `STORM_DATA_DIR` (step 2) |
+| `bind source path does not exist` | create `artifacts/`, `documents/` and `documents/app-files/` under `STORM_DATA_DIR` (step 2) |
 | `api` restarts, log says `Invalid environment (.env)` | the listed key; the error names keys, never values |
 | Login says the password or code is wrong although it is right | `APP_ADMIN_PASSWORD_HASH` lost its single quotes; fix `.env`, `./docker/storm up` |
 | The dot stays red | `APP_ORIGIN` must be exactly the address in the browser |
 | `EACCES` under `/data/artifacts` or `/data/documents` | the folders must belong to uid 1000 |
+| A `file.keep` step: `ENOENT … mkdir '/data/documents/app-files'` | `documents/app-files/` is missing, so the worker has only the read-only documents folder: create it (step 2) and `./docker/storm up` |
 | A run's mail step fails with `AUTHENTICATIONFAILED` | the credential's secret (an app password for Gmail) and its allowed hosts |
 | A `fetch` step: `resolves to a private or local address` | by design: `http.fetch` never reads the LAN, the tailnet or the host |
 

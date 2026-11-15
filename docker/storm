@@ -129,6 +129,15 @@ restore_test() {
 case "${1:-}" in
   up)
     shift
+    # The worker writes your Apps' files into documents/app-files (compose.yml): a folder Docker won't create for it.
+    data_dir="$(env_value STORM_DATA_DIR || true)"
+    data_dir="${data_dir:-$here/../data}"
+    case "$data_dir" in /* | [A-Za-z]:*) ;; *) data_dir="$here/$data_dir" ;; esac
+    if [ -d "$data_dir/documents" ] && [ ! -d "$data_dir/documents/app-files" ]; then
+      echo "Missing $data_dir/documents/app-files (your Apps' files). Create it, owned by uid 1000:" >&2
+      echo "  sudo mkdir $data_dir/documents/app-files && sudo chown 1000:1000 $data_dir/documents/app-files" >&2
+      exit 1
+    fi
     compose up -d --build --remove-orphans "$@"
     compose ps
     ;;
