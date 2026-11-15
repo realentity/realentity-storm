@@ -34,6 +34,7 @@ import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";
 import { BindingsService } from "../bindings/bindings.service";
 import { AppFilesService } from "./app-files.service";
+import { pipelinesByApp } from "./app-pipelines";
 import { AppImportsService } from "./app-imports.service";
 
 type Item = Record<string, unknown>;
@@ -248,7 +249,7 @@ export class AppsService {
 
   async list(userId: string): Promise<AppSummaryView[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId }, orderBy: { name: "asc" } });
-    const pipelines = await this.pipelinesByApp(userId);
+    const pipelines = await pipelinesByApp(this.prisma.client, userId);
     const versions = await this.prisma.client.appVersion.findMany({
       where: { appVersionId: { in: apps.flatMap((a) => (a.currentVersionId ? [a.currentVersionId] : [])) } },
     });
@@ -482,29 +483,6 @@ export class AppsService {
   }
 
   /** Saved pipelines by the App they name. */
-  private async pipelinesByApp(userId: string) {
-    const pipelines = await this.prisma.client.pipeline.findMany({
-      where: { userId, currentVersionId: { not: null } },
-      orderBy: { name: "asc" },
-    });
-    const versions = await this.prisma.client.pipelineVersion.findMany({
-      where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
-      select: { pipelineVersionId: true, definition: true },
-    });
-    const appNames = new Map((await this.prisma.client.app.findMany({ where: { userId } })).map((a) => [a.appId, a.name]));
-    const byApp = new Map<string, { pipelineId: string; name: string; enabled: boolean }[]>();
-    for (const pipeline of pipelines) {
-      const compiled = versions.find((v) => v.pipelineVersionId === pipeline.currentVersionId)?.definition as unknown as
-        | CompiledDefinition
-        | undefined;
-      // M39-T3: the App its version was saved with, by id (renamed since, it is under its name now); else by name.
-      const app = compiled?.refs?.appId ? appNames.get(compiled.refs.appId) : compiled?.app;
-      if (!app) continue;
-      byApp.set(app, [...(byApp.get(app) ?? []), { pipelineId: pipeline.pipelineId, name: pipeline.name, enabled: pipeline.enabled }]);
-    }
-    return byApp;
-  }
-
   private async currentDefinition(userId: string, name: string): Promise<AppDefinition | null> {
     const app = await this.prisma.client.app.findUnique({ where: { userId_name: { userId, name } } });
     if (!app?.currentVersionId) return null;

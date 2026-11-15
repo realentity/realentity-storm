@@ -1,6 +1,6 @@
-import { entityValueAt, type DataType, type EntityView } from "@realentity/storm-shared";
+import { entityValueAt, type AppPipelineView, type DataType, type EntityView } from "@realentity/storm-shared";
 import { NeedsCard } from "../components/NeedsCard";
-import { IconMessage, IconPencil } from "@tabler/icons-react";
+import { IconAlertTriangle, IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppMap } from "../components/AppMap";
@@ -83,6 +83,7 @@ export function AppPage() {
         }
       />
       {data.definition.description && <p className="text-secondary">{data.definition.description}</p>}
+      <PipelinesOff pipelines={data.pipelines} />
       <ExampleChecklist appId={appId} />
       <div className="mb-3">
         <NeedsCard
@@ -231,7 +232,14 @@ export function AppPage() {
               {data.pipelines.map((p) => (
                 <Link key={p.pipelineId} to={`/pipelines/${p.pipelineId}`} className="list-group-item list-group-item-action">
                   {p.name}
-                  {!p.enabled && <span className="text-secondary small ms-2">off</span>}
+                  {!p.enabled &&
+                    (p.runsOnItsOwn ? (
+                      <span className="badge bg-yellow-lt ms-2">off</span>
+                    ) : (
+                      <span className="text-secondary small ms-2" title="Started by hand or by a button: it runs when started">
+                        off
+                      </span>
+                    ))}
                 </Link>
               ))}
             </div>
@@ -337,6 +345,41 @@ function Entities({ appId, type, dataType }: { appId: string; type: string; data
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The App's pipelines that run on their own (a schedule, an event, a command) but are off: an App's pipelines come
+ * installed off, and until one is on, nothing happens by itself. Switched on on its page, where a cost is confirmed.
+ */
+function PipelinesOff({ pipelines }: Readonly<{ pipelines: readonly AppPipelineView[] }>) {
+  const off = pipelines.filter((p) => p.runsOnItsOwn && !p.enabled);
+  if (off.length === 0) return null;
+  return (
+    <div className="alert alert-warning" data-testid="pipelines-off">
+      <div className="d-flex gap-2">
+        <IconAlertTriangle size={20} className="flex-shrink-0" />
+        <div className="flex-fill">
+          <div className="fw-bold">
+            {off.length === 1 ? "1 pipeline is off" : `${off.length} pipelines are off`}: {off.length === 1 ? "it doesn't" : "they don't"} run
+            by {off.length === 1 ? "itself" : "themselves"} until switched on
+          </div>
+          <ul className="list-unstyled mb-0 mt-2">
+            {off.map((p) => (
+              <li key={p.pipelineId} className="d-flex flex-wrap align-items-center gap-2 py-1" data-testid="pipeline-off">
+                <span>
+                  <strong>{p.name}</strong>
+                  {p.command && <span className="text-secondary">: /{p.command} on Telegram answers only once it is on</span>}
+                </span>
+                <Link to={`/pipelines/${p.pipelineId}`} className="ms-auto">
+                  Switch on
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
   );
 }
 

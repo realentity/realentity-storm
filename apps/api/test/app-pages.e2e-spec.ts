@@ -80,6 +80,7 @@ describe("app pages", () => {
   });
 
   afterEach(async () => {
+    await db.client.pipeline.deleteMany();
     await db.client.app.deleteMany();
     await db.client.dataPoint.deleteMany();
   });
@@ -94,8 +95,41 @@ describe("app pages", () => {
 
   it("puts the lists in the menu, those hidden from it left out", async () => {
     expect((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[]).toEqual([
-      { appId, appName: "Bills", type: "Bill", label: "My bills", icon: "receipt" },
+      { appId, appName: "Bills", type: "Bill", label: "My bills", icon: "receipt", nothingOn: false },
     ]);
+  });
+
+  it("marks an App in the menu while none of its pipelines that run on their own is on; its page lists them", async () => {
+    const pipeline = (name: string, trigger: string) => `
+name: ${name}
+app: Bills
+trigger: ${trigger}
+steps:
+  - id: read
+    type: data.read
+    with: { type: Bill }
+`;
+    const create = async (source: string) => ((await agent.post("/api/pipelines").send({ source }).expect(201)).body as { pipelineId: string }).pipelineId;
+    const menu = async () => ((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[])[0]?.nothingOn;
+    const app = async () => (await agent.get(`/api/apps/${appId}`).expect(200)).body as AppDetailView;
+
+    // Started by hand: it runs when started, on or off; nothing to mark.
+    await create(pipeline("Bills by hand", "manual"));
+    expect(await menu()).toBe(false);
+
+    const command = await create(pipeline("Bills on Telegram", '{ on: telegram.command, command: bills, description: "The bills due" }'));
+    const daily = await create(pipeline("Bills every day", '{ schedule: "0 8 * * *" }'));
+    expect(await menu()).toBe(true);
+    expect((await app()).pipelines).toEqual([
+      expect.objectContaining({ name: "Bills by hand", enabled: false, runsOnItsOwn: false, command: null }),
+      expect.objectContaining({ name: "Bills every day", enabled: false, runsOnItsOwn: true, command: null }),
+      expect.objectContaining({ name: "Bills on Telegram", enabled: false, runsOnItsOwn: true, command: "bills" }),
+    ]);
+
+    // One of them on: the App does something by itself; the page still lists the other.
+    await agent.patch(`/api/pipelines/${command}`).send({ enabled: true }).expect(200);
+    expect(await menu()).toBe(false);
+    expect((await app()).pipelines.filter((p) => p.runsOnItsOwn && !p.enabled).map((p) => p.pipelineId)).toEqual([daily]);
   });
 
   it("groups by month, newest first, with totals per currency; rows in each group by the page's sort", async () => {

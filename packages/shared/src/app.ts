@@ -651,13 +651,24 @@ export function entityItem(value: unknown, mine: unknown, stage?: { field: strin
 
 // --- the api (M30) ---
 
+/** One of an App's pipelines, and whether it being off matters. */
+export interface AppPipelineView {
+  pipelineId: string;
+  name: string;
+  enabled: boolean;
+  /** Runs only while on (a schedule, an event, a command, a webhook); false: started by hand or by a button, on or off. */
+  runsOnItsOwn: boolean;
+  /** Its Telegram command (without the slash), which answers only while it is on. */
+  command: string | null;
+}
+
 export interface AppSummaryView {
   appId: string;
   name: string;
   icon: (typeof VIEW_ICONS)[number];
   version: number | null;
   types: { name: string; entities: number }[];
-  pipelines: { pipelineId: string; name: string; enabled: boolean }[];
+  pipelines: AppPipelineView[];
   /** M40: the example it was installed from, if any: the gallery says it is installed. */
   example: string | null;
 }

@@ -30,6 +30,7 @@ import {
 } from "@realentity/storm-shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
+import { nothingOn, pipelinesByApp } from "./app-pipelines";
 
 /** A list reads at most this many entities of its type, the newest first; filtered, sorted and grouped in memory. */
 const MAX_ROWS = 5000;
@@ -48,14 +49,16 @@ export class AppPagesService {
     const versions = await this.prisma.client.appVersion.findMany({
       where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } },
     });
+    const pipelines = await pipelinesByApp(this.prisma.client, userId);
     return apps.flatMap((app) => {
       const version = versions.find((v) => v.appVersionId === app.currentVersionId);
       if (!version) return [];
       const definition = readAppSource(version.source);
+      const off = nothingOn(pipelines.get(app.name) ?? []);
       return Object.keys(definition.types)
         .map((type) => listPageOf(definition, type))
         .filter((page) => page.menu)
-        .map((page) => ({ appId: app.appId, appName: definition.name, type: page.type, label: page.label, icon: page.icon }));
+        .map((page) => ({ appId: app.appId, appName: definition.name, type: page.type, label: page.label, icon: page.icon, nothingOn: off }));
     });
   }
 

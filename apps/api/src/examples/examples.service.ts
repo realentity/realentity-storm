@@ -1,11 +1,9 @@
 import {
   CALENDAR_SCOPE,
   emptySlots,
-  isEventTrigger,
   type BindingView,
   needMet,
   type ChecklistView,
-  type CompiledDefinition,
   type ExampleNeed,
   type ServerEnv,
   type SetupView,
@@ -85,17 +83,11 @@ export class ExamplesService {
       const own = (await this.bindings.ofPipeline(userId, pipelineId)).filter((v) => v.owner === "pipeline");
       for (const slot of emptySlots(own)) items.push({ label: slotLabel(slot), done: false, link: `/pipelines/${pipelineId}#needs` });
     }
-    for (const { pipelineId, name, enabled } of detail.pipelines) {
+    for (const { pipelineId, name, enabled, runsOnItsOwn } of detail.pipelines) {
       const tried = (await this.prisma.client.run.count({ where: { pipelineVersion: { pipelineId } } })) > 0;
       items.push({ label: `Try "${name}": a dry run, which sends and saves nothing`, done: tried, link: `/pipelines/${pipelineId}` });
-      const pipeline = await this.prisma.client.pipeline.findUniqueOrThrow({ where: { pipelineId } });
-      const version = pipeline.currentVersionId
-        ? await this.prisma.client.pipelineVersion.findUnique({ where: { pipelineVersionId: pipeline.currentVersionId } })
-        : null;
-      const trigger = (version?.definition as unknown as CompiledDefinition | undefined)?.trigger;
       // One started by a button or by hand isn't switched on: it runs when started.
-      const startedByMe = trigger === "manual" || (trigger !== undefined && isEventTrigger(trigger) && trigger.on === "entity.action");
-      if (!startedByMe) items.push({ label: `Switch "${name}" on`, done: enabled, link: `/pipelines/${pipelineId}` });
+      if (runsOnItsOwn) items.push({ label: `Switch "${name}" on`, done: enabled, link: `/pipelines/${pipelineId}` });
     }
     return { example: example.id, items, done: items.every((i) => i.done) };
   }

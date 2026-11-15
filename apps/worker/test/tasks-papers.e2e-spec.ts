@@ -189,5 +189,14 @@ describe("Tasks and Papers", () => {
       expect(await only(appId, "Paper")).toMatchObject({ title: "Washing machine", document: { mime: "image/jpeg" } });
       expect(telegram.calls.map((c) => c.text)).toEqual(["Kept: Washing machine. Reading it now."]);
     });
+
+    it("pipelines/paper-from-telegram.yaml: /paper without a photo or file keeps nothing and says why", async () => {
+      const { appId, definition } = await install("apps/papers.yaml");
+      const versionId = await createVersion(db.client, userId, read("paper-from-telegram.yaml"), compiler, { app: definition });
+      const runId = await runner.start(versionId, { trigger: "telegram", triggerData: command("paper", "Washing machine") });
+      expect(await runner.advance(runId)).toBe("DONE");
+      expect(await db.client.dataEntity.count({ where: { appId, type: "Paper" } })).toBe(0);
+      expect(telegram.calls.map((c) => c.text)).toEqual([expect.stringContaining("Nothing kept: /paper needs a photo or a PDF") as unknown]);
+    });
   });
 });
