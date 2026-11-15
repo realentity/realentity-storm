@@ -15,7 +15,7 @@ import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { TelegramNotices } from "../telegram/telegram-notices";
-import { PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./proposal-view";
+import { emailSenders, PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./proposal-view";
 
 type Via = "the app" | "Telegram";
 
@@ -45,11 +45,14 @@ export class ProposalsService {
       include: PROPOSAL_INCLUDE,
       orderBy: [{ dateCreated: "asc" }, { itemIndex: "asc" }],
     });
-    return proposals.map(proposalView);
+    const senders = await emailSenders(this.prisma.client, userId, proposals);
+    return proposals.map((p) => proposalView(p, senders.get(p.proposalId)));
   }
 
   async get(userId: string, proposalId: string): Promise<ProposalView> {
-    return proposalView(await this.find(userId, proposalId));
+    const proposal = await this.find(userId, proposalId);
+    const senders = await emailSenders(this.prisma.client, userId, [proposal]);
+    return proposalView(proposal, senders.get(proposalId));
   }
 
   /** `via`: where the user decided, for the Storm bot's message about it. */

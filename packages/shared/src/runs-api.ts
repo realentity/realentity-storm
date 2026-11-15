@@ -57,6 +57,11 @@ export interface ProposalView {
   targets: TargetView[];
   originalPayload: Record<string, unknown>;
   finalPayload: Record<string, unknown> | null;
+  /**
+   * An email's sender: the email account it goes out from, as the worker picks it (the one the payload's `account`
+   * names, by id or slot, else the default). null for any other step, or when there is no such account.
+   */
+  from: { emailAccountId: string; address: string; label: string | null } | null;
   approvedNewTargets: string[];
   reasoning: string | null;
   dateCreated: string;

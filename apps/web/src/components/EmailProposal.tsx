@@ -1,3 +1,4 @@
+import { type ProposalView } from "@realentity/storm-shared";
 import { EMAIL_LABELS, emailFields, threadLength } from "../lib/email-payload";
 import { Json } from "./ui";
 
@@ -10,16 +11,40 @@ function Edited({ on }: Readonly<{ on: boolean }>) {
   return on ? <span className="badge bg-blue-lt ms-2">edited</span> : null;
 }
 
+/** Whom an email goes out from: the account's address (and its label), or why there is none. */
+function FromHeader({ from }: Readonly<{ from: ProposalView["from"] }>) {
+  return (
+    <div className="email-header" data-testid="email-from">
+      <dt>From</dt>
+      <dd>
+        {from ? (
+          <>
+            {from.address}
+            {from.label && <span className="text-secondary ms-2">({from.label})</span>}
+          </>
+        ) : (
+          <span className="text-danger">No email account to send it from: add one in Settings → Email accounts</span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 /**
- * An email at its gate, read as an email (docs/design.md §3): To and Subject, the message as it will be sent, and the
- * threading folded away. The same payload as the generic view: only how it is shown differs.
+ * An email at its gate, read as an email (docs/design.md §3): From, To and Subject, the message as it will be sent, and
+ * the threading folded away. The same payload as the generic view: only how it is shown differs.
  */
-export function EmailView({ payload, changed }: Readonly<{ payload: Record<string, unknown>; changed: readonly string[] }>) {
+export function EmailView({
+  payload,
+  changed,
+  from,
+}: Readonly<{ payload: Record<string, unknown>; changed: readonly string[]; from: ProposalView["from"] }>) {
   const fields = emailFields(payload);
   const earlier = threadLength(payload);
   return (
     <div data-testid="payload" className="email-view">
       <dl className="email-headers mb-0">
+        <FromHeader from={from} />
         {fields.headers.map((field) => (
           <div key={field} className="email-header" data-testid={`email-${field}`}>
             <dt>{label(field)}</dt>
@@ -73,15 +98,20 @@ export function EmailView({ payload, changed }: Readonly<{ payload: Record<strin
   );
 }
 
-/** The email's fields to edit: To and Subject on a line each, the message in a large box, the threading as JSON, folded away. */
+/**
+ * The email's fields to edit: To and Subject on a line each, the message in a large box, the threading as JSON, folded
+ * away. From is shown, not edited: the account is the pipeline's choice.
+ */
 export function EmailEditor({
   original,
+  from,
   texts,
   onChange,
   changed,
   invalid,
 }: Readonly<{
   original: Record<string, unknown>;
+  from: ProposalView["from"];
   texts: Record<string, string>;
   onChange: (field: string, text: string) => void;
   changed: readonly string[];
@@ -115,6 +145,9 @@ export function EmailEditor({
   };
   return (
     <div className="d-flex flex-column gap-3">
+      <dl className="email-headers mb-0">
+        <FromHeader from={from} />
+      </dl>
       {fields.headers.map((field) => (
         <div key={field}>
           {heading(field)}

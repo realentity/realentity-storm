@@ -84,7 +84,7 @@ test.describe("proposals", () => {
     await page.goto("/inbox");
     await page.getByRole("link", { name: new RegExp(`${name} · send`) }).click();
     const email = page.getByTestId("payload");
-    await expect(email.locator(".email-header dt")).toHaveText(["To", "Subject"]);
+    await expect(email.locator(".email-header dt")).toHaveText(["From", "To", "Subject"]);
     await expect(email.getByTestId("email-to")).toContainText("maria@client.example");
     await expect(email.getByTestId("email-subject")).toContainText("Re: Launch plan");
     await expect(email.getByTestId("email-body")).toContainText("Yes, the launch is on 17 March.");

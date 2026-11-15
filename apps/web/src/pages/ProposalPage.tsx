@@ -194,7 +194,11 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
         </div>
         <div className="card-body">
           {email ? (
-            <EmailView payload={proposal.finalPayload ?? original} changed={proposal.finalPayload ? changedFields(original, proposal.finalPayload) : []} />
+            <EmailView
+              payload={proposal.finalPayload ?? original}
+              changed={proposal.finalPayload ? changedFields(original, proposal.finalPayload) : []}
+              from={proposal.from}
+            />
           ) : (
             <Json value={proposal.finalPayload ?? original} maxHeight={600} />
           )}
@@ -218,6 +222,7 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
         <ErrorAlert error={action.error} title="The decision wasn't saved" />
         {editing && email ? (
           <EmailEditor
+            from={proposal.from}
             original={original}
             texts={texts}
             onChange={(field, text) => setTexts((all) => ({ ...all, [field]: text }))}
@@ -250,7 +255,7 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
             })}
           </div>
         ) : email ? (
-          <EmailView payload={payload} changed={changed} />
+          <EmailView payload={payload} changed={changed} from={proposal.from} />
         ) : (
           <PayloadFields payload={payload} changed={changed} />
         )}
@@ -317,7 +322,7 @@ function ActPanel({ proposal, pending, onDecided }: { proposal: ProposalView; pe
             The run {email ? "sends exactly this email" : "executes exactly this payload"}
             {changed.length > 0 && <> (edited: {changed.join(", ")})</>}. If anything else is needed, it pauses and asks.
           </p>
-          {email ? <EmailView payload={payload} changed={changed} /> : <Json value={payload} maxHeight={420} />}
+          {email ? <EmailView payload={payload} changed={changed} from={proposal.from} /> : <Json value={payload} maxHeight={420} />}
         </Modal>
       )}
       {rejecting && <RejectModal proposal={proposal} onClose={() => setRejecting(false)} onDecided={onDecided} />}
