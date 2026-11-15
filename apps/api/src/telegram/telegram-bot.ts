@@ -21,7 +21,7 @@ import { ProposalsService } from "../proposals/proposals.service";
 import { RunsService } from "../runs/runs.service";
 import { parseBuilderCallback, TelegramBuilder } from "./telegram-builder";
 import { TelegramCommands, type PipelineCommand } from "./telegram-commands";
-import { forTelegram, TELEGRAM_PROPOSAL_INCLUDE, TelegramNotices } from "./telegram-notices";
+import { forTelegram, TELEGRAM_PROPOSAL_INCLUDE, TelegramNotices, telegramSenders } from "./telegram-notices";
 
 /** A command sent while the bot couldn't be reached arrives late; older than this, it's dropped. */
 const MAX_COMMAND_AGE_SECONDS = 300;
@@ -45,7 +45,14 @@ const UpdateSchema = z.object({
       /** M49: a photo, in its sizes (the largest last). */
       photo: z.array(z.object({ file_id: z.string(), file_size: z.number().optional() })).optional(),
       /** M49: a file sent as a document (a PDF, a photo sent uncompressed). */
-      document: z.object({ file_id: z.string(), file_name: z.string().optional(), mime_type: z.string().optional(), file_size: z.number().optional() }).optional(),
+      document: z
+        .object({
+          file_id: z.string(),
+          file_name: z.string().optional(),
+          mime_type: z.string().optional(),
+          file_size: z.number().optional(),
+        })
+        .optional(),
       /** A reply: to a question Storm asked (M15-T3), it is the answer. */
       reply_to_message: z.object({ message_id: z.number() }).optional(),
     })
@@ -131,7 +138,8 @@ export class TelegramBot {
     const command = word.toLowerCase().replace(/@\w+$/, "");
     const userId = await this.userId();
     const file = fileOf(message);
-    if (file && !text.startsWith("/")) return this.tell("Send it with a command as its caption, e.g. /paper Washing machine. /help says which there are.");
+    if (file && !text.startsWith("/"))
+      return this.tell("Send it with a command as its caption, e.g. /paper Washing machine. /help says which there are.");
     if (text && !text.startsWith("/")) return this.talk(userId, text);
     switch (command) {
       case "/new":
@@ -155,7 +163,8 @@ export class TelegramBot {
       default: {
         // M49: a pipeline's command, with what follows it and the photo or file it came with.
         const pipeline = command.length > 1 ? await this.commands.find(userId, command.slice(1)) : undefined;
-        if (pipeline) return this.byCommand(userId, pipeline, { command: command.slice(1), text: text.slice(word.length).trim(), file, message });
+        if (pipeline)
+          return this.byCommand(userId, pipeline, { command: command.slice(1), text: text.slice(word.length).trim(), file, message });
         return this.tell(await this.help(userId));
       }
     }
@@ -230,7 +239,10 @@ export class TelegramBot {
 
   /** One of the user's saved pipelines by its name or the start of it; otherwise says which there are, and null. */
   private async pipelineNamed(userId: string, name: string, command: string): Promise<{ pipelineId: string; name: string } | null> {
-    const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
+    const pipelines = await this.prisma.client.pipeline.findMany({
+      where: { userId, currentVersionId: { not: null } },
+      orderBy: { name: "asc" },
+    });
     const wanted = name.trim().toLowerCase();
     if (!wanted) {
       await this.tell(`${command} <pipeline>. Pipelines: ${pipelines.map((p) => p.name).join(", ") || "none yet"}`);
@@ -274,7 +286,10 @@ export class TelegramBot {
       `Kill switch: ${paused ? "ON" : "off"}`,
       `Running or queued: ${running} · waiting for you: ${waiting} · proposals: ${proposals}`,
       ...(recent.length ? ["", "Last runs:"] : []),
-      ...recent.map((r) => `• ${r.pipelineVersion.pipeline.name}: ${r.status} (${r.trigger}, ${r.startedAt.toISOString().slice(0, 16).replace("T", " ")} UTC)`),
+      ...recent.map(
+        (r) =>
+          `• ${r.pipelineVersion.pipeline.name}: ${r.status} (${r.trigger}, ${r.startedAt.toISOString().slice(0, 16).replace("T", " ")} UTC)`,
+      ),
     ];
     await this.say({ text: lines.join("\n"), buttons: this.open("/", "Open Storm") });
   }
@@ -292,13 +307,20 @@ export class TelegramBot {
         return `• ${shown.pipeline}: ${shown.gate === "gate.review" ? "pick items" : shown.stepType} → ${shown.target}`;
       });
       const more = pending.length > 20 ? `\n… and ${pending.length - 20} more` : "";
-      return this.tell({ text: `${pending.length} proposals wait:\n${lines.join("\n")}${more}`, buttons: this.open("/inbox", "Open the inbox") });
+      return this.tell({
+        text: `${pending.length} proposals wait:\n${lines.join("\n")}${more}`,
+        buttons: this.open("/inbox", "Open the inbox"),
+      });
     }
     const approvals = await this.approvalsOn(userId);
+    const senders = await telegramSenders(this.prisma.client, pending);
     for (const proposal of pending) {
-      const messageId = await this.say(proposalMessage(forTelegram(proposal), { approvals, appOrigin: this.env.APP_ORIGIN }));
+      const messageId = await this.say(proposalMessage(forTelegram(proposal, senders), { approvals, appOrigin: this.env.APP_ORIGIN }));
       // The newest message about it is the one kept in line with its decision.
-      await this.prisma.client.proposal.update({ where: { proposalId: proposal.proposalId }, data: { telegramMessageId: messageId, notifiedAt: new Date() } });
+      await this.prisma.client.proposal.update({
+        where: { proposalId: proposal.proposalId },
+        data: { telegramMessageId: messageId, notifiedAt: new Date() },
+      });
     }
   }
 
@@ -318,11 +340,15 @@ export class TelegramBot {
     const callback = parseProposalCallback(query.data ?? "");
     if (!callback) return answer("Unknown button");
     const userId = await this.userId();
-    const proposal = await this.prisma.client.proposal.findFirst({ where: { proposalId: callback.proposalId, userId }, include: TELEGRAM_PROPOSAL_INCLUDE });
+    const proposal = await this.prisma.client.proposal.findFirst({
+      where: { proposalId: callback.proposalId, userId },
+      include: TELEGRAM_PROPOSAL_INCLUDE,
+    });
     if (!proposal) return answer("That proposal is gone");
-    const shown = forTelegram(proposal);
+    const shown = forTelegram(proposal, await telegramSenders(this.prisma.client, [proposal]));
     if (proposal.status !== "PENDING_REVIEW") {
-      if (query.message) await this.edit(query.message.message_id, decidedMessage(shown, `Already ${proposal.status.toLowerCase().replace("_", " ")}`));
+      if (query.message)
+        await this.edit(query.message.message_id, decidedMessage(shown, `Already ${proposal.status.toLowerCase().replace("_", " ")}`));
       return answer(`Already ${proposal.status.toLowerCase().replace("_", " ")}`);
     }
     if (!(await this.approvalsOn(userId))) return answer("Approvals on Telegram are off (Settings): open it in Storm");
@@ -333,7 +359,10 @@ export class TelegramBot {
         await this.proposals.reject(userId, proposal.proposalId, "Rejected on Telegram", "Telegram");
         return answer("Rejected");
       }
-      const full = proposalMessage(shown, { approvals: true }).buttons?.flat().some((b) => b.text === "Approve") ?? false;
+      const full =
+        proposalMessage(shown, { approvals: true })
+          .buttons?.flat()
+          .some((b) => b.text === "Approve") ?? false;
       if (!full) return answer("Too long to approve here: open it in Storm");
       if (!hashMatches(shown.payloadHash, callback.hash)) return answer("It changed since this message: open it in Storm");
       const fresh = ((proposal.targets as TargetView[] | null) ?? []).filter((t) => t.isNew);

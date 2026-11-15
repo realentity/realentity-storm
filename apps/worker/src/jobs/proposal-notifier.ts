@@ -1,5 +1,5 @@
 import { payloadHash } from "@realentity/storm-crypto";
-import { type PrismaClient } from "@realentity/storm-db";
+import { emailSenders, stepTypeIn, type PrismaClient } from "@realentity/storm-db";
 import {
   proposalMessage,
   sendTelegramMessage,
@@ -28,7 +28,10 @@ export class ProposalNotifier {
 
   async waiting(runId: string): Promise<void> {
     if (!this.telegram.botToken || !this.telegram.chatId) return;
-    const run = await this.prisma.run.findUniqueOrThrow({ where: { runId }, include: { pipelineVersion: { include: { pipeline: true } } } });
+    const run = await this.prisma.run.findUniqueOrThrow({
+      where: { runId },
+      include: { pipelineVersion: { include: { pipeline: true } } },
+    });
     if (run.dryRun) return;
     const fresh = await this.prisma.proposal.findMany({
       where: { runId, status: "PENDING_REVIEW", notifiedAt: null },
@@ -56,6 +59,19 @@ export class ProposalNotifier {
       }
       const settings = await this.prisma.userSetting.findUnique({ where: { userId: run.userId } });
       const definition = run.pipelineVersion.definition as unknown as CompiledDefinition;
+      // An email says whom it goes from (the account the send will use), not its account's id.
+      const senders = await emailSenders(
+        this.prisma,
+        run.userId,
+        fresh
+          .filter((p) => stepTypeIn(definition, p.stepKey) === "email.send")
+          .map((p) => ({
+            key: p.proposalId,
+            pipelineId: run.pipelineVersion.pipelineId,
+            definition,
+            payload: p.originalPayload as Record<string, unknown>,
+          })),
+      );
       for (const proposal of fresh) {
         const payload = proposal.originalPayload as Record<string, unknown>;
         const shown: ProposalForTelegram = {
@@ -67,6 +83,7 @@ export class ProposalNotifier {
           itemIndex: proposal.itemIndex,
           payload,
           payloadHash: payloadHash(payload),
+          ...(senders.has(proposal.proposalId) ? { from: senders.get(proposal.proposalId) } : {}),
         };
         const message = proposalMessage(shown, { approvals: settings?.telegramApprovals ?? true, appOrigin: this.appOrigin });
         const messageId = await sendTelegramMessage(this.telegram, message, this.send);

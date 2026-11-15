@@ -15,7 +15,7 @@ import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { TelegramNotices } from "../telegram/telegram-notices";
-import { emailSenders, PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./proposal-view";
+import { proposalSenders, PROPOSAL_INCLUDE, proposalView, type ProposalWithContext } from "./proposal-view";
 
 type Via = "the app" | "Telegram";
 
@@ -45,13 +45,13 @@ export class ProposalsService {
       include: PROPOSAL_INCLUDE,
       orderBy: [{ dateCreated: "asc" }, { itemIndex: "asc" }],
     });
-    const senders = await emailSenders(this.prisma.client, userId, proposals);
+    const senders = await proposalSenders(this.prisma.client, userId, proposals);
     return proposals.map((p) => proposalView(p, senders.get(p.proposalId)));
   }
 
   async get(userId: string, proposalId: string): Promise<ProposalView> {
     const proposal = await this.find(userId, proposalId);
-    const senders = await emailSenders(this.prisma.client, userId, [proposal]);
+    const senders = await proposalSenders(this.prisma.client, userId, [proposal]);
     return proposalView(proposal, senders.get(proposalId));
   }
 

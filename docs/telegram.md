@@ -116,12 +116,17 @@ produces more than 5 at once, you get a single message with a link to the inbox.
 Bot:  Storm · Application replies: approve email.send?
       Target: hr@example.com
 
+      From: me@example.com (Job search)
       to: hr@example.com
       subject: Re: Senior Backend Engineer
       body:
       Hi Maria, thanks for getting back to me…
       [Approve] [Reject] [Open]
 ```
+
+An email starts with **From**: the email account it goes out from (the one its pipeline chose, else your default
+account), so with several accounts you see which one before you approve. Without an account to send it from, it says
+so.
 
 When you decide, whether here, in Storm or anywhere else, the message is edited to show the outcome and its buttons
 are removed.

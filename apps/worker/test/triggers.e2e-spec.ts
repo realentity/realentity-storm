@@ -3,7 +3,7 @@ import { createPrismaConnection, type PrismaConnection, type RunStatus } from "@
 import { JobQueue, QUEUES, type EventJob } from "@realentity/storm-queue";
 import { AppDefinitionSchema } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { JobHandlers } from "../src/jobs/job-handlers";
 import { ProposalNotifier } from "../src/jobs/proposal-notifier";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
@@ -92,10 +92,18 @@ describe("M12: event and webhook triggers", () => {
     search = new Counting("test.search", () => ({ items: JOBS }));
     note = new Counting("test.note", (input) => ({ text: input.text }));
     send = new Counting("test.send", () => ({ messageId: "m-1" }));
-    runner = new PipelineRunner(db.client, catalog, new ExecutorRegistry([search, note, send]), undefined, undefined, undefined, async (event) => {
-      events.push(event);
-      await queue.enqueueEvent(event);
-    });
+    runner = new PipelineRunner(
+      db.client,
+      catalog,
+      new ExecutorRegistry([search, note, send]),
+      undefined,
+      undefined,
+      undefined,
+      async (event) => {
+        events.push(event);
+        await queue.enqueueEvent(event);
+      },
+    );
     triggers = new Triggers(db.client, runner, queue, keys);
     telegram = new FakeTelegram();
     const notifier = new ProposalNotifier(db.client, { botToken: "1:x", chatId: "42" }, "https://storm.test", telegram.fetch);
@@ -135,7 +143,10 @@ describe("M12: event and webhook triggers", () => {
     }
   }
 
-  const finished = (name: string, status: RunStatus = "DONE") => async () => (await runsOf(name)).some((r) => r.status === status);
+  const finished =
+    (name: string, status: RunStatus = "DONE") =>
+    async () =>
+      (await runsOf(name)).some((r) => r.status === status);
 
   it("M12-I1: Search finishes → After search runs with its outputs in {{trigger}}", async () => {
     await handlers.consume({ concurrency: 1, pollingIntervalSeconds: 0.5 });
@@ -172,7 +183,8 @@ describe("M12: event and webhook triggers", () => {
     const searchId = "00000000-0000-4000-8000-0000000000a1";
     const versionId = await enabled(AFTER_SEARCH);
     // As the api saves it (M39-T2): the pipeline it names, by id.
-    await db.client.$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { pipelines: { Search: searchId } } })}::jsonb WHERE "pipelineVersionId" = ${versionId}::uuid`;
+    await db.client
+      .$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { pipelines: { Search: searchId } } })}::jsonb WHERE "pipelineVersionId" = ${versionId}::uuid`;
     const finishedBy = (pipelineId: string, name: string): EventJob => ({
       userId,
       event: "run.finished",
@@ -183,7 +195,10 @@ describe("M12: event and webhook triggers", () => {
     expect(await triggers.fire(finishedBy("00000000-0000-4000-8000-0000000000b2", "Search"))).toEqual([]);
 
     const appId = "00000000-0000-4000-8000-0000000000c3";
-    const shelf = AppDefinitionSchema.parse({ name: "Shelf", types: { Book: { key: "isbn", fields: { isbn: { type: "text", required: true } } } } });
+    const shelf = AppDefinitionSchema.parse({
+      name: "Shelf",
+      types: { Book: { key: "isbn", fields: { isbn: { type: "text", required: true } } } },
+    });
     const watcher = await createVersion(
       db.client,
       userId,
@@ -193,7 +208,8 @@ describe("M12: event and webhook triggers", () => {
     );
     const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: watcher } });
     await db.client.pipeline.update({ where: { pipelineId }, data: { enabled: true } });
-    await db.client.$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { appId, pipelines: {} } })}::jsonb WHERE "pipelineVersionId" = ${watcher}::uuid`;
+    await db.client
+      .$executeRaw`UPDATE "PipelineVersions" SET definition = definition || ${JSON.stringify({ refs: { appId, pipelines: {} } })}::jsonb WHERE "pipelineVersionId" = ${watcher}::uuid`;
     const changed = (app: string, id: string): EventJob => ({
       userId,
       event: "entity.changed",
@@ -211,7 +227,15 @@ describe("M12: event and webhook triggers", () => {
     await queue.enqueueRun({ runId, headed: false });
     await until(async () => events.length === 1, "the run.finished event");
     // Let the event be handled: it must start nothing.
-    await until(async () => (await db.client.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM pgboss.job WHERE name = ${QUEUES.events} AND state = 'completed'`)[0].n > 0n, "the event to be handled");
+    await until(
+      async () =>
+        (
+          await db.client.$queryRaw<
+            { n: bigint }[]
+          >`SELECT count(*) AS n FROM pgboss.job WHERE name = ${QUEUES.events} AND state = 'completed'`
+        )[0].n > 0n,
+      "the event to be handled",
+    );
     expect(await runsOf("Loop")).toHaveLength(1);
 
     await enabled(AFTER_SEARCH);
@@ -240,7 +264,13 @@ describe("M12: event and webhook triggers", () => {
       const webhookId = randomBytes(32).toString("base64url");
       const secret = randomBytes(32).toString("base64url");
       await db.client.webhook.create({
-        data: { webhookId, userId, pipelineId, secretHash: createHash("sha256").update(secret).digest("hex"), ...seal(keys, webhookId, secret) },
+        data: {
+          webhookId,
+          userId,
+          pipelineId,
+          secretHash: createHash("sha256").update(secret).digest("hex"),
+          ...seal(keys, webhookId, secret),
+        },
       });
       return { webhookId, secret };
     }
@@ -298,17 +328,49 @@ describe("M12: event and webhook triggers", () => {
       expect(proposals.map((p) => p.telegramMessageId)).toEqual([1, 2]);
       expect(messages[0].body.text).toContain("approve test.send (item 1)?\nTarget: ana@acme.test");
       expect(messages[0].body.text).toContain("body: Thanks for Senior .NET");
-      const buttons = (messages[0].body.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] }).inline_keyboard[0];
+      const buttons = (messages[0].body.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] })
+        .inline_keyboard[0];
       expect(buttons.map((b) => b.text)).toEqual(["Approve", "Reject", "Open"]);
       expect(buttons[0].callback_data).toMatch(new RegExp(`^a:${proposals[0].proposalId}:[0-9a-f]{16}$`));
       expect(buttons[2].url).toBe(`https://storm.test/proposals/${proposals[0].proposalId}`);
+    });
+
+    it("an email says whom it goes from (the default account here), not the account's id", async () => {
+      // Only its address is read here: the password stays sealed, never opened by the notifier.
+      const { emailAccountId } = await db.client.emailAccount.create({
+        data: {
+          emailAccountId: randomUUID(),
+          userId,
+          address: "me@home.example",
+          imapHost: "imap.example.com",
+          imapPort: 993,
+          smtpHost: "smtp.example.com",
+          smtpPort: 465,
+          ciphertext: Buffer.from("sealed"),
+          iv: Buffer.alloc(12),
+          authTag: Buffer.alloc(16),
+          wrappedDek: Buffer.alloc(40),
+        },
+      });
+      try {
+        const source =
+          "name: Mail reply\nsteps:\n  - id: send\n    type: email.send\n    with: { to: ana@acme.test, subject: Hi, body: Hello }\n";
+        const runId = await runner.start(await createVersion(db.client, userId, source), { trigger: "manual" });
+        expect(await handlers.advance(runId)).toBe("WAITING_FOR_USER");
+        const [message] = telegram.calls.filter((c) => c.method === "sendMessage");
+        expect(message.body.text).toContain("approve email.send?\nTarget: ana@acme.test\n\nFrom: me@home.example\n");
+      } finally {
+        await db.client.emailAccount.delete({ where: { emailAccountId } });
+      }
     });
 
     it("leaves Approve out when approvals on Telegram are off, and tells dry runs nothing", async () => {
       await db.client.userSetting.create({ data: { userId, telegramApprovals: false } });
       const runId = await runner.start(await createVersion(db.client, userId, REPLY), { trigger: "manual" });
       await handlers.advance(runId);
-      const buttons = telegram.calls.map((c) => (c.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0].map((b) => b.text));
+      const buttons = telegram.calls.map((c) =>
+        (c.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0].map((b) => b.text),
+      );
       expect(buttons).toEqual([["Open"], ["Open"]]);
 
       telegram.calls = [];

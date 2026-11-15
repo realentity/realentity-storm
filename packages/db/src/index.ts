@@ -3,3 +3,4 @@ export * from "./client";
 export * from "./spend";
 export * from "./topic-memory";
 export * from "./topic-costs";
+export * from "./email-senders";

@@ -78,7 +78,11 @@ describe("M12: the Storm bot and webhooks", () => {
       calls.push({ method: (input as string).split("/").pop()!, body: JSON.parse(init?.body as string) as Record<string, unknown> });
       return Promise.resolve(new Response(JSON.stringify({ ok: true, result: { message_id: 100 + calls.length } })));
     };
-    api = await createTestApp({ catalog: defaultCatalog().with(...TEST_STEPS), overrides: [{ provide: TELEGRAM_FETCH, useValue: fakeFetch }], builderLlm: llm });
+    api = await createTestApp({
+      catalog: defaultCatalog().with(...TEST_STEPS),
+      overrides: [{ provide: TELEGRAM_FETCH, useValue: fakeFetch }],
+      builderLlm: llm,
+    });
     agent = await api.signedIn();
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
@@ -104,16 +108,23 @@ describe("M12: the Storm bot and webhooks", () => {
   });
 
   const sent = (method = "sendMessage") => calls.filter((c) => c.method === method);
-  const buttonsOf = (call: Call): Button[] => (call.body.reply_markup as { inline_keyboard: Button[][] } | undefined)?.inline_keyboard.flat() ?? [];
+  const buttonsOf = (call: Call): Button[] =>
+    (call.body.reply_markup as { inline_keyboard: Button[][] } | undefined)?.inline_keyboard.flat() ?? [];
   const queued = (name: string) =>
     db.client.$queryRaw<{ data: Record<string, unknown> }[]>`SELECT data FROM pgboss.job WHERE name = ${name} AND state = 'created'`;
 
   function message(text: string, from = ME, chat: { id: number; type: string } = { id: ME, type: "private" }, ageSeconds = 0) {
-    return { update_id: ++updates, message: { message_id: updates, from: { id: from }, chat, date: Math.floor(Date.now() / 1000) - ageSeconds, text } };
+    return {
+      update_id: ++updates,
+      message: { message_id: updates, from: { id: from }, chat, date: Math.floor(Date.now() / 1000) - ageSeconds, text },
+    };
   }
 
   function press(data: string, from = ME) {
-    return { update_id: ++updates, callback_query: { id: `cb${updates}`, from: { id: from }, message: { message_id: 7, chat: { id: ME, type: "private" } }, data } };
+    return {
+      update_id: ++updates,
+      callback_query: { id: `cb${updates}`, from: { id: from }, message: { message_id: 7, chat: { id: ME, type: "private" } }, data },
+    };
   }
 
   const telegram = (update: unknown, secret: string | null = SECRET) => {
@@ -122,7 +133,12 @@ describe("M12: the Storm bot and webhooks", () => {
   };
 
   async function createPipeline(source: string, enabled = false): Promise<PipelineDetailView> {
-    const pipeline = (await agent.post("/api/pipelines").send({ source: await freeName(db, source) }).expect(201)).body as PipelineDetailView;
+    const pipeline = (
+      await agent
+        .post("/api/pipelines")
+        .send({ source: await freeName(db, source) })
+        .expect(201)
+    ).body as PipelineDetailView;
     if (enabled) await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
     return pipeline;
   }
@@ -206,6 +222,59 @@ describe("M12: the Storm bot and webhooks", () => {
       expect(edit.body.text).toMatch(/^✅ Approved in Telegram\n\n/);
     });
 
+    it("an email says whom it goes from, not its account's id, before and after the decision", async () => {
+      const work = (
+        await agent
+          .post("/api/email-accounts")
+          .send({
+            address: "me@work.example",
+            label: "Work",
+            imapHost: "imap.example.com",
+            smtpHost: "smtp.example.com",
+            password: "app-password-Q7",
+          })
+          .expect(201)
+      ).body as { emailAccountId: string };
+      try {
+        const pipeline = await createPipeline(
+          "name: Work reply\nsteps:\n  - id: send\n    type: email.send\n    with: { to: ana@acme.test, subject: Hi, body: Hello, account: work }\n",
+        );
+        await agent
+          .put(`/api/pipelines/${pipeline.pipelineId}/bindings`)
+          .send({ work: { emailAccountId: work.emailAccountId } })
+          .expect(200);
+        const run = await db.client.run.create({
+          data: { userId, pipelineVersionId: pipeline.current!.pipelineVersionId, trigger: "manual", status: "WAITING_FOR_USER" },
+        });
+        const gate = await db.client.step.create({
+          data: { runId: run.runId, stepKey: "sendGate", type: "gate.act", status: "WAITING", startedAt: new Date() },
+        });
+        const { proposalId } = await db.client.proposal.create({
+          data: {
+            userId,
+            runId: run.runId,
+            stepId: gate.stepId,
+            stepKey: "send",
+            status: "PENDING_REVIEW",
+            target: "ana@acme.test",
+            originalPayload: { to: "ana@acme.test", subject: "Hi", body: "Hello", account: "work" },
+          },
+        });
+
+        await telegram(message("/inbox")).expect(200);
+        const text = sent().at(-1)!.body.text as string;
+        // From first, then the fields as they will be sent (in the order the database keeps them).
+        expect(text).toContain("\n\nFrom: me@work.example (Work)\n");
+        expect(text).toContain("subject: Hi");
+        expect(text).not.toContain("account:");
+
+        await telegram(press(`r:${proposalId}`)).expect(200);
+        expect(sent("editMessageText").at(-1)!.body.text).toContain("From: me@work.example (Work)");
+      } finally {
+        await db.client.emailAccount.deleteMany();
+      }
+    });
+
     it("Reject rejects; a decision in the app updates the bot's message", async () => {
       const first = await waiting();
       await telegram(message("/inbox")).expect(200);
@@ -246,7 +315,10 @@ describe("M12: the Storm bot and webhooks", () => {
     it("refuses a payload that changed since the message", async () => {
       const proposalId = await waiting();
       const data = await approveButton();
-      await db.client.proposal.update({ where: { proposalId }, data: { originalPayload: { to: "ana@acme.test", body: "Something else" } } });
+      await db.client.proposal.update({
+        where: { proposalId },
+        data: { originalPayload: { to: "ana@acme.test", body: "Something else" } },
+      });
       await telegram(press(data)).expect(200);
       expect(answer()).toBe("It changed since this message: open it in Storm");
       expect((await db.client.proposal.findUniqueOrThrow({ where: { proposalId } })).status).toBe("PENDING_REVIEW");
@@ -285,7 +357,11 @@ describe("M12: the Storm bot and webhooks", () => {
 
     it("M12-E1 (api): created with its secret shown once, rotated keeping its address, removed", async () => {
       const { pipeline, hook } = await withHook("token");
-      expect(hook).toMatchObject({ path: expect.stringMatching(/^\/hooks\/[A-Za-z0-9_-]{43}$/) as unknown, secret: expect.any(String) as unknown, lastCalledAt: null });
+      expect(hook).toMatchObject({
+        path: expect.stringMatching(/^\/hooks\/[A-Za-z0-9_-]{43}$/) as unknown,
+        secret: expect.any(String) as unknown,
+        lastCalledAt: null,
+      });
       expect(hook.url).toBe(`https://hooks.test/storm/${hook.path.slice("/hooks/".length)}`);
       const read = (await agent.get(`/api/pipelines/${pipeline.pipelineId}/webhook`).expect(200)).body as { webhook: WebhookView };
       expect(read.webhook).not.toHaveProperty("secret");
@@ -305,7 +381,11 @@ describe("M12: the Storm bot and webhooks", () => {
       const { hook } = await withHook("token");
       await call(hook).send({ ref: "x" }).expect(401);
       await call(hook).set("authorization", "Bearer wrong").send({ ref: "x" }).expect(401);
-      await request(api.http).post(`/api/hooks/${"A".repeat(43)}`).set("authorization", `Bearer ${hook.secret}`).send({}).expect(404);
+      await request(api.http)
+        .post(`/api/hooks/${"A".repeat(43)}`)
+        .set("authorization", `Bearer ${hook.secret}`)
+        .send({})
+        .expect(404);
       await request(api.http).post("/api/hooks/not-a-hook").send({}).expect(404);
       await call(hook)
         .set("authorization", `Bearer ${hook.secret}`)
@@ -353,19 +433,35 @@ describe("M12: the Storm bot and webhooks", () => {
       const question = await db.client.question.create({
         data: { userId, runId: run.runId, stepKey: "map", question: "Salary expectation", options, site: "ats.test", telegramMessageId },
       });
-      const wait = await db.client.takeover.create({ data: { runId: run.runId, stepKey: "map", status: "OPEN", reason: "A question for you", waitsFor: "answer" } });
+      const wait = await db.client.takeover.create({
+        data: { runId: run.runId, stepKey: "map", status: "OPEN", reason: "A question for you", waitsFor: "answer" },
+      });
       return { run, question, wait };
     }
-    const reply = (text: string, to: number) => ({ ...message(text), message: { ...message(text).message, reply_to_message: { message_id: to } } });
+    const reply = (text: string, to: number) => ({
+      ...message(text),
+      message: { ...message(text).message, reply_to_message: { message_id: to } },
+    });
 
     it("a reply on Telegram answers the question: a fact, the run goes on, and the bot says so", async () => {
       const { run, question, wait } = await asked();
       await telegram(reply("4 000 EUR net", 777)).expect(200);
 
-      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({ status: "ANSWERED", answer: "4 000 EUR net" });
+      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({
+        status: "ANSWERED",
+        answer: "4 000 EUR net",
+      });
       const fact = await db.client.fact.findFirstOrThrow({ where: { userId } });
-      expect(fact).toMatchObject({ question: "Salary expectation", answer: "4 000 EUR net", source: "ASKED", site: "ats.test", runId: run.runId });
-      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({ factId: fact.factId });
+      expect(fact).toMatchObject({
+        question: "Salary expectation",
+        answer: "4 000 EUR net",
+        source: "ASKED",
+        site: "ats.test",
+        runId: run.runId,
+      });
+      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: question.questionId } })).toMatchObject({
+        factId: fact.factId,
+      });
       expect(await db.client.takeover.findUniqueOrThrow({ where: { takeoverId: wait.takeoverId } })).toMatchObject({ status: "CONTINUED" });
       expect(sent().at(-1)?.body.text).toBe('Thanks: "Salary expectation" is 4 000 EUR net. Kept for the next forms; the run goes on.');
 
@@ -378,13 +474,20 @@ describe("M12: the Storm bot and webhooks", () => {
       expect(sent().at(-1)?.body.text).toBe("What should the pipeline do?\n\n(/new starts over)");
       // Only the user's chat answers.
       const other = await asked([], 778);
-      await telegram({ ...reply("1 EUR", 778), message: { ...reply("1 EUR", 778).message, from: { id: 1 }, chat: { id: 1, type: "private" } } }).expect(200);
-      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: other.question.questionId } })).toMatchObject({ status: "OPEN" });
+      await telegram({
+        ...reply("1 EUR", 778),
+        message: { ...reply("1 EUR", 778).message, from: { id: 1 }, chat: { id: 1, type: "private" } },
+      }).expect(200);
+      expect(await db.client.question.findUniqueOrThrow({ where: { questionId: other.question.questionId } })).toMatchObject({
+        status: "OPEN",
+      });
     });
 
     it("answered on the run page: shown there while open; a choice must be one of its options", async () => {
       const { run, question } = await asked(["Immediately", "1 month", "3 months"]);
-      const detail = (await agent.get(`/api/runs/${run.runId}`).expect(200)).body as { question: { questionId: string; options: string[] } | null };
+      const detail = (await agent.get(`/api/runs/${run.runId}`).expect(200)).body as {
+        question: { questionId: string; options: string[] } | null;
+      };
       expect(detail.question).toMatchObject({ questionId: question.questionId, options: ["Immediately", "1 month", "3 months"] });
 
       await agent.post(`/api/questions/${question.questionId}/answer`).send({ answer: "two weeks" }).expect(400);
@@ -395,9 +498,14 @@ describe("M12: the Storm bot and webhooks", () => {
     });
 
     it("facts on the Profile page: added, edited, one per question, deleted", async () => {
-      const created = (await agent.post("/api/facts").send({ question: "Willing to relocate?", answer: "No" }).expect(201)).body as { factId: string };
+      const created = (await agent.post("/api/facts").send({ question: "Willing to relocate?", answer: "No" }).expect(201)).body as {
+        factId: string;
+      };
       await agent.post("/api/facts").send({ question: "willing to relocate", answer: "Yes" }).expect(409);
-      const edited = await agent.put(`/api/facts/${created.factId}`).send({ question: "Willing to relocate?", answer: "Within the EU" }).expect(200);
+      const edited = await agent
+        .put(`/api/facts/${created.factId}`)
+        .send({ question: "Willing to relocate?", answer: "Within the EU" })
+        .expect(200);
       expect(edited.body).toMatchObject({ answer: "Within the EU", source: "ME" });
       expect(((await agent.get("/api/facts").expect(200)).body as unknown[]).length).toBe(1);
       await agent.delete(`/api/facts/${created.factId}`).expect(204);
@@ -406,7 +514,11 @@ describe("M12: the Storm bot and webhooks", () => {
   });
 
   describe("M21: the builder on Telegram", () => {
-    const MORNING = { name: "Morning hi", trigger: { schedule: "0 8 * * *", tz: "Europe/Sofia" }, steps: [{ id: "tell", type: "notify.telegram", with: { text: "hi" } }] };
+    const MORNING = {
+      name: "Morning hi",
+      trigger: { schedule: "0 8 * * *", tz: "Europe/Sofia" },
+      steps: [{ id: "tell", type: "notify.telegram", with: { text: "hi" } }],
+    };
     const bot = () => api.app.get(TelegramBot);
 
     /** A sentence to the bot, and the bot's answer once the builder has answered. */
@@ -476,7 +588,8 @@ describe("M12: the Storm bot and webhooks", () => {
       expect((await chats()).map((c) => c.messages.length)).toEqual([4, 2]);
 
       const [, second] = await chats();
-      await db.client.$executeRaw`UPDATE "BuilderChats" SET "dateUpdated" = ${new Date(Date.now() - TELEGRAM_CHAT_IDLE_MS - 60_000)} WHERE "builderChatId" = ${second.builderChatId}::uuid`;
+      await db.client
+        .$executeRaw`UPDATE "BuilderChats" SET "dateUpdated" = ${new Date(Date.now() - TELEGRAM_CHAT_IDLE_MS - 60_000)} WHERE "builderChatId" = ${second.builderChatId}::uuid`;
       llm.answer(say("Hello again."));
       await talk("Later that day");
       expect((await chats()).map((c) => c.messages.length)).toEqual([4, 2, 2]);
@@ -560,7 +673,17 @@ steps:
       await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
       const menu = sent("setMyCommands").at(-1)!.body;
       expect(menu.scope).toEqual({ type: "chat", chat_id: ME });
-      expect((menu.commands as { command: string }[]).map((c) => c.command)).toEqual(["run", "status", "inbox", "pause", "resume", "new", "edit", "help", "thing"]);
+      expect((menu.commands as { command: string }[]).map((c) => c.command)).toEqual([
+        "run",
+        "status",
+        "inbox",
+        "pause",
+        "resume",
+        "new",
+        "edit",
+        "help",
+        "thing",
+      ]);
       expect((menu.commands as { command: string; description: string }[]).at(-1)!.description).toBe("Add a thing: /thing milk");
 
       await telegram(message("/thing Buy milk\nand bread")).expect(200);
@@ -570,8 +693,13 @@ steps:
       expect(sent().at(-1)!.body.text).toBe("On it: Add a thing.");
 
       await telegram(photo("/thing Washing machine")).expect(200);
-      const second = await db.client.run.findFirstOrThrow({ where: { pipelineVersion: { pipelineId: pipeline.pipelineId }, runId: { not: run.runId } } });
-      expect(second.triggerData).toMatchObject({ text: "Washing machine", file: { telegramFileId: "large-id", mime: "image/jpeg", size: 90_000 } });
+      const second = await db.client.run.findFirstOrThrow({
+        where: { pipelineVersion: { pipelineId: pipeline.pipelineId }, runId: { not: run.runId } },
+      });
+      expect(second.triggerData).toMatchObject({
+        text: "Washing machine",
+        file: { telegramFileId: "large-id", mime: "image/jpeg", size: 90_000 },
+      });
 
       // A photo without a command; /help lists the pipeline's command.
       await telegram(photo(undefined)).expect(200);
@@ -593,9 +721,15 @@ steps:
       );
       // A new version of a pipeline that is on, taking a command that is taken: refused too.
       const third = await createPipeline(THING("third", "Third thing"), true);
-      await agent.post(`/api/pipelines/${third.pipelineId}/versions`).send({ source: THING("thing", "Third thing") }).expect(409);
+      await agent
+        .post(`/api/pipelines/${third.pipelineId}/versions`)
+        .send({ source: THING("thing", "Third thing") })
+        .expect(409);
 
-      const own = await agent.post("/api/pipelines").send({ source: THING("inbox", "Inbox thing") }).expect(400);
+      const own = await agent
+        .post("/api/pipelines")
+        .send({ source: THING("inbox", "Inbox thing") })
+        .expect(400);
       expect(JSON.stringify(own.body)).toContain("that is one of the Storm bot's own commands");
     });
 
