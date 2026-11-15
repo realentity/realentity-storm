@@ -69,6 +69,8 @@ with what follows it as `{{trigger.text}}` and a photo or file sent with it (the
 - The bot's menu (the `/` button in the chat) follows: Storm updates it when a pipeline with a command is switched on
   or off, saved, or deleted.
 - The Tasks, Memos and Papers examples come with `/task`, `/memo` and `/paper`: switch those pipelines on.
+- **Settings → Telegram commands** lists them all: Storm's own, and each pipeline's with the pipeline it starts, those
+  that are off too (they answer once on), and which pipeline has a command when two want it.
 
 ### Examples
 

@@ -92,6 +92,7 @@ import {
   type SessionView,
   type SettingsRequest,
   type SettingsView,
+  type TelegramCommandsView,
   type SpendingView,
   type StepTypeView,
   type TriggerDataView,
@@ -345,6 +346,9 @@ export const api = {
   bills: {
     list: () => request<BillsView>("GET", "/bills"),
     paid: (billId: string, paid: boolean) => request<BillView>("PUT", `/bills/${billId}/paid`, { paid }),
+  },
+  telegram: {
+    commands: () => request<TelegramCommandsView>("GET", "/telegram/commands"),
   },
   settings: {
     get: () => request<SettingsView>("GET", "/settings"),

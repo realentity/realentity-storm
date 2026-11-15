@@ -29,6 +29,7 @@ export * from "./refs";
 export * from "./prices-api";
 export * from "./runs-api";
 export * from "./telegram";
+export * from "./telegram-api";
 export * from "./time-zone";
 export * from "./topic-match";
 export * from "./topics-api";
