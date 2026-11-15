@@ -1,4 +1,5 @@
 import {
+  IconAlertTriangle,
   IconApps,
   IconBulb,
   IconChartBar,
@@ -108,7 +109,13 @@ export function AppLayout() {
                     title={page.appName}
                     testId="app-menu-item"
                     onClick={() => setMenuOpen(false)}
-                  />
+                  >
+                    {page.nothingOn && (
+                      <span className="ms-auto text-yellow" title={`None of ${page.appName}'s pipelines is on: nothing runs by itself yet`} data-testid="app-nothing-on">
+                        <IconAlertTriangle size={16} />
+                      </span>
+                    )}
+                  </MenuLink>
                 </Fragment>
               ))}
               {pages.data?.map((page) => (

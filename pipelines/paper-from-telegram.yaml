@@ -25,3 +25,13 @@ steps:
     type: notify.telegram
     when: "{{keep.skipped}}"
     with: { text: "Not kept: send a photo or a PDF, with /paper and its title as the caption." }
+  # /paper with no photo or file at all (typed as a message, or the file sent apart from it): said too, not a quiet run.
+  - id: noFile
+    type: data.map
+    with:
+      from: { document: "{{keep.first}}", skipped: "{{keep.skipped}}" }
+      expression: '(document or $count(skipped) > 0) ? "" : "missing"'
+  - id: noFileSaid
+    type: notify.telegram
+    when: "{{noFile.value}}"
+    with: { text: "Nothing kept: /paper needs a photo or a PDF with it. Attach the file and write /paper and its title as its caption, in the same message." }

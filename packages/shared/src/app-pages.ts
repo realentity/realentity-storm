@@ -252,6 +252,8 @@ export interface AppMenuItem {
   type: string;
   label: string;
   icon: ViewIcon;
+  /** None of the App's pipelines that run on their own is on: the menu marks it. */
+  nothingOn: boolean;
 }
 
 export const AppListQuerySchema = z
