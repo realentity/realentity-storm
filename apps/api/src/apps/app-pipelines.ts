@@ -10,6 +10,19 @@ export function runsOnItsOwn(trigger: Trigger | undefined): boolean {
   return !(isEventTrigger(trigger) && trigger.on === "entity.action");
 }
 
+/**
+ * The App a pipeline's version belongs to (M39-T3): the one it was saved with, by id (renamed since, under its name
+ * now); else the one it names. Null: none, or one that is gone.
+ */
+export function appOf<A extends { appId: string; name: string }>(
+  definition: Pick<CompiledDefinition, "app" | "refs"> | undefined,
+  apps: readonly A[],
+): A | null {
+  if (!definition) return null;
+  if (definition.refs?.appId) return apps.find((a) => a.appId === definition.refs!.appId) ?? null;
+  return definition.app ? (apps.find((a) => a.name === definition.app) ?? null) : null;
+}
+
 /** Each App's pipelines (by the App's name now), with whether they are on and what that means. */
 export async function pipelinesByApp(prisma: PrismaClient, userId: string): Promise<Map<string, AppPipelineView[]>> {
   const pipelines = await prisma.pipeline.findMany({
@@ -20,14 +33,12 @@ export async function pipelinesByApp(prisma: PrismaClient, userId: string): Prom
     where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } },
     select: { pipelineVersionId: true, definition: true },
   });
-  const appNames = new Map((await prisma.app.findMany({ where: { userId } })).map((a) => [a.appId, a.name]));
+  const apps = await prisma.app.findMany({ where: { userId }, select: { appId: true, name: true } });
   const byApp = new Map<string, AppPipelineView[]>();
   for (const pipeline of pipelines) {
     const compiled = versions.find((v) => v.pipelineVersionId === pipeline.currentVersionId)?.definition as unknown as
-      | CompiledDefinition
-      | undefined;
-    // M39-T3: the App its version was saved with, by id (renamed since, it is under its name now); else by name.
-    const app = compiled?.refs?.appId ? appNames.get(compiled.refs.appId) : compiled?.app;
+      CompiledDefinition | undefined;
+    const app = appOf(compiled, apps)?.name;
     if (!app) continue;
     const trigger = compiled?.trigger;
     const command = trigger !== undefined && isEventTrigger(trigger) && trigger.on === "telegram.command" ? trigger.command : null;

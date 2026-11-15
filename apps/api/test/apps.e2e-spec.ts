@@ -152,6 +152,23 @@ describe("apps", () => {
         .expect(200)
     ).body as AppDetailView;
     expect(renamed).toMatchObject({ name: "Jobs", version: 2, pipelines: [expect.objectContaining({ pipelineId: pipeline.pipelineId })] });
+    // The pipelines list and the pipeline say its App, under the name it has now.
+    const listed = ((await agent.get("/api/pipelines").expect(200)).body as PipelineDetailView[]).find(
+      (p) => p.pipelineId === pipeline.pipelineId,
+    );
+    expect(listed?.app).toEqual({ appId: app.appId, name: "Jobs" });
+    expect(((await agent.get(`/api/pipelines/${pipeline.pipelineId}`).expect(200)).body as PipelineDetailView).app).toEqual({
+      appId: app.appId,
+      name: "Jobs",
+    });
+    // One in no App: none.
+    const alone = (
+      await agent
+        .post("/api/pipelines")
+        .send({ source: "name: Alone\nsteps:\n  - id: tell\n    type: notify.telegram\n    with: { text: Hi }\n" })
+        .expect(201)
+    ).body as PipelineDetailView;
+    expect(alone.app).toBeNull();
   });
 
   // M35-I1: a draft checked while it is edited, nothing saved
