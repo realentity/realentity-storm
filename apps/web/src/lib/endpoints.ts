@@ -98,6 +98,7 @@ import {
   type TriggerDataView,
   type SuggestionStatusName,
   type TeachRecipeRequest,
+  type TryRecipeRequest,
   type TeachStartedView,
   type UpdateApplicationRequest,
   type UpdatePipelineRequest,
@@ -390,6 +391,9 @@ export const api = {
     get: (name: string) => request<RecipeDetailView>("GET", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}`),
     import: (body: ImportRecipeRequest) => request<RecipeDetailView>("POST", "/recipes", body),
     teach: (body: TeachRecipeRequest) => request<TeachStartedView>("POST", "/recipes/teach", body),
+    /** A dry run with the latest version: it reads the list and changes nothing. */
+    try: (name: string, body: Partial<TryRecipeRequest>) =>
+      request<TeachStartedView>("POST", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/try`, body),
     /** M11-T3: the agent's fix for the broken latest version, approved (the next version) or discarded. */
     approveFix: (name: string) => request<RecipeDetailView>("POST", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/fix`),
     discardFix: (name: string) => request<RecipeDetailView>("DELETE", `/recipes/${name.split("/").map(encodeURIComponent).join("/")}/fix`),

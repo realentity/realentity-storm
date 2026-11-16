@@ -2,6 +2,7 @@ import {
   ImportRecipeSchema,
   JobFilterSchema,
   TeachRecipeSchema,
+  TryRecipeSchema,
   UpdateApplicationSchema,
   UpdateJobSchema,
   type ApplicationView,
@@ -13,6 +14,7 @@ import {
   type RecipeSummaryView,
   type TeachRecipeRequest,
   type TeachStartedView,
+  type TryRecipeRequest,
   type UpdateApplicationRequest,
   type UpdateJobRequest,
 } from "@realentity/storm-shared";
@@ -80,6 +82,17 @@ export class JobsController {
   @HttpCode(200)
   approveFix(@CurrentUser() user: AuthenticatedUser, @Param("site") site: string, @Param("what") what: string): Promise<RecipeDetailView> {
     return this.recipes.approveFix(user.userId, `${site}/${what}`);
+  }
+
+  /** Try: a dry run that reads the list with the latest version and changes nothing; the run page has what it read. */
+  @Post("recipes/:site/:what/try")
+  try(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("site") site: string,
+    @Param("what") what: string,
+    @Body(new ZodBodyPipe(TryRecipeSchema)) body: TryRecipeRequest,
+  ): Promise<TeachStartedView> {
+    return this.recipes.try(user.userId, `${site}/${what}`, body);
   }
 
   @Delete("recipes/:site/:what/fix")

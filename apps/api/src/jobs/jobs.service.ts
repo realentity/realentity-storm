@@ -9,6 +9,7 @@ import {
   type RecipeVersionView,
   type TeachRecipeRequest,
   type TeachStartedView,
+  type TryRecipeRequest,
   type UpdateJobRequest,
 } from "@realentity/storm-shared";
 import { RECIPE_NAME, recipeProblems, RecipeSchema, siteOf } from "@realentity/storm-steps";
@@ -158,19 +159,39 @@ export class RecipesService {
         },
       ],
     });
-    const existing = await this.prisma.client.pipeline.findFirst({ where: { userId, name: pipelineName }, orderBy: { dateCreated: "asc" } });
-    let pipelineId: string;
-    if (existing) {
-      pipelineId = existing.pipelineId;
-      await this.pipelines.addVersion(userId, pipelineId, source).catch((error: unknown) => {
-        // The same inputs as last time: run the current version again.
-        if (!(error instanceof UnprocessableEntityException)) throw error;
-      });
-    } else {
-      pipelineId = (await this.pipelines.create(userId, source)).pipelineId;
-    }
+    const pipelineId = await this.pipelineFor(userId, pipelineName, source);
     const run = await this.runs.start(userId, pipelineId, false);
     return { runId: run.runId, pipelineId };
+  }
+
+  /**
+   * Try: a dry run of the "Try <name>" pipeline, browser.extract with the latest version and these params. A dry run
+   * only reads: the recipe isn't marked verified or broken, nobody is told, the fallback doesn't run.
+   */
+  async try(userId: string, rawName: string, body: TryRecipeRequest): Promise<TeachStartedView> {
+    const name = checkedName(rawName);
+    const latest = await this.prisma.client.siteRecipe.findFirst({ where: { userId, name }, orderBy: { version: "desc" } });
+    if (!latest) throw new NotFoundException(`There is no recipe ${name}`);
+    const pipelineName = `Try ${name}`;
+    const source = JSON.stringify({
+      name: pipelineName,
+      description: `Tries the recipe ${name} from its page: a dry run that reads the list and changes nothing.`,
+      steps: [{ id: "read", type: "browser.extract", with: { recipes: [name], params: body.params, maxItems: body.maxItems } }],
+    });
+    const pipelineId = await this.pipelineFor(userId, pipelineName, source);
+    const run = await this.runs.start(userId, pipelineId, true);
+    return { runId: run.runId, pipelineId };
+  }
+
+  /** The pipeline called `name` with `source` as its current version: created the first time, a new version after. */
+  private async pipelineFor(userId: string, name: string, source: string): Promise<string> {
+    const existing = await this.prisma.client.pipeline.findFirst({ where: { userId, name }, orderBy: { dateCreated: "asc" } });
+    if (!existing) return (await this.pipelines.create(userId, source)).pipelineId;
+    await this.pipelines.addVersion(userId, existing.pipelineId, source).catch((error: unknown) => {
+      // The same inputs as last time: run the current version again.
+      if (!(error instanceof UnprocessableEntityException)) throw error;
+    });
+    return existing.pipelineId;
   }
 }
 

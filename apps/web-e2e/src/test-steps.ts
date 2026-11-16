@@ -74,6 +74,18 @@ export const TEST_EXECUTORS = [
     type: "net.check",
     execute: (input: Record<string, unknown>) => Promise.resolve(check(String(input.host))),
   },
+  // A recipe's Try: two postings for any search, and the redesigned page for the query "redesigned" (reading a real
+  // list is the worker's tests', against a local job board).
+  {
+    type: "browser.extract",
+    execute: (input: Record<string, unknown>) => {
+      const recipe = String((input.recipes as string[])[0]);
+      const query = String((input.params as Record<string, string>).query ?? "");
+      if (query === "redesigned") return Promise.reject(new Error(`Recipe ${recipe} v1 doesn't match the page: "article.job" matched nothing`));
+      const items = [1, 2].map((n) => ({ url: `https://example.org/jobs/${query}-${n}`, title: `${query} developer ${n}`, source: recipe }));
+      return Promise.resolve({ items, pages: 2 });
+    },
+  },
   {
     type: "browser.fillAndSubmit",
     execute: (input: Record<string, unknown>) =>

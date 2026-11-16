@@ -286,6 +286,34 @@ steps:
     expect((await db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } })).brokenAt).toBeNull();
   });
 
+  it("a dry run (Try) reads the list but leaves the recipe as it is: not verified, not broken, nobody told, no fallback", async () => {
+    const recipe = await saveRecipe(boardRecipe());
+    const dry = async (source: string) => {
+      const runId = await runner.start(await createVersion(db.client, userId, source), { trigger: "manual", dryRun: true });
+      return { runId, status: await runner.advance(runId) };
+    };
+    const row = () => db.client.siteRecipe.findUniqueOrThrow({ where: { siteRecipeId: recipe.siteRecipeId } });
+
+    const works = await dry(SEARCH());
+    expect(works.status).toBe("DONE");
+    expect((await output(works.runId, "search")).items).toHaveLength(JOBS.length);
+    expect(await row()).toMatchObject({ lastVerifiedAt: null, lastItemsAt: null, brokenAt: null });
+
+    sites.redesignJobs();
+    chat.play([]);
+    llm = new ScriptedLlm([]);
+    const fails = await dry(SEARCH("net", 5).replace("      timeoutSeconds:", "      fallback: true\n      timeoutSeconds:"));
+    expect(fails.status).toBe("FAILED");
+    expect((await db.client.step.findFirstOrThrow({ where: { runId: fails.runId, stepKey: "search" } })).error).toBe(
+      `Recipe jobs.localhost/search v1 doesn't match the page: "article.job" matched nothing on ${sites.url("jobs", "/search?q=net")}`,
+    );
+    expect(await db.client.artifact.count({ where: { runId: fails.runId, kind: "screenshot" } })).toBe(1);
+    expect(await row()).toMatchObject({ brokenAt: null, proposed: null, lastVerifiedAt: null });
+    expect(notified).toEqual([]);
+    expect(chat.requests).toHaveLength(0);
+    expect(llm.prompts).toHaveLength(0);
+  });
+
   it("M11-I1: with fallback, the agent finds the moved list, a fix checked on the page is proposed, and the run reads with it", async () => {
     const recipe = await saveRecipe(boardRecipe());
     sites.redesignJobs();
