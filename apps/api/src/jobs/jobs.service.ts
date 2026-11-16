@@ -19,6 +19,9 @@ import { PrismaService } from "../database/prisma.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 import { RunsService } from "../runs/runs.service";
 
+/** How many items' own pages a Try opens, for a recipe with a detail section. */
+const TRY_DETAILS = 5;
+
 /** The Jobs page (docs/design.md §11 Phase 2, M9-T6): postings saved by data.save, scored, and the user's decisions. */
 @Injectable()
 export class JobsService {
@@ -176,7 +179,13 @@ export class RecipesService {
     const source = JSON.stringify({
       name: pipelineName,
       description: `Tries the recipe ${name} from its page: a dry run that reads the list and changes nothing.`,
-      steps: [{ id: "read", type: "browser.extract", with: { recipes: [name], params: body.params, maxItems: body.maxItems } }],
+      steps: [
+        { id: "read", type: "browser.extract", with: { recipes: [name], params: body.params, maxItems: body.maxItems } },
+        // With a detail section: the first few items' own pages too, to see those fields.
+        ...(RecipeSchema.safeParse(latest.steps).data?.detail
+          ? [{ id: "details", type: "browser.details", with: { recipe: name, items: "{{read.items}}", maxItems: TRY_DETAILS } }]
+          : []),
+      ],
     });
     const pipelineId = await this.pipelineFor(userId, pipelineName, source);
     const run = await this.runs.start(userId, pipelineId, true);

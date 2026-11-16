@@ -149,6 +149,17 @@ describe("jobs and recipes", () => {
     expect(again.pipelineId).toBe(first.pipelineId);
     expect(await db.client.pipelineVersion.count({ where: { pipelineId: first.pipelineId } })).toBe(2);
 
+    // With a detail section, the first items' own pages too.
+    await agent
+      .post("/api/recipes")
+      .send({ name: "dev.bg/search", source: `${RECIPE}\ndetail: { fields: { description: { selector: .job-description } } }\n` })
+      .expect(201);
+    const detailed = (await agent.post("/api/recipes/dev.bg/search/try").send({ params: { category: "net" } }).expect(201)).body as TeachStartedView;
+    const definition = (await db.client.run.findUniqueOrThrow({ where: { runId: detailed.runId }, include: { pipelineVersion: true } })).pipelineVersion.definition;
+    expect(definition).toMatchObject({
+      steps: [{ id: "read" }, { id: "details", type: "browser.details", with: { recipe: "dev.bg/search", items: "{{read.items}}", maxItems: 5 } }],
+    });
+
     await agent.post("/api/recipes/dev.bg/search/try").send({ maxItems: 1000 }).expect(400);
     await agent.post("/api/recipes/dev.bg/search/try").send({ params: { "bad name": "x" } }).expect(400);
   });

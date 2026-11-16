@@ -86,6 +86,14 @@ export const TEST_EXECUTORS = [
       return Promise.resolve({ items, pages: 2 });
     },
   },
+  // A recipe's detail fields: a description for each item's page.
+  {
+    type: "browser.details",
+    execute: (input: Record<string, unknown>) => {
+      const items = (input.items as Record<string, string>[]).map((item) => ({ ...item, description: `About ${item.title}` }));
+      return Promise.resolve({ items, opened: items.length, found: items.length });
+    },
+  },
   {
     type: "browser.fillAndSubmit",
     execute: (input: Record<string, unknown>) =>

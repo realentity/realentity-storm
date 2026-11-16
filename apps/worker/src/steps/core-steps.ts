@@ -26,7 +26,7 @@ import { PriceWatchStep } from "./price-steps";
 import { ProductStep } from "./product-step";
 import { FlowCancelStep, FlowLaterStep } from "./flow-steps";
 import { ClassifyStep, ExtractStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
-import { BrowserExtractStep } from "./recipe-steps";
+import { BrowserDetailsStep, BrowserExtractStep } from "./recipe-steps";
 import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
 import { TelegramStep, type TelegramConfig } from "./telegram-step";
@@ -137,13 +137,14 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
   ];
 }
 
-/** browser.open, extract and teach; the agent when there is a chat, which also gives extract its fallback (M11-T3). */
+/** browser.open, extract, details and teach; the agent when there is a chat, which also gives extract its fallback (M11-T3). */
 function browserSteps(deps: CoreStepDependencies, browser: BrowserDependencies | FormDependencies): StepExecutor[] {
   const agent = deps.chat ? new BrowserAgentStep({ ...browser, chat: deps.chat, router: deps.router }) : null;
   const fallback = agent ? new RecipeFallback(browser, agent, new RecipeWriter(deps.llm, deps.router)) : undefined;
   return [
     new BrowserOpenStep(browser),
     new BrowserExtractStep(browser, undefined, fallback),
+    new BrowserDetailsStep(browser),
     new BrowserTeachStep(browser, deps.llm, deps.router),
     new BrowserDownloadStep(browser, deps.downloadMaxMb),
     new FileReadStep(browser.prisma, browser.artifacts, "documents" in browser ? browser.documents : undefined, deps.appFiles),

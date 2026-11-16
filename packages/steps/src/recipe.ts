@@ -54,6 +54,17 @@ export const RecipeSchema = z
         z.object({ kind: z.literal("scroll") }).strict(),
       ])
       .optional(),
+    /**
+     * More fields from each item's own page, read by browser.details (after data.dedupe, so only new items are opened):
+     * `link` names the field with the page's address (on the recipe's site), `fields` are read on that page.
+     */
+    detail: z
+      .object({
+        link: Name.default("url"),
+        fields: z.record(Name, FieldSchema).refine((fields) => Object.keys(fields).length > 0, "at least one field"),
+      })
+      .strict()
+      .optional(),
     maxPages: z.number().int().min(1).max(20).default(5),
     /** Between pages (and presses, and scrolls): a person's pace, not a crawler's. */
     delayMs: z.number().int().min(500).max(10_000).default(1_500),
@@ -106,5 +117,12 @@ export function recipeProblems(name: string, recipe: Recipe): string[] {
   }
   if (placeholders(recipe.url).includes("page")) problems.push("{page} belongs in next.url, not url");
   if (recipe.next?.kind === "page" && !placeholders(recipe.next.url).includes("page")) problems.push("next.url has no {page}");
+  if (recipe.detail) {
+    if (!(recipe.detail.link in recipe.fields)) problems.push(`detail.link "${recipe.detail.link}" is not one of the fields`);
+    for (const field of Object.keys(recipe.detail.fields)) {
+      if (field in recipe.fields) problems.push(`detail field "${field}" is already a field of the list`);
+      if (field === "source") problems.push('"source" is the recipe\'s name in each item: name the detail field otherwise');
+    }
+  }
   return problems;
 }

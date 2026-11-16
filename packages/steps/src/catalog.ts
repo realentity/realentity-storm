@@ -1543,6 +1543,28 @@ export const CORE_STEPS: StepDefinition[] = [
     output: z.object({ items: Items, pages: z.number().int() }),
   },
   {
+    type: "browser.details",
+    description:
+      "Opens each item's own page (the link field the recipe's `detail` names, on the recipe's site) and adds the " +
+      "recipe's detail fields to it (a job ad's description, a listing's photos), headless and without an LLM, at the " +
+      "recipe's pace. Put it after data.dedupe so only new items are opened. Items over maxItems, or whose page " +
+      "fails, come back as they were. Fails when none of the pages opened has the detail fields (the pages changed). Read-only.",
+    sideEffect: false,
+    saasSafe: false,
+    primary: ["items"],
+    input: z.object({
+      recipe: RecipeNameSchema.describe("the saved recipe the items came from, with a `detail` section"),
+      items: Items.describe('items browser.extract read with it, e.g. "{{fresh.items}}"'),
+      maxItems: z.number().int().min(1).max(100).default(20).describe("how many item pages to open at most"),
+      timeoutSeconds: z.number().int().min(5).max(120).default(30),
+    }),
+    output: z.object({
+      items: Items.describe("every item given, those opened with the detail fields added"),
+      opened: z.number().int().describe("item pages opened"),
+      found: z.number().int().describe("of them, pages that had the detail fields"),
+    }),
+  },
+  {
     type: "browser.teach",
     description:
       "Teach mode: opens `url` in the live browser; the user brings it to the list to read and press Continue; the LLM " +

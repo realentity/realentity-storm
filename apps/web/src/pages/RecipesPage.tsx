@@ -160,6 +160,8 @@ function downloadYaml(name: string, recipe: unknown) {
 }
 
 const FINISHED = new Set(["DONE", "FAILED", "ABORTED"]);
+/** The item pages a Try opens for a recipe with a detail section (the api's TRY_DETAILS). */
+const TRY_DETAILS = 5;
 
 function count(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
@@ -177,7 +179,8 @@ function paramsOf(recipe: unknown): [string, { description?: string; default?: s
  */
 function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: unknown; version: number }>) {
   const params = paramsOf(recipe);
-  const fields = Object.keys((recipe as { fields?: Record<string, unknown> } | null)?.fields ?? {});
+  const shape = recipe as { fields?: Record<string, unknown>; detail?: { fields?: Record<string, unknown> } } | null;
+  const fields = [...Object.keys(shape?.fields ?? {}), ...Object.keys(shape?.detail?.fields ?? {})];
   const [values, setValues] = useState<Record<string, string>>({});
   const [maxItems, setMaxItems] = useState(50);
   const [runId, setRunId] = useState<string | null>(null);
@@ -190,7 +193,11 @@ function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: u
   const tried = run.data ?? null;
   const running = runId !== null && (!tried || !FINISHED.has(tried.status));
   const step = tried?.steps.find((s) => s.stepKey === "read");
-  const output = step?.status === "DONE" ? (step.output as { items: Record<string, string>[]; pages: number }) : null;
+  // With a detail section, the first items' own pages were opened too: their items have those fields.
+  const details = tried?.steps.find((s) => s.stepKey === "details");
+  const read = step?.status === "DONE" ? (step.output as { items: Record<string, string>[]; pages: number }) : null;
+  const detailed = details?.status === "DONE" ? (details.output as { items: Record<string, string>[]; opened: number; found: number }) : null;
+  const output = read && detailed ? { ...read, items: detailed.items } : read;
   const screenshot = tried?.artifacts.find((a) => a.kind === "screenshot");
 
   const submit = async (event: FormEvent) => {
@@ -207,7 +214,7 @@ function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: u
       </div>
       <div className="card-body">
         <p className="text-secondary small">
-          Reads the list now, as a run would, and shows what it finds. It changes nothing: the recipe isn&apos;t marked as working or broken,
+          Reads the list now, as a run would, and shows what it finds{shape?.detail ? `, with the detail fields of the first ${TRY_DETAILS} items` : ""}. It changes nothing: the recipe isn&apos;t marked as working or broken,
           nobody is told, and the agent doesn&apos;t step in when it doesn&apos;t match. It still opens the site, at the recipe&apos;s pace.
         </p>
         <ErrorAlert error={action.error} />
@@ -257,9 +264,11 @@ function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: u
               <p>
                 {output.items.length === 0
                   ? `Nothing found on ${count(output.pages, "page")}: its "no results" page. Try a broader search.`
-                  : `${count(output.items.length, "item")} on ${count(output.pages, "page")}.`}{" "}
+                  : `${count(output.items.length, "item")} on ${count(output.pages, "page")}.`}
+                {detailed && ` Details from ${detailed.found} of the first ${count(detailed.opened, "item page")}.`}{" "}
                 <Link to={`/runs/${tried.runId}`}>The run</Link>
               </p>
+              {details?.status === "FAILED" && <div className="alert alert-warning">{details.error}</div>}
               {output.items.length > 0 && (
                 <div className="table-responsive" style={{ maxHeight: 480 }}>
                   <table className="table table-sm table-vcenter" data-testid="try-items">

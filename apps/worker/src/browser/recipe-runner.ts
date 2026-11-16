@@ -39,6 +39,12 @@ export async function readItems(page: Page, recipe: Recipe): Promise<{ items: It
   return { items: all.filter((item) => required.every((name) => item[name])), matched: all.length };
 }
 
+/** The fields as one item read from the whole page (an item's own page, for a recipe's `detail`). */
+export async function readPage(page: Page, fields: Recipe["fields"]): Promise<Item> {
+  const [item] = await page.evaluate<Item[]>(`(${READ_ITEMS})(${JSON.stringify({ item: "html", fields })})`);
+  return item ?? {};
+}
+
 export interface ReadListOptions {
   /** Placeholder values (recipe params). */
   values: Record<string, string>;

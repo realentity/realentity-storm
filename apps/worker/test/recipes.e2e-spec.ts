@@ -17,7 +17,7 @@ import { ExecutorRegistry } from "../src/runner/step-executor";
 import { TakeoverDesk } from "../src/runner/takeovers";
 import { CredentialVault } from "../src/secrets/credential-vault";
 import { DedupeStep, SaveStep } from "../src/steps/data-steps";
-import { BrowserExtractStep } from "../src/steps/recipe-steps";
+import { BrowserDetailsStep, BrowserExtractStep } from "../src/steps/recipe-steps";
 import { BrowserAgentStep } from "../src/steps/agent-steps";
 import { RecipeFallback } from "../src/steps/recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "../src/steps/teach-step";
@@ -100,6 +100,7 @@ describe("recipes and job postings", () => {
     const fallback = new RecipeFallback(deps, new BrowserAgentStep({ ...deps, chat, router }), new RecipeWriter(scripted, router));
     const executors = new ExecutorRegistry([
       new BrowserExtractStep(deps, () => Promise.resolve(), fallback),
+      new BrowserDetailsStep(deps, () => Promise.resolve()),
       new DedupeStep(db.client),
       new SaveStep(db.client),
       teach,
@@ -210,6 +211,69 @@ steps:
     const { items, pages } = await output(runId, "search");
     expect(pages).toBe(2);
     expect(items).toHaveLength(10);
+  });
+
+  it("browser.details opens each new item's page, on the site only and up to maxItems, and adds the recipe's detail fields", async () => {
+    await saveRecipe({ ...boardRecipe(), detail: { link: "url", fields: { description: { selector: ".description", required: true }, salary: { selector: ".salary", required: false } } } });
+    const source = `${SEARCH()}  - id: more
+    type: browser.details
+    with: { recipe: jobs.localhost/search, items: "{{search.items}}", maxItems: 3 }
+`;
+    const { runId, status } = await run(source);
+    expect(status).toBe("DONE");
+    const { items, opened, found } = await output(runId, "more");
+    expect({ opened, found }).toEqual({ opened: 3, found: 3 });
+    const all = items as Record<string, string>[];
+    expect(all).toHaveLength(JOBS.length);
+    expect(all[0]).toEqual({
+      url: sites.url("jobs", `/jobs/${JOBS[0].id}`),
+      title: JOBS[0].title,
+      company: JOBS[0].company,
+      location: JOBS[0].location,
+      source: "jobs.localhost/search",
+      description: `Build ${JOBS[0].title.toLowerCase()} things at ${JOBS[0].company}.`,
+      salary: `${JOBS[0].id * 40} EUR`,
+    });
+    // Past maxItems, as they were.
+    expect(all[3]).not.toHaveProperty("description");
+    expect(sites.hits.filter((hit) => /^jobs\.localhost \/jobs\/\d+$/.test(hit))).toEqual(JOBS.slice(0, 3).map((job) => `jobs.localhost /jobs/${job.id}`));
+  });
+
+  it("browser.details skips links off the site, and fails saying so when no page has the detail fields", async () => {
+    await saveRecipe({ ...boardRecipe(), detail: { link: "url", fields: { description: { selector: ".description", required: true } } } });
+    const details = (items: string) => `name: Details
+steps:
+  - id: more
+    type: browser.details
+    with: { recipe: jobs.localhost/search, items: ${items}, timeoutSeconds: 5 }
+`;
+    const job = sites.url("jobs", `/jobs/${JOBS[1].id}`);
+    const offSite = `http://evil.localhost:${new URL(job).port}/jobs/1`;
+    const first = await run(details(`[{ url: "${offSite}", title: Elsewhere }, { url: "${job}", title: Here }, { title: "No link" }]`));
+    expect(first.status).toBe("DONE");
+    expect(await output(first.runId, "more")).toMatchObject({ opened: 1, found: 1 });
+    expect(((await output(first.runId, "more")).items as Record<string, string>[]).map((item) => item.description ?? null)).toEqual([
+      null,
+      `Build ${JOBS[1].title.toLowerCase()} things at ${JOBS[1].company}.`,
+      null,
+    ]);
+    expect(sites.hits.some((hit) => hit.startsWith("evil.localhost"))).toBe(false);
+
+    // The item pages changed: none has the fields.
+    sites.redesignJobs();
+    const changed = await run(details(`[{ url: "${job}" }]`));
+    expect(changed.status).toBe("FAILED");
+    expect((await db.client.step.findFirstOrThrow({ where: { runId: changed.runId, stepKey: "more" } })).error).toBe(
+      `None of the 1 item page opened has the detail fields of jobs.localhost/search v1 (description), e.g. ${job}: the pages may have changed; edit the recipe's detail section`,
+    );
+    expect(await db.client.artifact.count({ where: { runId: changed.runId, kind: "screenshot" } })).toBe(1);
+
+    // A recipe without a detail section says what to add.
+    await saveRecipe(boardRecipe(), 2);
+    const without = await run(details(`[{ url: "${job}" }]`));
+    expect((await db.client.step.findFirstOrThrow({ where: { runId: without.runId, stepKey: "more" } })).error).toBe(
+      "Recipe jobs.localhost/search v2 has no detail fields: add a detail section to it on the Recipes page",
+    );
   });
 
   it("a search without results is an empty list, not a broken recipe", async () => {
