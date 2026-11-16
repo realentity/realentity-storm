@@ -46,6 +46,15 @@ describe("recipes", () => {
     ]);
   });
 
+  it('pages by a link, a page number, a "Load more" button or scrolling', () => {
+    expect(recipe({ next: { kind: "more", selector: "button.load-more" } }).next).toEqual({ kind: "more", selector: "button.load-more" });
+    expect(recipe({ next: { kind: "scroll" } }).next).toEqual({ kind: "scroll" });
+    expect(recipeProblems("dev.bg/search", recipe({ next: { kind: "scroll" } }))).toEqual([]);
+    expect(RecipeSchema.safeParse({ ...recipe(), next: { kind: "more" } }).success).toBe(false);
+    expect(RecipeSchema.safeParse({ ...recipe(), next: { kind: "scroll", selector: "#bottom" } }).success).toBe(false);
+    expect(RecipeSchema.safeParse({ ...recipe(), next: { kind: "click", selector: "a" } }).success).toBe(false);
+  });
+
   it("reads at a person's pace and a bounded number of pages", () => {
     expect(recipe()).toMatchObject({ key: "url", maxPages: 5, delayMs: 1500 });
     expect(RecipeSchema.safeParse({ ...recipe(), delayMs: 100 }).success).toBe(false);

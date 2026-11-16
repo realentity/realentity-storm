@@ -49,30 +49,35 @@ export interface ReadListOptions {
   delay?: (ms: number) => Promise<void>;
 }
 
+/** How long a press of "Load more" or a scroll may take to show more items before the list counts as ended. */
+const MORE_WAIT_MS = 10_000;
+
 /**
- * Every page of the list, up to the recipe's maxPages and `maxItems`: page one from `url`, then its next page. Stops
- * at the last page (no next link, an empty page, or nothing new). Only pages on the recipe's site are opened.
+ * Every page of the list, up to the recipe's maxPages and `maxItems`: page one from `url`, then its next page, or more
+ * items on the same page ("Load more", scrolling). Stops at the last page (no next link, no more button, nothing new).
+ * Only pages on the recipe's site are opened, and a press that leaves the site fails the read.
  */
 export async function readList(page: Page, name: string, recipe: Recipe, options: ReadListOptions): Promise<{ items: Item[]; pages: number }> {
   const site = siteOf(name);
   const delay = options.delay ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const inPage = recipe.next?.kind === "more" || recipe.next?.kind === "scroll";
   const seen = new Set<string>();
   const items: Item[] = [];
   let url: string | null = fillTemplate(recipe.url, options.values, recipe.params);
   let pages = 0;
 
-  while (url && pages < recipe.maxPages && items.length < options.maxItems) {
-    if (!onSite(url, site)) throw new Error(`${name} would open ${url}, which is not on ${site}`);
-    if (pages > 0) await delay(recipe.delayMs);
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.timeout });
-    await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
-    const blocked = await blockingState(page);
-    if (blocked) await options.attention.needMe(blocked, page.url());
-    await page
-      .locator(recipe.empty ? `${recipe.item}, ${recipe.empty}` : recipe.item)
-      .first()
-      .waitFor({ state: "attached", timeout: options.timeout })
-      .catch(() => undefined);
+  while (pages < recipe.maxPages && items.length < options.maxItems) {
+    if (pages === 0 || !inPage) {
+      if (!url) break;
+      if (!onSite(url, site)) throw new Error(`${name} would open ${url}, which is not on ${site}`);
+      if (pages > 0) await delay(recipe.delayMs);
+      await openListPage(page, url, recipe, options);
+    } else {
+      await delay(recipe.delayMs);
+      const more = await loadMore(page, recipe, Math.min(options.timeout, MORE_WAIT_MS));
+      if (!onSite(page.url(), site)) throw new Error(`${name} left ${site} for ${page.url()} on "Load more"`);
+      if (!more) break;
+    }
     pages++;
 
     const { items: found, matched } = await readItems(page, recipe);
@@ -90,16 +95,58 @@ export async function readList(page: Page, name: string, recipe: Recipe, options
     if (fresh.length === 0) break;
     for (const item of fresh) seen.add(item[recipe.key]);
     items.push(...fresh);
-    url = await nextUrl(page, recipe, options.values, pages);
+    if (!inPage) url = await nextUrl(page, recipe, options.values, pages);
   }
   return { items: items.slice(0, options.maxItems), pages };
 }
 
+/** Opens a page of the list and waits for its items (or its "no results"); a CAPTCHA or a block waits for the user. */
+async function openListPage(page: Page, url: string, recipe: Recipe, options: ReadListOptions): Promise<void> {
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.timeout });
+  await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
+  const blocked = await blockingState(page);
+  if (blocked) await options.attention.needMe(blocked, page.url());
+  await page
+    .locator(recipe.empty ? `${recipe.item}, ${recipe.empty}` : recipe.item)
+    .first()
+    .waitFor({ state: "attached", timeout: options.timeout })
+    .catch(() => undefined);
+}
+
+/**
+ * More items on the same page: "Load more" pressed, or the page scrolled to its bottom; true when more items came.
+ * No button (gone, hidden or disabled: the last of them shown) or nothing new in time: the list has ended.
+ */
+async function loadMore(page: Page, recipe: Recipe, wait: number): Promise<boolean> {
+  const before = await page.locator(recipe.item).count();
+  if (recipe.next?.kind === "more") {
+    const button = page.locator(recipe.next.selector).first();
+    const ready = (await button.isVisible().catch(() => false)) && (await button.isEnabled().catch(() => false));
+    if (!ready) return false;
+    const pressed = await button
+      .click({ timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!pressed) return false;
+  } else {
+    await page
+      .locator(recipe.item)
+      .last()
+      .scrollIntoViewIfNeeded({ timeout: 2_000 })
+      .catch(() => undefined);
+    await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)").catch(() => undefined);
+  }
+  return page
+    .waitForFunction(`document.querySelectorAll(${JSON.stringify(recipe.item)}).length > ${before}`, undefined, { timeout: wait })
+    .then(() => true)
+    .catch(() => false);
+}
+
 async function nextUrl(page: Page, recipe: Recipe, values: Record<string, string>, pagesRead: number): Promise<string | null> {
-  if (!recipe.next) return null;
-  if (recipe.next.kind === "page") {
+  if (recipe.next?.kind === "page") {
     return fillTemplate(recipe.next.url, { ...values, page: String(recipe.next.start + pagesRead - 1) }, recipe.params);
   }
+  if (recipe.next?.kind !== "link") return null;
   const href = await page
     .locator(recipe.next.selector)
     .first()

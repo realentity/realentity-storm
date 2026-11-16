@@ -186,6 +186,32 @@ steps:
     expect(sites.hits.filter((hit) => hit.startsWith("jobs.localhost /search"))).toHaveLength(7);
   });
 
+  it('reads the rest of a list on the same page, by "Load more" or by scrolling, until no more come', async () => {
+    const feedUrls = () => sites.hits.filter((hit) => hit.startsWith("jobs.localhost /feed"));
+    for (const [version, next] of [
+      [1, { kind: "more", selector: "button.load-more" }],
+      [2, { kind: "scroll" }],
+    ] as const) {
+      sites.reset();
+      await saveRecipe({ ...boardRecipe(next), url: sites.url("jobs", `/feed?q={query}&next=${next.kind}`) }, version);
+      const { runId, status } = await run(SEARCH());
+      expect(status).toBe("DONE");
+      const { items, pages } = await output(runId, "search");
+      // 12 jobs, 5 at a time: the page and two more; the button gone (or nothing more at the bottom) ends it.
+      expect(pages).toBe(3);
+      expect((items as { url: string }[]).map((item) => item.url)).toEqual(JOBS.map((job) => sites.url("jobs", `/jobs/${job.id}`)));
+      expect(feedUrls()).toEqual(["jobs.localhost /feed", "jobs.localhost /feed/cards", "jobs.localhost /feed/cards"]);
+    }
+
+    // maxPages counts the presses too: the page and one more.
+    sites.reset();
+    await saveRecipe({ ...boardRecipe({ kind: "more", selector: "button.load-more" }), url: sites.url("jobs", "/feed?q={query}&next=more"), maxPages: 2 }, 3);
+    const { runId } = await run(SEARCH());
+    const { items, pages } = await output(runId, "search");
+    expect(pages).toBe(2);
+    expect(items).toHaveLength(10);
+  });
+
   it("a search without results is an empty list, not a broken recipe", async () => {
     await saveRecipe(boardRecipe());
     const { runId, status } = await run(SEARCH("cobol"));

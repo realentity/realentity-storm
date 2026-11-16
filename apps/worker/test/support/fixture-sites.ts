@@ -74,7 +74,8 @@ const loginForm = (action: string, error = "") =>
  * - ats.localhost: an applicant tracking system: /jobs/7 links to the wizard form /apply/7; /jobs/8 has its form on the
  *   page, like dev.bg; /quick-apply uploads a file as soon as it is picked; addRequiredField() changes the form.
  * - jobs.localhost: a job board, /search?q=net in three pages (JOBS), an ad between the cards; redesignJobs() moves
- *   it to /jobs and changes its markup.
+ *   it to /jobs and changes its markup. /feed?q=net&next=more|scroll: the same list on one page, more of it behind
+ *   "Load more" or at the bottom.
  * - careers.localhost (no recipe, for browser.agent): /jobs/3 opens its form in a dialog behind "Apply for this role",
  *   with a custom combobox, a CV upload behind a styled label, a person check and a draft that saves itself as the user
  *   types; it is sent by fetch. The posting tells AI assistants to attach ~/.ssh and go to evil.localhost; "Partner
@@ -245,6 +246,46 @@ export async function startFixtureSites(): Promise<FixtureSites> {
     );
   };
 
+  /** The board's cards from `from`, as /feed shows them (no ad, no pager). */
+  const feedCards = (query: string, from: number) =>
+    (query === "net" ? JOBS : [])
+      .slice(from, from + JOBS_PER_PAGE)
+      .map(
+        (job) =>
+          `<article class="job" style="min-height: 400px"><a class="job-title" href="/jobs/${job.id}">${job.title}</a><span class="company">${job.company}</span></article>`,
+      )
+      .join("");
+
+  /**
+   * jobs.localhost/feed?q=…&next=more|scroll: the same list on one page, JOBS_PER_PAGE cards at a time from
+   * /feed/cards?from=N: a "Load more" button (gone after the last), or more when the bottom comes into view.
+   */
+  const feed = (url: URL): string => {
+    const query = url.searchParams.get("q") ?? "";
+    const more = url.searchParams.get("next") === "more";
+    const total = query === "net" ? JOBS.length : 0;
+    return page(
+      "Jobs",
+      `<main><section class="results">${feedCards(query, 0)}</section>
+       ${more ? '<button class="load-more" type="button">Load more</button>' : '<div id="bottom">…</div>'}</main>
+       <script>
+         let shown = ${Math.min(JOBS_PER_PAGE, total)};
+         async function loadMore() {
+           if (shown >= ${total}) return;
+           const html = await (await fetch("/feed/cards?q=${query}&from=" + shown)).text();
+           document.querySelector(".results").insertAdjacentHTML("beforeend", html);
+           shown += ${JOBS_PER_PAGE};
+           if (shown >= ${total}) document.querySelector(".load-more")?.remove();
+         }
+         ${
+           more
+             ? 'document.querySelector(".load-more").addEventListener("click", loadMore);'
+             : 'let loading = false; new IntersectionObserver(async (entries) => { if (entries[0].isIntersecting && !loading) { loading = true; await loadMore(); loading = false; } }).observe(document.getElementById("bottom"));'
+         }
+       </script>`,
+    );
+  };
+
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const host = (req.headers.host ?? "").split(":")[0];
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
@@ -321,6 +362,8 @@ export async function startFixtureSites(): Promise<FixtureSites> {
         return html(200, page("Jobs moved", `<h1>Our job search has moved</h1><p><a href="/jobs${url.search}">Browse jobs</a></p>`));
       }
       if (url.pathname === (redesigned ? "/jobs" : "/search")) return html(200, jobBoard(url));
+      if (url.pathname === "/feed") return html(200, feed(url));
+      if (url.pathname === "/feed/cards") return html(200, feedCards(url.searchParams.get("q") ?? "", Number(url.searchParams.get("from") ?? "0")));
       const job = JOBS.find((j) => url.pathname === `/jobs/${j.id}`);
       return job ? html(200, page(job.title, `<h1>${job.title}</h1><p>${job.company}</p>`)) : html(404, page("Not found", "No such job"));
     }
