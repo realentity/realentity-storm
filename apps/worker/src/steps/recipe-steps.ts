@@ -1,8 +1,8 @@
 import { type PrismaClient, type SiteRecipe } from "@realentity/storm-db";
-import { recipeProblems, RecipeSchema, siteOf, type Recipe } from "@realentity/storm-steps";
+import { onSite, recipeProblems, RecipeSchema, siteOf, type Recipe } from "@realentity/storm-steps";
 import { type Page } from "playwright";
 import { type ArtifactOwner } from "../browser/artifact-store";
-import { readList, RecipeBroken, type Item } from "../browser/recipe-runner";
+import { readList, readPage, RecipeBroken, type Item } from "../browser/recipe-runner";
 import { NO_ATTENTION, RunStopped, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type BrowserDependencies } from "./browser-steps";
 import { type RecipeFallback } from "./recipe-fallback";
@@ -184,8 +184,100 @@ export class BrowserExtractStep implements StepExecutor {
   }
 
   private async screenshot(page: Page, context: StepContext): Promise<void> {
-    const owner: ArtifactOwner = { userId: context.userId, runId: context.runId, stepKey: context.stepKey, itemIndex: context.itemIndex };
-    const png = await page.screenshot({ fullPage: false, timeout: 10_000 });
-    await this.deps.artifacts.save(this.deps.prisma, owner, "screenshot", png, "png", "image/png");
+    await saveScreenshot(this.deps, page, context);
+  }
+}
+
+async function saveScreenshot(deps: BrowserDependencies, page: Page, context: StepContext): Promise<void> {
+  const owner: ArtifactOwner = { userId: context.userId, runId: context.runId, stepKey: context.stepKey, itemIndex: context.itemIndex };
+  const png = await page.screenshot({ fullPage: false, timeout: 10_000 });
+  await deps.artifacts.save(deps.prisma, owner, "screenshot", png, "png", "image/png");
+}
+
+/** A detail page read with something, and every required field. */
+function isComplete(read: Record<string, string> | null, required: string[]): read is Record<string, string> {
+  return read !== null && Object.keys(read).length > 0 && required.every((field) => read[field]);
+}
+
+interface DetailsInput {
+  recipe: string;
+  items: Record<string, unknown>[];
+  maxItems: number;
+  timeoutSeconds: number;
+}
+
+/**
+ * browser.details (docs/design.md §2.4): each item's own page, opened headless at the recipe's pace, and the fields of
+ * the recipe's `detail` added to the item. Only pages on the recipe's site; a page that fails or lacks a required
+ * field leaves its item as it was. None of the pages with the fields means the item pages changed: the step fails,
+ * saying so (the recipe's health is browser.extract's: the list still reads).
+ */
+export class BrowserDetailsStep implements StepExecutor {
+  readonly type = "browser.details";
+
+  constructor(
+    private readonly deps: BrowserDependencies,
+    private readonly delay: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  ) {}
+
+  async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
+    const { recipe: name, items, maxItems, timeoutSeconds } = input as unknown as DetailsInput;
+    const { row, recipe } = await latestRecipe(this.deps.prisma, context.userId, name);
+    const detail = recipe.detail;
+    if (!detail) throw new Error(`Recipe ${name} v${row.version} has no detail fields: add a detail section to it on the Recipes page`);
+    const site = siteOf(name);
+    const required = Object.entries(detail.fields)
+      .filter(([, field]) => field.required)
+      .map(([field]) => field);
+    const out = items.map((item) => ({ ...item }));
+    let opened = 0;
+    let found = 0;
+    let firstMissing: string | null = null;
+
+    const lease = await this.deps.pool.lease(false, { storageState: await this.deps.sessions.load(context.userId, site), acceptDownloads: false });
+    try {
+      const page = await lease.context.newPage();
+      page.setDefaultTimeout(timeoutSeconds * 1000);
+      for (const item of out) {
+        if (opened >= maxItems) break;
+        const link = item[detail.link];
+        if (typeof link !== "string" || !onSite(link, site)) continue;
+        if (opened > 0) await this.delay(recipe.delayMs);
+        opened++;
+        const read = await this.readDetail(page, link, site, detail.fields, timeoutSeconds * 1000).catch(() => null);
+        if (isComplete(read, required)) {
+          Object.assign(item, read);
+          found++;
+        } else firstMissing ??= link;
+      }
+      if (opened > 0 && found === 0) {
+        await saveScreenshot(this.deps, page, context).catch(() => undefined);
+        throw new Error(
+          `None of the ${opened} item page${opened === 1 ? "" : "s"} opened has the detail fields of ${name} v${row.version} ` +
+            `(${Object.keys(detail.fields).join(", ")}), e.g. ${firstMissing}: the pages may have changed; edit the recipe's detail section`,
+        );
+      }
+    } finally {
+      await lease.close();
+    }
+    return { items: out, opened, found };
+  }
+
+  private async readDetail(page: Page, url: string, site: string, fields: Recipe["fields"], timeout: number): Promise<Record<string, string>> {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+    await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
+    // Left the site (a redirect to a sign-in elsewhere): nothing read from there.
+    if (!onSite(page.url(), site)) return {};
+    const selectors = Object.values(fields)
+      .map((field) => field.selector)
+      .filter((selector): selector is string => Boolean(selector));
+    if (selectors.length > 0) {
+      await page
+        .locator(selectors.join(", "))
+        .first()
+        .waitFor({ state: "attached", timeout: Math.min(timeout, 5_000) })
+        .catch(() => undefined);
+    }
+    return readPage(page, fields);
   }
 }

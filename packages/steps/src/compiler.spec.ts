@@ -106,6 +106,27 @@ limits:
       expect(headed.needsHeaded([{ type: "llm.generate" }, { type: "unknown.step" }])).toBe(false);
     });
 
+    it("compiles a list read with a recipe, its new items' own pages read for more (docs/capabilities.md, browser.details)", () => {
+      ok(
+        compiler.compileText(`
+name: Jobs with descriptions
+steps:
+  - id: search
+    type: browser.extract
+    with: { recipes: [jobs.example.com/search], params: { category: net } }
+  - id: fresh
+    type: data.dedupe
+    with: { from: "{{search.items}}", key: url, against: JobPosting }
+  - id: more
+    type: browser.details
+    with: { recipe: jobs.example.com/search, items: "{{fresh.items}}", maxItems: 30 }
+`),
+      );
+      expect(errorsOf(compiler.compile(pipeline([{ id: "more", type: "browser.details", with: { recipe: "jobs.example.com/search", items: [], maxItems: 500 } }])))).toEqual([
+        expect.stringMatching(/^steps\[0\]\.with\.maxItems: /),
+      ]);
+    });
+
     it("rejects unknown step types", () => {
       expect(errorsOf(compiler.compile(pipeline([{ id: "a", type: "shell.exec", with: { cmd: "rm -rf /" } }])))).toEqual([
         'steps[0].type: unknown step type "shell.exec"',

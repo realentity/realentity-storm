@@ -352,6 +352,8 @@ How to work:
 - Lists on websites are read by browser.extract with a saved recipe. <saved_recipes> in the user's messages lists
   the recipes that exist (name and params). A site without one can't be read yet: say that the user has to teach it first
   (Recipes page, Teach); you may still propose the pipeline with the name the recipe will have ("<site>/search").
+  A recipe with "detail" fields reads more on each item's own page with browser.details (recipe, items): put it after
+  data.dedupe, on the new items only, so each page is opened once; without detail fields it can't be used.
 - <editor_draft> in the user's messages is what they have open in the editor now, not saved yet: change that one (not
   the current version), keeping their unsaved changes in it; <editor_focus> is the part of it they are on, which "this"
   and "here" mean.

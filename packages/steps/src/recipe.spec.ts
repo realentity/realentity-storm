@@ -55,6 +55,18 @@ describe("recipes", () => {
     expect(RecipeSchema.safeParse({ ...recipe(), next: { kind: "click", selector: "a" } }).success).toBe(false);
   });
 
+  it("reads more fields on each item's own page: from a field of the list, under new names", () => {
+    const detail = (d: Record<string, unknown>) => recipe({ detail: d });
+    expect(detail({ fields: { salary: { selector: ".salary" } } }).detail).toEqual({ link: "url", fields: { salary: { selector: ".salary", required: false } } });
+    expect(recipeProblems("dev.bg/search", detail({ fields: { salary: { selector: ".salary" } } }))).toEqual([]);
+    expect(recipeProblems("dev.bg/search", detail({ link: "page", fields: { title: { selector: "h1" }, source: {} } }))).toEqual([
+      'detail.link "page" is not one of the fields',
+      'detail field "title" is already a field of the list',
+      '"source" is the recipe\'s name in each item: name the detail field otherwise',
+    ]);
+    expect(RecipeSchema.safeParse({ ...recipe(), detail: { fields: {} } }).success).toBe(false);
+  });
+
   it("reads at a person's pace and a bounded number of pages", () => {
     expect(recipe()).toMatchObject({ key: "url", maxPages: 5, delayMs: 1500 });
     expect(RecipeSchema.safeParse({ ...recipe(), delayMs: 100 }).success).toBe(false);

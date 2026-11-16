@@ -24,7 +24,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
-| Browser | Open pages (with sign-in), read lists with recipes, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
+| Browser | Open pages (with sign-in), read lists with recipes and each item's own page, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.details`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
 | Documents | Read a stored document, a downloaded file or an App's file; keep an email's attachments in an App | `file.read`, `file.keep` |
 | You in the loop | Pick items from a list, approve an action | `gate.review`, `gate.act` |
 | Telling you | A Telegram message, a digest | `notify.telegram`, `notify.digest` |
@@ -1150,6 +1150,38 @@ is a link (`{ kind: link, selector: a.next }`), a page number in the address (`{
 or more items on the same page: a "Load more" button pressed (`{ kind: more, selector: button.load-more }`) or the page
 scrolled to its bottom (`{ kind: scroll }`); each press or scroll counts as a page, and the list ends when the button is
 gone or nothing new comes. Teach mode writes the first two; the others are set by editing the recipe.
+
+#### `browser.details` 🖥️
+Opens each item's own page and adds more fields to the item, as the recipe's `detail` section says: a job ad's
+description, a listing's floor. Headless, no LLM, at the recipe's pace, on the recipe's site only. Put it after
+`data.dedupe`, so only new items are opened (each page once). Items over `maxItems`, without a link, off the site, or
+whose page fails come back as they were. When none of the pages opened has the fields, the item pages changed: the step
+fails saying so (edit the recipe's `detail`). A recipe's **Try** opens the first 5 items' pages too.
+- In: `recipe`, `items`, `maxItems` [20, at most 100], `timeoutSeconds` [30].
+- Out: `items` (every item given; those opened with the detail fields), `opened`, `found`.
+
+```yaml
+- id: search
+  type: browser.extract
+  with: { recipes: [jobs.example.com/search], params: { category: net } }
+- id: fresh
+  type: data.dedupe
+  with: { from: "{{search.items}}", key: url, against: JobPosting }
+- id: more
+  type: browser.details
+  with: { recipe: jobs.example.com/search, items: "{{fresh.items}}", maxItems: 30 }
+```
+
+The recipe names the field with each item's link (`url` if left out) and the fields to read on its page, new names, not
+the list's:
+
+```yaml
+detail:
+  link: url
+  fields:
+    description: { selector: .job-description, required: true }
+    salary: { selector: .salary }
+```
 
 #### `browser.teach` 🖥️ 🧠
 Teach mode, used once per site: opens `url` in the live browser, you bring it to the list and press Continue, the LLM

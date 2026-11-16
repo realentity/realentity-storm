@@ -434,7 +434,11 @@ export class BuilderService {
       const params = parsed.success
         ? Object.entries(parsed.data.params).map(([name, p]) => `${name}${p.description ? ` (${p.description})` : ""}`)
         : [];
-      lines.push(`- ${row.name} v${row.version}: params ${params.join(", ") || "none"}${row.brokenAt ? "; broken: needs teaching again" : ""}`);
+      const fields = parsed.success ? Object.keys(parsed.data.fields).join(", ") : "";
+      const detail = parsed.success && parsed.data.detail ? `; detail fields ${Object.keys(parsed.data.detail.fields).join(", ")}` : "";
+      lines.push(
+        `- ${row.name} v${row.version}: params ${params.join(", ") || "none"}; fields ${fields || "none"}${detail}${row.brokenAt ? "; broken: needs teaching again" : ""}`,
+      );
     }
     return `<saved_recipes>\n${lines.length > 0 ? lines.join("\n") : "none yet"}\n</saved_recipes>`;
   }

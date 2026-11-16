@@ -16,5 +16,11 @@ key: url
 next: { kind: page, url: "https://jobs.example.com/jobs/{category}/?page={page}", start: 2 }
 # Or: { kind: link, selector: a.next } (a "Next" link), { kind: more, selector: button.load-more } (a "Load more"
 # button), { kind: scroll } (more at the bottom). Each press or scroll counts as a page.
+# More fields from each ad's own page, read by browser.details after data.dedupe (only new ads are opened):
+# detail:
+#   link: url
+#   fields:
+#     description: { selector: .job-description, required: true }
+#     salary: { selector: .salary }
 maxPages: 5
 delayMs: 1500

@@ -333,6 +333,7 @@ describe("builder chat", () => {
           params: { category: { description: "a dev.bg category" } },
           item: ".job-list-item",
           fields: { url: { selector: "a", attr: "href", required: true } },
+          detail: { fields: { salary: { selector: ".salary" } } },
         },
       },
     });
@@ -340,7 +341,7 @@ describe("builder chat", () => {
       llm.answer(say("Proposing"));
       await send(chat.chatId, "dev.bg");
       expect(userText(llm.last)).toBe(
-        "<saved_recipes>\n- dev.bg/search v1: params category (a dev.bg category)\n</saved_recipes>\n\ndev.bg",
+        "<saved_recipes>\n- dev.bg/search v1: params category (a dev.bg category); fields url; detail fields salary\n</saved_recipes>\n\ndev.bg",
       );
       llm.answer(say("Done"));
       await send(chat.chatId, "Thanks");

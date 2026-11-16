@@ -88,6 +88,17 @@ fields:
   await tryCard.getByLabel("query").fill("redesigned");
   await tryCard.getByRole("button", { name: "Try" }).click();
   await expect(page.getByTestId("try-result")).toContainText(`Recipe ${name} v1 doesn't match the page: "article.job" matched nothing`);
+
+  // With a detail section, Try shows those fields of the first items too
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await source.fill(`${await source.inputValue()}detail: { fields: { description: { selector: .description } } }\n`);
+  await page.getByRole("button", { name: "Save as v3" }).click();
+  await expect(page.getByRole("heading", { name: "v3 in use" })).toBeVisible();
+  await tryCard.getByLabel("query").fill("net");
+  await tryCard.getByRole("button", { name: "Try" }).click();
+  await expect(page.getByTestId("try-result")).toContainText("2 items on 2 pages. Details from 2 of the first 2 item pages.");
+  await expect(page.getByTestId("try-items").getByRole("columnheader", { name: "description" })).toBeVisible();
+  await expect(page.getByTestId("try-items")).toContainText("About net developer 1");
   // A try changes nothing: still not run
   await page.goto("/recipes");
   await expect(page.getByTestId("recipes").locator("tr", { hasText: name })).toContainText("Not run yet");
