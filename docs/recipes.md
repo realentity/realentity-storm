@@ -59,9 +59,22 @@ On the **Recipes** page, press **Teach**:
 
 1. Choose what the list holds: **Job ads** (url, title, company, location, posted), **Products** (url, title, price),
    or **Something else** (your own field names, comma-separated; include `url`).
-2. Give the recipe's name, the list's address, and the **params**: values in the address that pipelines will change,
-   as `name=value` (e.g. `category=net` for `https://jobs.example.com/jobs/net/`). Teach on a search with several
-   results; a broad one is best.
+2. Give the recipe's name, the **Search results page** (the address of one search's results, copied from your browser),
+   and the **params**: the parts of that address that change from one search to the next, as `name=value`. The form
+   shows the address the recipe keeps as you type:
+
+   ```text
+   https://www.bergfreunde.eu/s/fjallraven-jacket
+     is https://www.bergfreunde.eu/s/<query>
+     where <query>=fjallraven-jacket   → query=fjallraven-jacket
+
+   https://jobs.example.com/jobs/net/?seniority=senior
+     is https://jobs.example.com/jobs/<category>/?seniority=<seniority>
+     where <category>=net, <seniority>=senior   → category=net, seniority=senior
+   ```
+
+   A pipeline then gives its own values (`query: tent`), so one recipe serves many searches. Teach on a search with
+   several results; a broad one is best.
 3. Optionally say what to leave out ("the promoted ads at the top") or which of two prices is right.
 4. The run page opens with the live browser. Bring it to the list (accept the cookie banner, search, set filters) and
    press **Continue**.
@@ -165,7 +178,8 @@ Each morning it reads up to 5 pages per category and continues with the jobs it 
 | `maxPages` | no | At most this many pages (or presses, or scrolls): 5 by default, 20 at most. |
 | `delayMs` | no | The wait between pages: 1500 by default, 500 to 10000. |
 
-**Params.** A placeholder can be anywhere in the address: `https://shop.example/s/{query}` or
+**Params.** In the YAML a param is written `{query}` (the pages show it as `<query>`). A placeholder can be anywhere in
+the address: `https://shop.example/s/{query}` or
 `https://jobs.example.com/jobs?category={category}&seniority={seniority}`. Every placeholder must be in `params`;
 `{page}` belongs only in `next.url`. In the pipeline, `params: { category: net }` runs one search; `params:
 { category: [net, java] }` runs one per value.
