@@ -1,4 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { fillTemplate, onSite, RECIPE_NAME, recipeProblems, RecipeSchema } from "./recipe";
+
+const ROOT = join(__dirname, "../../..");
 
 const recipe = (overrides: Record<string, unknown> = {}) =>
   RecipeSchema.parse({
@@ -11,6 +16,18 @@ const recipe = (overrides: Record<string, unknown> = {}) =>
   });
 
 describe("recipes", () => {
+  it("has examples that import as they are (recipes/, the walkthrough in docs/recipes.md)", () => {
+    const guide = readFileSync(join(ROOT, "docs/recipes.md"), "utf8");
+    const walkthrough = [...guide.matchAll(/```yaml\r?\n(url:[\s\S]*?)```/g)].map((match) => match[1]);
+    expect(walkthrough).toHaveLength(1);
+    const examples: [string, string][] = [
+      ["jobs.example.com/search", readFileSync(join(ROOT, "recipes/example-jobs.yaml"), "utf8")],
+      ["listings.example/rent", readFileSync(join(ROOT, "recipes/example-listings.yaml"), "utf8")],
+      ["jobs.example.com/search", walkthrough[0]],
+    ];
+    for (const [name, text] of examples) expect(recipeProblems(name, RecipeSchema.parse(parseYaml(text)))).toEqual([]);
+  });
+
   it("names a site and what is read there", () => {
     expect(RECIPE_NAME.test("dev.bg/search")).toBe(true);
     expect(RECIPE_NAME.test("jobs.localhost/search")).toBe(true);
