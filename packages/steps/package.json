@@ -1,6 +1,6 @@
 {
   "name": "@realentity/storm-steps",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Step catalog (types, input/output schemas, side-effect flags), pipeline compiler and version diff",
   "main": "dist/cjs/index.js",
