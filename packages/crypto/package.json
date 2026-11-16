@@ -1,6 +1,6 @@
 {
   "name": "@realentity/storm-crypto",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Envelope encryption (AES-256-GCM) for stored credentials: seal, open, rewrap, key ring",
   "main": "dist/index.js",
