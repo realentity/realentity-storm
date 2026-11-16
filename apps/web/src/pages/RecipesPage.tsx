@@ -180,13 +180,50 @@ function paramsOf(recipe: unknown): [string, { description?: string; default?: s
   return params && typeof params === "object" ? Object.entries(params as Record<string, { description?: string; default?: string }>) : [];
 }
 
+/** A recipe's address with its params shown as <name> ("…/s/{query}" → "…/s/<query>"), as the pages explain them. */
+function shownAddress(template: string): string {
+  return template.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, "<$1>");
+}
+
+/** The address a search opens: each param filled with its value (or default) URL-encoded, the rest left as <name>. */
+function filledAddress(template: string, values: Record<string, string>, params: Record<string, { default?: string }>): string {
+  return template.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, (_, param: string) => {
+    const value = values[param]?.trim() || params[param]?.default;
+    return value ? encodeURIComponent(value) : `<${param}>`;
+  });
+}
+
+/**
+ * The search results page as a template: each param's value, found in the address, becomes <name>. Values not in the
+ * address are returned apart, to say so before teaching.
+ */
+function addressTemplate(url: string, pairs: [string, string][]): { template: string; missing: string[] } {
+  let template = url;
+  const missing: string[] = [];
+  for (const [param, value] of pairs) {
+    const found = [value, encodeURIComponent(value)].find((candidate) => template.includes(candidate));
+    if (found) template = template.replace(found, `<${param}>`);
+    else missing.push(param);
+  }
+  return { template, missing };
+}
+
+/** "query=fjallraven-jacket, category=net" as pairs; lines or commas between them. */
+function paramPairs(text: string): [string, string][] {
+  return text
+    .split(/[\n,]/)
+    .map((line) => line.split("=").map((part) => part.trim()))
+    .filter((pair): pair is [string, string] => pair.length === 2 && pair[0] !== "" && pair[1] !== "");
+}
+
 /**
  * Try: a dry run with the latest version and the params given here, its items shown in place. It reads the site as a
  * run does, and changes nothing: the recipe isn't marked as working or broken, and nobody is told.
  */
 function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: unknown; version: number }>) {
   const params = paramsOf(recipe);
-  const shape = recipe as { fields?: Record<string, unknown>; detail?: { fields?: Record<string, unknown> } } | null;
+  const shape = recipe as { url?: string; fields?: Record<string, unknown>; detail?: { fields?: Record<string, unknown> } } | null;
+  const address = typeof shape?.url === "string" ? shape.url : null;
   const fields = [...Object.keys(shape?.fields ?? {}), ...Object.keys(shape?.detail?.fields ?? {})];
   const [values, setValues] = useState<Record<string, string>>({});
   const [maxItems, setMaxItems] = useState(50);
@@ -224,8 +261,25 @@ function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: u
           Reads the list now, as a run would, and shows what it finds{shape?.detail ? `, with the detail fields of the first ${TRY_DETAILS} items` : ""}. It changes nothing: the recipe isn&apos;t marked as working or broken,
           nobody is told, and the agent doesn&apos;t step in when it doesn&apos;t match. It still opens the site, at the recipe&apos;s pace.
         </p>
+        {address && (
+          <p className="small mb-2" data-testid="try-address">
+            The recipe reads <code>{shownAddress(address)}</code>
+            {params.length > 0 && (
+              <>
+                : a pipeline gives {params.length === 1 ? "the value" : "the values"} of {params.map(([param], i) => (
+                  <span key={param}>
+                    {i > 0 && (i === params.length - 1 ? " and " : ", ")}
+                    <code>&lt;{param}&gt;</code>
+                  </span>
+                ))}{" "}
+                for each search (its <code>params</code>), and so do you here
+              </>
+            )}
+            .
+          </p>
+        )}
         <ErrorAlert error={action.error} />
-        <div className="row g-2 align-items-end">
+        <div className="row g-2 align-items-start">
           {params.map(([param, spec]) => (
             <div className="col-sm-6 col-lg-4" key={param}>
               <label className={`form-label${spec.default === undefined ? " required" : ""}`} htmlFor={`try-${param}`}>
@@ -239,7 +293,10 @@ function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: u
                 onChange={(e) => setValues({ ...values, [param]: e.target.value })}
                 required={spec.default === undefined}
               />
-              {spec.description && <div className="form-hint">{spec.description}</div>}
+              <div className="form-hint">
+                {spec.description ? `${spec.description.replace(/\.$/, "")}. ` : ""}Goes in place of <code>&lt;{param}&gt;</code>
+                {spec.default !== undefined ? `; left empty: ${spec.default}` : ""}.
+              </div>
             </div>
           ))}
           <div className="col-sm-4 col-lg-2">
@@ -255,14 +312,23 @@ function TryRecipe({ name, recipe, version }: Readonly<{ name: string; recipe: u
               value={maxItems}
               onChange={(e) => setMaxItems(Number(e.target.value))}
             />
+            <div className="form-hint">Try stops after this many items, over all pages (1 to 200).</div>
           </div>
           <div className="col-auto">
+            <div className="form-label invisible" aria-hidden="true">
+              Try
+            </div>
             <button type="submit" className="btn btn-primary" disabled={action.busy || running}>
               {running ? <IconLoader2 size={18} className="me-1" /> : <IconPlayerPlay size={18} className="me-1" />}
               {running ? "Reading…" : "Try"}
             </button>
           </div>
         </div>
+        {address && params.length > 0 && (
+          <p className="small text-secondary mt-2 mb-0" data-testid="try-opens">
+            Opens <code>{filledAddress(address, values, Object.fromEntries(params))}</code>
+          </p>
+        )}
       </div>
       {tried && FINISHED.has(tried.status) && (
         <div className="card-body border-top" data-testid="try-result">
@@ -512,10 +578,7 @@ function TeachRecipe({ initialName, onClose }: { initialName: string; onClose: (
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const pairs = params
-      .split(/[\n,]/)
-      .map((line) => line.split("=").map((part) => part.trim()))
-      .filter((pair): pair is [string, string] => pair.length === 2 && pair[0] !== "" && pair[1] !== "");
+    const pairs = paramPairs(params);
     const chosen = kind === "other" ? fields.split(/[\s,]+/).filter(Boolean) : [...KINDS[kind].fields];
     const started = await action.run(() =>
       api.recipes.teach({ name: name.trim(), url: url.trim(), params: Object.fromEntries(pairs), fields: chosen, hint: hint.trim() || undefined }),
@@ -617,17 +680,20 @@ function TeachRecipe({ initialName, onClose }: { initialName: string; onClose: (
         </div>
         <div className="mb-3">
           <label className="form-label required" htmlFor="teach-url">
-            List address
+            Search results page
           </label>
           <input
             id="teach-url"
             className="form-control"
-            placeholder={example?.url ?? "https://site.com/list"}
+            placeholder={example?.url ?? "https://site.com/search?q=jacket"}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             required
           />
-          <div className="form-hint">Where the list is, as the browser shows it after a search.</div>
+          <div className="form-hint">
+            The address of one search&apos;s results, copied from your browser after you searched the site (or opened a category). The live
+            browser starts there.
+          </div>
         </div>
         <div className="mb-3">
           <label className="form-label" htmlFor="teach-params">
@@ -641,9 +707,26 @@ function TeachRecipe({ initialName, onClose }: { initialName: string; onClose: (
             onChange={(e) => setParams(e.target.value)}
           />
           <div className="form-hint">
-            Parts of the address that pipelines will change, as name=value (comma-separated), the value exactly as it is in the address. For{" "}
-            <code>…/s/fjallraven-jacket</code> that is <code>query=fjallraven-jacket</code>; a pipeline then sets <code>query</code>.
+            <p className="mb-1">
+              The parts of the address that change from one search to the next, as <code>name=value</code> (several: comma-separated). The
+              value is written exactly as it is in the address; the name is yours. The recipe keeps the address with <code>&lt;name&gt;</code>{" "}
+              in place of the value, and each pipeline gives its own values: one recipe, many searches.
+            </p>
+            <pre className="small mb-1 p-2" data-testid="teach-params-examples">
+              {`https://www.bergfreunde.eu/s/fjallraven-jacket
+  is https://www.bergfreunde.eu/s/<query>
+  where <query>=fjallraven-jacket   → query=fjallraven-jacket
+
+https://jobs.example.com/jobs/net/?seniority=senior
+  is https://jobs.example.com/jobs/<category>/?seniority=<seniority>
+  where <category>=net, <seniority>=senior   → category=net, seniority=senior`}
+            </pre>
+            <p className="mb-0">
+              A pipeline with <code>query: tent</code> then reads <code>https://www.bergfreunde.eu/s/tent</code>. No params: the recipe always
+              reads this one page.
+            </p>
           </div>
+          {url.trim() !== "" && <TeachPreview url={url.trim()} pairs={paramPairs(params)} />}
         </div>
         <div>
           <label className="form-label" htmlFor="teach-hint">
@@ -661,6 +744,29 @@ function TeachRecipe({ initialName, onClose }: { initialName: string; onClose: (
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** What the recipe will keep of the search results page, from the address and params typed so far. */
+function TeachPreview({ url, pairs }: Readonly<{ url: string; pairs: [string, string][] }>) {
+  const { template, missing } = addressTemplate(url, pairs);
+  return (
+    <div className="small mt-2" data-testid="teach-preview">
+      {pairs.length === 0 ? (
+        <span className="text-secondary">
+          Read as <code>{url}</code>: always this page.
+        </span>
+      ) : (
+        <span>
+          Read as <code>{template}</code>
+        </span>
+      )}
+      {missing.map((param) => (
+        <div key={param} className="text-danger">
+          The value of <code>{param}</code> isn&apos;t in the address: write it exactly as the address has it.
+        </div>
+      ))}
+    </div>
   );
 }
 

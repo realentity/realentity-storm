@@ -79,7 +79,10 @@ fields:
   // Tried with a search: the items it reads, in place; a page that doesn't match says what didn't
   const tryCard = page.getByTestId("try-recipe");
   await expect(tryCard.getByRole("heading", { name: "Try v2" })).toBeVisible();
+  await expect(page.getByTestId("try-address")).toContainText("The recipe reads https://example.org/jobs?q=<query>");
+  await expect(page.getByTestId("try-opens")).toHaveText("Opens https://example.org/jobs?q=<query>");
   await tryCard.getByLabel("query").fill("net");
+  await expect(page.getByTestId("try-opens")).toHaveText("Opens https://example.org/jobs?q=net");
   await tryCard.getByRole("button", { name: "Try" }).click();
   await expect(page.getByTestId("try-result")).toContainText("2 items on 2 pages.");
   await expect(page.getByTestId("try-items").getByRole("link", { name: "https://example.org/jobs/net-1" })).toBeVisible();
@@ -102,4 +105,20 @@ fields:
   // A try changes nothing: still not run
   await page.goto("/recipes");
   await expect(page.getByTestId("recipes").locator("tr", { hasText: name })).toContainText("Not run yet");
+});
+
+// The Teach form explains params with examples, and shows the address the recipe keeps as they are typed
+test("the Teach form shows what the recipe keeps of the search results page", async ({ page }) => {
+  await page.goto("/recipes");
+  await page.getByTestId("teach").click();
+  await expect(page.getByTestId("teach-params-examples")).toContainText("is https://www.bergfreunde.eu/s/<query>");
+  await page.getByLabel("The list holds").selectOption({ label: "Products" });
+  await page.getByRole("button", { name: "Fill in an example" }).click();
+  await expect(page.getByLabel("Search results page")).toHaveValue("https://www.bergfreunde.eu/s/fjallraven-jacket");
+  await expect(page.getByTestId("teach-preview")).toHaveText("Read as https://www.bergfreunde.eu/s/<query>");
+
+  await page.getByLabel("Params").fill("query=fjallraven-jacket, sort=price");
+  await expect(page.getByTestId("teach-preview")).toContainText("The value of sort isn't in the address");
+  await page.getByLabel("Params").fill("");
+  await expect(page.getByTestId("teach-preview")).toHaveText("Read as https://www.bergfreunde.eu/s/fjallraven-jacket: always this page.");
 });
