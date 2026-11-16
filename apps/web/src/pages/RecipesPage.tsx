@@ -125,9 +125,10 @@ function Health({ recipe }: { recipe: Pick<RecipeSummaryView, "brokenAt" | "brok
   );
 }
 
-const RECIPE_ORDER = ["url", "params", "item", "fields", "key", "empty", "next", "maxPages", "delayMs"];
+const RECIPE_ORDER = ["url", "params", "item", "fields", "key", "empty", "next", "detail", "maxPages", "delayMs"];
 const FIELD_ORDER = ["selector", "attr", "required"];
 const NEXT_ORDER = ["kind", "selector", "url", "start"];
+const DETAIL_ORDER = ["link", "fields"];
 
 /** `keys` first, in that order, then the rest as they are (the database keeps no order). */
 function ordered(value: unknown, keys: string[]): unknown {
@@ -139,12 +140,18 @@ function ordered(value: unknown, keys: string[]): unknown {
 
 /** A recipe as the YAML it is imported and edited as, its keys in the order of recipes/example-jobs.yaml. */
 function recipeYaml(recipe: unknown): string {
+  const orderFields = (fields: unknown) =>
+    fields && typeof fields === "object"
+      ? Object.fromEntries(Object.entries(fields as Record<string, unknown>).map(([field, spec]) => [field, ordered(spec, FIELD_ORDER)]))
+      : fields;
   const top = ordered(recipe, RECIPE_ORDER) as Record<string, unknown> | null;
   if (top && typeof top === "object") {
-    if (top.fields && typeof top.fields === "object") {
-      top.fields = Object.fromEntries(Object.entries(top.fields as Record<string, unknown>).map(([field, spec]) => [field, ordered(spec, FIELD_ORDER)]));
-    }
+    top.fields = orderFields(top.fields);
     if (top.next) top.next = ordered(top.next, NEXT_ORDER);
+    if (top.detail && typeof top.detail === "object") {
+      const detail = ordered(top.detail, DETAIL_ORDER) as Record<string, unknown>;
+      top.detail = { ...detail, fields: orderFields(detail.fields) };
+    }
   }
   return stringify(top, { lineWidth: 0 });
 }

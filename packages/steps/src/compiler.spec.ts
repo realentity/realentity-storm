@@ -127,6 +127,13 @@ steps:
       ]);
     });
 
+    it("compiles the walkthrough's pipeline (docs/recipes.md)", () => {
+      const guide = readFileSync(join(__dirname, "../../../docs/recipes.md"), "utf8");
+      const pipelines = [...guide.matchAll(/```yaml\r?\n(name:[\s\S]*?)```/g)].map((match) => match[1]);
+      expect(pipelines).toHaveLength(1);
+      ok(compiler.compileText(pipelines[0]));
+    });
+
     it("rejects unknown step types", () => {
       expect(errorsOf(compiler.compile(pipeline([{ id: "a", type: "shell.exec", with: { cmd: "rm -rf /" } }])))).toEqual([
         'steps[0].type: unknown step type "shell.exec"',

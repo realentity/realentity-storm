@@ -41,6 +41,8 @@ weeks, and needs you only at the moments that matter.
 6. **When a board changes its layout**, the recipe stops matching. A browser agent finds the list on the new page,
    proposes a corrected recipe for you to approve, and the run carries on with it.
 
+How to teach, write, try and fix a recipe, and how a pipeline uses one: [docs/recipes.md](docs/recipes.md).
+
 ### Apps: describe one, and Storm builds it
 
 An **App** is a small personal application: data types, list and detail pages, stages, forms, buttons, and the
@@ -310,6 +312,7 @@ the ports and folders themselves.
 | | |
 |---|---|
 | [docs/capabilities.md](docs/capabilities.md) | Apps, every step type, trigger and event, with examples |
+| [docs/recipes.md](docs/recipes.md) | Recipes: reading a site's list (job ads, products) without an LLM, from teaching to fixing |
 | [docs/topics.md](docs/topics.md) | Topics: what Storm knows about your projects and customers, and how your replies use it |
 | [docs/design.md](docs/design.md) | How it works: principles, pipelines, gates, architecture, security, data model |
 | [docs/self-hosting.md](docs/self-hosting.md) | Install, HTTPS, webhooks and Telegram, updates, backups |
