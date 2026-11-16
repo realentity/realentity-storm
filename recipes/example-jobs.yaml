@@ -14,5 +14,7 @@ fields:
   posted: { selector: .date }
 key: url
 next: { kind: page, url: "https://jobs.example.com/jobs/{category}/?page={page}", start: 2 }
+# Or: { kind: link, selector: a.next } (a "Next" link), { kind: more, selector: button.load-more } (a "Load more"
+# button), { kind: scroll } (more at the bottom). Each press or scroll counts as a page.
 maxPages: 5
 delayMs: 1500

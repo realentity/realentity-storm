@@ -42,15 +42,20 @@ export const RecipeSchema = z
     key: Name.default("url"),
     /** Shown instead of items when the search has no results: an empty list, not a broken recipe. */
     empty: Selector.optional(),
-    /** The next page: a link to follow, or a URL with {page} (from `start`). */
+    /**
+     * The next page: a link to follow, a URL with {page} (from `start`); or more items on the same page: a "Load more"
+     * button to press (`more`), or scrolling to the bottom (`scroll`). Pressed or scrolled, each time counts as a page.
+     */
     next: z
       .discriminatedUnion("kind", [
         z.object({ kind: z.literal("link"), selector: Selector }).strict(),
         z.object({ kind: z.literal("page"), url: Template, start: z.number().int().min(0).max(100).default(2) }).strict(),
+        z.object({ kind: z.literal("more"), selector: Selector }).strict(),
+        z.object({ kind: z.literal("scroll") }).strict(),
       ])
       .optional(),
     maxPages: z.number().int().min(1).max(20).default(5),
-    /** Between pages: a person's pace, not a crawler's. */
+    /** Between pages (and presses, and scrolls): a person's pace, not a crawler's. */
     delayMs: z.number().int().min(500).max(10_000).default(1_500),
   })
   .strict();

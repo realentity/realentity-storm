@@ -1145,7 +1145,11 @@ marked as working or broken, nobody told, no `recipe.broken`, no fallback.
 ```
 
 A recipe ([recipes/example-jobs.yaml](../recipes/example-jobs.yaml)) names the list's address, its params, the item
-selector, each field's selector, the key, how to reach the next page, and a polite delay between pages.
+selector, each field's selector, the key, how to reach the next page, and a polite delay between pages. The next page
+is a link (`{ kind: link, selector: a.next }`), a page number in the address (`{ kind: page, url: "…&page={page}" }`),
+or more items on the same page: a "Load more" button pressed (`{ kind: more, selector: button.load-more }`) or the page
+scrolled to its bottom (`{ kind: scroll }`); each press or scroll counts as a page, and the list ends when the button is
+gone or nothing new comes. Teach mode writes the first two; the others are set by editing the recipe.
 
 #### `browser.teach` 🖥️ 🧠
 Teach mode, used once per site: opens `url` in the live browser, you bring it to the list and press Continue, the LLM

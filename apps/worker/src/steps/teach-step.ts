@@ -216,15 +216,16 @@ async function check(page: Page, name: string, recipe: Recipe, params: Record<st
 async function checkNextPage(page: Page, name: string, recipe: Recipe, params: Record<string, string>, firstKeys: Set<string>): Promise<string[]> {
   let next: string | null;
   if (recipe.next?.kind === "page") next = fillTemplate(recipe.next.url, { ...params, page: String(recipe.next.start) }, recipe.params);
-  else {
+  else if (recipe.next?.kind === "link") {
     const href = await page
-      .locator(recipe.next!.selector)
+      .locator(recipe.next.selector)
       .first()
       .getAttribute("href", { timeout: 1_000 })
       .catch(() => null);
-    if (!href) return [`next link "${(recipe.next as { selector: string }).selector}" has no href on this page`];
+    if (!href) return [`next link "${recipe.next.selector}" has no href on this page`];
     next = new URL(href, page.url()).href;
-  }
+  } else return []; // "Load more" and scrolling aren't taught (the proposal has no such kinds): written by hand, tried on the Recipes page
+
   if (!onSite(next, siteOf(name))) return [`the next page ${next} is not on ${siteOf(name)}`];
   const tab = await page.context().newPage();
   try {
