@@ -15,6 +15,10 @@
       "cache": false,
       "persistent": true
     },
+    "@realentity/storm-web-e2e#dev": {
+      "dependsOn": [],
+      "cache": false
+    },
     "lint": {
       "dependsOn": ["^build"]
     },
