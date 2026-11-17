@@ -90,11 +90,14 @@ export function setStepInput(source: string, index: number, field: string, value
   });
 }
 
-/** A step's `when`, `forEach` or `retries`: undefined removes it. Placed before its `with`, as one would write them. */
+/**
+ * A step's `when`, `forEach`, `retries` or (M54-T5) `onError`: undefined removes it. Placed before its `with`, as one
+ * would write them.
+ */
 export function setStepOption(
   source: string,
   index: number,
-  option: "when" | "forEach" | "retries",
+  option: "when" | "forEach" | "retries" | "onError",
   value: string | number | undefined,
 ): string {
   return editAppSource(source, (document) => {

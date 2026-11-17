@@ -81,7 +81,7 @@ pipeline can be saved.
 A plain value is transformed as the step's inputs are read. An App's encrypted field stays sealed: it is opened and
 transformed only as `http.request` sends it, after its gate. A credential (`{{cred:…}}`) takes no transform.
 
-### 2.2 `forEach`, `when`, `retries`
+### 2.2 `forEach`, `when`, `retries`, `onError`
 
 - **`forEach: "{{triage.kept}}"`** runs the step once per item. Several steps that loop over the same list stay
   aligned: inside the loop, `{{draft.body}}` is the draft for *this* item.
@@ -89,6 +89,10 @@ transformed only as `http.request` sends it, after its gate. A credential (`{{cr
   number other than 0, an object). A skipped step also skips the later steps that use its output. Inside `forEach`,
   `when` is checked per item.
 - **`retries: 2`** retries a failed step up to 5 times. Side-effect steps are never retried.
+- **`onError: continue`** (M54, with `forEach`): an item that fails (after its retries) is recorded and the other items
+  still run; that item's later steps over the same list are skipped. The run ends done, its summary saying which
+  failed ("2 items failed: put #3, put #7"). Without it, the first failure fails the run. On the step's card: *If an
+  item fails, go on with the others*.
 
 ### 2.3 Safety rules the compiler enforces
 

@@ -20,6 +20,7 @@ export interface LooseStep {
   when?: string;
   forEach?: string;
   retries?: number;
+  onError?: string;
   with: Record<string, unknown>;
 }
 
@@ -48,6 +49,7 @@ export function loosePipeline(source: string): LoosePipeline | null {
         when: typeof step.when === "string" ? step.when : undefined,
         forEach: typeof step.forEach === "string" ? step.forEach : undefined,
         retries: typeof step.retries === "number" ? step.retries : undefined,
+        onError: typeof step.onError === "string" ? step.onError : undefined,
         with: withValue,
       };
     }),
