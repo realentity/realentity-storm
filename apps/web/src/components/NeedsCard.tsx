@@ -106,6 +106,11 @@ export function NeedsCard({
                   </button>
                 )}
               </div>
+              {view.need.help && (
+                <div className="small text-secondary mb-1" style={{ whiteSpace: "pre-line" }} data-testid={`need-help-${view.slot}`}>
+                  {view.need.help}
+                </div>
+              )}
               {readOnly ? (
                 <div className="small">
                   {view.credential?.name ??
@@ -207,6 +212,7 @@ export function NeedsCard({
           preset={kindOf(adding.need)}
           hosts={adding.need.for ? [adding.need.for] : []}
           name={adding.slot}
+          help={adding.need.help}
           onClose={() => setAdding(null)}
           onSaved={(saved: CredentialView) => {
             const slot = adding;

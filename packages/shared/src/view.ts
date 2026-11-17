@@ -44,6 +44,7 @@ export const VIEW_ICONS = [
   "briefcase",
   "receipt",
   "cloud",
+  "lock",
 ] as const;
 export type ViewIcon = (typeof VIEW_ICONS)[number];
 

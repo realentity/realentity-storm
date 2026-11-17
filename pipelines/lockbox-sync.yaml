@@ -1,0 +1,93 @@
+# Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub. Its entries of the
+# bundle's project and environment, on its paths; a name on several paths takes the value of the last path. Secrets are
+# sealed to the scope's public key (sealedBox: only GitHub opens them) and PUT; variables are created or updated. It
+# only adds and updates, never deletes. One that fails doesn't stop the others; run it again to send them.
+# Turn on "Act without asking when I start it" on this pipeline's page: pressing Sync is then the approval.
+name: Lockbox sync
+app: Lockbox
+description: A bundle's variables and secrets sent to GitHub; it never deletes.
+trigger: { on: entity.action, type: Bundle }
+policy: { allowedDomains: [api.github.com] }
+steps:
+  - id: entries
+    type: data.read
+    with:
+      type: Entry
+      where:
+        - { field: project, op: eq, value: "{{trigger.item.project}}" }
+        - { field: environment, op: eq, value: "{{trigger.item.environment}}" }
+        - { field: path, op: in, value: "{{trigger.item.paths}}" }
+      limit: 1000
+  # One entry per name: the paths in the bundle's order, a later one's value winning.
+  - id: chosen
+    type: data.map
+    with:
+      from: { entries: "{{entries.items}}", paths: "{{trigger.item.paths}}" }
+      expression: >-
+        ( $byName := $reduce(paths, function($acc, $p) { $merge([$acc, $merge($filter(entries, function($e) { $e.path = $p }).{ name: $ })]) }, {});
+        [$each($byName, function($v) { $v })] )
+  - id: secrets
+    type: data.map
+    with: { from: "{{chosen.items}}", expression: '[$[kind = "secret" and $exists(secret)]]' }
+  - id: variables
+    type: data.map
+    with: { from: "{{chosen.items}}", expression: '[$[kind = "variable"]]' }
+
+  # Secrets: sealed to the scope's public key, each PUT (created or replaced).
+  - id: key
+    type: http.fetch
+    when: "{{secrets.items}}"
+    with:
+      url: "https://api.github.com/{{trigger.item.scope}}/secrets/public-key"
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+  - id: putSecret
+    type: http.request
+    forEach: "{{secrets.items}}"
+    onError: continue
+    with:
+      method: PUT
+      url: "https://api.github.com/{{trigger.item.scope}}/secrets/{{item.name}}"
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      body:
+        encrypted_value: "{{item.secret | sealedBox: key.json.key}}"
+        key_id: "{{key.json.key_id}}"
+        visibility: "{{trigger.item.visibility}}"
+
+  # Variables: the ones GitHub has already (up to 120) are updated, the others created.
+  - id: existing
+    type: http.fetch
+    when: "{{variables.items}}"
+    with:
+      urls:
+        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=1"
+        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=2"
+        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=3"
+        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=4"
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      itemsAt: variables
+  - id: plan
+    type: data.map
+    when: "{{variables.items}}"
+    with:
+      from: { variables: "{{variables.items}}", existing: "{{existing.items}}" }
+      expression: '[$map(variables, function($v) { $merge([$v, { "isNew": $not($v.name in $$.existing.name), "isOld": $v.name in $$.existing.name }]) })]'
+  - id: createVariable
+    type: http.request
+    forEach: "{{plan.items}}"
+    when: "{{item.isNew}}"
+    onError: continue
+    with:
+      method: POST
+      url: "https://api.github.com/{{trigger.item.scope}}/variables"
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }
+  - id: updateVariable
+    type: http.request
+    forEach: "{{plan.items}}"
+    when: "{{item.isOld}}"
+    onError: continue
+    with:
+      method: PATCH
+      url: "https://api.github.com/{{trigger.item.scope}}/variables/{{item.name}}"
+      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }

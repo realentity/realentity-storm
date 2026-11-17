@@ -201,7 +201,8 @@ types:
   database like a credential (design.md §7), for its own entity and field: its form shows *Set, encrypted* with
   **Replace** and **Clear**, never the value; no list shows, searches, sorts, filters or groups by it; every answer of
   the api, a run's page, a gate and Telegram show `***`. In a pipeline it is the sealed value, a handle: `data.read`
-  and `{{trigger.item}}` give it, `data.save` keeps it (sealing it again for another entity), and a save that doesn't
+  and `{{trigger.item}}` give it, `data.save` keeps it (sealing it again for another entity), `data.map` passes it on
+  as it is (sealed), and a save that doesn't
   give it keeps the one there. Only `http.request` sends it, in `headers`, `query` or `body` (§4.2); `{{item.value}}`
   anywhere else is refused when the pipeline is saved, and a whole item reaching another step (an LLM's, a
   notification's) shows `***` there. `{{item.value.hash}}` is a keyed hash of the value, usable anywhere: whether it
@@ -299,7 +300,7 @@ schema.org type that means the same and, after a dry run, drafts it from what th
 not in the types** on an App's page lists the fields its entities have that their type doesn't name, with *Add to the
 type*.
 
-Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops, Tasks, Memos, Papers. Job Search
+Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops, Tasks, Memos, Papers, Lockbox. Job Search
 ([pipelines/apps/job-search.yaml](../pipelines/apps/job-search.yaml)) is filled by a job-board pipeline
 ([job-board.yaml](../pipelines/job-board.yaml): `browser.extract` with a recipe like
 [recipes/example-jobs.yaml](../recipes/example-jobs.yaml), the agencies skipped, the rest scored, then `data.save` with
@@ -336,6 +337,8 @@ steps:
   slot a step uses without one is added from where it is used: a database for `db.query`'s connection, the host of an
   address written in the step, an email or Google account for an email or calendar step's `account: <name>`, and text
   for `{{setting.<name>}}`. At most 20 slots; `account: topics` (every mailbox the topics read) only on `email.fetch`.
+  `help` (any slot, up to 1000 characters) says what it takes to fill it, a token's permissions or where to make one:
+  shown under the slot and on the form that adds a credential for it.
 - **Filling them:** the **What it needs** card on the pipeline's page (its own slots; its App's are shown and filled on
   the App's page, once for all its pipelines), on the App's page, and in the builder's chat once a proposal is saved.
   Each credential slot offers only your credentials that fit (its type, the host it is for), or **Add a new one**,
@@ -1495,6 +1498,7 @@ What the steps add up to, with the pipeline that does it:
 | Tasks by due date, open until done, added from your phone, the ones due told every morning | `telegram.command` → `data.map` → `data.save`; `schedule` → `data.read` → `data.map` → `notify.telegram` | the Tasks App ([tasks.yaml](../pipelines/apps/tasks.yaml)) with [task-from-telegram.yaml](../pipelines/task-from-telegram.yaml), [tasks-due.yaml](../pipelines/tasks-due.yaml) |
 | Notes with a photo, newest first, kept from your phone | `telegram.command` → `file.keep { telegram }` → `data.map` → `data.save` | the Memos App ([memos.yaml](../pipelines/apps/memos.yaml)) with [memo-from-telegram.yaml](../pipelines/memo-from-telegram.yaml) |
 | Receipts and warranties read from their photo or PDF (sent from your phone too), a warranty's end in your calendar | `telegram.command` → `file.keep { telegram }` → `data.save`; `entity.changed { field: document }` → `llm.extract { files }` → `data.save`; `entity.changed { field: warrantyUntil }` → `data.map` → `calendar.create` | the Papers App ([papers.yaml](../pipelines/apps/papers.yaml)) with [paper-from-telegram.yaml](../pipelines/paper-from-telegram.yaml), [read-paper.yaml](../pipelines/read-paper.yaml), [warranty-in-calendar.yaml](../pipelines/warranty-in-calendar.yaml) |
+| Your projects' GitHub variables and secrets kept here (secrets encrypted) by path and environment, sent to a repository, one of its environments, an organisation or Dependabot when you press Sync; a later path overrides an earlier one; never deletes | `entity.action` → `data.read` → `data.map` → `http.fetch` (the public key, the variables there) → `http.request` with `{{item.secret \| sealedBox: key.json.key}}`, `onError: continue`, auto-approved (§2.3) | the Lockbox App ([lockbox.yaml](../pipelines/apps/lockbox.yaml)) with [lockbox-sync.yaml](../pipelines/lockbox-sync.yaml) |
 | Your monitors (web addresses, ports, ping; on your network too) checked every five minutes, with their response times; incidents on what you run, each resolved when its cause is gone: a monitor down, a database check above 0, the database out of reach; a GitHub issue after you approve it, and the week in numbers | `schedule` → `data.read` → `http.check`, `net.check` → `data.map` → `data.save`, `data.history`; `{ webhook: token }` → `data.read` → `data.map` → `data.save`; `db.query` → `data.alert` → `data.map` → `data.save`; `run.finished { status: [FAILED] }` → `data.save`; `entity.action` → `http.request` → `data.save { stage }` | the Server ops App ([server-ops.yaml](../pipelines/apps/server-ops.yaml)) with [check-monitors.yaml](../pipelines/check-monitors.yaml), [monitor-alerts.yaml](../pipelines/monitor-alerts.yaml), [database-check.yaml](../pipelines/database-check.yaml), [database-down.yaml](../pipelines/database-down.yaml), [incident-issue.yaml](../pipelines/incident-issue.yaml), [ops-week.yaml](../pipelines/ops-week.yaml) |
 | Tell you when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../pipelines/prices.yaml) |
 | Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../pipelines/price-watch.yaml), [product-watch.yaml](../pipelines/product-watch.yaml) |

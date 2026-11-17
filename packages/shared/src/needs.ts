@@ -15,6 +15,11 @@ export const CREDENTIAL_TYPES = ["password", "api_key", "database", "oauth_token
 export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 
 const Label = z.string().trim().min(1).max(200);
+/**
+ * What it takes to fill the slot, shown under it and on the credential form opened from it: a token's scopes or
+ * permissions, where to create one. Plain text; a line break starts a line.
+ */
+const Help = z.string().trim().min(1).max(1000);
 
 export const CredentialNeedSchema = z
   .object({
@@ -24,6 +29,7 @@ export const CredentialNeedSchema = z
     /** The host it is for (api.github.com): only a credential allowed there fits. */
     for: z.string().trim().toLowerCase().regex(HOST_PATTERN, "a host, e.g. api.github.com").optional(),
     label: Label.optional(),
+    help: Help.optional(),
   })
   .strict();
 
@@ -31,13 +37,14 @@ export const TextNeedSchema = z
   .object({
     kind: z.literal("text"),
     label: Label.optional(),
+    help: Help.optional(),
     /** Shown in its input: me/infra. */
     example: z.string().max(200).optional(),
   })
   .strict();
 
 /** M50-T7: one of the user's email accounts; not filled, the default one. */
-export const EmailNeedSchema = z.object({ kind: z.literal("email"), label: Label.optional() }).strict();
+export const EmailNeedSchema = z.object({ kind: z.literal("email"), label: Label.optional(), help: Help.optional() }).strict();
 
 /** What a Google account is used for: its calendar, its Drive (read-only); the user allows each at the sign-in. */
 export const GOOGLE_USES = ["calendar", "drive"] as const;
@@ -45,7 +52,12 @@ export type GoogleUse = (typeof GOOGLE_USES)[number];
 
 /** M50-T8: one of the user's Google accounts, allowing what it `uses`; not filled, the default one. */
 export const GoogleNeedSchema = z
-  .object({ kind: z.literal("google"), uses: z.array(z.enum(GOOGLE_USES)).min(1).optional(), label: Label.optional() })
+  .object({
+    kind: z.literal("google"),
+    uses: z.array(z.enum(GOOGLE_USES)).min(1).optional(),
+    label: Label.optional(),
+    help: Help.optional(),
+  })
   .strict();
 
 /** The kinds of slot an account fills (not a credential, not text): never empty, the default account until one is chosen. */

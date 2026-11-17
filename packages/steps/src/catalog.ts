@@ -638,6 +638,8 @@ export const CORE_STEPS: StepDefinition[] = [
       "items, one object a single item, anything else { value }. Write `{ {` with a space: `{{` starts a reference. " +
       "It reads only its input: no network, no code, stopped after a second.",
     sideEffect: false,
+    // M52: an App's encrypted values go through as they are (sealed): only http.request opens them, later.
+    keepsSealed: ["from"],
     saasSafe: true,
     input: z.object({
       from: z.unknown().describe("the JSON to read, e.g. {{forecast.json}} or {{search.items}}"),

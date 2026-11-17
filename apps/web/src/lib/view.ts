@@ -12,6 +12,7 @@ import {
   IconHeart,
   IconHome,
   IconList,
+  IconLock,
   IconNews,
   IconPackage,
   IconReceipt,
@@ -42,6 +43,7 @@ export const VIEW_ICON: Record<ViewIcon, Icon> = {
   briefcase: IconBriefcase,
   receipt: IconReceipt,
   cloud: IconCloud,
+  lock: IconLock,
 };
 
 /** A row's name: its title field, else its first column, else its key. */

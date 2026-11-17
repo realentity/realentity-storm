@@ -1,0 +1,82 @@
+# Lockbox: your projects' GitHub variables and secrets, kept here and sent to GitHub when you press Sync. One flat list
+# of entries: each a variable or a secret (encrypted, never shown again), for a project, a path and an environment. A
+# bundle names where they go (a repository, one of its environments, an organisation, Dependabot) and which paths, in
+# order: a later path's value of a name wins, so /_backend's shared values can be overridden by /backend-api's own.
+# Sync (lockbox-sync.yaml) adds and updates; it never deletes in GitHub. Save it on the Apps page before its pipeline.
+name: Lockbox
+description: GitHub variables and secrets, kept here and synced when you press Sync
+icon: lock
+# Chosen when you install it; `help` says how to make the token, under the slot and on the form that adds it.
+needs:
+  github:
+    kind: credential
+    type: api_key
+    for: api.github.com
+    label: "GitHub, to write variables and secrets"
+    help: |-
+      A fine-grained personal access token (GitHub: Settings, Developer settings, Personal access tokens, Fine-grained tokens).
+      Repository access: only the repositories your bundles send to.
+      Repository permissions, Read and write: Secrets and Variables; Environments too for an environment's; Dependabot secrets for Dependabot.
+      For an organisation's: its owner as the token's Resource owner, and Organization permissions Secrets and Variables, Read and write (an organisation may have to approve the token).
+      Metadata: Read is added by GitHub.
+types:
+  Project:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true }
+      description: { type: longtext }
+  # A variable or a secret: its value in `value` (a variable's, shown) or `secret` (encrypted). Environments: edit the
+  # values to have your own.
+  Entry:
+    mine: true
+    key: id
+    title: name
+    fields:
+      id: { type: text, auto: true }
+      name: { type: text, required: true }
+      kind: { type: enum, values: [variable, secret], required: true }
+      project: { type: text, required: true }
+      path: { type: text, required: true }                  # /backend-api, /_backend, /_deploy
+      environment: { type: enum, values: [production, staging, development], required: true }
+      value: { type: longtext }
+      secret: { type: longtext, encrypted: true }
+  # Where a project's entries of one environment go. scope is GitHub's address for it, without /secrets or /variables:
+  # repos/<owner>/<repo>/actions (the repository), repos/<owner>/<repo>/environments/<env> (one of its environments),
+  # orgs/<org>/actions (the organisation; visibility: all, private or selected), repos/<owner>/<repo>/dependabot
+  # (secrets only).
+  Bundle:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true }
+      project: { type: text, required: true }
+      environment: { type: enum, values: [production, staging, development], required: true }
+      paths: { type: list, required: true }                 # one per line, in order: a later path wins
+      scope: { type: text, required: true }
+      visibility: { type: enum, values: [all, private, selected] }
+pages:
+  - list: Project
+    menu: { label: Projects, icon: lock }
+    add: true
+    columns: [name, description]
+  - list: Entry
+    menu: { label: Entries, icon: lock }
+    add: true
+    columns: [name, kind, path, environment, project]
+    filters: [kind, environment]
+    search: [name, path, project]
+    sort: name
+  - form: Entry
+    fields: [name, kind, project, path, environment, value, secret]
+  - list: Bundle
+    menu: { label: Bundles, icon: lock }
+    add: true
+    columns: [name, project, environment, scope]
+    filters: [environment]
+  - view: Bundle
+    fields: [project, environment, paths, scope, visibility]
+    actions:
+      - { label: Sync, run: Lockbox sync, confirm: "Send this bundle's variables and secrets to GitHub?" }
+  - form: Bundle
+    fields: [project, environment, paths, scope, visibility]
