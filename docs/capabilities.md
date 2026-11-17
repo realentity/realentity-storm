@@ -1383,6 +1383,9 @@ on Telegram). You rarely write it: the compiler inserts one before every side-ef
 place it differently; it must come before its step, after every step that step uses, and loop over the same items.
 - In: `for` (the step id).
 - Out: `approved`.
+- **A batch (M53):** over a list, every item waits at once, each with its own payload. The inbox shows them as one card
+  (untick the ones you don't want, then **Approve**: the rest are rejected), and Telegram as one message with
+  **Approve all**. Open an item alone to edit it.
 
 ```yaml
 - id: sendGate

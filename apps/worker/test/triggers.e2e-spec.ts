@@ -1,4 +1,4 @@
-import { KeyRing, seal } from "@realentity/storm-crypto";
+import { batchHash, KeyRing, seal } from "@realentity/storm-crypto";
 import { createPrismaConnection, type PrismaConnection, type RunStatus } from "@realentity/storm-db";
 import { JobQueue, QUEUES, type EventJob } from "@realentity/storm-queue";
 import { AppDefinitionSchema } from "@realentity/storm-shared";
@@ -317,22 +317,41 @@ describe("M12: event and webhook triggers", () => {
   });
 
   describe("M12-T4: proposals on the Storm bot", () => {
-    it("tells each new proposal once, with Approve / Reject / Open bound to its payload", async () => {
+    const buttonsOf = (call: { body: Record<string, unknown> }) =>
+      (call.body.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] }).inline_keyboard[0];
+
+    it("tells a single proposal once, with Approve / Reject / Open bound to its payload", async () => {
+      const one = "name: One reply\nsteps:\n  - id: reply\n    type: test.send\n    with: { to: ana@acme.test, body: Thanks }\n";
+      const runId = await runner.start(await createVersion(db.client, userId, one), { trigger: "manual" });
+      expect(await handlers.advance(runId)).toBe("WAITING_FOR_USER");
+      expect(await handlers.advance(runId)).toBe("WAITING_FOR_USER");
+
+      const messages = telegram.calls.filter((c) => c.method === "sendMessage");
+      expect(messages).toHaveLength(1);
+      const [proposal] = await db.client.proposal.findMany({ where: { runId } });
+      expect(proposal.telegramMessageId).toBe(1);
+      expect(messages[0].body.text).toContain("approve test.send?\nTarget: ana@acme.test");
+      const buttons = buttonsOf(messages[0]);
+      expect(buttons.map((b) => b.text)).toEqual(["Approve", "Reject", "Open"]);
+      expect(buttons[0].callback_data).toMatch(new RegExp(`^a:${proposal.proposalId}:[0-9a-f]{16}$`));
+      expect(buttons[2].url).toBe(`https://storm.test/proposals/${proposal.proposalId}`);
+    });
+
+    // M53-T3: a forEach's items at one step, one message: Approve all, bound to the batch's proposals
+    it("tells a step's proposals once, as one batch with Approve all", async () => {
       const runId = await runner.start(await createVersion(db.client, userId, REPLY), { trigger: "manual" });
       expect(await handlers.advance(runId)).toBe("WAITING_FOR_USER");
       expect(await handlers.advance(runId)).toBe("WAITING_FOR_USER");
 
       const messages = telegram.calls.filter((c) => c.method === "sendMessage");
-      expect(messages).toHaveLength(2);
+      expect(messages).toHaveLength(1);
       const proposals = await db.client.proposal.findMany({ where: { runId }, orderBy: { itemIndex: "asc" } });
-      expect(proposals.map((p) => p.telegramMessageId)).toEqual([1, 2]);
-      expect(messages[0].body.text).toContain("approve test.send (item 1)?\nTarget: ana@acme.test");
-      expect(messages[0].body.text).toContain("body: Thanks for Senior .NET");
-      const buttons = (messages[0].body.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] })
-        .inline_keyboard[0];
-      expect(buttons.map((b) => b.text)).toEqual(["Approve", "Reject", "Open"]);
-      expect(buttons[0].callback_data).toMatch(new RegExp(`^a:${proposals[0].proposalId}:[0-9a-f]{16}$`));
-      expect(buttons[2].url).toBe(`https://storm.test/proposals/${proposals[0].proposalId}`);
+      expect(proposals.map((p) => p.telegramMessageId)).toEqual([1, 1]);
+      expect(messages[0].body.text).toContain("Replies: approve 2 × test.send?");
+      expect(messages[0].body.text).toContain("#1 → ana@acme.test\n   to: ana@acme.test · body: Thanks for Senior .NET");
+      const buttons = buttonsOf(messages[0]);
+      expect(buttons.map((b) => b.text)).toEqual(["Approve all 2", "Open the inbox"]);
+      expect(buttons[0].callback_data).toBe(`b:${runId}:${batchHash(proposals.map((p) => p.proposalId))}`);
     });
 
     it("an email says whom it goes from (the default account here), not the account's id", async () => {
@@ -368,10 +387,8 @@ describe("M12: event and webhook triggers", () => {
       await db.client.userSetting.create({ data: { userId, telegramApprovals: false } });
       const runId = await runner.start(await createVersion(db.client, userId, REPLY), { trigger: "manual" });
       await handlers.advance(runId);
-      const buttons = telegram.calls.map((c) =>
-        (c.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0].map((b) => b.text),
-      );
-      expect(buttons).toEqual([["Open"], ["Open"]]);
+      const buttons = telegram.calls.map((c) => buttonsOf(c).map((b) => b.text));
+      expect(buttons).toEqual([["Open the inbox"]]);
 
       telegram.calls = [];
       const dry = await runner.start(await createVersion(db.client, userId, REPLY), { trigger: "dry-run", dryRun: true });

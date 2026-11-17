@@ -86,3 +86,37 @@ export function payloadText(payload: Record<string, unknown>): string {
     })
     .join("\n");
 }
+
+// --- a batch (M53-T3) ---
+
+/** A step's proposals of one run, told in one message: Approve all approves them as they are, Open the inbox. */
+export interface BatchForTelegram {
+  runId: string;
+  pipeline: string;
+  stepType: string;
+  items: { itemIndex: number | null; target: string; payload: Record<string, unknown> }[];
+  /** batchHash of the proposals' ids: a batch changed since the message (one decided apart) isn't approved. */
+  hash: string;
+}
+
+export type BatchCallback = { runId: string; hash: string };
+
+export function parseBatchCallback(data: string): BatchCallback | null {
+  const batch = /^b:([0-9a-f-]{36}):([0-9a-f]{16})$/.exec(data);
+  return batch ? { runId: batch[1], hash: batch[2] } : null;
+}
+
+export function batchMessage(batch: BatchForTelegram, options: { approvals: boolean; appOrigin?: string }): TelegramMessage {
+  const lines = batch.items.map((item) => {
+    const shown = payloadText(maskSealed(item.payload)).replace(/\s*\n\s*/g, " · ");
+    return `#${(item.itemIndex ?? 0) + 1} → ${item.target}\n   ${shown.length > 200 ? `${shown.slice(0, 200)}…` : shown}`;
+  });
+  const body = lines.join("\n");
+  const complete = body.length <= MAX_PAYLOAD_TEXT;
+  const header = `Storm · ${batch.pipeline}: approve ${batch.items.length} × ${batch.stepType}?`;
+  const text = `${header}\n\n${complete ? body : `${body.slice(0, MAX_PAYLOAD_TEXT)}…\n\n(Too long to show in full: open the inbox to decide.)`}`;
+  const row: TelegramButton[] = [];
+  if (options.approvals && complete) row.push({ text: `Approve all ${batch.items.length}`, data: `b:${batch.runId}:${batch.hash}` });
+  if (options.appOrigin) row.push({ text: "Open the inbox", url: `${options.appOrigin}/inbox` });
+  return { text: text.slice(0, TELEGRAM_MAX_TEXT), buttons: row.length ? [row] : [] };
+}

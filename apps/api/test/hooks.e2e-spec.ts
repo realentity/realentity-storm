@@ -1,3 +1,4 @@
+import { batchHash } from "@realentity/storm-crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { QUEUES } from "@realentity/storm-queue";
 import { type PipelineDetailView, type TelegramCommandsView, type WebhookView } from "@realentity/storm-shared";
@@ -768,6 +769,55 @@ steps:
       await telegram(photo("/thing milk", 999)).expect(200);
       expect(await db.client.run.count()).toBe(0);
       expect(sent()).toHaveLength(0);
+    });
+  });
+
+  // M53-I2: a step's batch told in one message, approved at once; a batch changed since refuses
+  describe("Approve all", () => {
+    async function batch(): Promise<{ runId: string; ids: string[] }> {
+      const pipeline = await createPipeline(REPLY);
+      const run = await db.client.run.create({
+        data: { userId, pipelineVersionId: pipeline.current!.pipelineVersionId, trigger: "manual", status: "WAITING_FOR_USER" },
+      });
+      const ids: string[] = [];
+      for (const [index, to] of ["ana@acme.test", "bob@acme.test", "cy@acme.test"].entries()) {
+        const gate = await db.client.step.create({
+          data: { runId: run.runId, stepKey: "replyGate", itemIndex: index, type: "gate.act", status: "WAITING", startedAt: new Date() },
+        });
+        const proposal = await db.client.proposal.create({
+          data: {
+            userId,
+            runId: run.runId,
+            stepId: gate.stepId,
+            stepKey: "reply",
+            itemIndex: index,
+            status: "PENDING_REVIEW",
+            target: to,
+            originalPayload: { to, body: "Thanks" },
+            telegramMessageId: 7,
+          },
+        });
+        ids.push(proposal.proposalId);
+      }
+      return { runId: run.runId, ids };
+    }
+
+    it("approves the batch the message told, and says so on it once", async () => {
+      const { runId, ids } = await batch();
+      await telegram(press(`b:${runId}:${batchHash(ids)}`)).expect(200);
+      expect(answer()).toBe("Approved 3: they act now");
+      expect(await db.client.proposal.count({ where: { runId, status: "APPROVED" } })).toBe(3);
+      expect(sent("editMessageText").map((c) => c.body.text)).toEqual([expect.stringMatching(/^✅ 3 approved in Telegram\n\nStorm · /)]);
+    });
+
+    it("refuses a batch that changed since the message", async () => {
+      const { runId, ids } = await batch();
+      await agent.post(`/api/proposals/${ids[0]}/reject`).send({}).expect(200);
+      // Rejecting one in the app leaves the batch's message as it is.
+      expect(sent("editMessageText")).toEqual([]);
+      await telegram(press(`b:${runId}:${batchHash(ids)}`)).expect(200);
+      expect(answer()).toBe("It changed since this message: open the inbox");
+      expect(await db.client.proposal.count({ where: { runId, status: "APPROVED" } })).toBe(0);
     });
   });
 });

@@ -51,6 +51,8 @@ import {
   type BillView,
   type ApplicationView,
   type ApproveProposalRequest,
+  type BatchDecisionView,
+  type DecideBatchRequest,
   type BuilderChatSummaryView,
   type BuilderChatView,
   type BuilderDryRunResponse,
@@ -168,6 +170,8 @@ export const api = {
       request<ProposalView>("POST", `/proposals/${proposalId}/approve`, body),
     reject: (proposalId: string, reason?: string) => request<ProposalView>("POST", `/proposals/${proposalId}/reject`, { reason }),
     undoReject: (proposalId: string) => request<ProposalView>("POST", `/proposals/${proposalId}/undo-reject`),
+    /** M53: one step's proposals of one run, approved and rejected at once. */
+    decideBatch: (body: Partial<DecideBatchRequest>) => request<BatchDecisionView>("POST", "/proposals/batch", body),
   },
   emailAccounts: {
     list: () => request<EmailAccountView[]>("GET", "/email-accounts"),

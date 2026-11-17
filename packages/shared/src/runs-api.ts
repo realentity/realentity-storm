@@ -19,6 +19,28 @@ export type ApproveProposalRequest = z.infer<typeof ApproveProposalSchema>;
 export const RejectProposalSchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
 export type RejectProposalRequest = z.infer<typeof RejectProposalSchema>;
 
+/**
+ * M53: a batch decided at once: proposals of one gate step of one run (a forEach's items), each approved as it was
+ * proposed (unedited: open one to edit it) or rejected. All or none: one already decided refuses the whole batch.
+ */
+export const DecideBatchSchema = z
+  .object({
+    approve: z.array(z.uuid()).max(500).default([]),
+    reject: z.array(z.uuid()).max(500).default([]),
+    /** New targets approved for every proposal approved here. */
+    approveNewTargets: z.array(z.string().trim().toLowerCase().min(1).max(320)).max(20).default([]),
+    reason: z.string().trim().max(2000).optional(),
+  })
+  .strict()
+  .refine((b) => b.approve.length + b.reject.length > 0, "nothing to decide")
+  .refine((b) => !b.approve.some((id) => b.reject.includes(id)), "a proposal is either approved or rejected");
+export type DecideBatchRequest = z.infer<typeof DecideBatchSchema>;
+
+export interface BatchDecisionView {
+  approved: number;
+  rejected: number;
+}
+
 export const PROPOSAL_STATUSES = [
   "PREVIEW",
   "PENDING_REVIEW",

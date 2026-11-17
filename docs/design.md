@@ -281,6 +281,13 @@ PREVIEW: a dry run's proposal; never approved, never executed
 
 Decisions go through `POST /api/proposals/:id/approve` (optionally with an edited payload, still validated against the step's input schema, and any new targets it introduces) and `POST /api/proposals/:id/reject` (optional reason). Each records a `Decision` (approved, edited with the changed fields, or rejected) and queues the run. A rejection by mistake is undone with `POST /api/proposals/:id/undo-reject` (**Undo rejection** on the proposal) while the run still waits for you and nothing but other items of the same list went on since: the proposal waits again, and its decision is deleted, so reflection never learns from it.
 
+**A batch (M53):** a side effect over a list (`forEach`) makes one proposal per item in one pass, then the run waits. The
+inbox shows a step's proposals of one run as one card, every item ticked: **Approve** takes the ticked ones as proposed
+and rejects the rest, through `POST /api/proposals/batch` (ids to approve and to reject; all or none: one decided
+meanwhile refuses the whole batch); the run is queued once. On Telegram they are one message with **Approve all**,
+carrying a hash of the batch's proposal ids: a batch changed since (one decided in the app) is refused. Each item keeps
+its own proposal, decision and payload hash, so nothing executes that wasn't shown; to edit one, open it alone.
+
 **Payload integrity:** the payload you approve is hashed. The worker executes only that exact payload. If a page requires anything not in it (an extra field, a different URL), the worker **pauses** and asks. It never improvises.
 
 ---

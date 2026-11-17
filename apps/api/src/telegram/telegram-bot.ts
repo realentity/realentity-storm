@@ -3,6 +3,7 @@ import {
   decidedMessage,
   editTelegramMessage,
   hashMatches,
+  parseBatchCallback,
   parseProposalCallback,
   proposalMessage,
   sendTelegramMessage,
@@ -11,6 +12,7 @@ import {
   type TargetView,
   type TelegramMessage,
 } from "@realentity/storm-shared";
+import { batchHash } from "@realentity/storm-crypto";
 import { HttpException, Inject, Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import { SERVER_ENV } from "../config/server-env";
@@ -337,6 +339,15 @@ export class TelegramBot {
         return answer(reasonOf(error).slice(0, 190));
       }
     }
+    // M53-T3: Approve all, a step's batch at once, only as it was when told.
+    const batch = parseBatchCallback(query.data ?? "");
+    if (batch) {
+      try {
+        return answer(await this.approveBatch(await this.userId(), batch.runId, batch.hash));
+      } catch (error) {
+        return answer(reasonOf(error).slice(0, 190));
+      }
+    }
     const callback = parseProposalCallback(query.data ?? "");
     if (!callback) return answer("Unknown button");
     const userId = await this.userId();
@@ -372,6 +383,23 @@ export class TelegramBot {
     } catch (error) {
       return answer(reasonOf(error).slice(0, 190));
     }
+  }
+
+  /** M53-T3: the run's act step whose pending proposals are the batch told (same ids), approved as they are. */
+  private async approveBatch(userId: string, runId: string, hash: string): Promise<string> {
+    if (!(await this.approvalsOn(userId))) return "Approvals on Telegram are off (Settings): open the inbox";
+    const pending = await this.prisma.client.proposal.findMany({
+      where: { userId, runId, status: "PENDING_REVIEW" },
+      include: { step: { select: { type: true } } },
+    });
+    const byStep = new Map<string, typeof pending>();
+    for (const p of pending) if (p.step.type === "gate.act") byStep.set(p.stepKey, [...(byStep.get(p.stepKey) ?? []), p]);
+    const batch = [...byStep.values()].find((group) => batchHash(group.map((p) => p.proposalId)) === hash);
+    if (!batch) return "It changed since this message: open the inbox";
+    const fresh = [...new Set(batch.flatMap((p) => ((p.targets as TargetView[] | null) ?? []).filter((t) => t.isNew).map((t) => t.value)))];
+    if (fresh.length) return `New target ${fresh.join(", ")}: approve it in Storm`;
+    await this.proposals.decideBatch(userId, { approve: batch.map((p) => p.proposalId), reject: [], approveNewTargets: [] }, "Telegram");
+    return `Approved ${batch.length}: they act now`;
   }
 
   private async approvalsOn(userId: string): Promise<boolean> {

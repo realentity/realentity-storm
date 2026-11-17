@@ -1,6 +1,7 @@
-import { payloadHash } from "@realentity/storm-crypto";
+import { batchHash, payloadHash } from "@realentity/storm-crypto";
 import { emailSenders, stepTypeIn, type PrismaClient } from "@realentity/storm-db";
 import {
+  batchMessage,
   proposalMessage,
   sendTelegramMessage,
   type CompiledDefinition,
@@ -9,7 +10,7 @@ import {
 } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 
-/** More new proposals than this at once (a long shortlist) get one message, not one each. */
+/** More messages than this at once (proposals of several steps) get one message, not one each. */
 const ONE_BY_ONE = 5;
 
 /**
@@ -45,8 +46,13 @@ export class ProposalNotifier {
     });
     if (claimed.count === 0) return;
     const pipeline = run.pipelineVersion.pipeline.name;
+    // M53-T3: an act step's proposals of this run (a forEach's items) are one message, approved all at once.
+    const byStep = new Map<string, typeof fresh>();
+    for (const p of fresh) byStep.set(p.stepKey, [...(byStep.get(p.stepKey) ?? []), p]);
+    const batches = [...byStep.values()].filter((group) => group.length > 1 && group[0].step.type === "gate.act");
+    const alone = fresh.filter((p) => !batches.some((group) => group.includes(p)));
     try {
-      if (fresh.length > ONE_BY_ONE) {
+      if (batches.length + alone.length > ONE_BY_ONE) {
         await sendTelegramMessage(
           this.telegram,
           {
@@ -72,7 +78,34 @@ export class ProposalNotifier {
             payload: p.originalPayload as Record<string, unknown>,
           })),
       );
-      for (const proposal of fresh) {
+      const approvals = settings?.telegramApprovals ?? true;
+      for (const group of batches) {
+        // Every proposal pending at this step, not only the new ones: Approve all decides the step's whole batch.
+        const pending = await this.prisma.proposal.findMany({
+          where: { runId, stepKey: group[0].stepKey, status: "PENDING_REVIEW" },
+          orderBy: { itemIndex: "asc" },
+        });
+        const message = batchMessage(
+          {
+            runId,
+            pipeline,
+            stepType: stepTypeIn(definition, group[0].stepKey) ?? group[0].stepKey,
+            items: pending.map((p) => ({
+              itemIndex: p.itemIndex,
+              target: p.target,
+              payload: p.originalPayload as Record<string, unknown>,
+            })),
+            hash: batchHash(pending.map((p) => p.proposalId)),
+          },
+          { approvals, appOrigin: this.appOrigin },
+        );
+        const messageId = await sendTelegramMessage(this.telegram, message, this.send);
+        await this.prisma.proposal.updateMany({
+          where: { proposalId: { in: pending.map((p) => p.proposalId) } },
+          data: { telegramMessageId: messageId },
+        });
+      }
+      for (const proposal of alone) {
         const payload = proposal.originalPayload as Record<string, unknown>;
         const shown: ProposalForTelegram = {
           proposalId: proposal.proposalId,
@@ -85,7 +118,7 @@ export class ProposalNotifier {
           payloadHash: payloadHash(payload),
           ...(senders.has(proposal.proposalId) ? { from: senders.get(proposal.proposalId) } : {}),
         };
-        const message = proposalMessage(shown, { approvals: settings?.telegramApprovals ?? true, appOrigin: this.appOrigin });
+        const message = proposalMessage(shown, { approvals, appOrigin: this.appOrigin });
         const messageId = await sendTelegramMessage(this.telegram, message, this.send);
         await this.prisma.proposal.update({ where: { proposalId: proposal.proposalId }, data: { telegramMessageId: messageId } });
       }

@@ -1,5 +1,8 @@
 import {
   ApproveProposalSchema,
+  DecideBatchSchema,
+  type BatchDecisionView,
+  type DecideBatchRequest,
   PROPOSAL_STATUSES,
   RejectProposalSchema,
   type ApproveProposalRequest,
@@ -25,6 +28,16 @@ export class ProposalsController {
     @Query("status", new ParseEnumPipe(STATUS, { optional: true })) status?: ProposalStatusName,
   ): Promise<ProposalView[]> {
     return this.proposals.list(user.userId, status ?? "PENDING_REVIEW");
+  }
+
+  /** M53: the proposals of one step of one run, approved and rejected at once. Before :proposalId's routes. */
+  @Post("batch")
+  @HttpCode(200)
+  decideBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodBodyPipe(DecideBatchSchema)) body: DecideBatchRequest,
+  ): Promise<BatchDecisionView> {
+    return this.proposals.decideBatch(user.userId, body);
   }
 
   @Get(":proposalId")
