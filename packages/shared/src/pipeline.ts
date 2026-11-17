@@ -16,10 +16,14 @@ import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 export const STEP_ID = /^[a-z][a-zA-Z0-9_]{0,39}$/;
 export const RESERVED_STEP_IDS = ["item", "cred", "trigger"] as const;
 
-/** A reference: {{step.field.sub}}, {{item.field}} (inside forEach) or {{cred:name}} (credential, resolved by the worker). */
-export const REFERENCE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+/**
+ * A reference: {{step.field.sub}}, {{item.field}} (inside forEach) or {{cred:name}} (credential, resolved by the worker).
+ * Captured as words between single runs of spaces, so the spaces around it match one way only: no slow backtracking
+ * on text like "{{    …" without its closing braces.
+ */
+export const REFERENCE = /\{\{\s*([^{}\s]+(?:\s+[^{}\s]+)*)\s*\}\}/g;
 /** A value that is exactly one reference, so it passes the referenced value as it is (not as text). */
-export const WHOLE_REFERENCE = /^\{\{\s*([^{}]+?)\s*\}\}$/;
+export const WHOLE_REFERENCE = /^\{\{\s*([^{}\s]+(?:\s+[^{}\s]+)*)\s*\}\}$/;
 
 /**
  * M52-T9: transforms after a reference's path, applied to its value: `{{x | base64}}` (the text as base64, UTF-8) and
