@@ -72,6 +72,7 @@ export function AppListPage() {
           <EntityForm
             fields={page.create}
             values={{}}
+            appId={appId}
             busy={adder.busy}
             label="Add"
             testId="add-form"

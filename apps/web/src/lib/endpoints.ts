@@ -335,8 +335,9 @@ export const api = {
       request<AppEntityView>("PUT", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}/values`, { values }),
     move: (appId: string, type: string, key: string, to: string) =>
       request<AppEntityView>("PUT", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}/stage`, { to }),
-    remove: (appId: string, type: string, key: string) =>
-      request<void>("DELETE", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}`),
+    /** M55: `force`: although others point at it (the dialog said which). */
+    remove: (appId: string, type: string, key: string, force = false) =>
+      request<void>("DELETE", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}${force ? "?force=true" : ""}`),
     act: (appId: string, type: string, index: number, key?: string) =>
       request<RunDetailView>("POST", `/apps/${appId}/actions/${encodeURIComponent(type)}/${index}`, key === undefined ? {} : { key }),
   },

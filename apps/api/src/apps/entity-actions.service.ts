@@ -73,6 +73,7 @@ export class EntityActionsService {
       type,
       await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type)),
     );
+    await this.checkRefs(appId, type, checked);
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
       if (value === null) delete mine[field];
@@ -131,6 +132,7 @@ export class EntityActionsService {
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
     const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
     let checked = this.check(type, allowed, values);
+    await this.checkRefs(appId, type, checked);
     // M48: a key Storm makes.
     if (autoKey(type)) checked = { ...checked, [type.key]: await this.freshKey(appId, typeName) };
     const missing = Object.entries(type.fields).filter(
@@ -185,10 +187,17 @@ export class EntityActionsService {
   }
 
   /** An entity deleted by hand: of a type of mine, or one added by hand (M45). */
-  async remove(userId: string, appId: string, typeName: string, key: string): Promise<void> {
+  async remove(userId: string, appId: string, typeName: string, key: string, force = false): Promise<void> {
     const { app } = await this.app(userId, appId, typeName);
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is kept by pipelines; its list doesn't delete one by hand`);
     const entity = await this.entity(appId, typeName, key);
+    // M55: what points at it keeps its key, now pointing at nothing: said first, deleted only when asked again.
+    if (!force) {
+      const pointing = await this.pointingAt(appId, app, typeName, key);
+      if (pointing.length > 0) {
+        throw new ConflictException({ message: `${pointing.join(" and ")} point at it`, referencedBy: pointing });
+      }
+    }
     await this.prisma.client.dataEntity.delete({ where: { dataEntityId: entity.dataEntityId } });
     await this.files.removeEntity(appId, typeName, key);
   }
@@ -238,6 +247,33 @@ export class EntityActionsService {
       item,
       action: action.label,
     });
+  }
+
+  /** M55: "3 Entries", "1 Bundle": the entities of each type whose ref field holds this one's key. */
+  private async pointingAt(appId: string, app: AppDefinition, typeName: string, key: string): Promise<string[]> {
+    const said: string[] = [];
+    for (const [name, other] of Object.entries(app.types)) {
+      const fields = Object.entries(other.fields)
+        .filter(([, f]) => f.type === "ref" && f.to === typeName)
+        .map(([f]) => f);
+      if (fields.length === 0) continue;
+      const rows = await this.prisma.client.dataEntity.findMany({ where: { appId, type: name, removedAt: null } });
+      const count = rows.filter((r) => fields.some((f) => entityValueAt(entityItem(r.value, r.mine), f) === key)).length;
+      if (count > 0) said.push(`${count} ${count === 1 ? name : `${name}s`}`);
+    }
+    return said;
+  }
+
+  /** M55: a ref set on a form points at an entity of its type that is there. */
+  private async checkRefs(appId: string, type: DataType, values: Item): Promise<void> {
+    const errors: { path: string; message: string }[] = [];
+    for (const [name, value] of Object.entries(values)) {
+      const field = type.fields[name];
+      if (field?.type !== "ref" || !field.to || typeof value !== "string") continue;
+      const there = await this.prisma.client.dataEntity.findFirst({ where: { appId, type: field.to, key: value, removedAt: null } });
+      if (!there) errors.push({ path: name, message: `isn't one of the ${field.to}s` });
+    }
+    if (errors.length > 0) throw new BadRequestException({ message: "Some values can't be saved", errors });
   }
 
   private check(type: DataType, allowed: string[], values: Item): Item {

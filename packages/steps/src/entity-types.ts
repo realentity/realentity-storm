@@ -19,8 +19,16 @@ const KIND_TYPES: Record<FieldKind, TypeInfo> = {
   enum: { kind: "string" },
   list: { kind: "array", element: { kind: "unknown" } },
   // M46: a stored file's reference; its content is read by file.read (M46-T3).
-  file: { kind: "object", fields: { id: { kind: "string" }, name: { kind: "string" }, mime: { kind: "string" }, size: { kind: "number" } } },
-  image: { kind: "object", fields: { id: { kind: "string" }, name: { kind: "string" }, mime: { kind: "string" }, size: { kind: "number" } } },
+  file: {
+    kind: "object",
+    fields: { id: { kind: "string" }, name: { kind: "string" }, mime: { kind: "string" }, size: { kind: "number" } },
+  },
+  image: {
+    kind: "object",
+    fields: { id: { kind: "string" }, name: { kind: "string" }, mime: { kind: "string" }, size: { kind: "number" } },
+  },
+  // M55: the key of the entity it points at.
+  ref: { kind: "string" },
 };
 
 /** An entity as the compiler sees it: its fields by their kinds, dotted names as nested objects. */

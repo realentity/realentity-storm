@@ -24,6 +24,7 @@ import {
   type AppPreviewView,
   type DataType,
   type EntityGroup,
+  type PageFilter,
   type ResolvedListPage,
   type ViewChart,
   type ViewRow,
@@ -67,7 +68,9 @@ export class AppPagesService {
     const rows = await this.rows(appId, definition, type);
     const listed = listOf(definition, type, rows, query);
     const chart = listed.page.chart ? await this.chart(userId, listed.page.chart.history, rows, listed.page.title) : null;
-    return { ...header, ...listed, chart };
+    // M55: a ref filter's values are the entities of its type.
+    const filters = await this.withRefValues(appId, definition, listed.page.filters);
+    return { ...header, ...listed, page: { ...listed.page, filters }, chart };
   }
 
   /**
@@ -129,7 +132,14 @@ export class AppPagesService {
     const { header, definition } = await this.header(userId, appId, type);
     const entity = await this.prisma.client.dataEntity.findUnique({ where: { appId_type_key: { appId, type, key } } });
     if (!entity) throw new NotFoundException();
-    const page = viewPageOf(definition, type);
+    const viewed = viewPageOf(definition, type);
+    // M55: the related lists' ref filters, filled in like a list's.
+    const page = {
+      ...viewed,
+      related: await Promise.all(
+        viewed.related.map(async (r) => ({ ...r, filters: await this.withRefValues(appId, definition, r.filters) })),
+      ),
+    };
     const list = listPageOf(definition, type);
     const history = page.history
       ? (
@@ -156,7 +166,43 @@ export class AppPagesService {
       mine: (entity.mine ?? {}) as Record<string, unknown>,
       written: writtenUnder(dataType, page.form, entity.value, entity.mine),
       actions: page.actions.flatMap((action, i) => (actionApplies(action, row.value, entityValueAt) ? [i] : [])),
+      referencedBy: await this.referencedBy(appId, definition, type, key),
     };
+  }
+
+  /** M55: the entities of each type that point at this one (a ref field of theirs holding its key), counted. */
+  async referencedBy(
+    appId: string,
+    definition: AppDefinition,
+    type: string,
+    key: string,
+  ): Promise<{ type: string; label: string; count: number }[]> {
+    const found: { type: string; label: string; count: number }[] = [];
+    for (const [name, other] of Object.entries(definition.types)) {
+      const fields = Object.entries(other.fields)
+        .filter(([, f]) => f.type === "ref" && f.to === type)
+        .map(([f]) => f);
+      if (fields.length === 0) continue;
+      const rows = await this.rows(appId, definition, name);
+      const count = rows.filter((r) => !r.removedAt && fields.some((f) => text(fieldOf(r, f)) === key)).length;
+      if (count > 0) found.push({ type: name, label: listPageOf(definition, name).label, count });
+    }
+    return found;
+  }
+
+  /** M55: a ref filter's values: the entities of its type, by key, named by their title. */
+  private async withRefValues(appId: string, definition: AppDefinition, filters: PageFilter[]): Promise<PageFilter[]> {
+    return Promise.all(
+      filters.map(async (f) => {
+        if (!f.ref || !Object.hasOwn(definition.types, f.ref)) return f;
+        const title = listPageOf(definition, f.ref).title;
+        const rows = (await this.rows(appId, definition, f.ref)).filter((r) => !r.removedAt);
+        const values = rows
+          .map((r) => ({ value: r.key, label: text(fieldOf(r, title)) ?? r.key }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+        return { ...f, values };
+      }),
+    );
   }
 
   private async header(userId: string, appId: string, type: string): Promise<{ header: AppPageHeader; definition: AppDefinition }> {
@@ -181,7 +227,9 @@ function listOf(
   const page = listPageOf(definition, type);
   const counts = { current: rows.filter((r) => !r.removedAt).length, removed: rows.filter((r) => r.removedAt).length };
   for (const field of Object.keys(query.filter)) {
-    if (!page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
+    // M55: any ref field too: an entity's page lists what points at it.
+    const isRef = definition.types[type]?.fields[field]?.type === "ref";
+    if (!isRef && !page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
   }
   const q = query.q?.toLowerCase();
   const matching = rows.filter(

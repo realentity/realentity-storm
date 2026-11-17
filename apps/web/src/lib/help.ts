@@ -20,6 +20,8 @@ export const HELP = {
   fieldLabel: "Its name on the pages. Left empty, it is made from the field's name (dueDate → Due date).",
   fieldRequired: "Required: a pipeline's save without it is refused, so every entity has it.",
   fieldMine: "Mine: you set it on the entity's page; pipelines never write it (your notes, a rating, a choice of yours).",
+  fieldRef:
+    "Points at: an entity of this type, picked from a list on the form (it keeps that entity's key); its page can list what points at it (related).",
   fieldEncrypted:
     "Encrypted: kept sealed in the database like a credential, never shown again (a token, a password to send elsewhere). Pipelines see ***; only http.request sends it.",
   fieldValues: "The choices it can be, separated by commas. They are also its filter's values.",

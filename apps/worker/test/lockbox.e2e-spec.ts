@@ -174,7 +174,9 @@ describe("Lockbox sync", () => {
       project: "Acme",
       environment: "production",
       paths: ["/_deploy", "/_backend", "/api"],
-      scope: "repos/acme/api/actions",
+      destination: "repository",
+      owner: "acme",
+      repository: "api",
     };
     const runId = await runner.start(versionId, {
       trigger: "manual",

@@ -1,4 +1,5 @@
-# Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub. Its entries of the
+# Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub, at the address its
+# destination, owner, repository and environment make. Its entries of the
 # bundle's project and environment, on its paths; a name on several paths takes the value of the last path. Secrets are
 # sealed to the scope's public key (sealedBox: only GitHub opens them) and PUT; variables are created or updated. It
 # only adds and updates, never deletes. One that fails doesn't stop the others; run it again to send them.
@@ -9,6 +10,16 @@ description: A bundle's variables and secrets sent to GitHub; it never deletes.
 trigger: { on: entity.action, type: Bundle }
 policy: { allowedDomains: [api.github.com] }
 steps:
+  # GitHub's address for the bundle's destination, without /secrets or /variables.
+  - id: address
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: >-
+        destination = "organization" ? "orgs/" & owner & "/actions"
+        : destination = "environment" ? "repos/" & owner & "/" & repository & "/environments/" & githubEnvironment
+        : destination = "dependabot" ? "repos/" & owner & "/" & repository & "/dependabot"
+        : "repos/" & owner & "/" & repository & "/actions"
   - id: entries
     type: data.read
     with:
@@ -38,7 +49,7 @@ steps:
     type: http.fetch
     when: "{{secrets.items}}"
     with:
-      url: "https://api.github.com/{{trigger.item.scope}}/secrets/public-key"
+      url: "https://api.github.com/{{address.value}}/secrets/public-key"
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
   - id: putSecret
     type: http.request
@@ -46,7 +57,7 @@ steps:
     onError: continue
     with:
       method: PUT
-      url: "https://api.github.com/{{trigger.item.scope}}/secrets/{{item.name}}"
+      url: "https://api.github.com/{{address.value}}/secrets/{{item.name}}"
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
       body:
         encrypted_value: "{{item.secret | sealedBox: key.json.key}}"
@@ -59,10 +70,10 @@ steps:
     when: "{{variables.items}}"
     with:
       urls:
-        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=1"
-        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=2"
-        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=3"
-        - "https://api.github.com/{{trigger.item.scope}}/variables?per_page=30&page=4"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=1"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=2"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=3"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=4"
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
       itemsAt: variables
   - id: plan
@@ -78,7 +89,7 @@ steps:
     onError: continue
     with:
       method: POST
-      url: "https://api.github.com/{{trigger.item.scope}}/variables"
+      url: "https://api.github.com/{{address.value}}/variables"
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
       body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }
   - id: updateVariable
@@ -88,6 +99,6 @@ steps:
     onError: continue
     with:
       method: PATCH
-      url: "https://api.github.com/{{trigger.item.scope}}/variables/{{item.name}}"
+      url: "https://api.github.com/{{address.value}}/variables/{{item.name}}"
       headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
       body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }

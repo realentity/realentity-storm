@@ -109,8 +109,10 @@ export class AppPagesController {
     @Param("appId", ParseUUIDPipe) appId: string,
     @Param("type") type: string,
     @Param("key") key: string,
+    // M55: delete it although others point at it (asked first: answered 409 with what points at it).
+    @Query("force") force?: string,
   ): Promise<void> {
-    return this.actions.remove(user.userId, appId, type, key);
+    return this.actions.remove(user.userId, appId, type, key, force === "true");
   }
 
   /** M32: a list's button (no key) or an entity's; queues a run, like starting it by hand. */

@@ -1,7 +1,8 @@
-import { asFileRef, MASK, type FileRef, type FormField } from "@realentity/storm-shared";
+import { asFileRef, fieldOf, MASK, type FileRef, type FormField } from "@realentity/storm-shared";
 import { IconDeviceFloppy, IconLock, IconPaperclip, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../lib/endpoints";
+import { useLoad } from "../lib/use-load";
 import { asText } from "../lib/view";
 
 type Values = Record<string, unknown>;
@@ -34,6 +35,8 @@ export function EntityForm({
   written = {},
   reset,
   upload,
+  appId,
+  fixed = {},
 }: Readonly<{
   fields: FormField[];
   values: Values;
@@ -46,6 +49,10 @@ export function EntityForm({
   reset?: (field: string) => void;
   /** M46: uploads a file or image for a field (it is the entity's once the form is saved). */
   upload?: (field: string, file: File) => Promise<FileRef | null | undefined>;
+  /** M55: the App, for a ref field's choices (its type's entities). */
+  appId?: string;
+  /** M55: fields set already and kept (Add on a project's page: its project). */
+  fixed?: Record<string, string>;
 }>) {
   // What each file field holds, by id: the entity's files, then the ones uploaded on this form.
   const [files, setFiles] = useState<Record<string, FileRef>>(() =>
@@ -60,7 +67,9 @@ export function EntityForm({
     setFiles((f) => ({ ...f, [ref.id]: ref }));
     set(field, ref.id);
   };
-  const [initial] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.field, shown(f, values[f.field])])));
+  const [initial] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((f) => [f.field, f.field in fixed ? fixed[f.field] : shown(f, values[f.field])])),
+  );
   const [draft, setDraft] = useState<Record<string, string>>(initial);
   const set = (field: string, value: string) => setDraft((d) => ({ ...d, [field]: value }));
   // M52: encrypted fields cleared on purpose (an empty input otherwise keeps the value that is set).
@@ -75,7 +84,7 @@ export function EntityForm({
         else if (cleared.has(f.field)) typed[f.field] = null;
         continue;
       }
-      if (changedOnly && text === (initial[f.field] ?? "")) continue;
+      if (changedOnly && text === (initial[f.field] ?? "") && !(f.field in fixed)) continue;
       typed[f.field] = text === "" ? null : f.kind === "yesno" ? text === "true" : text;
     }
     submit(typed);
@@ -98,7 +107,9 @@ export function EntityForm({
             <label className={`form-label ${f.required ? "required" : ""}`} htmlFor={id}>
               {f.label}
             </label>
-            {f.encrypted ? (
+            {f.ref ? (
+              <RefSelect field={f} appId={appId} value={value} fixed={f.field in fixed} onChange={(v) => set(f.field, v)} />
+            ) : f.encrypted ? (
               <SecretInput
                 field={f}
                 value={value}
@@ -153,6 +164,7 @@ export function EntityForm({
                 {...common}
               />
             )}
+            {f.help && <div className="form-hint">{f.help}</div>}
             {f.field in written && reset && (
               <div className="form-hint d-flex flex-wrap align-items-center gap-2" data-testid={`written-${f.field}`}>
                 <span>
@@ -171,6 +183,44 @@ export function EntityForm({
         {label}
       </button>
     </form>
+  );
+}
+
+/** M55: a ref field: one of its type's entities, by title (its key is what is saved). */
+function RefSelect({
+  field,
+  appId,
+  value,
+  fixed,
+  onChange,
+}: Readonly<{ field: FormField; appId: string | undefined; value: string; fixed: boolean; onChange: (value: string) => void }>) {
+  const choices = useLoad(
+    () => (appId && field.ref ? api.apps.page(appId, field.ref, { limit: 200 }) : Promise.resolve(null)),
+    [appId, field.ref],
+  );
+  const options = (choices.data?.rows ?? [])
+    .map((r) => ({ value: r.key, label: asText(fieldOf(r, choices.data!.page.title) ?? r.key) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  // One saved before its entity went: still shown, as its key.
+  if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: value });
+  return (
+    <select
+      id={`field-${field.field}`}
+      name={field.field}
+      className="form-select"
+      value={value}
+      required={field.required}
+      disabled={fixed}
+      onChange={(e) => onChange(e.target.value)}
+      data-testid={`ref-${field.field}`}
+    >
+      <option value="">{choices.loading ? "…" : options.length ? "Choose one…" : `No ${field.ref} yet`}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

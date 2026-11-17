@@ -16,7 +16,22 @@ export const TYPE_NAME = /^[A-Z][A-Za-z0-9]{0,39}$/;
 /** A field of an entity by dotted path ("salary", "company.name"), as M27's columns. */
 export const ENTITY_FIELD = /^[A-Za-z_][\w-]{0,63}(\.[A-Za-z_][\w-]{0,63}){0,3}$/;
 
-export const FIELD_KINDS = ["text", "longtext", "number", "money", "date", "datetime", "url", "email", "yesno", "enum", "list", "file", "image"] as const;
+export const FIELD_KINDS = [
+  "text",
+  "longtext",
+  "number",
+  "money",
+  "date",
+  "datetime",
+  "url",
+  "email",
+  "yesno",
+  "enum",
+  "list",
+  "file",
+  "image",
+  "ref",
+] as const;
 export type FieldKind = (typeof FIELD_KINDS)[number];
 
 /** M46: kinds whose value is a stored file, uploaded on the form; the entity holds only its reference. */
@@ -59,6 +74,10 @@ export const EntityFieldSchema = z
     values: z.array(z.string().trim().min(1).max(60)).min(1).max(50).optional(),
     /** money: the field holding the currency code. */
     currency: z.string().regex(ENTITY_FIELD).optional(),
+    /** M55: ref: the type of this App it points at; the field holds that entity's key. */
+    to: z.string().regex(TYPE_NAME).optional(),
+    /** M55: a line under its input on the form: what to write there. */
+    help: z.string().trim().min(1).max(300).optional(),
     /**
      * M48: the key, made by Storm when an entity is added (on its list, or by a pipeline's item without it): a task or a
      * memo is named by its title, which can change. Only on a text key.
@@ -167,6 +186,8 @@ export const DataTypeSchema = z
       const at = ["fields", name];
       if (names.some((other) => other.startsWith(`${name}.`))) issue(at, `"${name}" can't be a field and hold fields too`);
       if (field.type === "enum" && !field.values) issue([...at, "values"], "an enum needs its values");
+      if (field.type === "ref" && !field.to) issue([...at, "to"], "a ref says which type it points at: to: Project");
+      if (field.type !== "ref" && field.to) issue([...at, "to"], "only a ref points at a type");
       if (field.type !== "enum" && field.values) issue([...at, "values"], "only an enum has values");
       if (field.auto && name !== type.key) issue([...at, "auto"], "only the key is made by Storm");
       if (field.encrypted) {
@@ -347,6 +368,25 @@ export const ViewPageSchema = z
       .strict()
       .optional(),
     actions: z.array(EntityAction).max(6).default([]),
+    /**
+     * M55: the entities pointing at this one (a ref field of theirs, `by`), listed on its page; `add`: one added there,
+     * `by` set to this one.
+     */
+    related: z
+      .array(
+        z
+          .object({
+            type: z.string().regex(TYPE_NAME),
+            by: z.string().regex(ENTITY_FIELD),
+            label: z.string().trim().min(1).max(40).optional(),
+            columns: z.array(z.string().regex(ENTITY_FIELD)).min(1).max(8).optional(),
+            filters: z.array(z.string().regex(ENTITY_FIELD)).max(4).optional(),
+            add: z.boolean().default(false),
+          })
+          .strict(),
+      )
+      .max(4)
+      .optional(),
   })
   .strict();
 export type ViewPage = z.output<typeof ViewPageSchema>;
@@ -384,13 +424,24 @@ export const AppDefinitionSchema = z
   .superRefine((app, ctx) => checkPages(app, (path, message) => ctx.addIssue({ code: "custom", path, message })));
 export type AppDefinition = z.output<typeof AppDefinitionSchema>;
 
-const FILTER_KINDS: readonly FieldKind[] = ["enum", "yesno"];
+const FILTER_KINDS: readonly FieldKind[] = ["enum", "yesno", "ref"];
 const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", "enum"];
 const TOTAL_KINDS: readonly FieldKind[] = ["number", "money"];
 const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
 
 /** Pages only on the App's types, and only on their fields, each used as its kind allows. */
-function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, issue: (path: (string | number)[], message: string) => void): void {
+function checkPages(
+  app: { types: Record<string, DataType>; pages: AppPage[] },
+  issue: (path: (string | number)[], message: string) => void,
+): void {
+  // M55: a ref points at a type of this App.
+  for (const [typeName, type] of Object.entries(app.types)) {
+    for (const [name, field] of Object.entries(type.fields)) {
+      if (field.type === "ref" && field.to && !Object.hasOwn(app.types, field.to)) {
+        issue(["types", typeName, "fields", name, "to"], `there is no type "${field.to}" (types: ${Object.keys(app.types).join(", ")})`);
+      }
+    }
+  }
   // A field of mine required: only on a type added by hand (M47: a Monitor's address), where the form makes it;
   // pipelines write the others first, without it.
   for (const [typeName, type] of Object.entries(app.types)) {
@@ -455,7 +506,7 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
         for (const name of Object.keys(c.due?.unless ?? {})) field(name, [...at, "columns", j, "due", "unless", name]);
       });
       if (page.moves && !type.stages) issue([...at, "moves"], `${typeName} has no stages to move`);
-      page.filters?.forEach((f, j) => field(f, [...at, "filters", j], FILTER_KINDS, "a filter is an enum or a yes/no field"));
+      page.filters?.forEach((f, j) => field(f, [...at, "filters", j], FILTER_KINDS, "a filter is an enum, a yes/no or a ref field"));
       page.search?.forEach((f, j) => {
         field(f, [...at, "search", j], SEARCH_KINDS, "search looks in text fields");
         if (type.fields[f]?.encrypted) issue([...at, "search", j], `${typeName}.${f} is encrypted: it can't be searched`);
@@ -470,6 +521,26 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
         });
       }
     } else if ("view" in page) {
+      // M55: what points at this type, by one of its ref fields; its columns and filters as a list's.
+      page.related?.forEach((related, j) => {
+        const where = [...at, "related", j];
+        const other = Object.hasOwn(app.types, related.type) ? app.types[related.type] : undefined;
+        if (!other) return issue([...where, "type"], `there is no type "${related.type}"`);
+        const by = other.fields[related.by];
+        if (by?.type !== "ref" || by.to !== typeName) issue([...where, "by"], `${related.type}.${related.by} isn't a ref to ${typeName}`);
+        related.columns?.forEach((c, k) => {
+          if (!other.fields[c]) issue([...where, "columns", k], `${related.type} has no field "${c}"`);
+          else if (other.fields[c].encrypted) issue([...where, "columns", k], `${related.type}.${c} is encrypted: it can't be a column`);
+        });
+        related.filters?.forEach((f, k) => {
+          const kind = other.fields[f]?.type;
+          if (!kind) issue([...where, "filters", k], `${related.type} has no field "${f}"`);
+          else if (!FILTER_KINDS.includes(kind))
+            issue([...where, "filters", k], `a filter is an enum, a yes/no or a ref field: "${f}" is ${kind}`);
+        });
+        if (related.add && !addedByHand(app, related.type))
+          issue([...where, "add"], `${related.type} isn't added by hand (a type of mine, or add: true on its list)`);
+      });
       page.fields?.forEach((f, j) => field(f, [...at, "fields", j]));
       page.sections?.forEach((section, j) => section.fields.forEach((f, k) => field(f, [...at, "sections", j, "fields", k])));
       if (page.fields && page.sections) issue([...at, "sections"], "fields or sections, not both");
@@ -587,6 +658,9 @@ export function fieldValue(field: EntityField, value: unknown): { ok: true; valu
         : { ok: false, problem: `isn't one of ${field.values?.join(", ")}` };
     case "list":
       return Array.isArray(value) ? { ok: true, value: value.slice(0, 200) } : { ok: false, problem: "isn't a list" };
+    // M55: the key of an entity of its type (the api checks that it is one).
+    case "ref":
+      return text !== null && text !== "" ? { ok: true, value: text.slice(0, 1000) } : { ok: false, problem: "isn't one to point at" };
     case "file":
     case "image": {
       // The api swaps the id for the stored file's reference, once it knows the file is this field's.

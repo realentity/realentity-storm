@@ -183,8 +183,16 @@ types:
 ```
 
 - **Kinds:** `text`, `longtext`, `number`, `money` (with `currency`: the field holding its code), `date`,
-  `datetime`, `url` (http(s) only), `email`, `yesno`, `enum` (with `values`), `list`, `file`, `image`. A field may
-  be nested by a dotted name (`company.name`).
+  `datetime`, `url` (http(s) only), `email`, `yesno`, `enum` (with `values`), `list`, `file`, `image`, `ref` (with
+  `to`, M55). A field may be nested by a dotted name (`company.name`). `help` (any field) is a line under its input on
+  the form: what to write there.
+- **References (M55):** `project: { type: ref, to: Project }` points at an entity of another type of the App: its form
+  picks one from a list (by title), it holds that entity's key (`{{item.project}}` is the key), and a list can filter
+  by it (`filters: [project]`, its choices the Projects). Only one that is there is saved. Deleting an entity others
+  point at says how many first; they keep its key.
+- **Related lists (M55):** a view page's `related: [{ type: Entry, by: project, label, columns, filters, add: true }]`
+  lists on a Project's page the Entries whose `project` is that Project, with their own filters; `add` adds one there,
+  its `project` set and kept.
 - **Files and images (M46):** uploaded on the entity's form (up to `DOWNLOAD_MAX_MB`), checked by their content: an
   `image` is a PNG, JPEG, WebP or GIF (never SVG) and gets a thumbnail, shown in lists and on its page; a `file` is
   also a PDF, an office document (DOCX, XLSX, ODT, ODS) or text (TXT, MD, CSV), a download. The entity holds
