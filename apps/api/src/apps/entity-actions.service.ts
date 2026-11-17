@@ -1,3 +1,4 @@
+import { KeyRing, sealField } from "@realentity/storm-crypto";
 import { type DataEntity, type Prisma } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
@@ -8,6 +9,9 @@ import {
   canMove,
   canonicalJson,
   checkFormValues,
+  comparableSealed,
+  encryptedFields,
+  sealedAt,
   entityItem,
   entityValueAt,
   FILE_KINDS,
@@ -51,6 +55,7 @@ export class EntityActionsService {
     private readonly queue: JobQueue,
     private readonly runs: RunsService,
     private readonly files: AppFilesService,
+    private readonly keys: KeyRing,
   ) {}
 
   /**
@@ -61,7 +66,13 @@ export class EntityActionsService {
     const { app, type } = await this.app(userId, appId, typeName);
     const entity = await this.entity(appId, typeName, key);
     const allowed = viewPageOf(app, typeName).form.map((f) => f.field);
-    const checked = await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type));
+    const checked = this.sealed(
+      appId,
+      typeName,
+      key,
+      type,
+      await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type)),
+    );
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
       if (value === null) delete mine[field];
@@ -76,7 +87,9 @@ export class EntityActionsService {
     await this.files.release(appId, typeName, key, entity.value, mine);
     const after = this.item(type, { ...entity, mine: mine as Prisma.JsonObject });
     const changed = Object.keys(checked).filter(
-      (f) => canonicalJson(entityValueAt(before, f) ?? null) !== canonicalJson(entityValueAt(after, f) ?? null),
+      (f) =>
+        canonicalJson(comparableSealed(entityValueAt(before, f) ?? null)) !==
+        canonicalJson(comparableSealed(entityValueAt(after, f) ?? null)),
     );
     if (changed.length > 0) await this.tell(userId, appId, app, typeName, key, after, before, changed, null);
   }
@@ -135,7 +148,7 @@ export class EntityActionsService {
     const now = new Date();
     const existing = await this.prisma.client.dataEntity.findUnique({ where: { appId_type_key: { appId, type: typeName, key } } });
     if (existing) throw new ConflictException(`There is already a ${typeName} "${key}"`);
-    checked = await this.files.attach(appId, typeName, key, checked, fileFields(type));
+    checked = this.sealed(appId, typeName, key, type, await this.files.attach(appId, typeName, key, checked, fileFields(type)));
     const mine = Object.fromEntries(Object.entries(checked).filter(([name, value]) => name !== type.key && value !== null));
     const created = await this.prisma.client.dataEntity.create({
       data: {
@@ -236,6 +249,16 @@ export class EntityActionsService {
       });
     }
     return checked;
+  }
+
+  /** M52: an encrypted field's text sealed for this entity: the api seals, never opens (docs/design.md §7). */
+  private sealed(appId: string, typeName: string, key: string, type: DataType, values: Item): Item {
+    const out = { ...values };
+    for (const field of encryptedFields(type)) {
+      const value = out[field];
+      if (typeof value === "string") out[field] = sealField(this.keys, sealedAt(appId, typeName, key, field), value);
+    }
+    return out;
   }
 
   private item(type: DataType, entity: Pick<DataEntity, "value" | "mine" | "stage">): Item {

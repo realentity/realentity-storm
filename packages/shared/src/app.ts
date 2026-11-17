@@ -1,6 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { NeedsSchema } from "./needs";
 import { z } from "zod";
+import { holdsSealed, isSealed } from "./sealed";
 import { safeLink, VIEW_ICONS } from "./view";
 
 /**
@@ -63,9 +64,25 @@ export const EntityFieldSchema = z
      * memo is named by its title, which can change. Only on a text key.
      */
     auto: z.boolean().optional(),
+    /**
+     * M52: a secret the App keeps (a token, a password to send elsewhere). Sealed in the database like a credential
+     * (docs/design.md §7), never shown on a form, page or list; a pipeline holds it as a handle that prints `***`, opened
+     * only by the worker as an `http.request` sends it. Only on a text or longtext field that names nothing.
+     */
+    encrypted: z.boolean().optional(),
   })
   .strict();
 export type EntityField = z.output<typeof EntityFieldSchema>;
+
+/** M52: kinds a field may be encrypted on. */
+export const ENCRYPTABLE_KINDS: readonly FieldKind[] = ["text", "longtext"];
+
+/** M52: the type's encrypted fields, by name. */
+export function encryptedFields(type: Pick<DataType, "fields">): string[] {
+  return Object.entries(type.fields)
+    .filter(([, field]) => field.encrypted === true)
+    .map(([name]) => name);
+}
 
 /** M48: a key Storm makes (an `auto` key): 12 lowercase letters and digits. */
 export function newKey(): string {
@@ -152,6 +169,15 @@ export const DataTypeSchema = z
       if (field.type === "enum" && !field.values) issue([...at, "values"], "an enum needs its values");
       if (field.type !== "enum" && field.values) issue([...at, "values"], "only an enum has values");
       if (field.auto && name !== type.key) issue([...at, "auto"], "only the key is made by Storm");
+      if (field.encrypted) {
+        if (name.includes(".")) issue([...at, "encrypted"], "an encrypted field isn't nested: write it as one name");
+        if (!ENCRYPTABLE_KINDS.includes(field.type))
+          issue([...at, "encrypted"], `only text and longtext can be encrypted, not ${field.type}`);
+        if (name === type.key) issue([...at, "encrypted"], "the key names the entity, so it can't be encrypted");
+        if (name === type.title) issue([...at, "encrypted"], "the title is shown, so it can't be encrypted");
+        if (Object.values(type.fields).some((other) => other.currency === name))
+          issue([...at, "encrypted"], "a currency is shown, so it can't be encrypted");
+      }
       if (field.currency !== undefined) {
         if (field.type !== "money") issue([...at, "currency"], "only money has a currency");
         else if (type.fields[field.currency]?.type !== "text")
@@ -391,6 +417,11 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
       if (!kind) issue(path, `${typeName} has no field "${name}"`);
       else if (kinds && !kinds.includes(kind)) issue(path, `${what}: "${name}" is ${kind}`);
     };
+    // M52: an encrypted field is never shown in a list nor used to find, sort or group one: only on its page and form.
+    const shown = (name: string, path: (string | number)[], where: string) => {
+      field(name, path);
+      if (type.fields[name]?.encrypted) issue(path, `${typeName}.${name} is encrypted: it can't be ${where}`);
+    };
     const key = `${kind}:${typeName}`;
     if (seen.has(key)) issue(at, `${typeName} already has a ${kind} page`);
     seen.add(key);
@@ -400,7 +431,7 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
       if (labels.has(action.label)) issue([...at, "actions", j, "label"], `"${action.label}" is used by an earlier button`);
       labels.add(action.label);
       const when = "when" in action ? (action as EntityActionDef).when : undefined;
-      for (const name of Object.keys(when ?? {})) field(name, [...at, "actions", j, "when", name]);
+      for (const name of Object.keys(when ?? {})) shown(name, [...at, "actions", j, "when", name], "a button's condition");
     });
     if ("form" in page) {
       for (const [j, name] of (page.fields ?? []).entries()) {
@@ -418,16 +449,20 @@ function checkPages(app: { types: Record<string, DataType>; pages: AppPage[] }, 
         for (const [name] of missing) issue([...at, "add"], `${typeName}.${name} is required: put it on ${typeName}'s form to add one by hand`);
       }
       page.columns?.forEach((c, j) => {
-        if (typeof c === "string") return field(c, [...at, "columns", j]);
+        if (typeof c === "string") return shown(c, [...at, "columns", j], "a column");
         field(c.field, [...at, "columns", j], c.due ? PERIOD_KINDS : undefined, "a due badge is on a date field");
+        if (type.fields[c.field]?.encrypted) issue([...at, "columns", j], `${typeName}.${c.field} is encrypted: it can't be a column`);
         for (const name of Object.keys(c.due?.unless ?? {})) field(name, [...at, "columns", j, "due", "unless", name]);
       });
       if (page.moves && !type.stages) issue([...at, "moves"], `${typeName} has no stages to move`);
       page.filters?.forEach((f, j) => field(f, [...at, "filters", j], FILTER_KINDS, "a filter is an enum or a yes/no field"));
-      page.search?.forEach((f, j) => field(f, [...at, "search", j], SEARCH_KINDS, "search looks in text fields"));
-      if (page.sort) field(page.sort.replace(/^-/, ""), [...at, "sort"]);
+      page.search?.forEach((f, j) => {
+        field(f, [...at, "search", j], SEARCH_KINDS, "search looks in text fields");
+        if (type.fields[f]?.encrypted) issue([...at, "search", j], `${typeName}.${f} is encrypted: it can't be searched`);
+      });
+      if (page.sort) shown(page.sort.replace(/^-/, ""), [...at, "sort"], "sorted by");
       if (page.group) {
-        field(page.group.by, [...at, "group", "by"]);
+        shown(page.group.by, [...at, "group", "by"], "grouped by");
         if (page.group.period) field(page.group.by, [...at, "group", "period"], PERIOD_KINDS, "a period groups a date field");
         page.group.totals.forEach((t, j) => {
           field(typeof t === "string" ? t : t.field, [...at, "group", "totals", j], TOTAL_KINDS, "a total is a number or money field");
@@ -508,13 +543,21 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A value as the field's kind, or why it isn't one. Text that holds a number or a date is read as one. */
 export function fieldValue(field: EntityField, value: unknown): { ok: true; value: unknown } | { ok: false; problem: string } {
+  // M52: a sealed value goes only into an encrypted field, as it is (data.save seals it for its entity).
+  if (holdsSealed(value))
+    return field.encrypted && isSealed(value)
+      ? { ok: true, value }
+      : { ok: false, problem: "is an encrypted value: only an encrypted field keeps it" };
   const text = typeof value === "string" ? value.trim() : typeof value === "number" && Number.isFinite(value) ? String(value) : null;
   switch (field.type) {
     case "text":
-    case "longtext":
-      return text !== null
-        ? { ok: true, value: text.slice(0, field.type === "text" ? 1000 : 50_000) }
-        : { ok: false, problem: "isn't text" };
+    case "longtext": {
+      if (text === null) return { ok: false, problem: "isn't text" };
+      const max = field.type === "text" ? 1000 : 50_000;
+      // M52: a secret cut short would be a wrong one: said, never cut.
+      if (field.encrypted && text.length > max) return { ok: false, problem: `is longer than ${max} characters${field.type === "text" ? " (a longtext takes more)" : ""}` };
+      return { ok: true, value: text.slice(0, max) };
+    }
     case "number":
     case "money": {
       const number = typeof value === "number" ? value : text !== null && text !== "" ? Number(text.replace(/[\s,](?=\d{3}\b)/g, "")) : NaN;
@@ -626,6 +669,13 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
       deleteAt(value, name);
       problems.push(`${name} ${checked.problem}`);
       if (field.required || name === type.key) rejected = true;
+    }
+  }
+  // M52: a sealed value under a field the type doesn't name isn't kept.
+  for (const name of Object.keys(value)) {
+    if (!(name in type.fields) && !Object.keys(type.fields).some((f) => f.startsWith(`${name}.`)) && holdsSealed(value[name])) {
+      delete value[name];
+      problems.push(`${name} is an encrypted value: only an encrypted field keeps it`);
     }
   }
   const keyValue = entityValueAt(value, type.key);

@@ -1,5 +1,6 @@
-import { type KeyRing, rewrap } from "@realentity/storm-crypto";
-import { type PrismaClient } from "@realentity/storm-db";
+import { type KeyRing, rewrap, rewrapField } from "@realentity/storm-crypto";
+import { type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { isSealed } from "@realentity/storm-shared";
 
 export interface RotationResult {
   rewrapped: number;
@@ -10,7 +11,8 @@ export interface RotationResult {
 }
 
 /**
- * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens, email account passwords) to the current root key version
+ * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens, email account passwords, App entities'
+ * encrypted fields) to the current root key version
  * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
  * only if its version is still the old one.
  */
@@ -83,6 +85,50 @@ export class KeyRotation {
       else skipped++;
     }
 
+    // M52: App entities' encrypted fields (AAD: where each belongs), in what pipelines wrote and in what I set.
+    let lastEntity: string | undefined;
+    for (;;) {
+      const batch = await this.prisma.dataEntity.findMany({
+        where: lastEntity ? { dataEntityId: { gt: lastEntity } } : {},
+        select: { dataEntityId: true, value: true, mine: true },
+        orderBy: { dataEntityId: "asc" },
+        take: KeyRotation.BATCH,
+      });
+      if (batch.length === 0) break;
+      for (const row of batch) {
+        const [value, mine] = [this.rewrapFields(row.value, toVersion, fromVersions), this.rewrapFields(row.mine, toVersion, fromVersions)];
+        if (value.count + mine.count === 0) continue;
+        // Only if nobody changed it meanwhile (a pipeline's save, my edit): else it is retried next run.
+        const { count } = await this.prisma.dataEntity.updateMany({
+          where: {
+            dataEntityId: row.dataEntityId,
+            value: { equals: row.value as Prisma.InputJsonValue },
+            mine: { equals: row.mine as Prisma.InputJsonValue },
+          },
+          data: { value: value.json, mine: mine.json },
+        });
+        if (count === 1) rewrapped += value.count + mine.count;
+        else skipped += value.count + mine.count;
+      }
+      lastEntity = batch[batch.length - 1]?.dataEntityId;
+    }
+
     return { rewrapped, skipped, fromVersions: [...fromVersions].sort((a, b) => a - b), toVersion };
+  }
+
+  private rewrapFields(
+    json: Prisma.JsonValue,
+    toVersion: number,
+    fromVersions: Set<number>,
+  ): { json: Prisma.InputJsonObject; count: number } {
+    const out: Record<string, unknown> = { ...((json ?? {}) as Prisma.JsonObject) };
+    let count = 0;
+    for (const [field, value] of Object.entries(out)) {
+      if (!isSealed(value) || value.$sealed.keyVersion === toVersion) continue;
+      fromVersions.add(value.$sealed.keyVersion);
+      out[field] = rewrapField(this.keys, value, toVersion);
+      count++;
+    }
+    return { json: out as Prisma.InputJsonObject, count };
   }
 }

@@ -1,5 +1,6 @@
-import { type KeyRing, open } from "@realentity/storm-crypto";
-import { type PrismaClient } from "@realentity/storm-db";
+import { type KeyRing, open, openField } from "@realentity/storm-crypto";
+import { type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { isSealed } from "@realentity/storm-shared";
 
 export interface CredentialCheck {
   ok: string[];
@@ -28,5 +29,21 @@ export async function checkCredentials(prisma: PrismaClient, keys: KeyRing): Pro
       result.failed.push({ name: `email ${row.address}`, keyVersion: row.keyVersion });
     }
   }
+  // M52: App entities' encrypted fields, by where they are (never their values).
+  let opened = 0;
+  for (const row of await prisma.dataEntity.findMany({ select: { type: true, key: true, value: true, mine: true } })) {
+    for (const json of [row.value, row.mine]) {
+      for (const [field, value] of Object.entries((json ?? {}) as Prisma.JsonObject)) {
+        if (!isSealed(value)) continue;
+        try {
+          openField(keys, value);
+          opened++;
+        } catch {
+          result.failed.push({ name: `${row.type} ${row.key}: ${field}`, keyVersion: value.$sealed.keyVersion });
+        }
+      }
+    }
+  }
+  if (opened > 0) result.ok.push(`${opened} encrypted field${opened === 1 ? "" : "s"}`);
   return result;
 }

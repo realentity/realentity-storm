@@ -8,7 +8,7 @@ export default [
     rules: {
       "no-restricted-imports": [
         "error",
-        { paths: [{ name: "@realentity/storm-crypto", importNames: ["open", "rewrap"], message: "Only the worker decrypts credentials (docs/design.md §7)." }] },
+        { paths: [{ name: "@realentity/storm-crypto", importNames: ["open", "rewrap", "openField", "rewrapField"], message: "Only the worker decrypts credentials and encrypted fields (docs/design.md §7)." }] },
       ],
     },
   },

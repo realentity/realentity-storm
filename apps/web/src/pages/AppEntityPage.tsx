@@ -30,6 +30,8 @@ export function AppEntityPage() {
   );
   const [shown, setShown] = useState<AppEntityView | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // M52: each save starts the form again: a replaced secret is *** before and after, so its values alone don't say so.
+  const [saves, setSaves] = useState(0);
   const action = useAction();
   const data = shown?.row.key === loaded.data?.row.key && shown ? shown : loaded.data;
   if (!data) return loaded.error ? <ErrorAlert error={loaded.error} /> : <Loading />;
@@ -42,6 +44,7 @@ export function AppEntityPage() {
     const saved = await action.run(() => api.apps.saveValues(appId, type, key, values));
     if (saved) {
       setShown(saved);
+      setSaves((n) => n + 1);
       toast.success(done);
     }
   };
@@ -126,7 +129,7 @@ export function AppEntityPage() {
               </div>
               <div className="card-body">
                 <EntityForm
-                  key={JSON.stringify([data.mine, data.written])}
+                  key={JSON.stringify([data.mine, data.written, saves])}
                   fields={page.form}
                   values={formValues}
                   changedOnly

@@ -1,6 +1,6 @@
-import { type KeyRing, open } from "@realentity/storm-crypto";
+import { type KeyRing, open, openField, sameField, sealField } from "@realentity/storm-crypto";
 import { type PrismaClient } from "@realentity/storm-db";
-import { databaseHost, hostMatches } from "@realentity/storm-shared";
+import { databaseHost, hostMatches, isSealed, type SealedValue } from "@realentity/storm-shared";
 
 /** M50: a slot no credential is bound to (or one that is gone). */
 export class CredentialNotFoundError extends Error {
@@ -92,6 +92,26 @@ export class CredentialVault {
     if (!hostMatches(host, row.allowedHosts)) throw new CredentialHostMismatchError(name, host);
     await this.prisma.credential.update({ where: { credentialId: row.credentialId }, data: { lastUsedAt: new Date() } });
     return { username: row.username, secret };
+  }
+
+  /**
+   * M52: an encrypted field's value sealed for where it belongs (`at`). Given a value already sealed: kept when it
+   * belongs there, else opened and sealed again for there (data.save moving it to another entity). `held`: what the
+   * entity holds now, kept when it is the same value, so a save that changes nothing doesn't look like a change.
+   */
+  sealFor(at: string, value: string | SealedValue, held?: unknown): SealedValue {
+    if (isSealed(value) && value.$sealed.at === at) return value;
+    const text = isSealed(value) ? openField(this.keys, value) : value;
+    if (isSealed(held) && held.$sealed.at === at && sameField(this.keys, held, text)) return held;
+    return sealField(this.keys, at, text);
+  }
+
+  /**
+   * M52: an encrypted field's value, opened as a request sends it (http.request, through the run's values). Never to be
+   * logged, persisted or given to the LLM.
+   */
+  openSealed(value: SealedValue): string {
+    return openField(this.keys, value);
   }
 
   private async bound(asker: CredentialAsker, slot: string) {

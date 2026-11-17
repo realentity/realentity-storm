@@ -1,6 +1,23 @@
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { attachFiles, releaseFiles } from "@realentity/storm-files";
-import { addedByHand, canMove, canonicalJson, checkEntity, entityItem, FILE_KINDS, fileRefId, readAppSource, type AppDefinition, type DataType } from "@realentity/storm-shared";
+import {
+  addedByHand,
+  canMove,
+  canonicalJson,
+  checkEntity,
+  comparableSealed,
+  encryptedFields,
+  entityItem,
+  FILE_KINDS,
+  fileRefId,
+  inPlace,
+  readAppSource,
+  sealedAt,
+  type AppDefinition,
+  type DataType,
+  type SealedValue,
+} from "@realentity/storm-shared";
+import { type CredentialVault } from "../secrets/credential-vault";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { matchesAll, valueAt, type Condition } from "./conditions";
 import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
@@ -54,6 +71,8 @@ export async function saveEntities(
   { items, type: typeName, fields, complete, stage: everyStage }: SaveEntitiesInput,
   context: StepContext,
   filesRoot?: string,
+  /** M52: seals encrypted fields; without it, an item giving one isn't saved. */
+  vault?: CredentialVault,
 ): Promise<unknown> {
   const { appId, app, type } = await appType(prisma, context, typeName);
   if (type.mine) throw new Error(`${typeName} is a type of mine: pipelines read it, only the user writes it`);
@@ -119,6 +138,17 @@ export async function saveEntities(
         invalid.push({ key, saved: true, problems: [`${name} isn't a file file.keep kept for ${typeName}.${name}`] });
       }
     }
+    // M52: an encrypted field sealed for this entity; a save without it keeps the one there, as a file field.
+    for (const name of encryptedFields(type)) {
+      const given = value[name];
+      const held = old ? (old.value as Item)[name] : undefined;
+      if (given === undefined) {
+        if (held !== undefined && held !== null) value[name] = held;
+        continue;
+      }
+      if (!vault) throw new Error(`${typeName}.${name} is encrypted, and this worker has no key to seal it`);
+      value[name] = vault.sealFor(sealedAt(appId, typeName, key, name), given as string | SealedValue, held);
+    }
     const isNew = !old || old.removedAt !== null;
     const current = stages ? (old?.stage ?? stages.initial) : null;
     let stage = current;
@@ -140,7 +170,7 @@ export async function saveEntities(
     const previous = entityItem(old.value, old.mine, stageOf(type, old.stage));
     const compared = fields ?? [...new Set([...Object.keys(type.fields), ...Object.keys(old.value as Item), ...Object.keys(value)])];
     const differs = [...compared, ...(move && stages && !compared.includes(stages.field) ? [stages.field] : [])].filter(
-      (f) => canonicalJson(valueAt(previous, f) ?? null) !== canonicalJson(valueAt(item, f) ?? null),
+      (f) => canonicalJson(comparableSealed(valueAt(previous, f) ?? null)) !== canonicalJson(comparableSealed(valueAt(item, f) ?? null)),
     );
     if (differs.length === 0) continue;
     changed.push({
@@ -213,7 +243,14 @@ export class ReadStep implements StepExecutor {
       orderBy: { firstSeenAt: "desc" },
       take: READ_MAX,
     });
-    let entities = rows.map((row) => ({ row, item: entityItem(row.value, row.mine, stageOf(type, row.stage)) }));
+    // M52: an encrypted field as its sealed value (a handle), only when it is this entity's.
+    const sealed = encryptedFields(type);
+    let entities = rows.map((row) => ({
+      row,
+      item: inPlace(entityItem(row.value, row.mine, stageOf(type, row.stage)), sealed, (field) =>
+        sealedAt(appId, typeName, row.key, field),
+      ),
+    }));
     if (where) entities = entities.filter(({ item }) => matchesAll(item, where));
     if (sort) {
       const by = sort.replace(/^-/, "");

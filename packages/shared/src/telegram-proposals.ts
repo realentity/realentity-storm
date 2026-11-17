@@ -1,3 +1,4 @@
+import { maskSealed } from "./sealed";
 import { TELEGRAM_MAX_TEXT, type TelegramButton, type TelegramMessage } from "./telegram";
 
 /**
@@ -41,7 +42,8 @@ export function hashMatches(payloadHash: string, shown: string): boolean {
 
 /** The message for a proposal waiting for the user; `approvals: false` (the setting) leaves only Open. */
 export function proposalMessage(proposal: ProposalForTelegram, options: { approvals: boolean; appOrigin?: string }): TelegramMessage {
-  const payload = shownText(proposal);
+  // M52: an encrypted field's sealed value as ***.
+  const payload = shownText({ ...proposal, payload: maskSealed(proposal.payload) });
   const complete = payload.length <= MAX_PAYLOAD_TEXT;
   const item = proposal.itemIndex === null ? "" : ` (item ${proposal.itemIndex + 1})`;
   const header =

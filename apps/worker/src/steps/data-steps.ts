@@ -1,6 +1,7 @@
 import { type JobPosting, type JobPostingStatus, type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { canonicalJson } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
+import { type CredentialVault } from "../secrets/credential-vault";
 import { matchesAll, valueAt, type Condition } from "./conditions";
 import { appType, saveEntities } from "./entity-steps";
 
@@ -83,6 +84,8 @@ export class SaveStep implements StepExecutor {
     private readonly prisma: PrismaClient,
     /** M46: where an App's files are, for file fields; without it, a file in an item is left out. */
     private readonly filesRoot?: string,
+    /** M52: seals an App's encrypted fields. */
+    private readonly vault?: CredentialVault,
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
@@ -94,7 +97,7 @@ export class SaveStep implements StepExecutor {
   }
 
   private async save(save: SaveInput, context: StepContext): Promise<unknown> {
-    if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context, this.filesRoot);
+    if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context, this.filesRoot, this.vault);
     if (save.collection) return this.intoCollection(save, save.collection, context);
     const { items, status } = save;
     const postings = items.map(posting).filter((p) => p !== null);

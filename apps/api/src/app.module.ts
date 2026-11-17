@@ -1,5 +1,5 @@
 import { Global, Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module";
 import { BillsModule } from "./bills/bills.module";
@@ -29,6 +29,7 @@ import { RunsModule } from "./runs/runs.module";
 import { AppsModule } from "./apps/apps.module";
 import { StepsModule } from "./steps/steps.module";
 import { ViewsModule } from "./views/views.module";
+import { MaskSealedInterceptor } from "./mask-sealed.interceptor";
 
 @Global()
 @Module({
@@ -68,6 +69,10 @@ export class CoreModule {}
     ViewsModule,
     AppsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // M52: no answer carries an encrypted field's sealed value, whichever endpoint reads it.
+    { provide: APP_INTERCEPTOR, useClass: MaskSealedInterceptor },
+  ],
 })
 export class AppModule {}
