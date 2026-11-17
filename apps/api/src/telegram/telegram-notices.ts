@@ -83,11 +83,48 @@ export class TelegramNotices {
     if (!this.configured) return;
     const proposal = await this.prisma.client.proposal.findUnique({ where: { proposalId }, include: TELEGRAM_PROPOSAL_INCLUDE });
     if (proposal?.telegramMessageId == null) return;
+    // M53: a batch's message stays: its Approve all refuses now that the batch changed, and says to open the inbox.
+    const sharing = await this.prisma.client.proposal.count({
+      where: { runId: proposal.runId, telegramMessageId: proposal.telegramMessageId },
+    });
+    if (sharing > 1) return;
     await editTelegramMessage(
       this.config,
       proposal.telegramMessageId,
       decidedMessage(forTelegram(proposal, await telegramSenders(this.prisma.client, [proposal])), outcome),
       this.send,
     ).catch((error: Error) => this.logger.warn(`Telegram message of proposal ${proposalId} not updated: ${error.message}`));
+  }
+
+  /** M53: a batch decided at once: each message it was told in says so once ("✅ 23 approved, ✖ 2 rejected in Telegram"). */
+  async decidedBatch(proposalIds: readonly string[], approved: ReadonlySet<string>, via: string): Promise<void> {
+    if (!this.configured) return;
+    const proposals = await this.prisma.client.proposal.findMany({
+      where: { proposalId: { in: [...proposalIds] } },
+      include: TELEGRAM_PROPOSAL_INCLUDE,
+    });
+    const byMessage = new Map<number, typeof proposals>();
+    for (const p of proposals)
+      if (p.telegramMessageId != null) byMessage.set(p.telegramMessageId, [...(byMessage.get(p.telegramMessageId) ?? []), p]);
+    for (const [messageId, group] of byMessage) {
+      if (group.length === 1) {
+        await this.decided(group[0].proposalId, approved.has(group[0].proposalId) ? `✅ Approved in ${via}` : `✖ Rejected in ${via}`);
+        continue;
+      }
+      const yes = group.filter((p) => approved.has(p.proposalId)).length;
+      const outcome = [yes && `✅ ${yes} approved`, group.length - yes && `✖ ${group.length - yes} rejected`].filter(Boolean).join(", ");
+      const pipeline = group[0].run.pipelineVersion.pipeline.name;
+      await editTelegramMessage(
+        this.config,
+        messageId,
+        {
+          text: `${outcome} in ${via}
+
+Storm · ${pipeline}: ${group.length} × ${group[0].stepKey}`,
+          buttons: [],
+        },
+        this.send,
+      ).catch((error: Error) => this.logger.warn(`Telegram message of a batch not updated: ${error.message}`));
+    }
   }
 }

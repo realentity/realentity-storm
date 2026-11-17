@@ -111,3 +111,25 @@ test.describe("proposals", () => {
     await expect(page.getByTestId("run-status")).toContainText(/done|skipped/);
   });
 });
+
+// M53-E1: a forEach's proposals as one card in the inbox: untick one, approve the rest at once
+test("a batch in the inbox: one unticked is rejected, the others approved at once", async ({ page }) => {
+  const name = unique("Batch replies");
+  const pipeline = await createPipeline(page, REPLIES(name));
+  const run = await startRun(page, pipeline.pipelineId);
+
+  await page.goto("/inbox");
+  const batch = page.getByTestId("batch").filter({ hasText: name });
+  await expect(batch.getByTestId("batch-item")).toHaveCount(2, { timeout: 20_000 });
+  await expect(batch).toContainText("2 waiting");
+  await expect(batch.getByTestId("batch-approve")).toHaveText(/Approve 2/);
+  await batch.getByLabel("Approve #2").uncheck();
+  await expect(batch.getByTestId("batch-approve")).toHaveText(/Approve 1, reject 1/);
+  await batch.getByTestId("batch-approve").click();
+  await expect(batch).toHaveCount(0);
+
+  await page.goto(`/runs/${run.runId}`);
+  await expect(page.getByTestId("run-status")).toContainText("done", { timeout: 20_000 });
+  await expect(stepRow(page, "test.send", 1)).toContainText("done");
+  await expect(stepRow(page, "test.send", 2)).toContainText("skipped");
+});

@@ -5,6 +5,8 @@ import {
   canonicalJson,
   unmaskEdit,
   type ApproveProposalRequest,
+  type BatchDecisionView,
+  type DecideBatchRequest,
   type CompiledDefinition,
   type ProposalStatusName,
   type ProposalView,
@@ -84,6 +86,64 @@ export class ProposalsService {
     await this.decide(proposal, { proposal: { status: "REJECTED" }, decision: { kind: "REJECTED", reason: reason ?? null } });
     await this.telegram.decided(proposalId, `✖ Rejected in ${via}`);
     return this.get(userId, proposalId);
+  }
+
+  /**
+   * M53: a batch at once: proposals of one gate step of one run, each approved unedited (as approve() without an edit)
+   * or rejected. All or none: one already decided, or of another run or step, refuses the whole batch. The run is queued
+   * once.
+   */
+  async decideBatch(userId: string, body: DecideBatchRequest, via: Via = "the app"): Promise<BatchDecisionView> {
+    if (body.approve.length > 0) await this.controls.assertNotPaused(userId);
+    const ids = [...body.approve, ...body.reject];
+    const proposals = await this.prisma.client.proposal.findMany({ where: { userId, proposalId: { in: ids } }, include: PROPOSAL_INCLUDE });
+    if (proposals.length !== ids.length) throw new NotFoundException("Some of these proposals aren't there");
+    const [first] = proposals;
+    if (proposals.some((p) => p.runId !== first.runId || p.stepKey !== first.stepKey || p.step.type !== first.step.type)) {
+      throw new BadRequestException("A batch is the proposals of one step of one run");
+    }
+    proposals.forEach(assertPending);
+    const approving = new Set(body.approve);
+
+    await this.prisma.client.$transaction(async (tx) => {
+      for (const proposal of proposals) {
+        const original = proposal.originalPayload as Record<string, unknown>;
+        const approve = approving.has(proposal.proposalId);
+        const updated = await tx.proposal.updateMany({
+          where: { proposalId: proposal.proposalId, status: "PENDING_REVIEW" },
+          data: approve
+            ? {
+                status: "APPROVED",
+                finalPayload: original as Prisma.InputJsonValue,
+                payloadHash: payloadHash(original),
+                approvedNewTargets: body.approveNewTargets,
+              }
+            : { status: "REJECTED" },
+        });
+        if (updated.count === 0) throw new ConflictException("One of these proposals was already decided: nothing was decided");
+        await tx.decision.create({
+          data: {
+            proposalId: proposal.proposalId,
+            kind: approve ? "APPROVED" : "REJECTED",
+            reason: approve ? null : (body.reason ?? null),
+          },
+        });
+      }
+    });
+    for (const proposal of proposals) {
+      const approved = approving.has(proposal.proposalId);
+      await this.events.publish(userId, {
+        type: "proposal",
+        proposalId: proposal.proposalId,
+        runId: proposal.runId,
+        status: approved ? "APPROVED" : "REJECTED",
+      });
+      if (approved && proposal.step.type === "gate.act") await this.queue.enqueueLearning(proposal.proposalId);
+    }
+    await this.telegram.decidedBatch(ids, approving, via);
+    // M53-T4: the run goes on once, with every item decided.
+    await this.queue.enqueueRun({ runId: first.runId, headed: first.run.headed });
+    return { approved: body.approve.length, rejected: body.reject.length };
   }
 
   /**

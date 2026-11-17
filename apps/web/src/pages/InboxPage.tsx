@@ -1,9 +1,27 @@
 import { IconAlertTriangle, IconHandStop } from "@tabler/icons-react";
+import { type ProposalView } from "@realentity/storm-shared";
 import { Link } from "react-router-dom";
+import { BatchCard } from "../components/BatchCard";
 import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
 import { useLoad } from "../lib/use-load";
+
+const group = (p: ProposalView) => `${p.runId}:${p.stepKey}:${p.kind}`;
+
+/** M53: proposals of one step of one run, when there are several: each a batch. */
+function batches(proposals: ProposalView[]): ProposalView[][] {
+  const groups = new Map<string, ProposalView[]>();
+  for (const p of proposals) groups.set(group(p), [...(groups.get(group(p)) ?? []), p]);
+  return [...groups.values()].filter((g) => g.length > 1);
+}
+
+/** The proposals alone in their step of their run. */
+function singles(proposals: ProposalView[]): ProposalView[] {
+  const counts = new Map<string, number>();
+  for (const p of proposals) counts.set(group(p), (counts.get(group(p)) ?? 0) + 1);
+  return proposals.filter((p) => counts.get(group(p)) === 1);
+}
 
 /** What waits for the user's decision (docs/design.md §3), oldest first. */
 export function InboxPage() {
@@ -42,10 +60,14 @@ export function InboxPage() {
       )}
       {!proposals.data && proposals.loading && <Loading />}
       {proposals.data?.length === 0 && <Empty>Nothing waits for a decision.</Empty>}
-      {proposals.data && proposals.data.length > 0 && (
+      {/* M53: several of one step of one run (a forEach's items) are decided together. */}
+      {batches(proposals.data ?? []).map((batch) => (
+        <BatchCard key={`${batch[0].runId}:${batch[0].stepKey}`} proposals={batch} decided={proposals.reload} />
+      ))}
+      {singles(proposals.data ?? []).length > 0 && (
         <div className="card">
           <div className="list-group list-group-flush" data-testid="inbox">
-            {proposals.data.map((p) => {
+            {singles(proposals.data ?? []).map((p) => {
               const fresh = p.targets.filter((t) => t.isNew);
               return (
                 <Link key={p.proposalId} to={`/proposals/${p.proposalId}`} className="list-group-item list-group-item-action">
