@@ -257,4 +257,32 @@ steps:
     expect(list.map((p) => p.name)).not.toContain("Theirs");
     await db.client.user.delete({ where: { userId: other.userId } });
   });
+
+  // M54: auto-approve, for the version it was turned on for
+  it("turns auto-approve on for the current version; a new version leaves it off", async () => {
+    const created = (
+      await agent
+        .post("/api/pipelines")
+        .send({ source: V1.replace("Morning digest", "Auto digest") })
+        .expect(201)
+    ).body as PipelineDetailView;
+    expect(created.autoApprove).toBe(false);
+    const on = (await agent.patch(`/api/pipelines/${created.pipelineId}`).send({ autoApprove: true }).expect(200))
+      .body as PipelineDetailView;
+    expect(on.autoApprove).toBe(true);
+    expect((await db.client.pipeline.findUniqueOrThrow({ where: { pipelineId: created.pipelineId } })).autoApproveVersionId).toBe(
+      on.current?.pipelineVersionId,
+    );
+
+    const v2 = (
+      await agent
+        .post(`/api/pipelines/${created.pipelineId}/versions`)
+        .send({ source: V2.replace("Morning digest", "Auto digest") })
+        .expect(201)
+    ).body as PipelineDetailView;
+    expect(v2.autoApprove).toBe(false);
+    const off = (await agent.patch(`/api/pipelines/${created.pipelineId}`).send({ autoApprove: false }).expect(200))
+      .body as PipelineDetailView;
+    expect(off.autoApprove).toBe(false);
+  });
 });

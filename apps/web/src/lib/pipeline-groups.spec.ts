@@ -7,6 +7,7 @@ const pipeline = (name: string, app: string | null): PipelineSummaryView => ({
   name,
   enabled: false,
   essential: false,
+  autoApprove: false,
   currentVersion: 1,
   hasDraft: false,
   app: app ? { appId: `${app}-id`, name: app } : null,

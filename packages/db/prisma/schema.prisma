@@ -217,6 +217,9 @@ model Pipeline {
   /// Keeps running when the monthly LLM budget is exhausted (docs/design.md §5).
   essential        Boolean  @default(false)
   currentVersionId String?  @db.Uuid
+  /// M54: acts without asking at its gates when the user starts it (Run, a button, /run), for this version only: a new
+  /// version leaves it off until the user turns it on again. Never in the pipeline's YAML, so the builder can't set it.
+  autoApproveVersionId String? @db.Uuid
   dateCreated      DateTime @default(now())
   dateUpdated      DateTime @updatedAt
 

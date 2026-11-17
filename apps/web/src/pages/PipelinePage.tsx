@@ -43,7 +43,7 @@ export function PipelinePage() {
   const p = pipeline.data;
   const shown = version.data ?? p.current;
 
-  const update = async (body: { enabled?: boolean; essential?: boolean }) => {
+  const update = async (body: { enabled?: boolean; essential?: boolean; autoApprove?: boolean }) => {
     const updated = await action.run(
       () => api.pipelines.update(pipelineId, body),
       (error) => toast.error(errorMessage(error)),
@@ -230,8 +230,11 @@ function Switches({
 }: {
   pipeline: PipelineDetailView;
   busy: boolean;
-  onChange: (body: { enabled?: boolean; essential?: boolean }) => void;
+  onChange: (body: { enabled?: boolean; essential?: boolean; autoApprove?: boolean }) => void;
 }) {
+  const [askingAuto, setAskingAuto] = useState(false);
+  // M54: only a pipeline that acts outside Storm has gates to approve.
+  const acts = pipeline.current?.definition.steps.some((s) => s.type === "gate.act") ?? false;
   return (
     <div className="card">
       <div className="card-body d-flex flex-column gap-2">
@@ -262,7 +265,51 @@ function Switches({
           <span className="form-check-label">Essential</span>
           <div className="small text-secondary">Keeps running when the monthly LLM budget is spent.</div>
         </label>
+        {acts && (
+          <label className="form-check form-switch mb-0">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              checked={pipeline.autoApprove}
+              disabled={busy}
+              onChange={(e) => (e.target.checked ? setAskingAuto(true) : onChange({ autoApprove: false }))}
+              data-testid="auto-approve"
+            />
+            <span className="form-check-label">Act without asking when I start it</span>
+            <div className="small text-secondary">
+              Started by you (Run, an App's button, /run on Telegram), it acts at once: starting it is the approval. On a schedule, an event
+              or a webhook it still asks, and so does a target not written in the pipeline. Off again with its next version.
+            </div>
+          </label>
+        )}
       </div>
+      {askingAuto && (
+        <Modal
+          title="Act without asking?"
+          onClose={() => setAskingAuto(false)}
+          footer={
+            <>
+              <button type="button" className="btn btn-link" onClick={() => setAskingAuto(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                data-testid="auto-approve-confirm"
+                onClick={() => {
+                  setAskingAuto(false);
+                  onChange({ autoApprove: true });
+                }}
+              >
+                Act without asking
+              </button>
+            </>
+          }
+        >
+          When you start <b>{pipeline.name}</b> yourself, version {pipeline.currentVersion} sends, submits and changes what its steps say
+          without waiting for you to approve each one. Each is still recorded, as approved by starting the run.
+        </Modal>
+      )}
     </div>
   );
 }

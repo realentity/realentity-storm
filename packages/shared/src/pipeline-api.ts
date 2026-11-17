@@ -27,11 +27,14 @@ export interface DryRunPipelineResponse {
   run: RunDetailView;
 }
 
-/** Enable (run on its schedule) and mark essential (keeps running when the LLM budget is spent). */
+/**
+ * Enable (run on its schedule), mark essential (keeps running when the LLM budget is spent), and (M54) auto-approve:
+ * act without asking at its gates when the user starts it, for the current version.
+ */
 export const UpdatePipelineSchema = z
-  .object({ enabled: z.boolean().optional(), essential: z.boolean().optional() })
+  .object({ enabled: z.boolean().optional(), essential: z.boolean().optional(), autoApprove: z.boolean().optional() })
   .strict()
-  .refine((body) => body.enabled !== undefined || body.essential !== undefined, "nothing to update");
+  .refine((body) => body.enabled !== undefined || body.essential !== undefined || body.autoApprove !== undefined, "nothing to update");
 export type UpdatePipelineRequest = z.infer<typeof UpdatePipelineSchema>;
 
 /** One change between two compiled versions (v3 → v4), computed in @realentity/storm-steps. */
@@ -136,6 +139,11 @@ export interface PipelineSummaryView {
   name: string;
   enabled: boolean;
   essential: boolean;
+  /**
+   * M54: its current version acts without asking at its gates when the user starts it (Run, a button, /run); only
+   * targets written in it. Off again with a new version.
+   */
+  autoApprove: boolean;
   /** null: never saved (only a draft so far). */
   currentVersion: number | null;
   hasDraft: boolean;

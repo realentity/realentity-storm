@@ -96,6 +96,12 @@ transformed only as `http.request` sends it, after its gate. A credential (`{{cr
   `browser.upload` and `browser.submit` always get a `gate.act` before them. If you don't write one, the compiler inserts it. The run pauses
   and shows the exact payload (recipient, subject, body, form fields). Nothing goes out until you press **Act**, in the
   app or on Telegram.
+- **Unless you start it yourself (M54).** On a pipeline's page, *Act without asking when I start it* (it asks first)
+  makes starting it the approval: a run you start (**Run**, an App's button, `/run` on Telegram) approves its gates
+  itself, each recorded as approved by starting the run. Only targets written in the pipeline: one taken from data
+  (an email's sender, a step's output) still waits. A schedule, an event or a webhook still waits. A dry run never acts.
+  It is for the version you turned it on for: the next version is off again until you turn it on. The builder can't
+  turn it on (it isn't in the YAML).
 - **Targets never come from LLM text.** The recipient of an email, the guests of an event and the address of a form
   must come from real data: the sender of a fetched email, a posting's own URL, a literal in the pipeline, or
   `policy`. `to: "{{draft.body}}"` is rejected.
