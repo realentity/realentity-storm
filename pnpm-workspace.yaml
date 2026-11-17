@@ -77,6 +77,8 @@ catalog:
 
   # data.map: JSONata expressions over JSON an API returned
   jsonata: ^2.2.2
+  # M52-T9: sealedBox, the libsodium sealed box GitHub wants a secret in
+  libsodium-wrappers: ^0.8.4
 
   # llm
   "@anthropic-ai/sdk": ^1.3.0

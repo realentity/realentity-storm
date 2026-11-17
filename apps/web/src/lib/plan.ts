@@ -1,5 +1,6 @@
 import {
   REFERENCE,
+  referencePaths,
   type CompiledDefinition,
   type CompiledPolicy,
   type CompiledStep,
@@ -14,8 +15,11 @@ export function dependencies(step: CompiledStep, stepIds: ReadonlySet<string>): 
   const scan = (value: unknown): void => {
     if (typeof value === "string") {
       for (const match of value.matchAll(REFERENCE)) {
-        const head = match[1]?.trim().split(".")[0] ?? "";
-        if (stepIds.has(head)) found.add(head);
+        // M52-T9: a transform's argument ({{x | sealedBox: key.json.key}}) is read from a step too.
+        for (const path of referencePaths(match[1]?.trim() ?? "")) {
+          const head = path.split(".")[0] ?? "";
+          if (stepIds.has(head)) found.add(head);
+        }
       }
     } else if (Array.isArray(value)) value.forEach(scan);
     else if (value && typeof value === "object") Object.values(value).forEach(scan);

@@ -129,6 +129,9 @@ catalogs:
     jsonata:
       specifier: ^2.2.2
       version: 2.2.2
+    libsodium-wrappers:
+      specifier: ^0.8.4
+      version: 0.8.4
     mailparser:
       specifier: ^3.14.0
       version: 3.14.1
@@ -593,6 +596,9 @@ importers:
       jsonata:
         specifier: 'catalog:'
         version: 2.2.2
+      libsodium-wrappers:
+        specifier: 'catalog:'
+        version: 0.8.4
       mailparser:
         specifier: 'catalog:'
         version: 3.14.1
@@ -4555,6 +4561,12 @@ packages:
   libqp@3.0.1:
     resolution: {integrity: sha512-7QZxpPX25pga1WiMueduWxmrHMVBFrZPH6ZUaozGYa/H98JH6NVBSET3qVw+4NxzoraIW7rJ81YxSU9IalvCpg==}
     engines: {node: '>=20.0.0'}
+
+  libsodium-wrappers@0.8.4:
+    resolution: {integrity: sha512-mu8aAWucZjTB5O/BtGXtW4e1agy7uHxNYG7zPthmmD1jU43LCDmSWZLN4JhflbdPXj3yDO4lxM1O9hLDgIOXDw==}
+
+  libsodium@0.8.4:
+    resolution: {integrity: sha512-lMcYaRi0zcs7tarATsQUYC7rstliIXZuoq0c6zXSgNtSNtdvBgkSegjWhpMJAXzKX3SUSwIp7+zEsob+j3LuRw==}
 
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
@@ -9814,6 +9826,12 @@ snapshots:
       libqp: 3.0.1
 
   libqp@3.0.1: {}
+
+  libsodium-wrappers@0.8.4:
+    dependencies:
+      libsodium: 0.8.4
+
+  libsodium@0.8.4: {}
 
   lines-and-columns@1.2.4: {}
 

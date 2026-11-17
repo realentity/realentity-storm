@@ -156,3 +156,66 @@ describe("an encrypted field in a pipeline (M52-T5, T7)", () => {
     );
   });
 });
+
+describe("transforms in a reference (M52-T9)", () => {
+  const compiler = new PipelineCompiler(defaultCatalog());
+  const app = AppDefinitionSchema.parse(secrets);
+  const errors = (steps: object[]) => {
+    const result = compiler.compile(
+      { name: "Sync", app: "GitHub Secrets", policy: { allowedDomains: ["api.github.com"] }, steps },
+      { app },
+    );
+    return result.ok ? [] : result.errors.map((e) => `${e.path}: ${e.message}`);
+  };
+  const key = { id: "key", type: "http.fetch", with: { url: "https://api.github.com/repos/me/infra/actions/secrets/public-key" } };
+  const read = { id: "read", type: "data.read", with: { type: "Secret" } };
+  const put = (body: object, headers: object = {}) => ({
+    id: "put",
+    type: "http.request",
+    forEach: "{{read.items}}",
+    with: { method: "PUT", url: "https://api.github.com/repos/me/infra/actions/secrets/{{item.name}}", headers, body },
+  });
+
+  it("takes base64 and sealedBox, on an encrypted value or any other", () => {
+    expect(
+      errors([
+        key,
+        read,
+        put(
+          { encrypted_value: "{{item.value | sealedBox: key.json.key}}", key_id: "{{key.json.key_id}}", plain: "{{item.name | base64}}" },
+          { Authorization: "Basic {{item.value | base64}}" },
+        ),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("refuses an unknown transform, a missing or extra argument, one on a credential, and a transformed secret elsewhere", () => {
+    expect(
+      errors([
+        key,
+        read,
+        put(
+          {
+            a: "{{item.value | rot13}}",
+            b: "{{item.value | sealedBox}}",
+            c: "{{item.name | base64: key.json.key}}",
+            d: "{{item.value | sealedBox: nope.key}}",
+          },
+          {
+            Authorization: "{{cred:github | base64}}",
+          },
+        ),
+        { id: "tell", type: "notify.telegram", forEach: "{{read.items}}", with: { text: "{{item.value | base64}}" } },
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        'steps[2].with.body: {{item.value | rot13}}: there is no transform "rot13" (transforms: base64, sealedBox)',
+        "steps[2].with.body: {{item.value | sealedBox}}: sealedBox takes a reference to what it uses, e.g. sealedBox: key.json.key",
+        "steps[2].with.body: {{item.name | base64: key.json.key}}: base64 takes nothing after it",
+        expect.stringContaining('steps[2].with.body: {{item.value | sealedBox: nope.key}}: {{nope.key}} refers to "nope"'),
+        "steps[2].with.headers: {{cred:github | base64}}: a credential takes no transform; it is opened as it is sent",
+        "steps[3].with.text: {{item.value}} is encrypted: only http.request sends it (in headers, query or body), and data.save keeps it; it never reaches notify.telegram",
+      ]),
+    );
+  });
+});

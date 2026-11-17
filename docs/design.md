@@ -437,7 +437,9 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
   `{{sealed:…}}` token of the same ciphertext), and only the worker opens it: to seal it again for another entity in
   `data.save`, and in `http.request`, after its gate, as the request is sent. The compiler refuses a handle in any other
   step's input; a whole item reaching one shows `***`, and the LLM never sees even the ciphertext (nor learns from an
-  approved payload holding one). An API's answer echoing the value is masked, as with an API key.
+  approved payload holding one). An API's answer echoing the value is masked, as with an API key. A transform on it
+  (`| sealedBox: <public key>`, `| base64`) travels in the token and is applied after it is opened, as it is sent:
+  GitHub gets the value sealed to its repository's key, which only GitHub opens.
 - **Same mechanism for** email accounts' app passwords (M50-T7: an EmailAccount row, AAD its id, opened only for its own IMAP and SMTP servers), TOTP seeds, API keys, database connections (M29: an API key goes only to its credential's hosts, a database is reachable only through a credential naming it, and `db.query` is read-only), and Playwright `storageState`.
 - **Back up `ENCRYPTION_KEY` separately from DB backups** (personal password manager or printed). Losing the key loses every secret; storing it next to the backups defeats the encryption.
 
