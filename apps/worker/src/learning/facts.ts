@@ -1,5 +1,5 @@
 import { type Fact, type Prisma, type PrismaClient } from "@realentity/storm-db";
-import { factKey, type CompiledDefinition } from "@realentity/storm-shared";
+import { factKey, maskSealed, type CompiledDefinition } from "@realentity/storm-shared";
 import { type AgentAction, type FormField } from "@realentity/storm-steps";
 
 /** Facts a form step gets: the most used and newest first, enough for any form. */
@@ -51,8 +51,9 @@ export class Facts {
   async fromProposal(proposal: ProposalForFacts): Promise<number> {
     const definition = proposal.run.pipelineVersion.definition as unknown as CompiledDefinition;
     const acting = definition.steps.find((s) => s.id === proposal.stepKey);
-    const original = proposal.originalPayload as Record<string, unknown>;
-    const approved = (proposal.finalPayload ?? proposal.originalPayload) as Record<string, unknown>;
+    // M52: an encrypted field's value is never learned from, not even its ciphertext.
+    const original = maskSealed(proposal.originalPayload) as Record<string, unknown>;
+    const approved = maskSealed(proposal.finalPayload ?? proposal.originalPayload) as Record<string, unknown>;
     const site = hostOf(approved.url);
     const answers: { question: string; answer: string }[] = [];
 

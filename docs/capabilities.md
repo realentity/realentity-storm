@@ -182,7 +182,10 @@ types:
   **Replace** and **Clear**, never the value; no list shows, searches, sorts, filters or groups by it; every answer of
   the api, a run's page, a gate and Telegram show `***`. In a pipeline it is the sealed value, a handle: `data.read`
   and `{{trigger.item}}` give it, `data.save` keeps it (sealing it again for another entity), and a save that doesn't
-  give it keeps the one there. A version that makes a field encrypted seals the values it holds; one that stops it is
+  give it keeps the one there. Only `http.request` sends it, in `headers`, `query` or `body` (§4.2); `{{item.value}}`
+  anywhere else is refused when the pipeline is saved, and a whole item reaching another step (an LLM's, a
+  notification's) shows `***` there. `{{item.value.hash}}` is a keyed hash of the value, usable anywhere: whether it
+  changed since it was last sent, without opening it. A `where` or `sort` can't name it. A version that makes a field encrypted seals the values it holds; one that stops it is
   refused while any entity holds a value (clear them, or remove the field). `pnpm keys:rotate` and `storm check` cover
   them.
 - **`auto: true` on the key (M48):** Storm makes the key (12 letters and digits) when an entity is added, on its list
@@ -539,6 +542,9 @@ which shows the method, address, headers and body, until you press Act. The addr
 address joins the pipeline's allowed domains, or you approve a new one at the gate); never a private or VPN
 address, and a redirect isn't followed. An API key goes in `headers` or `query` as `{{cred:name}}`, as in `http.fetch`.
 An answer other than 2xx fails the step with its status.
+- **An App's encrypted field (M52)** goes in `headers`, `query` or `body` as `{{item.value}}`, alone or inside text
+  (`"token {{item.value}}"`). The gate shows `***`; the worker opens it only once you press Act, as the request is
+  sent, and an answer echoing it shows `***`. An edit at the gate that leaves `***` keeps the value.
 - In: `method`, `url`, `headers`, `query`, `body`, `timeoutSeconds` [20].
 - Out: `status`, `json` (when the answer is JSON), `text`.
 

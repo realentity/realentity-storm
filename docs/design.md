@@ -433,8 +433,11 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 - **An App's encrypted fields (M52):** a field with `encrypted: true` is sealed the same way, its AAD where it belongs
   (the App, type, entity key and field), and kept in the entity's JSON with a keyed hash of the value (whether it
   changed, without opening it). The api seals what a form sets and never opens it; every api answer, Telegram and
-  the builder's run data show `***`. In a pipeline the value stays sealed: steps move the handle, and only the worker
-  opens it, to seal it again for another entity in `data.save`.
+  the builder's run data show `***`. In a pipeline the value stays sealed: steps move the handle (inside text, as a
+  `{{sealed:…}}` token of the same ciphertext), and only the worker opens it: to seal it again for another entity in
+  `data.save`, and in `http.request`, after its gate, as the request is sent. The compiler refuses a handle in any other
+  step's input; a whole item reaching one shows `***`, and the LLM never sees even the ciphertext (nor learns from an
+  approved payload holding one). An API's answer echoing the value is masked, as with an API key.
 - **Same mechanism for** email accounts' app passwords (M50-T7: an EmailAccount row, AAD its id, opened only for its own IMAP and SMTP servers), TOTP seeds, API keys, database connections (M29: an API key goes only to its credential's hosts, a database is reachable only through a credential naming it, and `db.query` is read-only), and Playwright `storageState`.
 - **Back up `ENCRYPTION_KEY` separately from DB backups** (personal password manager or printed). Losing the key loses every secret; storing it next to the backups defeats the encryption.
 

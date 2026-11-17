@@ -6,6 +6,8 @@ import { type z } from "zod";
  */
 export type TypeInfo =
   | { kind: "string" | "number" | "boolean" | "null" | "unknown" }
+  /** M52: an encrypted field's value, a handle: only `hash` can be read of it; it goes where a step accepts one. */
+  | { kind: "sealed" }
   | { kind: "array"; element: TypeInfo }
   | { kind: "object"; fields: Record<string, TypeInfo> }
   | { kind: "record"; value: TypeInfo };
@@ -110,6 +112,9 @@ export function navigate(type: TypeInfo, segments: string[]): Navigation {
       }
       case "array":
         return { ok: false, message: `"${at}" is a list; iterate over it with forEach and use {{item.${segment}}}` };
+      case "sealed":
+        if (segment === "hash" && index === segments.length - 1) return { ok: true, type: { kind: "string" } };
+        return { ok: false, message: `"${at}" is encrypted: only its hash can be read ({{…${at.split(".").at(-1)}.hash}})` };
       default:
         return { ok: false, message: `"${at}" is a ${current.kind} and has no field "${segment}"` };
     }
@@ -120,6 +125,8 @@ export function navigate(type: TypeInfo, segments: string[]): Navigation {
 /** Can a value of type `source` be passed where `target` is expected? Coarse: unknown matches anything. */
 export function isAssignable(source: TypeInfo, target: TypeInfo): boolean {
   if (source.kind === "unknown" || target.kind === "unknown") return true;
+  // M52: a handle goes only where text goes (a header, a body's field), and where it is accepted (checked apart).
+  if (source.kind === "sealed") return target.kind === "string" || target.kind === "sealed";
   if (source.kind === "array" && target.kind === "array") return isAssignable(source.element, target.element);
   const objectLike = (t: TypeInfo): boolean => t.kind === "object" || t.kind === "record";
   if (objectLike(source) && objectLike(target)) return true;
@@ -132,6 +139,8 @@ export function formatType(type: TypeInfo): string {
       return `list of ${formatType(type.element)}`;
     case "record":
       return "object";
+    case "sealed":
+      return "an encrypted value";
     default:
       return type.kind;
   }

@@ -3,6 +3,7 @@ import { Prisma } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
   canonicalJson,
+  unmaskEdit,
   type ApproveProposalRequest,
   type CompiledDefinition,
   type ProposalStatusName,
@@ -167,7 +168,8 @@ export class ProposalsService {
       if (!step) throw new ConflictException(`Step "${proposal.stepKey}" is no longer in the catalog`);
       schema = step.input;
     }
-    const result = schema.safeParse(payload);
+    // M52: the user saw an encrypted field's value as ***: where the edit still shows it, its handle goes on.
+    const result = schema.safeParse(unmaskEdit(proposal.originalPayload, payload));
     if (result.success) return result.data;
     throw new BadRequestException({
       message: "The edited payload is not valid",
