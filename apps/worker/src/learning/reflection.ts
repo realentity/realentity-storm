@@ -1,6 +1,6 @@
 import { sameAbout, type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { emptyUsage, type LlmBatches, type ModelRouter } from "@realentity/storm-llm";
-import { isFreeMailDomain, looksSecret, maskSealed, normalizeDirection, RULE_STEP_TYPES } from "@realentity/storm-shared";
+import { AUTO_APPROVED, isFreeMailDomain, looksSecret, maskSealed, normalizeDirection, RULE_STEP_TYPES } from "@realentity/storm-shared";
 import { type EmailMessage, type StepCatalog, type TopicProposal } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { z } from "zod";
@@ -144,7 +144,12 @@ export class Reflector {
     const last = await this.prisma.reflection.findFirst({ where: { userId, status: "DONE" }, orderBy: { until: "desc" } });
     const since = last?.until ?? new Date(now.getTime() - FIRST_WINDOW_DAYS * DAY_MS);
     const decisions = await this.prisma.decision.findMany({
-      where: { decidedAt: { gte: since, lt: now }, proposal: { userId, run: { dryRun: false } } },
+      // M54: an auto-approval isn't a decision of the user's: nothing to learn from it.
+      where: {
+        decidedAt: { gte: since, lt: now },
+        proposal: { userId, run: { dryRun: false } },
+        OR: [{ reason: null }, { reason: { not: AUTO_APPROVED } }],
+      },
       include: { proposal: { include: { step: true, run: { include: { pipelineVersion: { include: { pipeline: true } } } } } } },
       orderBy: { decidedAt: "desc" },
       take: MAX_DECISIONS,

@@ -36,6 +36,9 @@ export const DecideBatchSchema = z
   .refine((b) => !b.approve.some((id) => b.reject.includes(id)), "a proposal is either approved or rejected");
 export type DecideBatchRequest = z.infer<typeof DecideBatchSchema>;
 
+/** M54: what an auto-approved proposal's decision says (its reason), in the history; reflection leaves it out. */
+export const AUTO_APPROVED = "Approved by starting the run (auto-approve)";
+
 export interface BatchDecisionView {
   approved: number;
   rejected: number;

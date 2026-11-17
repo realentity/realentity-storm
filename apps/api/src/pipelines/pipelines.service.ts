@@ -250,7 +250,19 @@ export class PipelinesService {
       const clash = current ? await this.commands.clash(userId, pipelineId, current.definition as unknown as CompiledDefinition) : null;
       if (clash) throw new ConflictException(clash);
     }
-    const updated = await this.prisma.client.pipeline.updateMany({ where: { pipelineId, userId }, data: body });
+    const { autoApprove, ...flags } = body;
+    let autoApproveVersionId: string | null | undefined;
+    if (autoApprove !== undefined) {
+      // M54: for the version saved now; a new one starts without it, so what changed is approved before it acts alone.
+      const pipeline = await this.prisma.client.pipeline.findFirst({ where: { pipelineId, userId } });
+      if (autoApprove && pipeline && !pipeline.currentVersionId)
+        throw new ConflictException("Save the pipeline before letting it act without asking");
+      autoApproveVersionId = autoApprove ? (pipeline?.currentVersionId ?? null) : null;
+    }
+    const updated = await this.prisma.client.pipeline.updateMany({
+      where: { pipelineId, userId },
+      data: { ...flags, ...(autoApproveVersionId !== undefined ? { autoApproveVersionId } : {}) },
+    });
     if (updated.count === 0) throw new NotFoundException();
     if (body.enabled !== undefined) await this.queue.requestScheduleSync();
     if (body.enabled !== undefined) await this.commands.sync(userId);
@@ -432,7 +444,16 @@ function sameDefinition(version: PipelineVersion, compiled: Compiled): boolean {
 }
 
 function summary(
-  p: { pipelineId: string; name: string; enabled: boolean; essential: boolean; dateCreated: Date; dateUpdated: Date },
+  p: {
+    pipelineId: string;
+    name: string;
+    enabled: boolean;
+    essential: boolean;
+    currentVersionId: string | null;
+    autoApproveVersionId: string | null;
+    dateCreated: Date;
+    dateUpdated: Date;
+  },
   currentVersion: number | null,
   hasDraft: boolean,
   app: { appId: string; name: string } | null,
@@ -442,6 +463,7 @@ function summary(
     name: p.name,
     enabled: p.enabled,
     essential: p.essential,
+    autoApprove: p.autoApproveVersionId !== null && p.autoApproveVersionId === p.currentVersionId,
     currentVersion,
     hasDraft,
     app,

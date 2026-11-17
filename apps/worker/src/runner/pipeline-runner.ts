@@ -2,6 +2,7 @@ import { payloadHash } from "@realentity/storm-crypto";
 import { addUsage, type LlmUsage } from "@realentity/storm-llm";
 import { type Prisma, type PrismaClient, type Proposal, type RunStatus, type Step } from "@realentity/storm-db";
 import {
+  AUTO_APPROVED,
   canonicalJson,
   isSealed,
   maskSealed,
@@ -86,7 +87,15 @@ interface RunState {
   skippedSteps: Set<string>;
   /** The `when` paths that were empty, for a quiet run's summary. */
   emptyWhens: Set<string>;
+  /**
+   * M54: its gates approve themselves: the user started it (Run, a button, /run) and turned auto-approve on for this
+   * version. A gate whose targets aren't all written in the pipeline still waits.
+   */
+  autoApprove: boolean;
 }
+
+/** M54: the runs the user starts themselves; a schedule, an event, a webhook or an email never auto-approves. */
+const STARTED_BY_THE_USER = ["manual", "view", "telegram"];
 
 const key = (stepKey: string, itemIndex: number | null): string => `${stepKey}#${itemIndex ?? ""}`;
 
@@ -313,6 +322,10 @@ export class PipelineRunner {
       rejectedSingles: new Set(),
       skippedSteps: new Set(),
       emptyWhens: new Set(),
+      autoApprove:
+        !run.dryRun &&
+        STARTED_BY_THE_USER.includes(run.trigger) &&
+        run.pipelineVersion.pipeline.autoApproveVersionId === run.pipelineVersionId,
     };
   }
 
@@ -528,6 +541,8 @@ export class PipelineRunner {
     }
 
     const gateRow = await this.markRunning(state, step, row, scope, { for: targetId });
+    // M54: started by the user with auto-approve on, and every target written in the pipeline: approved as proposed.
+    const auto = state.autoApprove && targets.every((t) => t.basis === "static" && !t.isNew);
     const proposal = await this.prisma.proposal.create({
       data: {
         userId: state.userId,
@@ -535,14 +550,25 @@ export class PipelineRunner {
         stepId: gateRow.stepId,
         stepKey: target.id,
         itemIndex: scope?.index ?? null,
-        status: state.dryRun ? "PREVIEW" : "PENDING_REVIEW",
+        status: state.dryRun ? "PREVIEW" : auto ? "APPROVED" : "PENDING_REVIEW",
         target: targets.map((t) => t.value).join(", ") || target.type,
         targets: targets as unknown as Prisma.InputJsonValue,
         originalPayload: payload as Prisma.InputJsonValue,
         reasoning: drewOn(state, target.with, scope),
+        ...(auto
+          ? {
+              finalPayload: payload as Prisma.InputJsonValue,
+              payloadHash: payloadHash(payload),
+              decision: { create: { kind: "APPROVED", reason: AUTO_APPROVED } },
+            }
+          : {}),
       },
     });
     await this.proposalCreated(state, proposal);
+    if (auto) {
+      await this.finish(state, gateRow, { approved: true });
+      return { kind: "done", output: { approved: true } };
+    }
 
     if (state.dryRun) {
       // Dry run: the proposal is a preview; continue as if approved, and the side-effect step is skipped.

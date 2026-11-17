@@ -133,3 +133,23 @@ test("a batch in the inbox: one unticked is rejected, the others approved at onc
   await expect(stepRow(page, "test.send", 1)).toContainText("done");
   await expect(stepRow(page, "test.send", 2)).toContainText("skipped");
 });
+
+// M54: auto-approve, turned on from the pipeline's page after a confirmation; a run started then acts at once
+test("act without asking: turned on with a confirmation, a run started by hand doesn't wait", async ({ page }) => {
+  const name = unique("Auto reply");
+  const pipeline = await createPipeline(
+    page,
+    `name: ${name}\nsteps:\n  - id: reply\n    type: test.send\n    with: { to: ana@acme.test, body: Thanks }\n`,
+  );
+  await page.goto(`/pipelines/${pipeline.pipelineId}`);
+  const toggle = page.getByTestId("auto-approve");
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(page.getByRole("dialog")).toContainText("without waiting for you to approve each one");
+  await page.getByTestId("auto-approve-confirm").click();
+  await expect(toggle).toBeChecked();
+
+  const run = await startRun(page, pipeline.pipelineId);
+  await page.goto(`/runs/${run.runId}`);
+  await expect(page.getByTestId("run-status")).toContainText("done", { timeout: 20_000 });
+});

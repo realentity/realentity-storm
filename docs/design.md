@@ -288,6 +288,12 @@ meanwhile refuses the whole batch); the run is queued once. On Telegram they are
 carrying a hash of the batch's proposal ids: a batch changed since (one decided in the app) is refused. Each item keeps
 its own proposal, decision and payload hash, so nothing executes that wasn't shown; to edit one, open it alone.
 
+**Auto-approve (M54):** a pipeline's own switch (not its YAML), stored as the version it was turned on for
+(`Pipeline.autoApproveVersionId`). A run of that version started by the user (`manual`, `view`, `telegram`) creates
+each gate's proposal already approved, with its hash and a decision saying so, when every target is static (written
+in the pipeline); otherwise the gate waits as usual. Runs started otherwise, dry runs and later versions always wait.
+Reflection leaves auto-approvals out: they aren't decisions.
+
 **Payload integrity:** the payload you approve is hashed. The worker executes only that exact payload. If a page requires anything not in it (an extra field, a different URL), the worker **pauses** and asks. It never improvises.
 
 ---
