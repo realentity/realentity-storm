@@ -67,6 +67,8 @@ export const HELP = {
   stepId: "The step's name. Later steps use what it gives as {{name.field}}; renaming it renames those too.",
   stepWhen: "Only when…: the step runs only when this has something (not empty, not false, not 0); else it is skipped.",
   stepForEach: "For each…: the step runs once for each item of this list; {{item}} is the one it is on.",
+  stepOnError:
+    "Go on with the others: an item that fails is recorded and skipped from there on, and the run ends done, saying which failed. Off: the first failure stops the run.",
   stepCredential:
     "One of your credentials that fits here: the step gets a slot for it, filled with your choice when you save. Its secret is never shown or kept in the pipeline.",
   stepInput: "An input of this step.",

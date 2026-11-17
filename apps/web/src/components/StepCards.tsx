@@ -518,6 +518,20 @@ function StepOptions({
     <div className="border-bottom pb-1 mb-2">
       {row("when", "only when")}
       {row("forEach", "for each of")}
+      {step.forEach !== undefined && (
+        <label className="form-check small mb-2" title={HELP.stepOnError}>
+          <input
+            type="checkbox"
+            className="form-check-input"
+            checked={step.onError === "continue"}
+            disabled={!editable}
+            onChange={(e) => onEdit((s) => setStepOption(s, index, "onError", e.target.checked ? "continue" : undefined))}
+            aria-label={`${step.id}: if an item fails, go on with the others`}
+            data-testid="step-on-error"
+          />
+          <span className="form-check-label">If an item fails, go on with the others</span>
+        </label>
+      )}
     </div>
   );
 }

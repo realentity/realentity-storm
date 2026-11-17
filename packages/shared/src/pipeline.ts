@@ -188,8 +188,18 @@ export const PipelineStepSchema = z
     when: z.string().regex(WHOLE_REFERENCE, 'a single reference, e.g. "{{save.added}}"').optional(),
     with: z.record(z.string(), z.unknown()).default({}),
     retries: z.number().int().min(0).max(5).optional(),
+    /**
+     * M54-T5: with forEach, `continue`: an item that fails (after its retries) is recorded and the other items still
+     * run; the item's later steps over the same list are skipped, and the run ends done, saying how many failed.
+     * Default `stop`: the first failure fails the run.
+     */
+    onError: z.enum(["stop", "continue"]).optional(),
   })
-  .strict();
+  .strict()
+  .refine((step) => step.onError !== "continue" || step.forEach !== undefined, {
+    message: "onError: continue is for a step with forEach: the other items go on",
+    path: ["onError"],
+  });
 export type PipelineStep = z.infer<typeof PipelineStepSchema>;
 
 /** "10/day" or "3/hour": at most N executions of a step type per window. */

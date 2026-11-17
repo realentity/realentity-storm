@@ -92,7 +92,14 @@ interface RunState {
    * version. A gate whose targets aren't all written in the pipeline still waits.
    */
   autoApprove: boolean;
+  /** M54-T5: items of a list that failed at a step with onError: continue: their later steps over it are skipped. */
+  failedItems: Map<string, Set<number>>;
+  /** M54-T5: what failed that way ("put #3"), for the run's summary. */
+  failures: Set<string>;
 }
+
+/** M54-T5: why an item's later step was skipped. */
+const ITEM_FAILED = "Its item failed at an earlier step";
 
 /** M54: the runs the user starts themselves; a schedule, an event, a webhook or an email never auto-approves. */
 const STARTED_BY_THE_USER = ["manual", "view", "telegram"];
@@ -322,6 +329,8 @@ export class PipelineRunner {
       rejectedSingles: new Set(),
       skippedSteps: new Set(),
       emptyWhens: new Set(),
+      failedItems: new Map(),
+      failures: new Set(),
       autoApprove:
         !run.dryRun &&
         STARTED_BY_THE_USER.includes(run.trigger) &&
@@ -371,6 +380,7 @@ export class PipelineRunner {
       if (!Array.isArray(items)) throw new Error(`forEach {{${source}}} of step ${step.id} is not a list`);
       const rejected = setOf(state.rejected, source);
       const blocked = setOf(state.blocked, source);
+      const failed = setOf(state.failedItems, source);
       const outputs: unknown[] = new Array<unknown>(items.length).fill(undefined);
       for (const [index, item] of items.entries()) {
         if (rejected.has(index)) {
@@ -378,12 +388,22 @@ export class PipelineRunner {
           continue;
         }
         if (blocked.has(index)) continue;
+        // M54-T5: an item that failed at an earlier step over this list (onError: continue) goes no further.
+        if (failed.has(index)) {
+          await this.skip(state, step, index, ITEM_FAILED);
+          continue;
+        }
         const notNow = this.skipReason(state, step, { source, index, item });
         if (notNow) {
           await this.skip(state, step, index, notNow);
           continue;
         }
         const result = await this.runOne(state, step, definition, { source, index, item });
+        if (result.kind === "failed" && step.onError === "continue") {
+          failed.add(index);
+          state.failures.add(`${step.id} #${index + 1}`);
+          continue;
+        }
         const interrupted = interruption(result, step);
         if (interrupted) return interrupted;
         if (result.kind === "waiting") blocked.add(index);
@@ -399,6 +419,12 @@ export class PipelineRunner {
         .filter((s) => !s.type.startsWith("gate."))
         .map((s) => s.id);
       return { status: "DONE", summary: `Tried up to ${state.stopAfter}: ${after.join(", ")} didn't run.` };
+    }
+    // M54-T5: done, with the items that failed said first ("2 items failed: put #3, put #7").
+    if (state.failures.size > 0) {
+      const failures = [...state.failures];
+      const said = `${failures.length} item${failures.length === 1 ? "" : "s"} failed: ${failures.slice(0, 10).join(", ")}${failures.length > 10 ? ", …" : ""}`;
+      return { status: "DONE", summary: state.emptyWhens.size ? `${said}. ${this.quietSummary(state)}` : said };
     }
     return { status: "DONE", ...(state.emptyWhens.size ? { summary: this.quietSummary(state) } : {}) };
   }
