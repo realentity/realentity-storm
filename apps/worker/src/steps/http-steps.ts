@@ -1,5 +1,6 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { fromSealedToken, hostMatches, MASK, SEALED_TOKEN } from "@realentity/storm-shared";
+import { fromSealedToken, hostMatches, MASK, SEALED_TOKEN, tokenTransforms } from "@realentity/storm-shared";
+import { applyTransforms, transformsReady } from "../secrets/transforms";
 import { XMLParser } from "fast-xml-parser";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -232,6 +233,7 @@ export class HttpRequestStep implements StepExecutor {
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { method, url, headers: given = {}, query: asked = {}, body: written, timeoutSeconds } = input as unknown as RequestInput;
     // M52: an encrypted field's value, opened only now, as it is sent (the gate showed ***); masked if the API echoes it.
+    await transformsReady();
     const opened: string[] = [];
     const unseal = (value: unknown) => openTokens(this.vault, value, opened);
     const [headers, query, body] = [unseal(given) as Record<string, string>, unseal(asked) as Record<string, string>, unseal(written)];
@@ -268,15 +270,18 @@ export class HttpRequestStep implements StepExecutor {
 /** M52: every {{sealed:…}} token in the value (its strings, deep), opened by the vault; what was opened is collected. */
 function openTokens(vault: CredentialVault | undefined, value: unknown, opened: string[], depth = 0): unknown {
   if (typeof value === "string") {
-    return value.replace(SEALED_TOKEN, (_token, encoded: string) => {
+    return value.replace(SEALED_TOKEN, (_token, encoded: string, transforms: string) => {
       const sealed = fromSealedToken(encoded);
       if (!sealed) throw new Error("An encrypted value in the request is damaged");
       if (!vault) throw new Error("http.request can't open an encrypted value here");
       const text = vault.openSealed(sealed);
       // Credentials are filled in after: a value holding {{cred:…}} would bring one in.
       if (new RegExp(CREDENTIAL.source).test(text)) throw new Error("An encrypted value can't hold a {{cred:…}} reference");
+      // M52-T9: its transforms (base64, sealedBox), now that it is open; both forms masked in an answer.
+      const sent = applyTransforms(text, tokenTransforms(transforms), (t) => t.argument ?? "");
       if (text) opened.push(text);
-      return text;
+      if (sent !== text) opened.push(sent);
+      return sent;
     });
   }
   if (depth > 50 || !value || typeof value !== "object") return value;

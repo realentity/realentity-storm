@@ -728,7 +728,8 @@ export const CORE_STEPS: StepDefinition[] = [
       "target (policy.allowedDomains, or approved at the gate); never a private or CGNAT/Tailscale address, and a redirect " +
       "isn't followed. An API key goes in `headers` or `query` as {{cred:name}}, sent only to the hosts the credential " +
       "allows. An App's encrypted field ({{item.value}}) goes only here, in headers, query or body: shown as *** at the " +
-      "gate, opened only as the request is sent. An answer other than 2xx fails the step. Output: status, json (when the " +
+      "gate, opened only as the request is sent; {{item.value | sealedBox: key.json.key}} sends it sealed to an API's public " +
+      "key (GitHub's secrets), {{x | base64}} as base64. An answer other than 2xx fails the step. Output: status, json (when the " +
       "answer is JSON), text.",
     sideEffect: true,
     targets: { url: "domain" },

@@ -16,10 +16,52 @@ import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 export const STEP_ID = /^[a-z][a-zA-Z0-9_]{0,39}$/;
 export const RESERVED_STEP_IDS = ["item", "cred", "trigger"] as const;
 
-/** A reference: {{step.field.sub}}, {{item.field}} (inside forEach) or {{cred:name}} (credential, resolved by the worker). */
-export const REFERENCE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+/**
+ * A reference: {{step.field.sub}}, {{item.field}} (inside forEach) or {{cred:name}} (credential, resolved by the worker).
+ * Captured as words between single runs of spaces, so the spaces around it match one way only: no slow backtracking
+ * on text like "{{    …" without its closing braces.
+ */
+export const REFERENCE = /\{\{\s*([^{}\s]+(?:\s+[^{}\s]+)*)\s*\}\}/g;
 /** A value that is exactly one reference, so it passes the referenced value as it is (not as text). */
-export const WHOLE_REFERENCE = /^\{\{\s*([^{}]+?)\s*\}\}$/;
+export const WHOLE_REFERENCE = /^\{\{\s*([^{}\s]+(?:\s+[^{}\s]+)*)\s*\}\}$/;
+
+/**
+ * M52-T9: transforms after a reference's path, applied to its value: `{{x | base64}}` (the text as base64, UTF-8) and
+ * `{{x | sealedBox: key.json.key}}` (sealed to a base64 public key another reference gives, libsodium's crypto_box_seal:
+ * what GitHub wants a secret in). An encrypted field's value is transformed only as http.request sends it.
+ */
+export const TRANSFORMS = {
+  base64: { argument: false, description: "the text as base64 (UTF-8)" },
+  sealedBox: {
+    argument: true,
+    description: "sealed to the base64 public key the argument refers to (libsodium crypto_box_seal), as base64",
+  },
+} as const;
+export type TransformName = keyof typeof TRANSFORMS;
+
+export interface Transform {
+  name: string;
+  /** A reference's path (`key.json.key`), for a transform that takes one. */
+  argument?: string;
+}
+
+/** A reference's text ("item.value | sealedBox: key.json.key") as its path and its transforms, in order. */
+export function parseReference(raw: string): { path: string; transforms: Transform[] } {
+  const [path = "", ...pipes] = raw.split("|").map((part) => part.trim());
+  return {
+    path,
+    transforms: pipes.map((pipe) => {
+      const colon = pipe.indexOf(":");
+      return colon < 0 ? { name: pipe } : { name: pipe.slice(0, colon).trim(), argument: pipe.slice(colon + 1).trim() };
+    }),
+  };
+}
+
+/** Every path a reference reads: its own, then its transforms' arguments. */
+export function referencePaths(raw: string): string[] {
+  const { path, transforms } = parseReference(raw);
+  return [path, ...transforms.flatMap((t) => (t.argument ? [t.argument] : []))];
+}
 
 /** Five-field cron: minute hour day-of-month month day-of-week. */
 const CRON = /^(\S+\s+){4}\S+$/;

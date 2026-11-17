@@ -93,15 +93,33 @@ export function inPlace(item: Record<string, unknown>, fields: readonly string[]
 
 const TOKEN_START = "{{sealed:";
 /** A handle inside text ("Bearer {{item.token}}"): the sealed value as base64url JSON, opened only as it is sent. */
-export const SEALED_TOKEN = /\{\{sealed:([A-Za-z0-9_-]+)\}\}/g;
+export const SEALED_TOKEN = /\{\{sealed:([A-Za-z0-9_-]+)((?:\|[A-Za-z][A-Za-z0-9]*(?::[A-Za-z0-9_-]*)?)*)\}\}/g;
 
-const toBase64Url = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const fromBase64Url = (text: string) => atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+// UTF-8 text to base64url and back (btoa and atob take Latin-1).
+const toBase64Url = (text: string) =>
+  btoa(Array.from(new TextEncoder().encode(text), (b) => String.fromCharCode(b)).join(""))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+const fromBase64Url = (text: string) =>
+  new TextDecoder().decode(Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
 
 /** The handle as text: what a template puts where it is written inside a string. Only ciphertext, never the value. */
-export function sealedToken(value: SealedValue): string {
-  // The sealed value is ASCII (base64 and numbers), so btoa takes its JSON as it is.
-  return `${TOKEN_START}${toBase64Url(JSON.stringify(value))}}}`;
+export function sealedToken(value: SealedValue, transforms: readonly { name: string; argument?: string }[] = []): string {
+  // M52-T9: the transforms to apply once it is opened, each argument (a public key) as base64url.
+  const after = transforms.map((t) => `|${t.name}${t.argument === undefined ? "" : `:${toBase64Url(t.argument)}`}`).join("");
+  return `${TOKEN_START}${toBase64Url(JSON.stringify(value))}${after}}}`;
+}
+
+/** A token's transforms (its second group, "|base64|sealedBox:…"), their arguments decoded. */
+export function tokenTransforms(group: string | undefined): { name: string; argument?: string }[] {
+  return (group ?? "")
+    .split("|")
+    .filter(Boolean)
+    .map((part) => {
+      const colon = part.indexOf(":");
+      return colon < 0 ? { name: part } : { name: part.slice(0, colon), argument: fromBase64Url(part.slice(colon + 1)) };
+    });
 }
 
 /** The handle a token holds, or null when it isn't one. */

@@ -6,7 +6,10 @@ import {
   type Needs,
   FILE_KINDS,
   PipelineDefinitionSchema,
+  parseReference,
   REFERENCE,
+  referencePaths,
+  TRANSFORMS,
   WHOLE_REFERENCE,
   type CompiledDefinition,
   type CompiledPolicy,
@@ -218,6 +221,10 @@ export class PipelineCompiler {
           });
         }
       }
+      // M52-T9: each transform known, with its argument when it takes one.
+      for (const raw of rawReferencesIn(value)) {
+        for (const issue of this.transformIssues(raw, scope, known)) errors.push({ path: fieldPath, message: issue });
+      }
       const accepts = scope.definition.acceptsCredentials;
       if (credentialUsed && (!accepts || (Array.isArray(accepts) && !accepts.includes(key)))) {
         errors.push({
@@ -230,7 +237,13 @@ export class PipelineCompiler {
 
       const whole = typeof value === "string" ? WHOLE_REFERENCE.exec(value) : null;
       if (whole?.[1]) {
-        const resolved = this.resolve(whole[1].trim(), scope, known);
+        const parsed = parseReference(whole[1].trim());
+        const base = this.resolve(parsed.path, scope, known);
+        // A transformed value is text (an encrypted one stays encrypted until it is sent).
+        const resolved: Resolution =
+          parsed.transforms.length === 0 || !base.ok
+            ? base
+            : { ok: true, type: base.type.kind === "sealed" ? base.type : { kind: "string" } };
         const expected = describeSchema(fieldSchema);
         if (resolved.ok && !isAssignable(resolved.type, expected)) {
           errors.push({
@@ -436,6 +449,26 @@ export class PipelineCompiler {
     } else if (type.mine || field.mine) {
       errors.push({ path: `${at}.field`, message: `${typeName}.${fieldName} is mine: a pipeline can't write it` });
     }
+  }
+
+  /** M52-T9: what is wrong with a reference's transforms: an unknown one, a missing or extra argument, one on a credential. */
+  private transformIssues(raw: string, scope: Scope, known: Map<string, CompiledStepInfo>): string[] {
+    const { path, transforms } = parseReference(raw);
+    if (transforms.length === 0) return [];
+    if (path.startsWith("cred:")) return [`{{${raw}}}: a credential takes no transform; it is opened as it is sent`];
+    const names = Object.keys(TRANSFORMS);
+    return transforms.flatMap((t) => {
+      const known_ = Object.hasOwn(TRANSFORMS, t.name) ? TRANSFORMS[t.name as keyof typeof TRANSFORMS] : undefined;
+      if (!known_) return [`{{${raw}}}: there is no transform "${t.name}" (transforms: ${names.join(", ")})`];
+      if (known_.argument && !t.argument) return [`{{${raw}}}: ${t.name} takes a reference to what it uses, e.g. ${t.name}: key.json.key`];
+      if (!known_.argument && t.argument !== undefined) return [`{{${raw}}}: ${t.name} takes nothing after it`];
+      if (!t.argument) return [];
+      const argument = this.resolve(t.argument, scope, known);
+      if (!argument.ok) return [`{{${raw}}}: ${argument.message}`];
+      if (!["string", "unknown"].includes(argument.type.kind))
+        return [`{{${raw}}}: ${t.name}'s ${t.argument} is ${formatType(argument.type)}, not text`];
+      return [];
+    });
   }
 
   /**
@@ -759,11 +792,19 @@ function referencesAfter(step: PipelineStep, index: number, steps: PipelineStep[
   return [...new Set(roots.filter((root) => later.has(root)))];
 }
 
-/** All reference paths inside a value (strings anywhere in arrays and objects). */
+/** All reference paths inside a value (strings anywhere in arrays and objects), transforms' arguments too (M52-T9). */
 export function referencesIn(value: unknown): string[] {
-  if (typeof value === "string") return [...value.matchAll(REFERENCE)].map((m) => (m[1] ?? "").trim());
+  if (typeof value === "string") return rawReferencesIn(value).flatMap(referencePaths);
   if (Array.isArray(value)) return value.flatMap(referencesIn);
   if (value && typeof value === "object") return Object.values(value).flatMap(referencesIn);
+  return [];
+}
+
+/** Every reference inside a value as written, its transforms with it ("item.value | base64"). */
+export function rawReferencesIn(value: unknown): string[] {
+  if (typeof value === "string") return [...value.matchAll(REFERENCE)].map((m) => (m[1] ?? "").trim());
+  if (Array.isArray(value)) return value.flatMap(rawReferencesIn);
+  if (value && typeof value === "object") return Object.values(value).flatMap(rawReferencesIn);
   return [];
 }
 

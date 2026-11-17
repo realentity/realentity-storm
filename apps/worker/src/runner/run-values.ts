@@ -1,4 +1,5 @@
-import { isSealed, REFERENCE, sealedToken, WHOLE_REFERENCE, type CompiledStep } from "@realentity/storm-shared";
+import { isSealed, parseReference, REFERENCE, sealedToken, WHOLE_REFERENCE, type CompiledStep } from "@realentity/storm-shared";
+import { applyTransforms } from "../secrets/transforms";
 
 /** The current forEach item of the step being resolved. */
 export interface ItemScope {
@@ -37,10 +38,10 @@ export class RunValues {
       const whole = WHOLE_REFERENCE.exec(value);
       if (whole?.[1]) {
         const path = whole[1].trim();
-        return path.startsWith("cred:") ? value : this.lookup(path, scope);
+        return path.startsWith("cred:") ? value : this.transformed(path, scope);
       }
       return value.replace(REFERENCE, (match, path: string) =>
-        path.trim().startsWith("cred:") ? match : asText(this.lookup(path.trim(), scope)),
+        path.trim().startsWith("cred:") ? match : asText(this.transformed(path.trim(), scope)),
       );
     }
     if (Array.isArray(value)) return value.map((v) => this.resolve(v, scope));
@@ -48,6 +49,28 @@ export class RunValues {
       return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.resolve(v, scope)]));
     }
     return value;
+  }
+
+  /**
+   * M52-T9: a reference's value through its transforms ({{x | base64}}): text. An encrypted field's value stays sealed,
+   * a token carrying the transforms, applied once http.request opens it as it sends.
+   */
+  private transformed(raw: string, scope?: ItemScope): unknown {
+    const { path, transforms } = parseReference(raw);
+    const value = this.lookup(path, scope);
+    if (transforms.length === 0) return value;
+    const argumentOf = (t: { name: string; argument?: string }) => {
+      const argument = t.argument ? this.lookup(t.argument, scope) : undefined;
+      if (typeof argument !== "string" || argument === "")
+        throw new ReferenceError(`{{${raw}}}: ${t.name}'s ${t.argument ?? "argument"} isn't text`);
+      return argument;
+    };
+    if (isSealed(value))
+      return sealedToken(
+        value,
+        transforms.map((t) => ({ name: t.name, ...(t.argument ? { argument: argumentOf(t) } : {}) })),
+      );
+    return applyTransforms(asText(value), transforms, argumentOf);
   }
 
   lookup(path: string, scope?: ItemScope): unknown {

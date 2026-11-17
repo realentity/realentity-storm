@@ -71,6 +71,16 @@ A value that is **exactly** one reference passes the value as it is (a list stay
 (`"Hello {{item.fromName}}"`) is turned into text. The compiler checks every reference and its type before the
 pipeline can be saved.
 
+**Transforms (M52)** change a reference's value, after a `|`, in order:
+
+| Transform | Gives |
+| --- | --- |
+| `{{item.name \| base64}}` | The text as base64 (UTF-8): basic auth, an API that wants a value encoded |
+| `{{item.value \| sealedBox: key.json.key}}` | The text sealed to the base64 public key the reference after `:` gives (libsodium's `crypto_box_seal`, as base64): only that key's owner opens it, as GitHub wants a secret |
+
+A plain value is transformed as the step's inputs are read. An App's encrypted field stays sealed: it is opened and
+transformed only as `http.request` sends it, after its gate. A credential (`{{cred:…}}`) takes no transform.
+
 ### 2.2 `forEach`, `when`, `retries`
 
 - **`forEach: "{{triage.kept}}"`** runs the step once per item. Several steps that loop over the same list stay
@@ -543,8 +553,10 @@ address joins the pipeline's allowed domains, or you approve a new one at the ga
 address, and a redirect isn't followed. An API key goes in `headers` or `query` as `{{cred:name}}`, as in `http.fetch`.
 An answer other than 2xx fails the step with its status.
 - **An App's encrypted field (M52)** goes in `headers`, `query` or `body` as `{{item.value}}`, alone or inside text
-  (`"token {{item.value}}"`). The gate shows `***`; the worker opens it only once you press Act, as the request is
-  sent, and an answer echoing it shows `***`. An edit at the gate that leaves `***` keeps the value.
+  (`"token {{item.value}}"`). The gate shows `***`; the worker decrypts it only once you press Act and sends the real
+  value; an answer echoing it shows `***`. An edit at the gate that leaves `***` keeps the value. With a transform
+  (§2.1), `{{item.value | sealedBox: key.json.key}}` sends it sealed to an API's public key instead (GitHub's secrets),
+  `{{item.value | base64}}` as base64.
 - In: `method`, `url`, `headers`, `query`, `body`, `timeoutSeconds` [20].
 - Out: `status`, `json` (when the answer is JSON), `text`.
 

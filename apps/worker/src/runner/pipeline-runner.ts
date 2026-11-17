@@ -19,6 +19,7 @@ import { inputError } from "./input-errors";
 import { PolicyGuard, PolicyViolation, type TargetCheck } from "./policy-guard";
 import { RunControls, type ControlledRun } from "./run-controls";
 import { loadBindings, type RunBindings } from "./bindings";
+import { transformsReady } from "../secrets/transforms";
 import { RunValues, sourceOf, type ItemScope } from "./run-values";
 import { NO_ATTENTION, RunStopped, type ExecutorRegistry, type StepContext } from "./step-executor";
 import { type TakeoverDesk } from "./takeovers";
@@ -162,6 +163,8 @@ export class PipelineRunner {
    * waiting for the user. Returns the run's status afterwards.
    */
   async advance(runId: string): Promise<RunStatus> {
+    // M52-T9: sealedBox's libsodium, loaded once, before a reference is resolved.
+    await transformsReady();
     for (;;) {
       // Claim the run, so two workers (or a retried job) never advance it at the same time. A run waiting in the
       // live view is still being advanced (its step holds the page): not claimable.

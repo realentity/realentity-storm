@@ -3,9 +3,12 @@ import {
   holdsSealed,
   isSealed,
   maskSealed,
+  parseReference,
+  referencePaths,
   SEALED_TOKEN,
   sealedAt,
   sealedToken,
+  tokenTransforms,
   unmaskEdit,
 } from "@realentity/storm-shared";
 import { randomBytes } from "node:crypto";
@@ -86,5 +89,25 @@ describe("handles in text and gate edits (M52-T5, T8)", () => {
       body: { value: "typed", note: "x" },
       headers: { Authorization: "Basic abc" },
     });
+  });
+});
+
+describe("transforms in references and tokens (M52-T9)", () => {
+  it("reads a reference's path, its transforms and every path it uses", () => {
+    expect(parseReference("item.value | sealedBox: key.json.key | base64")).toEqual({
+      path: "item.value",
+      transforms: [{ name: "sealedBox", argument: "key.json.key" }, { name: "base64" }],
+    });
+    expect(parseReference("cred:github")).toEqual({ path: "cred:github", transforms: [] });
+    expect(referencePaths("item.value | sealedBox: key.json.key")).toEqual(["item.value", "key.json.key"]);
+  });
+
+  it("carries a handle's transforms in its token, their arguments as they were", () => {
+    const sealed = sealField(ring(), sealedAt("a", "Secret", "X", "value"), "s3cret");
+    const token = sealedToken(sealed, [{ name: "sealedBox", argument: "q+/Key==" }, { name: "base64" }]);
+    const [, encoded, transforms] = new RegExp(SEALED_TOKEN.source).exec(token)!;
+    expect(fromSealedToken(encoded)).toEqual(sealed);
+    expect(tokenTransforms(transforms)).toEqual([{ name: "sealedBox", argument: "q+/Key==" }, { name: "base64" }]);
+    expect(maskSealed(`x ${token} y`)).toBe("x *** y");
   });
 });
