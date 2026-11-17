@@ -1,3 +1,4 @@
+import { KeyRing, sealField } from "@realentity/storm-crypto";
 import { Prisma } from "@realentity/storm-db";
 import {
   appMap,
@@ -10,8 +11,11 @@ import {
   type AppMapView,
   checkAppSource,
   definitionToSource,
+  encryptedFields,
   entityValueAt,
+  isSealed,
   readAppSource,
+  sealedAt,
   type AddFieldRequest,
   type AppCheckRequest,
   type AppCheckView,
@@ -53,6 +57,7 @@ export class AppsService {
     private readonly catalog: StepCatalog,
     private readonly files: AppFilesService,
     private readonly bindings: BindingsService,
+    private readonly keys: KeyRing,
   ) {}
 
   /** The App a pipeline names (`app:`), for the compiler; nothing for a pipeline outside any App. */
@@ -358,9 +363,12 @@ export class AppsService {
       };
       throw new ConflictException(refusal);
     }
+    const previous = readAppSource(current.source);
+    await this.encryptionOff(appId, previous, definition);
     const refs = toJson(await this.appRefsOf(userId, definition));
     await this.unique(() =>
       this.prisma.client.$transaction(async (tx) => {
+        await this.encryptionOn(tx, appId, previous, definition);
         const version = await tx.appVersion.create({
           data: { appId, version: current.version + 1, definition: toJson(definition), source, changeSummary: changes.join("\n"), refs },
         });
@@ -370,6 +378,64 @@ export class AppsService {
     await this.bindings.carryOver({ appId }, readAppSource(current.source).needs ?? {}, definition.needs ?? {});
     await this.bindings.fillWhereOneFits(userId, { appId }, definition.needs ?? {});
     return this.get(userId, appId);
+  }
+
+  /**
+   * M52: a field that stops being encrypted while entities hold a value for it: refused, as only the worker could open
+   * them. Clear them on their pages first, or remove the field.
+   */
+  private async encryptionOff(appId: string, before: AppDefinition, after: AppDefinition): Promise<void> {
+    for (const [typeName, type] of Object.entries(before.types)) {
+      for (const field of encryptedFields(type)) {
+        const now = after.types[typeName]?.fields[field];
+        if (!now || now.encrypted) continue;
+        const rows = await this.prisma.client.dataEntity.findMany({
+          where: { appId, type: typeName },
+          select: { value: true, mine: true },
+        });
+        const has = (json: Prisma.JsonValue) => ((json ?? {}) as Prisma.JsonObject)[field] != null;
+        const held = rows.filter((row) => has(row.value) || has(row.mine)).length;
+        if (held > 0) {
+          throw new ConflictException(
+            `${typeName}.${field} holds ${held === 1 ? "an encrypted value" : `${held} encrypted values`}: clear ${held === 1 ? "it" : "them"} first, or remove the field, to keep it unencrypted`,
+          );
+        }
+      }
+    }
+  }
+
+  /** M52: a field that becomes encrypted: the values entities hold for it are sealed with the version that says so. */
+  private async encryptionOn(tx: Prisma.TransactionClient, appId: string, before: AppDefinition, after: AppDefinition): Promise<void> {
+    for (const [typeName, type] of Object.entries(after.types)) {
+      const fields = encryptedFields(type).filter((field) => !before.types[typeName]?.fields[field]?.encrypted);
+      if (fields.length === 0) continue;
+      const entities = await tx.dataEntity.findMany({
+        where: { appId, type: typeName },
+        select: { dataEntityId: true, key: true, value: true, mine: true },
+      });
+      for (const entity of entities) {
+        const seal = (json: Prisma.JsonValue): { json: Prisma.JsonObject; changed: boolean } => {
+          const out = { ...((json ?? {}) as Prisma.JsonObject) };
+          let changed = false;
+          for (const field of fields) {
+            const value = out[field];
+            if (value === undefined || value === null || isSealed(value)) continue;
+            // A number or anything else a pipeline wrote under it before: text, as the field is.
+            out[field] = sealField(
+              this.keys,
+              sealedAt(appId, typeName, entity.key, field),
+              typeof value === "string" ? value : JSON.stringify(value),
+            ) as unknown as Prisma.JsonObject;
+            changed = true;
+          }
+          return { json: out, changed };
+        };
+        const [value, mine] = [seal(entity.value), seal(entity.mine)];
+        if (value.changed || mine.changed) {
+          await tx.dataEntity.update({ where: { dataEntityId: entity.dataEntityId }, data: { value: value.json, mine: mine.json } });
+        }
+      }
+    }
   }
 
   /**

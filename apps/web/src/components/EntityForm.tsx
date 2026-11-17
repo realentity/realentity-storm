@@ -1,5 +1,5 @@
-import { asFileRef, type FileRef, type FormField } from "@realentity/storm-shared";
-import { IconDeviceFloppy, IconPaperclip, IconX } from "@tabler/icons-react";
+import { asFileRef, MASK, type FileRef, type FormField } from "@realentity/storm-shared";
+import { IconDeviceFloppy, IconLock, IconPaperclip, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../lib/endpoints";
 import { asText } from "../lib/view";
@@ -9,6 +9,8 @@ type Values = Record<string, unknown>;
 /** A value as its input shows it: dates cut to what the input takes, lists a line each, yes/no as "true"/"false". */
 function shown(field: FormField, value: unknown): string {
   if (value === undefined || value === null) return "";
+  // M52: never shown; the api sends only that one is set (***).
+  if (field.encrypted) return "";
   if (field.kind === "file" || field.kind === "image") return asFileRef(value)?.id ?? "";
   if (field.kind === "list" && Array.isArray(value)) return value.map(asText).join("\n");
   if (field.kind === "date") return asText(value).slice(0, 10);
@@ -61,11 +63,18 @@ export function EntityForm({
   const [initial] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.field, shown(f, values[f.field])])));
   const [draft, setDraft] = useState<Record<string, string>>(initial);
   const set = (field: string, value: string) => setDraft((d) => ({ ...d, [field]: value }));
+  // M52: encrypted fields cleared on purpose (an empty input otherwise keeps the value that is set).
+  const [cleared, setCleared] = useState<Set<string>>(new Set());
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     const typed: Values = {};
     for (const f of fields) {
       const text = draft[f.field] ?? "";
+      if (f.encrypted) {
+        if (text !== "") typed[f.field] = text;
+        else if (cleared.has(f.field)) typed[f.field] = null;
+        continue;
+      }
       if (changedOnly && text === (initial[f.field] ?? "")) continue;
       typed[f.field] = text === "" ? null : f.kind === "yesno" ? text === "true" : text;
     }
@@ -89,7 +98,18 @@ export function EntityForm({
             <label className={`form-label ${f.required ? "required" : ""}`} htmlFor={id}>
               {f.label}
             </label>
-            {f.kind === "file" || f.kind === "image" ? (
+            {f.encrypted ? (
+              <SecretInput
+                field={f}
+                value={value}
+                isSet={values[f.field] === MASK && !cleared.has(f.field)}
+                set={(text) => set(f.field, text)}
+                clear={() => {
+                  set(f.field, "");
+                  setCleared((c) => new Set(c).add(f.field));
+                }}
+              />
+            ) : f.kind === "file" || f.kind === "image" ? (
               <FileInput field={f} file={files[value]} busy={uploading === f.field} pick={(file) => void pick(f.field, file)} clear={() => set(f.field, "")} />
             ) : f.kind === "longtext" || f.kind === "list" ? (
               <textarea
@@ -151,6 +171,69 @@ export function EntityForm({
         {label}
       </button>
     </form>
+  );
+}
+
+/**
+ * M52: an encrypted field: never its value, only whether one is set. Replace opens the input (a password input; a
+ * longtext's textarea shows what is typed), Clear removes the value when the form is saved.
+ */
+function SecretInput({
+  field,
+  value,
+  isSet,
+  set,
+  clear,
+}: Readonly<{ field: FormField; value: string; isSet: boolean; set: (text: string) => void; clear: () => void }>) {
+  const [open, setOpen] = useState(!isSet);
+  const id = `field-${field.field}`;
+  if (!open && isSet) {
+    return (
+      <div className="d-flex align-items-center gap-2" data-testid={`secret-${field.field}`}>
+        <IconLock size={16} className="text-secondary" />
+        <span className="text-secondary">Set, encrypted</span>
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-secondary ms-auto"
+          onClick={() => setOpen(true)}
+          data-testid={`replace-${field.field}`}
+        >
+          Replace
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost-danger"
+          onClick={clear}
+          data-testid={`clear-${field.field}`}
+          aria-label={`Clear ${field.label}`}
+        >
+          Clear
+        </button>
+      </div>
+    );
+  }
+  const common = {
+    id,
+    name: field.field,
+    value,
+    required: field.required && !isSet,
+    autoComplete: "off",
+    spellCheck: false,
+    placeholder: isSet ? "A new value replaces the one set" : undefined,
+    onChange: (e: { target: { value: string } }) => set(e.target.value),
+  };
+  return (
+    <div data-testid={`secret-${field.field}`}>
+      {field.kind === "longtext" ? (
+        <textarea className="form-control font-monospace" rows={4} {...common} />
+      ) : (
+        <input className="form-control" type="password" {...common} />
+      )}
+      <div className="form-hint">
+        <IconLock size={14} className="me-1" />
+        Encrypted when saved; never shown again.
+      </div>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { type RunDetailView, type RunSummaryView } from "@realentity/storm-shared";
+import { maskSealed, type RunDetailView, type RunSummaryView } from "@realentity/storm-shared";
 
 /** Per text value: the opening of an email or page is enough to tell why a step kept or dropped it. */
 const MAX_STRING = 400;
@@ -27,8 +27,9 @@ export function runData(run: RunDetailView, stepKey?: string): string {
     const lines = [
       `## ${step.stepKey}${step.itemIndex !== null ? ` #${step.itemIndex + 1}` : ""} (${step.type}): ${step.status}`,
       ...(step.error ? [`error: ${step.error}`] : []),
-      `input: ${JSON.stringify(compact(step.input))}`,
-      `output: ${JSON.stringify(compact(step.output))}`,
+      // M52: an encrypted field's sealed value never reaches the LLM, not even as ciphertext.
+      `input: ${JSON.stringify(compact(maskSealed(step.input)))}`,
+      `output: ${JSON.stringify(compact(maskSealed(step.output)))}`,
     ];
     return cut(lines.join("\n"), MAX_STEP_CHARS);
   });

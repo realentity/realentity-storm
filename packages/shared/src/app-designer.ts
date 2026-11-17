@@ -18,6 +18,8 @@ export interface FieldPatch {
   mine?: boolean;
   values?: string[];
   currency?: string;
+  /** M52: only on text and longtext. */
+  encrypted?: boolean;
 }
 
 export function addType(source: string, name: string, key = "name"): string {
@@ -88,7 +90,8 @@ export function setField(source: string, type: string, name: string, patch: Fiel
     if (next.type !== "enum") delete next.values;
     else if (!Array.isArray(next.values) || next.values.length === 0) next.values = ["one", "two"];
     if (next.type !== "money") delete next.currency;
-    for (const property of ["type", "label", "required", "mine", "values", "currency"] as const) {
+    if (next.type !== "text" && next.type !== "longtext") delete next.encrypted;
+    for (const property of ["type", "label", "required", "mine", "values", "currency", "encrypted"] as const) {
       const value = next[property];
       if (value === undefined || value === false || value === "") field.delete(property);
       else if (property === "values") {

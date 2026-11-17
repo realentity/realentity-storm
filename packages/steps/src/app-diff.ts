@@ -45,5 +45,6 @@ function describe(field: EntityField): string {
     ...(field.values ? [`(${field.values.join(", ")})`] : []),
     ...(field.required ? ["required"] : []),
     ...(field.mine ? ["mine"] : []),
+    ...(field.encrypted ? ["encrypted"] : []),
   ].join(" ");
 }

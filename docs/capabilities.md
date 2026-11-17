@@ -176,6 +176,15 @@ types:
   left out and said in `invalid`; an item without a required field, or without its key, isn't saved. What the type
   doesn't name is kept with the entity as it came.
 - **`mine: true`:** a field you set; no pipeline can write it, and every save keeps it.
+- **`encrypted: true` (M52):** a secret the App keeps, a token or a password to send elsewhere (a repository's GitHub
+  secrets). Only on a `text` or `longtext` field that isn't the key, the title or a currency. It is sealed in the
+  database like a credential (design.md §7), for its own entity and field: its form shows *Set, encrypted* with
+  **Replace** and **Clear**, never the value; no list shows, searches, sorts, filters or groups by it; every answer of
+  the api, a run's page, a gate and Telegram show `***`. In a pipeline it is the sealed value, a handle: `data.read`
+  and `{{trigger.item}}` give it, `data.save` keeps it (sealing it again for another entity), and a save that doesn't
+  give it keeps the one there. A version that makes a field encrypted seals the values it holds; one that stops it is
+  refused while any entity holds a value (clear them, or remove the field). `pnpm keys:rotate` and `storm check` cover
+  them.
 - **`auto: true` on the key (M48):** Storm makes the key (12 letters and digits) when an entity is added, on its list
   or by a pipeline's item without one, so what names it (a task's title) can change. Only on a text key.
 - **Versions:** each save of an App is a new version, with what changed. A version that would break one of its

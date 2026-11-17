@@ -20,6 +20,8 @@ export const HELP = {
   fieldLabel: "Its name on the pages. Left empty, it is made from the field's name (dueDate → Due date).",
   fieldRequired: "Required: a pipeline's save without it is refused, so every entity has it.",
   fieldMine: "Mine: you set it on the entity's page; pipelines never write it (your notes, a rating, a choice of yours).",
+  fieldEncrypted:
+    "Encrypted: kept sealed in the database like a credential, never shown again (a token, a password to send elsewhere). Pipelines see ***.",
   fieldValues: "The choices it can be, separated by commas. They are also its filter's values.",
   fieldCurrency: "The text field that holds its currency (EUR, USD). Totals are summed per currency.",
   newField: "A new field's name: a letter, then letters, digits, _ or -.",

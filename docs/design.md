@@ -430,6 +430,11 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 - **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<slot>}}`: a slot, filled by a credential chosen by id, never by name (capabilities.md §2.6). Password fields are filled last and masked in traces where possible.
 - **Masked for the LLM:** before an accessibility snapshot or screenshot is sent to the LLM (e.g. by `browser.agent`), the worker strips `input[type=password]` values and every field it filled from a `{{cred:*}}`, and blurs those fields in screenshots.
 - **Domain binding:** the worker refuses to fill a credential on a page whose host isn't in the credential's `allowedHosts` (exact host match, or an explicit `*.example.com` wildcard; never substring matching). Multiple hosts cover SSO redirects. This protects against phishing pages and prompt-injected redirects.
+- **An App's encrypted fields (M52):** a field with `encrypted: true` is sealed the same way, its AAD where it belongs
+  (the App, type, entity key and field), and kept in the entity's JSON with a keyed hash of the value (whether it
+  changed, without opening it). The api seals what a form sets and never opens it; every api answer, Telegram and
+  the builder's run data show `***`. In a pipeline the value stays sealed: steps move the handle, and only the worker
+  opens it, to seal it again for another entity in `data.save`.
 - **Same mechanism for** email accounts' app passwords (M50-T7: an EmailAccount row, AAD its id, opened only for its own IMAP and SMTP servers), TOTP seeds, API keys, database connections (M29: an API key goes only to its credential's hosts, a database is reachable only through a credential naming it, and `db.query` is read-only), and Playwright `storageState`.
 - **Back up `ENCRYPTION_KEY` separately from DB backups** (personal password manager or printed). Losing the key loses every secret; storing it next to the backups defeats the encryption.
 

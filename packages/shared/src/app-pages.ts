@@ -52,6 +52,8 @@ export interface FormField {
   kind: FieldKind;
   values?: string[];
   required: boolean;
+  /** M52: an encrypted field: the form never shows its value, only that one is set, and sends one only when typed. */
+  encrypted?: boolean;
 }
 
 /** A type's stage (M32), for its pages. */
@@ -142,7 +144,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
   const entries = Object.entries(type.fields);
   const currencies = new Set(entries.flatMap(([, f]) => (f.currency ? [f.currency] : [])));
   const fits = ([name, f]: [string, (typeof entries)[number][1]]) =>
-    f.type !== "longtext" && f.type !== "list" && !currencies.has(name) && f.type !== "url";
+    f.type !== "longtext" && f.type !== "list" && !currencies.has(name) && f.type !== "url" && !f.encrypted;
   const defaultColumns = [
     ...new Set([title, ...entries.filter(([, f]) => f.required).map(([n]) => n), ...entries.filter(fits).map(([n]) => n)]),
   ]
@@ -181,7 +183,9 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
               { value: "false", label: "No" },
             ],
     })),
-    search: page?.search ?? entries.filter(([, f]) => f.type === "text" || f.type === "longtext" || f.type === "enum").map(([n]) => n),
+    search:
+      page?.search ??
+      entries.filter(([, f]) => (f.type === "text" || f.type === "longtext" || f.type === "enum") && !f.encrypted).map(([n]) => n),
     sort: { by: sort.replace(/^-/, ""), desc: sort.startsWith("-") },
     group: page?.group
       ? {
@@ -227,7 +231,14 @@ function formFields(type: DataType, names: string[]): FormField[] {
     .filter((name) => type.stages?.field !== name)
     .map((name) => {
       const field = type.fields[name];
-      return { field: name, label: fieldLabel(type, name), kind: field.type, required: field.required, ...(field.values ? { values: field.values } : {}) };
+      return {
+        field: name,
+        label: fieldLabel(type, name),
+        kind: field.type,
+        required: field.required,
+        ...(field.values ? { values: field.values } : {}),
+        ...(field.encrypted ? { encrypted: true } : {}),
+      };
     });
 }
 

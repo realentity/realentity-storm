@@ -394,6 +394,21 @@ function TypeTable({
                         ))}
                       </select>
                     )}
+                    {(def.type === "text" || def.type === "longtext") && field !== text(type.key) && field !== text(type.title) && (
+                      <label className="form-check form-check-inline mb-0">
+                        <input
+                          type="checkbox"
+                          title={HELP.fieldEncrypted}
+                          className="form-check-input"
+                          checked={def.encrypted === true}
+                          disabled={!editable}
+                          onChange={(e) => onEdit((s) => setField(s, name, field, { encrypted: e.target.checked }))}
+                          aria-label={`${name}.${field} encrypted`}
+                          data-testid="field-encrypted"
+                        />
+                        <span className="form-check-label">encrypted</span>
+                      </label>
+                    )}
                   </td>
                   <td className="text-end">
                     {editable && (
