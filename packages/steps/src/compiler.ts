@@ -206,6 +206,17 @@ export class PipelineCompiler {
         const resolved = this.resolve(reference, scope, known);
         if (!resolved.ok) errors.push({ path: fieldPath, message: resolved.message });
         else if (resolved.credential) credentialUsed = true;
+        // M52: an encrypted field's value only where the step opens it as it sends, or keeps it sealed.
+        else if (resolved.type.kind === "sealed" && !sealedFields(scope.definition).includes(key)) {
+          const accepts = sealedFields(scope.definition);
+          errors.push({
+            path: fieldPath,
+            message:
+              accepts.length > 0
+                ? `{{${reference}}} is encrypted: ${scope.step.type} takes it only in ${accepts.join(", ")}`
+                : `{{${reference}}} is encrypted: only http.request sends it (in headers, query or body), and data.save keeps it; it never reaches ${scope.step.type}`,
+          });
+        }
       }
       const accepts = scope.definition.acceptsCredentials;
       if (credentialUsed && (!accepts || (Array.isArray(accepts) && !accepts.includes(key)))) {
@@ -331,12 +342,22 @@ export class PipelineCompiler {
       return {};
     }
 
+    // M52: an encrypted field is never compared or ordered by: its value is sealed.
+    const sealedIssue = (field: unknown, where: string, what: string) => {
+      if (typeof field === "string" && type.fields[field]?.encrypted)
+        errors.push({ path: where, message: `${typeName}.${field} is encrypted: it can't be ${what}` });
+    };
     if (Array.isArray(step.with.where)) {
       step.with.where.forEach((condition, i) => {
-        if (condition && typeof condition === "object") fieldIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`);
+        if (!condition || typeof condition !== "object") return;
+        fieldIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`);
+        sealedIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`, "a condition");
       });
     }
-    if (typeof step.with.sort === "string") fieldIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, ["@firstSeen", "@lastSeen"]);
+    if (typeof step.with.sort === "string") {
+      fieldIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, ["@firstSeen", "@lastSeen"]);
+      sealedIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, "sorted by");
+    }
     return {
       output: { kind: "object", fields: { items: { kind: "array", element: entityTypeInfo(type) }, count: { kind: "number" } } },
       ...(type.mine ? {} : { untrusted: typeName }),
@@ -839,4 +860,9 @@ function formatPath(path: PropertyKey[]): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)].sort();
+}
+
+/** M52: the input fields of a step that take an encrypted field's value. */
+export function sealedFields(definition: StepDefinition): readonly string[] {
+  return [...(definition.acceptsSealed ?? []), ...(definition.keepsSealed ?? [])];
 }

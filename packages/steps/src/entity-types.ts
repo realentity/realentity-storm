@@ -34,7 +34,7 @@ export function entityTypeInfo(type: DataType): TypeInfo {
       if (next?.kind !== "object") current.fields[segment] = { kind: "object", fields: {} };
       current = current.fields[segment] as typeof root;
     }
-    current.fields[segments.at(-1)!] = KIND_TYPES[field.type];
+    current.fields[segments.at(-1)!] = field.encrypted ? { kind: "sealed" } : KIND_TYPES[field.type];
   }
   return root;
 }

@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { hostMatches } from "@realentity/storm-shared";
+import { fromSealedToken, hostMatches, MASK, SEALED_TOKEN } from "@realentity/storm-shared";
 import { XMLParser } from "fast-xml-parser";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -230,8 +230,13 @@ export class HttpRequestStep implements StepExecutor {
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { method, url, headers = {}, query = {}, body, timeoutSeconds } = input as unknown as RequestInput;
-    const keyed = await withCredentials(this.vault, this.type, url, headers, query, context);
+    const { method, url, headers: given = {}, query: asked = {}, body: written, timeoutSeconds } = input as unknown as RequestInput;
+    // M52: an encrypted field's value, opened only now, as it is sent (the gate showed ***); masked if the API echoes it.
+    const opened: string[] = [];
+    const unseal = (value: unknown) => openTokens(this.vault, value, opened);
+    const [headers, query, body] = [unseal(given) as Record<string, string>, unseal(asked) as Record<string, string>, unseal(written)];
+    const credentials = await withCredentials(this.vault, this.type, url, headers, query, context);
+    const keyed = { ...credentials, mask: (text: string) => credentials.mask(maskOpened(text, opened)) };
     const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const sent: Record<string, string> = {
       "user-agent": USER_AGENT,
@@ -258,6 +263,36 @@ export class HttpRequestStep implements StepExecutor {
     }
     return { status: response.status, json, text: text.slice(0, MAX_TEXT) };
   }
+}
+
+/** M52: every {{sealed:…}} token in the value (its strings, deep), opened by the vault; what was opened is collected. */
+function openTokens(vault: CredentialVault | undefined, value: unknown, opened: string[], depth = 0): unknown {
+  if (typeof value === "string") {
+    return value.replace(SEALED_TOKEN, (_token, encoded: string) => {
+      const sealed = fromSealedToken(encoded);
+      if (!sealed) throw new Error("An encrypted value in the request is damaged");
+      if (!vault) throw new Error("http.request can't open an encrypted value here");
+      const text = vault.openSealed(sealed);
+      // Credentials are filled in after: a value holding {{cred:…}} would bring one in.
+      if (new RegExp(CREDENTIAL.source).test(text)) throw new Error("An encrypted value can't hold a {{cred:…}} reference");
+      if (text) opened.push(text);
+      return text;
+    });
+  }
+  if (depth > 50 || !value || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((v) => openTokens(vault, v, opened, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, openTokens(vault, v, opened, depth + 1)]));
+}
+
+/**
+ * The text with every value opened for the request as ***, the longest first (one may hold another). A value of fewer
+ * than 4 characters is left: masking every "1" or "on" in the answer would hide the answer, not a secret.
+ */
+function maskOpened(text: string, opened: readonly string[]): string {
+  return [...opened]
+    .filter((secret) => secret.length >= 4)
+    .sort((a, b) => b.length - a.length)
+    .reduce((masked, secret) => masked.split(secret).join(MASK), text);
 }
 
 export interface HttpResponse {

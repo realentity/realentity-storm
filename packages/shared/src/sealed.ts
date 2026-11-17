@@ -45,6 +45,7 @@ export function maskSealed<T>(value: T): T {
 
 function mask(value: unknown, depth: number): unknown {
   if (isSealed(value)) return MASK;
+  if (typeof value === "string") return value.includes(TOKEN_START) ? value.replace(SEALED_TOKEN, MASK) : value;
   if (depth > 50 || !value || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((v) => mask(v, depth + 1));
   if (!isPlain(value)) return value;
@@ -60,9 +61,10 @@ function isPlain(value: object): boolean {
   return proto === null || Object.getPrototypeOf(proto) === null;
 }
 
-/** Does it hold a sealed value anywhere? */
+/** Does it hold a sealed value anywhere (a handle, or one in text as a token)? */
 export function holdsSealed(value: unknown, depth = 0): boolean {
   if (isSealed(value)) return true;
+  if (typeof value === "string") return value.includes(TOKEN_START) && new RegExp(SEALED_TOKEN.source).test(value);
   if (depth > 50 || !value || typeof value !== "object") return false;
   return Object.values(value).some((v) => holdsSealed(v, depth + 1));
 }
@@ -85,4 +87,51 @@ export function inPlace(item: Record<string, unknown>, fields: readonly string[]
     if (value !== undefined && value !== null && !(isSealed(value) && value.$sealed.at === at(field))) delete item[field];
   }
   return item;
+}
+
+// --- a handle in text (M52-T5) ---
+
+const TOKEN_START = "{{sealed:";
+/** A handle inside text ("Bearer {{item.token}}"): the sealed value as base64url JSON, opened only as it is sent. */
+export const SEALED_TOKEN = /\{\{sealed:([A-Za-z0-9_-]+)\}\}/g;
+
+const toBase64Url = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const fromBase64Url = (text: string) => atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+
+/** The handle as text: what a template puts where it is written inside a string. Only ciphertext, never the value. */
+export function sealedToken(value: SealedValue): string {
+  // The sealed value is ASCII (base64 and numbers), so btoa takes its JSON as it is.
+  return `${TOKEN_START}${toBase64Url(JSON.stringify(value))}}}`;
+}
+
+/** The handle a token holds, or null when it isn't one. */
+export function fromSealedToken(encoded: string): SealedValue | null {
+  try {
+    const value: unknown = JSON.parse(fromBase64Url(encoded));
+    return isSealed(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A payload the user edited at a gate, with the handles it showed as *** put back: a field left as *** keeps its handle,
+ * and text keeps its tokens in order where it still shows as many ***. A handle the user replaced by a value is theirs.
+ */
+export function unmaskEdit(original: unknown, edited: unknown, depth = 0): unknown {
+  if (depth > 50) return edited;
+  if (isSealed(original)) return edited === MASK ? original : edited;
+  if (typeof original === "string" && typeof edited === "string") {
+    const tokens = original.match(SEALED_TOKEN) ?? [];
+    if (tokens.length === 0) return edited;
+    const parts = edited.split(MASK);
+    if (parts.length - 1 !== tokens.length) return edited;
+    return parts.reduce((text, part, i) => text + (i > 0 ? tokens[i - 1] : "") + part, "");
+  }
+  if (Array.isArray(original) && Array.isArray(edited)) return edited.map((v, i) => unmaskEdit(original[i], v, depth + 1));
+  if (original && edited && typeof original === "object" && typeof edited === "object" && !Array.isArray(edited)) {
+    const before = original as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(edited).map(([k, v]) => [k, unmaskEdit(before[k], v, depth + 1)]));
+  }
+  return edited;
 }

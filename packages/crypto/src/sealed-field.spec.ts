@@ -1,4 +1,13 @@
-import { isSealed, maskSealed, sealedAt } from "@realentity/storm-shared";
+import {
+  fromSealedToken,
+  holdsSealed,
+  isSealed,
+  maskSealed,
+  SEALED_TOKEN,
+  sealedAt,
+  sealedToken,
+  unmaskEdit,
+} from "@realentity/storm-shared";
 import { randomBytes } from "node:crypto";
 import { KeyRing } from "./key-ring";
 import { fieldHash, openField, rewrapField, sameField, sealField } from "./sealed-field";
@@ -45,6 +54,37 @@ describe("sealed fields (M52-T2)", () => {
     expect(maskSealed({ items: [{ name: "API_TOKEN", value: sealed }], n: 1 })).toEqual({
       items: [{ name: "API_TOKEN", value: "***" }],
       n: 1,
+    });
+  });
+});
+
+describe("handles in text and gate edits (M52-T5, T8)", () => {
+  const at = sealedAt("4f6c2a1e-6c1b-4e0a-9a51-2f3c5d7e8a90", "Secret", "API_TOKEN", "value");
+  const keys = ring();
+  const sealed = sealField(keys, at, "s3cret");
+
+  it("carries a handle in text as a token, shown as ***", () => {
+    const text = `Bearer ${sealedToken(sealed)}`;
+    expect(text).not.toContain("s3cret");
+    const [, encoded] = new RegExp(SEALED_TOKEN.source).exec(text)!;
+    expect(fromSealedToken(encoded)).toEqual(sealed);
+    expect(fromSealedToken("not-a-token")).toBeNull();
+    expect(maskSealed({ headers: { Authorization: text } })).toEqual({ headers: { Authorization: "Bearer ***" } });
+    expect(holdsSealed(text)).toBe(true);
+  });
+
+  it("puts the handles back where a gate edit still shows ***", () => {
+    const token = sealedToken(sealed);
+    const original = { body: { value: sealed, note: "x" }, headers: { Authorization: `Bearer ${token}` } };
+    // Shown masked, the note edited: the handle and the token stay.
+    expect(unmaskEdit(original, { body: { value: "***", note: "y" }, headers: { Authorization: "Bearer ***" } })).toEqual({
+      body: { value: sealed, note: "y" },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // Replaced by the user: theirs.
+    expect(unmaskEdit(original, { body: { value: "typed", note: "x" }, headers: { Authorization: "Basic abc" } })).toEqual({
+      body: { value: "typed", note: "x" },
+      headers: { Authorization: "Basic abc" },
     });
   });
 });

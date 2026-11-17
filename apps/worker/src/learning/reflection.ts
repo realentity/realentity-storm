@@ -1,6 +1,6 @@
 import { sameAbout, type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { emptyUsage, type LlmBatches, type ModelRouter } from "@realentity/storm-llm";
-import { isFreeMailDomain, looksSecret, normalizeDirection, RULE_STEP_TYPES } from "@realentity/storm-shared";
+import { isFreeMailDomain, looksSecret, maskSealed, normalizeDirection, RULE_STEP_TYPES } from "@realentity/storm-shared";
 import { type EmailMessage, type StepCatalog, type TopicProposal } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { z } from "zod";
@@ -453,8 +453,9 @@ export class Reflector {
         pipelineName: pipeline.name,
         stepKey: proposal.stepKey,
         fields,
-        originalPayload: proposal.originalPayload,
-        finalPayload: proposal.finalPayload,
+        // M52: the LLM never sees an encrypted field's value, not even its ciphertext.
+        originalPayload: maskSealed(proposal.originalPayload),
+        finalPayload: maskSealed(proposal.finalPayload),
       });
     }
     return reflectionPrompt(reflected, rules);

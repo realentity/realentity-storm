@@ -1,5 +1,5 @@
 import { type JobPosting, type JobPostingStatus, type Prisma, type PrismaClient } from "@realentity/storm-db";
-import { canonicalJson } from "@realentity/storm-shared";
+import { canonicalJson, maskSealed } from "@realentity/storm-shared";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type CredentialVault } from "../secrets/credential-vault";
 import { matchesAll, valueAt, type Condition } from "./conditions";
@@ -98,6 +98,8 @@ export class SaveStep implements StepExecutor {
 
   private async save(save: SaveInput, context: StepContext): Promise<unknown> {
     if (save.type) return saveEntities(this.prisma, { ...save, type: save.type }, context, this.filesRoot, this.vault);
+    // M52: an encrypted field's value stays sealed only in an App's encrypted field; a list keeps ***.
+    save = { ...save, items: maskSealed(save.items) };
     if (save.collection) return this.intoCollection(save, save.collection, context);
     const { items, status } = save;
     const postings = items.map(posting).filter((p) => p !== null);

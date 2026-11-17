@@ -1,4 +1,4 @@
-import { REFERENCE, WHOLE_REFERENCE, type CompiledStep } from "@realentity/storm-shared";
+import { isSealed, REFERENCE, sealedToken, WHOLE_REFERENCE, type CompiledStep } from "@realentity/storm-shared";
 
 /** The current forEach item of the step being resolved. */
 export interface ItemScope {
@@ -77,8 +77,13 @@ export function sourceOf(forEach: string): string {
 
 function dig(value: unknown, segments: string[], path: string): unknown {
   let current = value;
-  for (const segment of segments) {
+  for (const [index, segment] of segments.entries()) {
     if (current === null || current === undefined) return undefined;
+    // M52: of an encrypted field's value, only its hash (whether it changed) can be read.
+    if (isSealed(current)) {
+      if (segment === "hash" && index === segments.length - 1) return current.$sealed.hash;
+      throw new ReferenceError(`{{${path}}}: "${segment}" of an encrypted value: only its hash can be read`);
+    }
     if (typeof current !== "object" || Array.isArray(current))
       throw new ReferenceError(`{{${path}}}: can't read "${segment}" of a ${Array.isArray(current) ? "list" : typeof current}`);
     current = (current as Record<string, unknown>)[segment];
@@ -88,5 +93,8 @@ function dig(value: unknown, segments: string[], path: string): unknown {
 
 function asText(value: unknown): string {
   if (value === undefined || value === null) return "";
-  return typeof value === "string" ? value : JSON.stringify(value);
+  // M52: a handle in text stays sealed, as a token the worker opens only as http.request sends it.
+  if (isSealed(value)) return sealedToken(value);
+  // An object written into text: its handles as tokens too, so a step that doesn't take them shows ***.
+  return typeof value === "string" ? value : JSON.stringify(value, (_key, v: unknown) => (isSealed(v) ? sealedToken(v) : v));
 }

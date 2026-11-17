@@ -1,6 +1,6 @@
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { type Embeddings, type LlmUsage } from "@realentity/storm-llm";
-import { WHOLE_REFERENCE, type CompiledDefinition } from "@realentity/storm-shared";
+import { maskSealed, WHOLE_REFERENCE, type CompiledDefinition } from "@realentity/storm-shared";
 import { type EmailMessage, type StepCatalog } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
 import { sourceOf } from "../runner/run-values";
@@ -68,8 +68,9 @@ export async function learnedFields(prisma: PrismaClient, catalog: StepCatalog, 
   const definition = proposal.run.pipelineVersion.definition as unknown as CompiledDefinition;
   const acting = definition.steps.find((s) => s.id === proposal.stepKey);
   if (!acting) return [];
-  const original = proposal.originalPayload as Record<string, unknown>;
-  const approved = (proposal.finalPayload ?? proposal.originalPayload) as Record<string, unknown>;
+  // M52: an encrypted field's value is never learned from, not even its ciphertext.
+  const original = maskSealed(proposal.originalPayload) as Record<string, unknown>;
+  const approved = maskSealed(proposal.finalPayload ?? proposal.originalPayload) as Record<string, unknown>;
 
   const fields: LearnedField[] = [];
   for (const [field, template] of Object.entries(acting.with)) {

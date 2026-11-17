@@ -3,6 +3,9 @@ import { addUsage, type LlmUsage } from "@realentity/storm-llm";
 import { type Prisma, type PrismaClient, type Proposal, type RunStatus, type Step } from "@realentity/storm-db";
 import {
   canonicalJson,
+  isSealed,
+  maskSealed,
+  sealedToken,
   type AppEvent,
   type CompiledDefinition,
   type CompiledPolicy,
@@ -455,7 +458,7 @@ export class PipelineRunner {
   ): Promise<StepResult> {
     let input: Record<string, unknown>;
     try {
-      input = definition.input.parse(state.values.resolve(step.with, scope));
+      input = definition.input.parse(withoutHandles(definition, state.values.resolve(step.with, scope) as Record<string, unknown>));
     } catch (error) {
       await this.fail(state, step, row, scope, `Invalid input: ${inputError(error, step.with)}`);
       return { kind: "failed" };
@@ -506,7 +509,9 @@ export class PipelineRunner {
     let payload: Record<string, unknown>;
     let targets: TargetCheck[];
     try {
-      payload = targetDefinition.input.parse(state.values.resolve(target.with, scope));
+      payload = targetDefinition.input.parse(
+        withoutHandles(targetDefinition, state.values.resolve(target.with, scope) as Record<string, unknown>),
+      );
       targets = PolicyGuard.enforce(state.policy, targetDefinition, target.id, payload, (path) => state.values.lookup(path, scope));
     } catch (error) {
       await this.fail(
@@ -561,9 +566,15 @@ export class PipelineRunner {
       const offered = (proposal.originalPayload as { items?: unknown[] }).items ?? [];
       const chosen =
         proposal.status === "APPROVED" ? (((proposal.finalPayload ?? proposal.originalPayload) as { items?: unknown[] }).items ?? []) : [];
-      // Only items that were offered: an edited selection can drop items, never add or change them.
-      const offeredKeys = new Set(offered.map((item) => canonicalJson(item)));
-      const output = { selected: chosen.filter((item) => offeredKeys.has(canonicalJson(item))) };
+      // Only items that were offered: an edited selection can drop items, never add or change them. M52: the user saw an
+      // encrypted field's value as ***, so an item is matched as shown, and goes on as offered, its handles sealed.
+      const offeredByShown = new Map(offered.map((item) => [canonicalJson(maskSealed(item)), item]));
+      const output = {
+        selected: chosen.flatMap((item) => {
+          const original = offeredByShown.get(canonicalJson(maskSealed(item)));
+          return original === undefined ? [] : [original];
+        }),
+      };
       await this.finish(state, row, output);
       return { kind: "done", output };
     }
@@ -834,4 +845,28 @@ function setOf(map: Map<string, Set<number>>, source: string): Set<number> {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * M52: a step's input with every encrypted field's value as ***, except in the fields that take one (http.request's
+ * headers, query and body; data.save's items). The compiler refuses a direct reference elsewhere; this catches one
+ * inside a whole item (an LLM step's items, a notification's data), so the LLM never sees even the ciphertext.
+ */
+function withoutHandles(definition: StepDefinition, input: Record<string, unknown>): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const [asText, kept] = [definition.acceptsSealed ?? [], definition.keepsSealed ?? []];
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [
+      key,
+      kept.includes(key) ? value : asText.includes(key) ? asTokens(value) : maskSealed(value),
+    ]),
+  );
+}
+
+/** Each handle as its token: text a header or a body's field takes, opened by the step as it sends. */
+function asTokens(value: unknown, depth = 0): unknown {
+  if (isSealed(value)) return sealedToken(value);
+  if (depth > 50 || !value || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((v) => asTokens(v, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, asTokens(v, depth + 1)]));
 }

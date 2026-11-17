@@ -29,6 +29,13 @@ export interface StepDefinition {
    * query, M29). Everything else, the LLM steps above all, may not.
    */
   acceptsCredentials?: boolean | readonly string[];
+  /**
+   * M52: input fields that may hold an encrypted field's value (a handle), as text the worker opens as it sends it
+   * (http.request's headers, query and body). Every other step gets *** instead.
+   */
+  acceptsSealed?: readonly string[];
+  /** M52: input fields that keep a handle as it is, sealed (data.save's items, into an App's encrypted field). */
+  keepsSealed?: readonly string[];
   /** Usable in a multi-user product: no stored site passwords, no restricted scopes. */
   saasSafe: boolean;
   /**
@@ -532,6 +539,8 @@ export const CORE_STEPS: StepDefinition[] = [
       "pipeline's App, M30): as entities of that type, by its key; each field read as its kind, a wrong one left out " +
       "and said in `invalid`, an item without a required field not saved.",
     sideEffect: false,
+    // M52: an encrypted field's value stays sealed into an encrypted field of the App (sealed again for its entity).
+    keepsSealed: ["items"],
     saasSafe: true,
     input: z.object({
       items: Items,
@@ -718,10 +727,13 @@ export const CORE_STEPS: StepDefinition[] = [
       "at its gate, which shows the method, address, headers and body, until the user presses Act. The address's host is a " +
       "target (policy.allowedDomains, or approved at the gate); never a private or CGNAT/Tailscale address, and a redirect " +
       "isn't followed. An API key goes in `headers` or `query` as {{cred:name}}, sent only to the hosts the credential " +
-      "allows. An answer other than 2xx fails the step. Output: status, json (when the answer is JSON), text.",
+      "allows. An App's encrypted field ({{item.value}}) goes only here, in headers, query or body: shown as *** at the " +
+      "gate, opened only as the request is sent. An answer other than 2xx fails the step. Output: status, json (when the " +
+      "answer is JSON), text.",
     sideEffect: true,
     targets: { url: "domain" },
     acceptsCredentials: ["headers", "query"],
+    acceptsSealed: ["headers", "query", "body"],
     saasSafe: true,
     input: z.object({
       method: z.enum(["POST", "PUT", "PATCH", "DELETE"]),

@@ -1,4 +1,6 @@
 import { AppDefinitionSchema, checkFormValues, encryptedFields, listPageOf } from "@realentity/storm-shared";
+import { defaultCatalog } from "./catalog";
+import { PipelineCompiler } from "./compiler";
 
 const secrets = {
   name: "GitHub Secrets",
@@ -97,5 +99,60 @@ describe("an encrypted field's value (M52)", () => {
       { field: "value", message: "is longer than 1000 characters (a longtext takes more)" },
     ]);
     expect(checkFormValues(type, ["value"], { value: "x".repeat(1000) }).problems).toEqual([]);
+  });
+});
+
+describe("an encrypted field in a pipeline (M52-T5, T7)", () => {
+  const compiler = new PipelineCompiler(defaultCatalog());
+  const app = AppDefinitionSchema.parse(secrets);
+  const pipeline = (steps: object[]) => ({ name: "Sync", app: "GitHub Secrets", policy: { allowedDomains: ["api.github.com"] }, steps });
+  const read = { id: "read", type: "data.read", with: { type: "Secret" } };
+  const errors = (steps: object[]) => {
+    const result = compiler.compile(pipeline(steps), { app });
+    return result.ok ? [] : result.errors.map((e) => `${e.path}: ${e.message}`);
+  };
+
+  it("goes into http.request's headers, query and body, and data.save's items; its hash anywhere", () => {
+    expect(
+      errors([
+        read,
+        {
+          id: "put",
+          type: "http.request",
+          forEach: "{{read.items}}",
+          with: {
+            method: "PUT",
+            url: "https://api.github.com/repos/me/infra/actions/secrets/{{item.name}}",
+            headers: { Authorization: "Bearer {{item.value}}" },
+            query: { v: "{{item.note}}" },
+            body: { encrypted_value: "{{item.value}}", hash: "{{item.value.hash}}" },
+          },
+        },
+        { id: "copy", type: "data.save", with: { type: "Secret", items: "{{read.items}}" } },
+        { id: "tell", type: "notify.telegram", forEach: "{{read.items}}", with: { text: "{{item.name}} changed: {{item.value.hash}}" } },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("is refused anywhere else, saying where it may go", () => {
+    expect(
+      errors([
+        read,
+        { id: "tell", type: "notify.telegram", forEach: "{{read.items}}", with: { text: "{{item.name}}: {{item.value}}" } },
+        { id: "sort", type: "llm.summarize", forEach: "{{read.items}}", with: { content: "{{item.note}}" } },
+        { id: "put", type: "http.request", forEach: "{{read.items}}", with: { method: "POST", url: "{{item.value}}" } },
+        { id: "deep", type: "notify.telegram", forEach: "{{read.items}}", with: { text: "{{item.value.ciphertext}}" } },
+        { id: "where", type: "data.read", with: { type: "Secret", where: [{ field: "value", op: "eq", value: "x" }], sort: "-note" } },
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        "steps[1].with.text: {{item.value}} is encrypted: only http.request sends it (in headers, query or body), and data.save keeps it; it never reaches notify.telegram",
+        "steps[2].with.content: {{item.note}} is encrypted: only http.request sends it (in headers, query or body), and data.save keeps it; it never reaches llm.summarize",
+        "steps[3].with.url: {{item.value}} is encrypted: http.request takes it only in headers, query, body",
+        'steps[4].with.text: {{item.value.ciphertext}}: "value" is encrypted: only its hash can be read ({{…value.hash}})',
+        "steps[5].with.where[0].field: Secret.value is encrypted: it can't be a condition",
+        "steps[5].with.sort: Secret.note is encrypted: it can't be sorted by",
+      ]),
+    );
   });
 });
