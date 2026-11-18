@@ -354,6 +354,9 @@ A pipeline's key is the file's own: a button's `run:`, a `run.finished` trigger'
 `fullName` instead of `name` saves a pipeline under exactly that name. A name that isn't a key of the file is looked up as
 a pipeline you have. Files with an App and its pipelines as documents with `---` between them still import.
 
+Pipelines that depend on each other belong in the same App file, linked by their keys. A link to another App's pipeline
+uses its saved name, and Storm holds it by id once both exist. A standalone pipeline is one that connects to nothing.
+
 ---
 
 ### 2.6 Credentials and settings: slots, never names (M50)
@@ -1536,7 +1539,6 @@ What the steps add up to, with the pipeline that does it:
 | Draft replies to the email of your topics with what Storm knows about them, send after you approve | `email.fetch` → `email.classify` → `topic.match` → `email.draftReply` (`topic: auto`, on `linked`) → `email.send` | [topic-replies.yaml](../examples/pipelines/topic-replies.yaml) |
 | Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../examples/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../examples/apps/job-search.yaml) up to `data.save` |
 | Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../examples/apps/job-search.yaml) |
-| A reminder to follow up a week after applying | `flow.later` (+ a `{ on: flow.later }` pipeline with `llm.generate`) | [follow-up-later.yaml](../examples/pipelines/follow-up-later.yaml), [follow-up.yaml](../examples/pipelines/follow-up.yaml) |
 | Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.attachments`; `git.changes`, `drive.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../examples/pipelines/topic-upkeep.yaml) |
 | Each week, merge your topics' overlapping facts and retire stale ones, with your approval | `topic.tidy` → `gate.review` → `topic.apply` | [topic-tidy.yaml](../examples/pipelines/topic-tidy.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../examples/pipelines/email-follow-ups.yaml) |
@@ -1557,7 +1559,7 @@ What the steps add up to, with the pipeline that does it:
 | Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../examples/pipelines/price-watch.yaml), [product-watch.yaml](../examples/pipelines/product-watch.yaml) |
 | New releases of your stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../examples/apps/releases.yaml), [release-notes.yaml](../examples/apps/releases.yaml) |
 | Email you when it will be colder than 10° in the next 12 hours, and when it's back | `http.fetch` → `data.map` → `data.alert` → `email.send` | [cold-weather.yaml](../examples/pipelines/cold-weather.yaml) |
-| Open a GitHub issue when a pipeline fails, after you approve it | `http.request` on a `run.finished` trigger | [failed-run-issue.yaml](../examples/pipelines/failed-run-issue.yaml) |
+| Open a GitHub issue when a pipeline fails, after you approve it | `http.request` on a `run.finished` trigger | the Releases App ([releases.yaml](../examples/apps/releases.yaml)) |
 | Tell you when a table grows much faster than usual | `db.query` → `data.history` → `data.alert` → `notify.telegram` | [table-growth.yaml](../examples/apps/tables.yaml) |
 | An evening summary of everything | `notify.digest` | [daily-digest.yaml](../examples/pipelines/daily-digest.yaml) |
 | Check the live browser handover | `browser.open` (headed) | [live-view-check.yaml](../examples/pipelines/live-view-check.yaml) |

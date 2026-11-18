@@ -113,8 +113,7 @@ pipelines:
 
   application-replies:
     # M16: every 15 minutes, emails about your applications move them on (replied, interview, rejected): the Jobs page
-    # and Insight count them, an interview or a rejection cancels the follow-up reminder (follow-up-later), and a
-    # message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
+    # and Insight count them, and a message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
     name: Application replies
     description: Replies about your applications update their status, and tell you.
     trigger: { schedule: "*/15 * * * *" }
