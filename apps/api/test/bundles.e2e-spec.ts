@@ -104,6 +104,7 @@ describe("bundles", () => {
     await agent
       .post("/api/bundles")
       .send({
+        mode: "update",
         text: file(
           APP.replace("      currency: { type: text }\n", "      currency: { type: text }\n      shop: { type: text }\n"),
           READ.replace("limit: 3", "limit: 5"),
@@ -200,6 +201,44 @@ steps:
     const version = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: follower.currentVersionId! } });
     const { pipelineId } = await db.client.pipeline.findFirstOrThrow({ where: { name: "Disk prices" } });
     expect((version.definition as { refs?: { pipelines: Record<string, string> } }).refs?.pipelines).toEqual({ "Disk prices": pipelineId });
+  });
+
+  it("asks what to do with a file that is here already: its next version, or a copy with what refers to it renamed", async () => {
+    const text = file(WITH_BUTTON, SAVE);
+    await agent.post("/api/bundles").send({ text }).expect(201);
+    const changed = file(WITH_BUTTON, SAVE.replace("price: 399", "price: 349"));
+
+    const refused = await agent.post("/api/bundles").send({ text: changed }).expect(409);
+    expect((refused.body as { message: string }).message).toContain("update it or to install a copy");
+    expect(await db.client.pipelineVersion.count()).toBe(1);
+
+    await agent.post("/api/bundles").send({ text: changed, mode: "update" }).expect(201);
+    expect(await db.client.pipelineVersion.count()).toBe(2);
+    expect(await db.client.app.count()).toBe(1);
+
+    const preview = (await agent.post("/api/bundles/check").send({ text: changed, mode: "copy" }).expect(201)).body as BundleCheckView;
+    expect(preview.items.map((i) => [i.name, i.action])).toEqual([
+      ["Disks 2", "create"],
+      ["Disk prices (2)", "create"],
+    ]);
+    const copy = (await agent.post("/api/bundles").send({ text: changed, mode: "copy" }).expect(201)).body as BundleCheckView;
+    const { pipelineId } = await db.client.pipeline.findFirstOrThrow({ where: { name: "Disk prices (2)" } });
+    expect((await pressFetch(copy.items[0].id!)).pipelineId).toBe(pipelineId);
+  });
+
+  it("never replaces another App's pipeline of the same name", async () => {
+    await agent.post("/api/bundles").send({ text: file(APP, SAVE) }).expect(201);
+    const other = file(APP.replace("name: Disks", "name: Drives"), SAVE.replace("app: Disks", "app: Drives"));
+
+    const preview = (await agent.post("/api/bundles/check").send({ text: other, mode: "update" }).expect(201)).body as BundleCheckView;
+    expect(preview.ok).toBe(false);
+    expect(preview.items[1].errors[0].message).toContain('another pipeline, in "Disks"');
+    await agent.post("/api/bundles").send({ text: other, mode: "update" }).expect(400);
+    expect(await db.client.pipelineVersion.count()).toBe(1);
+
+    const copy = (await agent.post("/api/bundles/check").send({ text: other, mode: "copy" }).expect(201)).body as BundleCheckView;
+    expect(copy.ok).toBe(true);
+    expect(copy.items.map((i) => i.name)).toEqual(["Drives", "Disk prices (2)"]);
   });
 
   it("saves nothing when a save fails halfway through the file", async () => {

@@ -36,6 +36,7 @@ import {
   type AppMapView,
   type AppPreviewView,
   type BundleCheckView,
+  type BundleMode,
   type BundleExportView,
   type DraftTypeRequest,
   type DraftTypeView,
@@ -344,10 +345,10 @@ export const api = {
       request<RunDetailView>("POST", `/apps/${appId}/actions/${encodeURIComponent(type)}/${index}`, key === undefined ? {} : { key }),
   },
   bundles: {
-    check: (text: string) => request<BundleCheckView>("POST", "/bundles/check", { text }),
+    check: (text: string, mode?: BundleMode) => request<BundleCheckView>("POST", "/bundles/check", { text, mode }),
     /** M40-T2: from an example: kept with its App, for its checklist. */
-    save: (text: string, example?: { id: string; needs: ExampleNeed[] }) =>
-      request<BundleCheckView>("POST", "/bundles", example ? { text, example } : { text }),
+    save: (text: string, options: { mode?: BundleMode; example?: { id: string; needs: ExampleNeed[] } } = {}) =>
+      request<BundleCheckView>("POST", "/bundles", { text, ...options }),
     exportApp: (appId: string) => request<BundleExportView>("GET", `/bundles/apps/${appId}`),
     exportPipeline: (pipelineId: string) => request<BundleExportView>("GET", `/bundles/pipelines/${pipelineId}`),
   },

@@ -1,4 +1,4 @@
-import { appMap, freeNames, joinBundle, needMet, splitBundle, type AppSummaryView, type SetupView } from "@realentity/storm-shared";
+import { appMap, needMet, type AppSummaryView, type SetupView } from "@realentity/storm-shared";
 import { IconCheck, IconDownload, IconKey, IconMap, IconSparkles, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,12 +19,7 @@ export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSumma
   const action = useAction();
   const navigate = useNavigate();
   const install = async (example: ExampleEntry) => {
-    const done = await action.run(async () => {
-      const [apps, pipelines] = await Promise.all([api.apps.list(), api.pipelines.list()]);
-      const taken = { apps: apps.map((a) => a.name), pipelines: pipelines.map((p) => p.name) };
-      const text = joinBundle(freeNames(splitBundle(example.bundle), taken));
-      return api.bundles.save(text, { id: example.id, needs: example.needs });
-    });
+    const done = await action.run(() => api.bundles.save(example.bundle, { mode: "copy", example: { id: example.id, needs: example.needs } }));
     const appId = done?.items.find((i) => i.kind === "app")?.id;
     if (!appId) return;
     toast.success(`Installed ${example.name}: its pipelines are off until you switch them on`);

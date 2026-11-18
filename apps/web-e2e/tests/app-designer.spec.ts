@@ -353,6 +353,14 @@ steps:
   await page.getByTestId("import-text").fill(text);
   await expect(page.getByTestId("import-check")).toContainText("Everything in it is as you have it already");
   await expect(page.getByTestId("import-save")).toBeDisabled();
+
+  // As a copy: under free names, its pipeline with it.
+  await page.getByTestId("import-mode-copy").check();
+  await expect(page.getByTestId("import-item").first()).toContainText(`${name} 2`);
+  await expect(page.getByTestId("import-item").last()).toContainText(`${pipelineName} (2)`);
+  await page.getByTestId("import-save").click();
+  await expect(page.getByRole("heading", { name: `${name} 2` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `${pipelineName} (2)` })).toBeVisible();
 });
 
 // M37-E2: the preview is the page saved: what is dragged and clicked on it is on the App's list after Save

@@ -65,9 +65,15 @@ export function joinBundle(sources: string[]): string {
   return sources.map((s) => s.replace(/\n+$/, "\n")).join("---\n");
 }
 
+/** What is there already by name: `update` gives it its next version, `copy` installs the file under free names. */
+export const BUNDLE_MODES = ["update", "copy"] as const;
+export type BundleMode = (typeof BUNDLE_MODES)[number];
+
 export const BundleRequestSchema = z
   .object({
     text: z.string().min(1).max(500_000),
+    /** Asked for when some of the file is there already; a save without it is then refused. */
+    mode: z.enum(BUNDLE_MODES).optional(),
     /** M40-T2: installed from an example: kept with its App, for its checklist (M40-T3). */
     example: z.object({ id: z.string().min(1).max(60), needs: z.array(ExampleNeedSchema).max(10) }).strict().optional(),
   })
