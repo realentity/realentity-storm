@@ -1,3 +1,4 @@
+import { readAppSource } from "@realentity/storm-shared";
 import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { KeyRing, payloadHash, seal } from "@realentity/storm-crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
@@ -207,9 +208,9 @@ steps:
       await expect(request({ method: "DELETE", url: api.url("/repos/me/infra/issues/7", "other.test") })).rejects.toThrow("other.test isn't in the pipeline's allowedDomains");
     });
 
-    it("M29-I6: examples/pipelines/failed-run-issue.yaml: the issue waits at its gate with {{cred:…}}, and is created once approved", async () => {
+    it("M29-I6: the Releases App's Failed run issue: the issue waits at its gate with {{cred:…}}, and is created once approved", async () => {
       const source = exampleYaml("failed-run-issue.yaml").replace("https://api.github.com/", `http://api.github.com:${api.port}/`);
-      const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()));
+      const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()), { app: readAppSource(exampleYaml("apps/releases.yaml")) });
       await db.client.credential.updateMany({ data: { allowedHosts: ["api.github.com"] } });
       await bindSlots(db.client, versionId, { github: credentialId }, { repository: "me/infra" });
       const github = (host: string) => (host === "api.github.com" ? Promise.resolve([{ address: "127.0.0.1", family: 4 }]) : Promise.reject(new Error(`ENOTFOUND ${host}`)));

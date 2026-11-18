@@ -332,7 +332,7 @@ Mark it **Essential** on its page so it keeps running after the LLM budget is sp
 
 Other pipelines that use Telegram: [release-watch.yaml](../examples/apps/releases.yaml),
 [product-watch.yaml](../examples/pipelines/product-watch.yaml), [bills.yaml](../examples/apps/bills.yaml),
-[follow-up.yaml](../examples/pipelines/follow-up.yaml), [release-notes.yaml](../examples/apps/releases.yaml).
+[release-notes.yaml](../examples/apps/releases.yaml).
 
 ---
 
