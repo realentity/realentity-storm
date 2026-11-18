@@ -1,6 +1,6 @@
 import { type TargetView } from "@realentity/storm-shared";
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatUsd, statusLabel, statusTone } from "./format";
+import { formatDuration, formatUsd, runStatus, statusLabel, statusTone } from "./format";
 import { changedFields, editableText, newTargets, readEdits } from "./payload";
 
 describe("payload editing", () => {
@@ -42,6 +42,11 @@ describe("format", () => {
     expect(formatDuration("2026-10-31T08:00:00Z", "2026-10-31T08:03:05Z")).toBe("3 min 5 s");
     expect(formatDuration("2026-10-31T08:00:00Z", null)).toBe("");
     expect(statusLabel("WAITING_FOR_USER")).toBe("waiting for you");
+    // M54-T5: done, with items that failed
+    expect(runStatus({ status: "DONE", failedItems: 2 })).toBe("DONE_WITH_FAILURES");
+    expect(runStatus({ status: "DONE", failedItems: 0 })).toBe("DONE");
+    expect(statusLabel(runStatus({ status: "DONE", failedItems: 1 }))).toBe("done with failures");
+    expect(statusTone("DONE_WITH_FAILURES")).toBe("orange");
     expect(statusTone("FAILED")).toBe("red");
     expect(statusTone("SOMETHING_NEW")).toBe("secondary");
   });

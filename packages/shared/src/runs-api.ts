@@ -140,6 +140,8 @@ export interface RunSummaryView {
   trigger: string;
   dryRun: boolean;
   status: RunStatusName;
+  /** M54-T5: a done run's items that failed and didn't stop it (onError: continue): it is done with failures. */
+  failedItems: number;
   summary: string | null;
   startedAt: string;
   finishedAt: string | null;

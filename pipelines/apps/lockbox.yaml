@@ -14,11 +14,13 @@ needs:
     for: api.github.com
     label: "GitHub, to write variables and secrets"
     help: |-
-      A fine-grained personal access token (GitHub: Settings, Developer settings, Personal access tokens, Fine-grained tokens).
-      Repository access: only the repositories your bundles send to.
-      Repository permissions, Read and write: Secrets and Variables; Environments too for an environment's; Dependabot secrets for Dependabot.
-      For an organisation's: its owner as the token's Resource owner, and Organization permissions Secrets and Variables, Read and write (an organisation may have to approve the token).
-      Metadata: Read is added by GitHub.
+      A fine-grained personal access token. On GitHub: Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+      • Resource owner: you, or the organization that owns the repositories (an organization may have to approve the token first: it shows as pending until then).
+      • Repository access: Only select repositories, the ones your bundles send to.
+      • Repository permissions, each Read and write: Secrets, Variables, and Environments (needed for a repository environment's, e.g. production). Dependabot secrets: Read and write too, for a Dependabot bundle.
+      • Organization permissions, only for an organization bundle: Secrets and Variables, Read and write.
+      • Metadata: Read is added by GitHub.
+      A permission missing shows as "Resource not accessible by personal access token" on the run.
 types:
   Project:
     mine: true

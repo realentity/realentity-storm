@@ -1,6 +1,6 @@
 import { type RunSummaryView } from "@realentity/storm-shared";
 import { Link } from "react-router-dom";
-import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
+import { formatDateTime, formatDuration, formatUsd, runStatus } from "../lib/format";
 import { StatusBadge } from "./ui";
 
 export function RunsTable({ runs, showPipeline = true }: { runs: RunSummaryView[]; showPipeline?: boolean }) {
@@ -32,7 +32,7 @@ export function RunsTable({ runs, showPipeline = true }: { runs: RunSummaryView[
                 {run.dryRun && run.trigger !== "dry-run" && <span className="badge bg-azure-lt ms-1">dry run</span>}
               </td>
               <td>
-                <StatusBadge status={run.status} />
+                <StatusBadge status={runStatus(run)} />
               </td>
               <td className="text-secondary text-truncate" style={{ maxWidth: 360 }}>
                 {run.summary ?? (run.resumeAt ? `continues ${formatDateTime(run.resumeAt)}` : "")}

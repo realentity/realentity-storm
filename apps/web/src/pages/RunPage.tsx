@@ -7,7 +7,7 @@ import { LiveView } from "../components/LiveView";
 import { QuestionCard } from "../components/QuestionCard";
 import { ErrorAlert, Json, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
-import { formatDateTime, formatDuration, formatUsd } from "../lib/format";
+import { formatDateTime, formatDuration, formatUsd, runStatus } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 
 /**
@@ -38,7 +38,7 @@ export function RunPage() {
         title={
           <span className="d-flex align-items-center gap-2" data-testid="run-status">
             Run {r.dryRun && <span className="badge bg-azure-lt">dry run</span>}
-            <StatusBadge status={r.status} />
+            <StatusBadge status={runStatus(r)} />
           </span>
         }
       />
@@ -53,11 +53,27 @@ export function RunPage() {
       </div>
       {r.summary && (
         <div
-          className={`alert ${r.status === "ABORTED" || r.status === "FAILED" ? "alert-warning" : "alert-info"}`}
+          className={`alert ${r.status === "ABORTED" || r.status === "FAILED" || r.failedItems > 0 ? "alert-warning" : "alert-info"}`}
           style={{ whiteSpace: "pre-line" }}
           data-testid="run-summary"
         >
           {r.summary}
+          {/* M54-T5: what failed and why, without opening each step. */}
+          {r.failedItems > 0 && (
+            <ul className="mb-0 mt-2" data-testid="run-failures">
+              {r.steps
+                .filter((s) => s.status === "FAILED")
+                .map((s) => (
+                  <li key={s.stepId}>
+                    <b>
+                      {s.stepKey}
+                      {s.itemIndex !== null && ` #${s.itemIndex + 1}`}
+                    </b>
+                    : {s.error}
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
       )}
       {r.resumeAt && <div className="alert alert-info">Held back by a rate limit; continues {formatDateTime(r.resumeAt)}.</div>}
