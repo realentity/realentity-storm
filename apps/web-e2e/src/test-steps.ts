@@ -106,7 +106,11 @@ export const TEST_EXECUTORS = [
   },
   {
     type: "test.search",
-    execute: (input: Record<string, unknown>) => Promise.resolve({ items: RECRUITERS.map((r) => ({ ...r, query: String(input.query) })) }),
+    // The query "unreachable" fails, for what a failed run shows.
+    execute: (input: Record<string, unknown>) =>
+      input.query === "unreachable"
+        ? Promise.reject(new Error("The job board answered 503"))
+        : Promise.resolve({ items: RECRUITERS.map((r) => ({ ...r, query: String(input.query) })) }),
   },
   {
     type: "test.send",

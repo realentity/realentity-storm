@@ -75,6 +75,7 @@ describe("onError", () => {
     const runId = await runner.start(await createVersion(db.client, userId, source("none")), { trigger: "manual" });
     expect(await runner.advance(runId)).toBe("FAILED");
     expect(note.calls).toHaveLength(1);
+    expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).summary).toBe("note #1: test.note failed on purpose");
   });
 
   it("only with forEach", () => {

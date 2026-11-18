@@ -79,6 +79,20 @@ test.describe("pipelines", () => {
     await page.goto(`/history?pipelineId=${pipeline.pipelineId}&version=1`);
     await expect(page.getByTestId("runs").locator("tbody tr")).toHaveCount(1);
   });
+  // A failed run says why: in History, at the top of the run, and in full under its step
+  test("a failed run shows the failed step and its error", async ({ page }) => {
+    const pipeline = await createPipeline(page, REPLIES(unique("Failing search")).replace("query: dotnet", "query: unreachable"));
+    const run = await startRun(page, pipeline.pipelineId);
+    const reason = "search: The job board answered 503";
+
+    await page.goto(`/runs/${run.runId}`);
+    await expect(page.getByTestId("run-summary")).toContainText(reason);
+    await page.getByTestId("timeline").locator("tr", { hasText: "test.search" }).click();
+    await expect(page.getByTestId("step-error")).toContainText("The job board answered 503");
+
+    await page.goto(`/history?pipelineId=${pipeline.pipelineId}&status=FAILED`);
+    await expect(page.getByTestId("runs").locator("tbody tr")).toContainText(reason);
+  });
   // M12-E1
   test("a webhook pipeline: create its address, see the secret once, rotate it", async ({ page }) => {
     const name = unique("E1 hook");

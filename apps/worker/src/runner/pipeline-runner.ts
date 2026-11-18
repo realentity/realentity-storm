@@ -361,7 +361,7 @@ export class PipelineRunner {
           continue;
         }
         const result = await this.runOne(state, step, definition, undefined);
-        const interrupted = interruption(result, step);
+        const interrupted = interruption(result, step, state.rows, null);
         if (interrupted) return interrupted;
         if (result.kind === "waiting") return { status: "WAITING_FOR_USER" };
         state.values.set(step, result.kind === "done" ? result.output : undefined);
@@ -404,7 +404,7 @@ export class PipelineRunner {
           state.failures.add(`${step.id} #${index + 1}`);
           continue;
         }
-        const interrupted = interruption(result, step);
+        const interrupted = interruption(result, step, state.rows, index);
         if (interrupted) return interrupted;
         if (result.kind === "waiting") blocked.add(index);
         if (result.kind === "done") outputs[index] = result.output;
@@ -878,9 +878,12 @@ function usageData(usage: LlmUsage | undefined): { llmUsage?: Prisma.InputJsonVa
   return usage ? { llmUsage: usage as unknown as Prisma.InputJsonValue } : {};
 }
 
-/** A result that ends this advance early. */
-function interruption(result: StepResult, step: CompiledStep): Outcome | null {
-  if (result.kind === "failed") return { status: "FAILED" };
+/** A result that ends this advance early. A failed run says which step failed and why ("fetch #2: 503 from the site"). */
+function interruption(result: StepResult, step: CompiledStep, rows: Map<string, Step>, itemIndex: number | null): Outcome | null {
+  if (result.kind === "failed") {
+    const where = itemIndex === null ? step.id : `${step.id} #${itemIndex + 1}`;
+    return { status: "FAILED", summary: `${where}: ${rows.get(key(step.id, itemIndex))?.error ?? "failed"}` };
+  }
   if (result.kind === "stopped") return { status: "ABORTED", summary: result.reason };
   if (result.kind === "deferred") {
     return {
