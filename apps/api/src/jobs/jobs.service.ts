@@ -1,6 +1,8 @@
-import { applicationView } from "./insight.service";
 import { Prisma, type Application, type JobPosting, type SiteRecipe } from "@realentity/storm-db";
+import { JobQueue } from "@realentity/storm-queue";
 import {
+  OUTCOME_DATE,
+  type ApplicationView,
   type ImportRecipeRequest,
   type JobFilter,
   type JobPostingView,
@@ -10,6 +12,7 @@ import {
   type TeachRecipeRequest,
   type TeachStartedView,
   type TryRecipeRequest,
+  type UpdateApplicationRequest,
   type UpdateJobRequest,
 } from "@realentity/storm-shared";
 import { RECIPE_NAME, recipeProblems, RecipeSchema, siteOf } from "@realentity/storm-steps";
@@ -25,7 +28,10 @@ const TRY_DETAILS = 5;
 /** The Jobs page (docs/design.md §11 Phase 2, M9-T6): postings saved by data.save, scored, and the user's decisions. */
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly queue: JobQueue,
+  ) {}
 
   async list(userId: string, filter: JobFilter): Promise<JobPostingView[]> {
     const where: Prisma.JobPostingWhereInput = {
@@ -49,6 +55,28 @@ export class JobsService {
     const updated = await this.prisma.client.jobPosting.updateMany({ where: { jobPostingId, userId }, data: { status: body.status } });
     if (updated.count === 0) throw new NotFoundException();
     return jobView(await this.prisma.client.jobPosting.findUniqueOrThrow({ where: { jobPostingId }, include: { applications: true } }));
+  }
+
+  /** An application's outcome by hand (M16-T3): any status (a mistake undone too); the outcome's date set the first time; the pipelines told. */
+  async updateApplication(userId: string, applicationId: string, request: UpdateApplicationRequest): Promise<ApplicationView> {
+    const application = await this.prisma.client.application.findFirst({ where: { applicationId, userId }, include: { jobPosting: true } });
+    if (!application) throw new NotFoundException();
+    const date = request.status === "SUBMITTED" ? null : OUTCOME_DATE[request.status];
+    const note = `${new Date().toISOString().slice(0, 10)} ${request.status.toLowerCase()} (by hand)${request.note ? `: ${request.note}` : ""}`;
+    const updated = await this.prisma.client.application.update({
+      where: { applicationId },
+      data: {
+        status: request.status,
+        ...(date && !application[date] ? { [date]: new Date() } : {}),
+        ...(request.status === "SUBMITTED" && !application.submittedAt ? { submittedAt: new Date() } : {}),
+        notes: application.notes ? `${application.notes}\n${note}` : note,
+      },
+    });
+    if (updated.status !== application.status) {
+      const { title, company, location, url } = application.jobPosting;
+      await this.queue.enqueueEvent({ userId, event: "application.status", data: { applicationId, status: updated.status, job: { title, company, location, url } }, source: { depth: 0 } });
+    }
+    return applicationView(updated);
   }
 }
 
@@ -207,6 +235,19 @@ export class RecipesService {
 function checkedName(name: string): string {
   if (!RECIPE_NAME.test(name)) throw new BadRequestException('A recipe name is "<site>/<what>", e.g. "jobs.example.com/search"');
   return name;
+}
+
+function applicationView(application: Application): ApplicationView {
+  return {
+    applicationId: application.applicationId,
+    status: application.status,
+    submittedAt: application.submittedAt?.toISOString() ?? null,
+    respondedAt: application.respondedAt?.toISOString() ?? null,
+    interviewAt: application.interviewAt?.toISOString() ?? null,
+    rejectedAt: application.rejectedAt?.toISOString() ?? null,
+    notes: application.notes,
+    runId: application.runId,
+  };
 }
 
 function jobView(posting: JobPosting & { applications: Application[] }): JobPostingView {

@@ -1,6 +1,6 @@
 # M30–M33: the Job Search App. Its pipelines say `app: Job Search`: a job-board pipeline (job-board:
 # browser.extract with a recipe like recipes/example-jobs.yaml) keeps the jobs it finds as Jobs, the form steps move a job to prepared and
-# applied, application-replies moves it on from the employer's emails. Insight counts what came of them. Save it
+# applied, application-replies moves it on from the employer's emails. Save it
 # on the Apps page before its pipelines, then press "Move them here" on its page to bring the jobs and applications
 # the old Jobs page kept.
 app:
@@ -113,7 +113,7 @@ pipelines:
 
   application-replies:
     # M16: every 15 minutes, emails about your applications move them on (replied, interview, rejected): the Jobs page
-    # and Insight count them, and a message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
+    # counts them, and a message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
     name: Application replies
     description: Replies about your applications update their status, and tell you.
     trigger: { schedule: "*/15 * * * *" }

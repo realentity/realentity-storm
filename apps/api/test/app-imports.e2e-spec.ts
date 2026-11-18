@@ -1,6 +1,6 @@
 import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
-import { type AppDetailView, type AppImportResult, type AppListView, type InsightView } from "@realentity/storm-shared";
+import { type AppDetailView, type AppImportResult, type AppListView } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -151,7 +151,7 @@ describe("moving into an App", () => {
   });
 
   // M33-I1 (Job Search)
-  it("moves jobs at the stage their application reached, with its dates; Insight counts them the same; a hand move still tells application.status", async () => {
+  it("moves jobs at the stage their application reached, with its dates; a hand move still tells application.status", async () => {
     const posting = (key: string, status: "NEW" | "SKIPPED" | "SHORTLISTED" | "APPLIED", score: number | null) =>
       db.client.jobPosting.create({
         data: { userId, source: "dev.bg/search", url: `https://dev.bg/company/jobads/${key}/`, title: `${key} engineer`, company: key, score, status, firstSeenAt: new Date(Date.now() - 10 * 86_400_000) },
@@ -165,7 +165,6 @@ describe("moving into an App", () => {
     await db.client.application.create({ data: { userId, jobPostingId: globex.jobPostingId, status: "SUBMITTED", submittedAt: days(8) } });
     await posting("initech", "SKIPPED", 30);
     await posting("hooli", "NEW", null);
-    const before = (await agent.get("/api/insight?days=30").expect(200)).body as InsightView;
 
     const app = (await agent.post("/api/apps").send({ source: JOBS_APP }).expect(201)).body as AppDetailView;
     expect(app.imports).toEqual([{ from: "jobs", label: "the Jobs page", count: 4 }]);
@@ -178,12 +177,6 @@ describe("moving into an App", () => {
       ["initech", "skipped", ["new", "skipped"]],
     ]);
     expect(jobs[0]?.mine).toEqual({ comments: "Nice people" });
-
-    // Insight now reads the Jobs, and counts what it counted.
-    const after = (await agent.get("/api/insight?days=30").expect(200)).body as InsightView;
-    expect(after.totals).toEqual(before.totals);
-    expect(after.byScore).toEqual(before.byScore);
-    expect(after.medianDaysToAnswer).toBe(before.medianDaysToAnswer);
 
     // By hand on its page: globex to an interview, told as application.status for the pipelines on it.
     await db.client.$executeRaw`DELETE FROM pgboss.job`;

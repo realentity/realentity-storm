@@ -1,6 +1,6 @@
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { QUEUES } from "@realentity/storm-queue";
-import { type ApplicationView, type InsightView, type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@realentity/storm-shared";
+import { type ApplicationView, type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { parse as parseYaml } from "yaml";
@@ -163,8 +163,7 @@ describe("jobs and recipes", () => {
     await agent.post("/api/recipes/dev.bg/search/try").send({ maxItems: 1000 }).expect(400);
     await agent.post("/api/recipes/dev.bg/search/try").send({ params: { "bad name": "x" } }).expect(400);
   });
-  // M16-I1: the dashboard's counts against known postings and applications.
-  describe("M16: insight and outcomes", () => {
+  describe("M16: outcomes", () => {
     const DAY = 86_400_000;
     /** A posting found `daysAgo`, scored, maybe applied to with outcome dates (days after applying). */
     interface PostingOptions {
@@ -193,34 +192,6 @@ describe("jobs and recipes", () => {
       });
       return job;
     }
-
-    it("counts found, applied, replied, interviews and rejections, by source and score band; older postings left out", async () => {
-      await posting("a", { score: 90, status: "APPLIED", applied: { interview: 4, rejected: 9 } });
-      await posting("b", { score: 85, status: "APPLIED", applied: { replied: 2 } });
-      await posting("c", { score: 70, status: "APPLIED", applied: {} });
-      await posting("d", { score: 65, status: "SHORTLISTED" });
-      await posting("e", { score: 30, status: "SKIPPED" });
-      await posting("f", { source: "jobs.bg/search", status: "APPLIED", applied: { rejected: 6 } });
-      await posting("old", { score: 95, daysAgo: 120, status: "APPLIED", applied: { interview: 1 } });
-
-      const view = (await agent.get("/api/insight?days=90").expect(200)).body as InsightView;
-      expect(view.totals).toEqual({ key: "all", found: 6, shortlisted: 5, applied: 4, replied: 3, interview: 1, rejected: 2, waiting: 1 });
-      expect(view.bySource).toEqual([
-        { key: "dev.bg/search", found: 5, shortlisted: 4, applied: 3, replied: 2, interview: 1, rejected: 1, waiting: 1 },
-        { key: "jobs.bg/search", found: 1, shortlisted: 1, applied: 1, replied: 1, interview: 0, rejected: 1, waiting: 0 },
-      ]);
-      expect(view.byScore.map((r) => [r.key, r.found, r.applied, r.replied, r.interview])).toEqual([
-        ["80–100", 2, 2, 2, 1],
-        ["60–79", 2, 1, 0, 0],
-        ["40–59", 0, 0, 0, 0],
-        ["0–39", 1, 0, 0, 0],
-        ["unscored", 1, 1, 1, 0],
-      ]);
-      // First answers 4, 2 and 6 days after applying.
-      expect(view.medianDaysToAnswer).toBe(4);
-      expect((await agent.get("/api/insight?days=365").expect(200)).body).toMatchObject({ totals: { found: 7, interview: 2 } });
-      await agent.get("/api/insight?days=1").expect(400);
-    });
 
     it("an outcome by hand: the status, its date the first time, a note; the pipelines are told", async () => {
       const job = await posting("acme", { status: "APPLIED", applied: {} });

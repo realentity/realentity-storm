@@ -34,7 +34,7 @@ export async function jobAppOf(prisma: PrismaClient, context: StepContext): Prom
   return type && contractProblems(type, JOB_ENTITY).length === 0 ? { appId: row.appId, app: app.name, type } : null;
 }
 
-/** Every App of the user's that keeps jobs: Insight and the weekly review count them all. */
+/** Every App of the user's that keeps jobs: the weekly review counts them all. */
 export async function jobAppIds(prisma: PrismaClient, userId: string): Promise<string[]> {
   const apps = await prisma.app.findMany({ where: { userId, currentVersionId: { not: null } } });
   const versions = await prisma.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
