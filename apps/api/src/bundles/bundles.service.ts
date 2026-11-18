@@ -40,20 +40,22 @@ export class BundlesService {
   async save(userId: string, text: string, example?: BundleRequest["example"]): Promise<BundleCheckView> {
     const { view, app, pipelines } = await this.read(userId, text);
     if (!view.ok) throw new BadRequestException({ message: "The file has problems: nothing was saved", ...view });
-    if (app) {
-      const item = view.items.find((i) => i.kind === "app")!;
-      if (item.action === "create") {
-        item.id = (await this.apps.create(userId, app.source)).appId;
-        // M40-T2: installed from an example: kept with it, for its checklist.
-        if (example) await this.prisma.client.app.update({ where: { appId: item.id }, data: { example } });
+    // All of the file or none of it: an App never stays without the pipelines it came with.
+    await this.prisma.transaction(async () => {
+      if (app) {
+        const item = view.items.find((i) => i.kind === "app")!;
+        if (item.action === "create") {
+          item.id = (await this.apps.create(userId, app.source)).appId;
+          // M40-T2: installed from an example: kept with it, for its checklist.
+          if (example) await this.prisma.client.app.update({ where: { appId: item.id }, data: { example } });
+        } else if (item.action === "update") await this.apps.save(userId, item.id!, app.source);
       }
-      else if (item.action === "update") await this.apps.save(userId, item.id!, app.source);
-    }
-    for (const pipeline of pipelines) {
-      const item = view.items.find((i) => i.kind === "pipeline" && i.name === pipeline.name)!;
-      if (item.action === "create") item.id = (await this.pipelines.create(userId, pipeline.source)).pipelineId;
-      else if (item.action === "update") await this.pipelines.addVersion(userId, item.id!, pipeline.source);
-    }
+      for (const pipeline of pipelines) {
+        const item = view.items.find((i) => i.kind === "pipeline" && i.name === pipeline.name)!;
+        if (item.action === "create") item.id = (await this.pipelines.create(userId, pipeline.source)).pipelineId;
+        else if (item.action === "update") await this.pipelines.addVersion(userId, item.id!, pipeline.source);
+      }
+    });
     return view;
   }
 

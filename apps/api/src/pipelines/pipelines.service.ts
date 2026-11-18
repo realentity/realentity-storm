@@ -92,6 +92,7 @@ export class PipelinesService {
       });
       return tx.pipeline.update({ where: { pipelineId: created.pipelineId }, data: { currentVersionId: version.pipelineVersionId } });
     });
+    await this.apps.bindPipeline(userId, pipeline.name, pipeline.pipelineId);
     // M50: a slot one of the user's credentials alone fits is filled; the others wait for the user.
     await this.bindings.fillWhereOneFits(userId, { pipelineId: pipeline.pipelineId }, compiled.definition.needs ?? {});
     return this.get(userId, pipeline.pipelineId);
@@ -144,15 +145,19 @@ export class PipelinesService {
         });
       }),
     );
+    // What names it, by the name it had (a draft's isn't its own yet) or the one it has now, holds it by id.
+    for (const name of new Set([...(pipeline.currentVersionId ? [pipeline.name] : []), compiled.definition.name])) {
+      await this.apps.bindPipeline(userId, name, pipelineId);
+    }
     // The new version may have another trigger, and other slots: a renamed one keeps its binding (M50-T15).
-    await this.queue.requestScheduleSync();
+    await this.prisma.afterCommit(() => this.queue.requestScheduleSync());
     await this.bindings.carryOver(
       { pipelineId },
       (current?.definition as unknown as CompiledDefinition | undefined)?.needs ?? {},
       compiled.definition.needs ?? {},
     );
     await this.bindings.fillWhereOneFits(userId, { pipelineId }, compiled.definition.needs ?? {});
-    if (pipeline.enabled) await this.commands.sync(userId);
+    if (pipeline.enabled) await this.prisma.afterCommit(() => this.commands.sync(userId));
     return this.get(userId, pipelineId);
   }
 
