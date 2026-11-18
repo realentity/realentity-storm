@@ -41,6 +41,8 @@ const AppPackageSchema = z
       name: z.string().trim().min(1),
       /** What to set up before its pipelines can run: the checklist on its page. */
       setup: z.array(ExampleNeedSchema).max(10).optional(),
+      /** What the gallery says of it; default: its description. */
+      summary: z.string().trim().min(1).max(300).optional(),
       /** First in the gallery: needs nothing set up. */
       starter: z.boolean().optional(),
     }),
@@ -90,6 +92,7 @@ export function readAppPackage(text: string, appName?: string): AppPackage {
   head.set("name", name);
   head.delete("setup");
   head.delete("starter");
+  head.delete("summary");
   keepFirstComment(root.items[0], head.items[0]);
   root.items = [...head.items, ...root.items.filter((pair) => !["app", "pipelines"].includes(keyOfPair(pair)))];
   renameButtons(root, names);
@@ -116,7 +119,7 @@ export function readAppPackage(text: string, appName?: string): AppPackage {
     node.items.unshift(document.createPair("name", names.get(key)), document.createPair("app", name));
     renameReferences(node, names);
     const line = lineAt(original, lines, ["pipelines", key]) ?? 1;
-    documents.push({ kind: "pipeline", name: names.get(key), source: document.toString({ lineWidth: 0 }), line, lineOf: () => line });
+    documents.push({ kind: "pipeline", key, name: names.get(key), source: document.toString({ lineWidth: 0 }), line, lineOf: () => line });
   }
   return { name: checked.data.app.name, documents, setup: checked.data.app.setup ?? null, errors: [] };
 }

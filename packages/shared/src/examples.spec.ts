@@ -1,21 +1,20 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readAppPackage } from "./app-package";
 import { splitBundle } from "./bundle";
 import { checkAppSource } from "./app-source";
+import { exampleFiles } from "./example-files";
 import { freeNames, readExamples } from "./examples";
 
-const PIPELINES = join(__dirname, "../../../pipelines");
-
-// M40-T1: the examples are the files in pipelines/, each listed with what it needs
+// M40-T1: the examples are the files in examples/apps, each saying what it needs
 describe("the examples (M40-T1)", () => {
-  const examples = readExamples(readFileSync(join(PIPELINES, "examples.yaml"), "utf8"));
+  const examples = readExamples(exampleFiles());
 
-  it("lists each example's files, the starter first, each App a valid App", () => {
+  it("lists each example, the starter first, each App a valid App", () => {
     expect(examples[0]).toMatchObject({ id: "releases-to-read", starter: true, needs: [] });
     expect(new Set(examples.map((e) => e.id)).size).toBe(examples.length);
     for (const example of examples) {
-      const [app] = example.files.map((f) => readFileSync(join(PIPELINES, f), "utf8"));
-      expect(checkAppSource(app).errors).toEqual([]);
+      const { documents, errors } = readAppPackage(example.text);
+      expect(errors).toEqual([]);
+      expect(checkAppSource(documents[0].source).errors).toEqual([]);
     }
   });
 

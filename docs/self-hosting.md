@@ -167,14 +167,14 @@ buttons don't. Everything the bot does: [telegram.md](telegram.md).
 | Feature | What to do |
 |---|---|
 | **Mail** (`email.*` steps) | **Settings → Email accounts → Add**: the address and its password (for Gmail an [app password](https://myaccount.google.com/apppasswords)), Gmail's servers or your own (IMAP and SMTP over TLS). Several are fine; one is the default. Then `./docker/storm check` says its password opens with this key |
-| **Live browser** (watch and take over browser steps) | `printf 'VNC_PASSWORD=%s\nVNC_VIEW_PASSWORD=%s\n' "$(openssl rand -base64 6)" "$(openssl rand -base64 6)" >> .env`, then `./docker/storm up --force-recreate`. The view goes through the app's `/vnc` (signed in), never a port of its own. [pipelines/live-view-check.yaml](../pipelines/live-view-check.yaml) tests it |
+| **Live browser** (watch and take over browser steps) | `printf 'VNC_PASSWORD=%s\nVNC_VIEW_PASSWORD=%s\n' "$(openssl rand -base64 6)" "$(openssl rand -base64 6)" >> .env`, then `./docker/storm up --force-recreate`. The view goes through the app's `/vnc` (signed in), never a port of its own. [examples/pipelines/live-view-check.yaml](../examples/pipelines/live-view-check.yaml) tests it |
 | **Google Calendar and Drive** (`calendar.*` steps, topics' Drive folders) | [google-setup.md](google-setup.md): an OAuth client, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then **Settings → Google accounts → Connect Google** (several are fine; one is the default) |
 | **Drafts with examples**, topics by meaning | `OPENAI_API_KEY`: embeds the emails you replied to, so new drafts get your most similar approved replies as examples; and your topics' document passages and facts, so a draft gets the ones closest to the email in meaning, in any language ([topics.md](topics.md)). That text then also goes to OpenAI. Without it, examples are left out and topics match by words |
 | **Documents** (forms attach a CV) | **Profile → Documents**; they live in `STORM_DATA_DIR/documents` |
 | **Health reports** | below |
 
 **First pipelines:** **Apps → Examples** installs ready-made ones (each with a checklist of what it needs); or
-**Pipelines → New pipeline** and paste one from [pipelines/](../pipelines), **Check**, **Dry run**, **Save**, then switch
+**Pipelines → New pipeline** and paste one from [examples/](../examples/), **Check**, **Dry run**, **Save**, then switch
 it on. The builder (describe what you want) makes new ones.
 
 | If | Fix |

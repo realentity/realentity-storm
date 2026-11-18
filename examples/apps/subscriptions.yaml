@@ -1,0 +1,269 @@
+# The Subscriptions App: the services you pay for again and again, from their emails (subscriptions): trials,
+# receipts, renewals, price changes and cancellations, each adding to the same Subscription, with its price history and
+# what it costs a month. A reminder before a trial ends or a yearly renewal (renewal-watch, renewal-reminder),
+# a monthly review (subscription-review) and, on a button, how to cancel one (cancel-subscription). Nothing
+# is paid or cancelled for you.
+app:
+  name: Subscriptions
+  description: What you pay for every month or year, from email
+  icon: bell
+  summary: >-
+    What you pay for every month or year, from the services' emails, with what it costs a month and its
+    price history; a reminder before a trial ends or a yearly renewal, a monthly review, and how to
+    cancel on a button.
+  setup:
+    - { kind: email, label: "An email account, to read the services' emails from" }
+    - { kind: llm, label: "The LLM, to read each email and review them" }
+    - { kind: telegram, label: "Telegram, for the reminders and the review" }
+types:
+  Subscription:
+    key: id                        # the service's name, in lowercase letters and digits: each email about it is the same Subscription
+    title: service
+    stages:
+      field: status
+      initial: active
+      states: [trial, active, cancelling, cancelled]
+      moves:
+        - { from: trial, to: [active, cancelled], by: [me, pipeline] }
+        - { from: active, to: [cancelling, cancelled], by: [me, pipeline] }
+        - { from: cancelling, to: [cancelled], by: [me, pipeline] }
+        - { from: cancelling, to: [active] }                         # changed your mind
+        - { from: cancelled, to: [trial, active], by: [me, pipeline] }   # subscribed again
+    fields:
+      id: { type: text, required: true }
+      service: { type: text, required: true }
+      plan: { type: text }
+      price: { type: money, currency: currency }
+      currency: { type: text }
+      period: { type: enum, values: [weekly, monthly, yearly, other] }
+      monthly: { type: money, currency: currency, label: A month }
+      lastCharged: { type: date, label: Charged }
+      nextRenewal: { type: date, label: Renews }
+      trialEnds: { type: date, label: Trial ends }
+      from: { type: email }
+      subject: { type: text }
+      notes: { type: longtext, mine: true }        # how much you use it: the review reads it
+pages:
+  - list: Subscription
+    menu: { label: Subscriptions, icon: bell }
+    columns: [service, plan, price, period, monthly, { field: nextRenewal, due: { days: 7, unless: { status: cancelled } } }, status]
+    filters: [status, period]
+    sort: -monthly
+    group: { by: status, totals: [monthly] }
+    moves: true
+    actions:
+      - { label: Review, run: subscription-review }
+  - view: Subscription
+    sections:
+      - { title: Subscription, fields: [service, plan, price, period, monthly] }
+      - { title: Dates, fields: [lastCharged, nextRenewal, trialEnds] }
+      - { title: Email, fields: [from, subject] }
+    history: { collection: subscription-prices, label: Price, stepped: true }
+    actions:
+      - { label: How to cancel, run: cancel-subscription, when: { status: active }, confirm: "Get the steps to cancel this subscription and mark it cancelling?" }
+  - form: Subscription
+    fields: [notes]
+
+pipelines:
+  subscriptions:
+    # Subscriptions from email, in the Subscriptions App: a trial, a
+    # receipt, a renewal notice, a price change or a cancellation, each read by the LLM and merged into its Subscription
+    # (by the service's name) as it was, with what it costs a month. Each price is kept as a history; you're told about a new
+    # subscription and about a price that went up. Nothing is paid or cancelled.
+    fullName: Subscriptions
+    description: Subscription emails kept as Subscriptions, with a message when a price goes up.
+    trigger: { schedule: "0 */2 * * *" }
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { sinceDays: 31 }
+      - id: triage
+        type: email.classify
+        with:
+          messages: "{{fetch.messages}}"
+          instruction: >-
+            "subscription": about a service I pay for again and again (streaming, software, cloud, a gym, a newspaper): a
+            trial started or ending, a receipt or invoice for a period, a renewal notice, a price change, a cancellation.
+            "other": everything else, also one-off purchases, offers and newsletters.
+          labels: [subscription, other]
+          keep: [subscription]
+      - id: existing
+        type: data.read
+        with: { type: Subscription, limit: 500 }
+      - id: read
+        type: llm.extract
+        forEach: "{{triage.kept}}"
+        with:
+          content: "{{item}}"
+          instruction: "The service is the brand I pay, also when a store or a payment service sent the email. My subscriptions so far: {{existing.items}}"
+          fields:
+            service: the service's name, as in my list when it is one of them, else as the brand is called
+            plan: the plan, like "Premium" or "Family"
+            price: the price per period, a number like 9.99
+            currency: the price's currency code, like EUR
+            period: one of weekly, monthly, yearly, other
+            lastCharged: when I was charged, if this is a receipt, a date
+            nextRenewal: when it renews or I'm charged next, a date
+            trialEnds: when the trial ends, if it is a trial, a date
+            status: one of trial, active, cancelled
+      - id: subscriptions
+        type: data.map
+        with:
+          from: { emails: "{{triage.kept}}", values: "{{read.values}}", existing: "{{existing.items}}" }
+          # Each email merged into its Subscription as it was, with the price a month.
+          expression: |-
+            (
+              $id := function($s) { $lowercase($replace($string($s), /[^A-Za-z0-9]/, "")) };
+              $stages := { "trial": "trial", "active": "active", "cancelled": "cancelled" };
+              $map(values, function($v, $i) {
+                (
+                  $key := $id($v.service);
+                  $old := $sift($$.existing[id = $key][0], function($x, $k) { $not($k in ["status", "notes"]) });
+                  $new := $sift($v, function($x, $k) { $x != "" and $not($k in ["status", "period"]) });
+                  $period := $lowercase($v.period) in ["weekly", "monthly", "yearly", "other"] ? $lowercase($v.period) : $old.period;
+                  $m := $merge([$old, $new, { "id": $key, "period": $period, "from": emails[$i].from, "subject": emails[$i].subject }]);
+                  $p := $match($string($m.price), /\d+(\.\d+)?/)[0].match;
+                  $monthly := $p ? ($m.period = "yearly" ? $round($number($p) / 12, 2) : $m.period = "weekly" ? $round($number($p) * 52 / 12, 2) : $number($p));
+                  $merge([$m, { "monthly": $monthly, "status": $lookup($stages, $lowercase($v.status)) }])
+                )
+              })[id != ""]
+            )
+      - id: prices
+        type: data.history
+        with: { items: "{{subscriptions.items}}", collection: subscription-prices, key: id, value: price }
+      - id: up
+        type: data.filter
+        with: { items: "{{prices.items}}", where: [{ field: history.direction, op: eq, value: up }] }
+      - id: save
+        type: data.save
+        with: { items: "{{subscriptions.items}}", type: Subscription }
+      - id: added
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "New subscription: {{item.service}} {{item.plan}}, {{item.price}} {{item.currency}} ({{item.period}}), {{item.status}}." }
+      - id: dearer
+        type: notify.telegram
+        forEach: "{{up.items}}"
+        with: { text: "{{item.service}} costs more: {{item.history.previous}} → {{item.price}} {{item.currency}} ({{item.period}})." }
+
+  renewal-reminder:
+    # Started by renewal-watch before a trial ends or a yearly subscription renews: what, when and for how much, on
+    # Telegram, while there is still time to cancel.
+    fullName: Renewal reminder
+    description: A trial ends or a yearly subscription renews soon.
+    trigger: { on: flow.later }
+    steps:
+      - id: tell
+        type: notify.telegram
+        with:
+          text: >-
+            {{trigger.data.subscription.service}}: {{trigger.data.what}} on {{trigger.data.date}}, then
+            {{trigger.data.subscription.price}} {{trigger.data.subscription.currency}} ({{trigger.data.subscription.period}}).
+            Not using it? How to cancel is on its page.
+
+  renewal-watch:
+    # When a Subscription of the Subscriptions App changes: a reminder (renewal-reminder) at 09:00 two days before a
+    # trial ends, or seven days before a yearly one renews (in a few minutes when that is past and the day isn't); moved
+    # with the date, and cancelled once it is cancelling or cancelled. A monthly renewal isn't reminded: the review tells them. Save
+    # renewal-reminder first: this one names it.
+    fullName: Renewal watch
+    description: Schedules a reminder before a trial ends or a yearly subscription renews.
+    trigger: { on: entity.changed, type: Subscription }
+    steps:
+      - id: ahead
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: |-
+            (
+              $t := $toMillis($now());
+              $day := 24 * 60 * 60 * 1000;
+              $before := function($date, $days) {
+                ($d := $toMillis($date) - $days * $day;
+                $d + 9 * 60 * 60 * 1000 > $t ? $fromMillis($d, "[Y0001]-[M01]-[D01]") & "T09:00" : $toMillis($date) + $day > $t ? $fromMillis($t + 10 * 60 * 1000))
+              };
+              $trial := status = "trial" and trialEnds ? $before(trialEnds, 2);
+              $yearly := status = "active" and period = "yearly" and nextRenewal ? $before(nextRenewal, 7);
+              $trial ? { "remindAt": $trial, "what": "Its trial ends", "date": trialEnds }
+                : $yearly ? { "remindAt": $yearly, "what": "It renews for a year", "date": nextRenewal }
+            )
+      - id: later
+        type: flow.later
+        forEach: "{{ahead.items}}"
+        with:
+          pipeline: renewal-reminder
+          at: "{{item.remindAt}}"
+          key: "renewal:{{trigger.key}}"
+          data: { subscription: "{{trigger.item}}", what: "{{item.what}}", date: "{{item.date}}" }
+      - id: ended
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: 'status in ["cancelling", "cancelled"] ? { "id": id }'
+      - id: stop
+        type: flow.cancel
+        forEach: "{{ended.items}}"
+        with: { key: "renewal:{{trigger.key}}" }
+
+  subscription-review:
+    # On the 1st of every month, and from the Subscriptions list's button: what your subscriptions cost a month and a year
+    # (summed here, per currency), the dearest, the ones that look like they overlap, and the ones your notes say you
+    # hardly use, on Telegram.
+    fullName: Subscription review
+    description: What your subscriptions cost, and which to drop, every month.
+    trigger: { schedule: "0 9 1 * *" }
+    steps:
+      - id: paying
+        type: data.read
+        with: { type: Subscription, where: [{ field: status, op: in, value: [trial, active] }], sort: -monthly }
+      - id: totals
+        type: data.map
+        with:
+          from: "{{paying.items}}"
+          # A month and a year, per currency.
+          expression: |-
+            (
+              $sums := $[$exists(monthly)]{ currency: $sum(monthly) };
+              $each($sums, function($v, $k) { { "currency": $k, "month": $round($v, 2), "year": $round($v * 12, 2) } })
+            )
+      - id: review
+        type: llm.generate
+        when: "{{paying.items}}"
+        with:
+          instruction: >-
+            A short review of my subscriptions, for Telegram: first the totals exactly as given (a month and a year, per
+            currency), then the three dearest, then any that look like they overlap (two of the same kind), then the ones
+            my notes say I hardly use, and trials that end soon. Short lines, no other text.
+          context: { subscriptions: "{{paying.items}}", totals: "{{totals.items}}" }
+      - id: tell
+        type: notify.telegram
+        with: { text: "Your subscriptions:\n\n{{review.text}}" }
+
+  cancel-subscription:
+    # From an active Subscription's button in the Subscriptions App: how to cancel it
+    # and by when to avoid the next charge, on Telegram, and it moves to cancelling (its renewal reminder ends). You cancel
+    # it yourself; the email confirming it moves it to cancelled.
+    fullName: Cancel subscription
+    description: How to cancel a subscription, from its button; it moves to cancelling.
+    trigger: { on: entity.action, type: Subscription }
+    steps:
+      - id: subscription
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # The Subscription as a pipeline writes it: without its stage and your notes.
+          expression: '$sift($, function($v, $k) { $not($k in ["status", "notes"]) })'
+      - id: steps
+        type: llm.generate
+        with:
+          instruction: >-
+            How I cancel this subscription, for Telegram: where it is usually done (the service's account settings, or the
+            app store or payment service that bills it), the steps in short lines, and the date to do it by to avoid the
+            next charge. Say plainly what you aren't sure of. No other text.
+          context: { subscription: "{{trigger.item}}" }
+      - id: moved
+        type: data.save
+        with: { items: "{{subscription.items}}", type: Subscription, stage: cancelling }
+      - id: tell
+        type: notify.telegram
+        with: { text: "Cancelling {{trigger.item.service}}:\n\n{{steps.text}}" }

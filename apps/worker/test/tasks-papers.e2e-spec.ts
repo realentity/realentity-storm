@@ -1,10 +1,10 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmFile, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
 import { entityItem, readAppSource } from "@realentity/storm-shared";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { mkdtemp, rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -22,7 +22,7 @@ import { Counting, createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
-const read = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+const read = (file: string) => exampleYaml(file);
 
 /** Reads a receipt the way a model would: from the photo it is shown. */
 class ReceiptReader implements LlmClient {
@@ -101,7 +101,7 @@ describe("Tasks and Papers", () => {
     db.client.dataEntity.create({ data: { appId, type, key, value: { id: key }, mine: mine as Prisma.InputJsonObject, stage } });
   const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
-  it("pipelines/tasks-due.yaml: the open tasks due today or overdue in one message, nothing when there are none", async () => {
+  it("examples/apps/tasks.yaml: the open tasks due today or overdue in one message, nothing when there are none", async () => {
     const { appId, definition } = await install("apps/tasks.yaml");
     const versionId = await createVersion(db.client, userId, read("tasks-due.yaml"), compiler, { app: definition });
     const run = async () => {
@@ -119,7 +119,7 @@ describe("Tasks and Papers", () => {
     expect(telegram.calls).toHaveLength(1);
   });
 
-  it("pipelines/read-paper.yaml: a paper's photo read into its fields; what you typed stays", async () => {
+  it("examples/apps/papers.yaml: a paper's photo read into its fields; what you typed stays", async () => {
     const { appId, definition } = await install("apps/papers.yaml");
     const versionId = await createVersion(db.client, userId, read("read-paper.yaml"), compiler, { app: definition });
     const photo = await sharp({ create: { width: 2400, height: 3200, channels: 3, background: "#f4f1ea" } }).jpeg().toBuffer();
@@ -170,13 +170,13 @@ describe("Tasks and Papers", () => {
       return entityItem(rows[0].value, rows[0].mine);
     };
 
-    it("pipelines/task-from-telegram.yaml: /task Renew the passport adds an open task", async () => {
+    it("examples/apps/tasks.yaml: /task Renew the passport adds an open task", async () => {
       const appId = await runCommand("task-from-telegram.yaml", "apps/tasks.yaml", command("task", "Renew the passport\nbefore the trip"));
       expect(await only(appId, "Task")).toMatchObject({ title: "Renew the passport", id: expect.stringMatching(/^[a-z0-9]{12}$/) as unknown });
       expect(telegram.calls.map((c) => c.text)).toEqual(["Added: Renew the passport"]);
     });
 
-    it("pipelines/memo-from-telegram.yaml: a photo with /memo kept with its text; the photo downloaded from the bot", async () => {
+    it("examples/apps/memos.yaml: a photo with /memo kept with its text; the photo downloaded from the bot", async () => {
       const appId = await runCommand("memo-from-telegram.yaml", "apps/memos.yaml", command("memo", "Wi-Fi at the cottage", sentPhoto));
       const memo = await only(appId, "Memo");
       expect(memo).toMatchObject({ title: "Wi-Fi at the cottage", text: "Wi-Fi at the cottage", photo: { name: "photo-1763109000.jpg", mime: "image/jpeg", size: photo.length } });
@@ -184,13 +184,13 @@ describe("Tasks and Papers", () => {
       expect(telegram.calls.map((c) => c.text)).toEqual(["Kept: Wi-Fi at the cottage"]);
     });
 
-    it("pipelines/paper-from-telegram.yaml: a photo with /paper becomes a paper with its document", async () => {
+    it("examples/apps/papers.yaml: a photo with /paper becomes a paper with its document", async () => {
       const appId = await runCommand("paper-from-telegram.yaml", "apps/papers.yaml", command("paper", "Washing machine", sentPhoto));
       expect(await only(appId, "Paper")).toMatchObject({ title: "Washing machine", document: { mime: "image/jpeg" } });
       expect(telegram.calls.map((c) => c.text)).toEqual(["Kept: Washing machine. Reading it now."]);
     });
 
-    it("pipelines/paper-from-telegram.yaml: /paper without a photo or file keeps nothing and says why", async () => {
+    it("examples/apps/papers.yaml: /paper without a photo or file keeps nothing and says why", async () => {
       const { appId, definition } = await install("apps/papers.yaml");
       const versionId = await createVersion(db.client, userId, read("paper-from-telegram.yaml"), compiler, { app: definition });
       const runId = await runner.start(versionId, { trigger: "telegram", triggerData: command("paper", "Washing machine") });

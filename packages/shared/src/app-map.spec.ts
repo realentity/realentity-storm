@@ -1,10 +1,9 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { exampleYaml } from "./example-files";
 import { appMap, triggerLabel, type AppMapPipeline } from "./app-map";
 import { checkAppSource } from "./app-source";
 import { type CompiledDefinition } from "./pipeline";
 
-const app = (file: string) => checkAppSource(readFileSync(join(__dirname, `../../../pipelines/apps/${file}`), "utf8")).definition!;
+const app = (file: string) => checkAppSource(exampleYaml(`apps/${file}`)).definition!;
 const pipeline = (
   pipelineId: string,
   name: string,

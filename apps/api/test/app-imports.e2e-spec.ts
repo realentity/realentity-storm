@@ -1,16 +1,15 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { type AppDetailView, type AppImportResult, type AppListView, type InsightView } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
-const BILLS_APP = readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8");
-const PRICES_APP = readFileSync(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8");
-const JOBS_APP = readFileSync(join(__dirname, "../../../pipelines/apps/job-search.yaml"), "utf8");
-const RELEASES_APP = readFileSync(join(__dirname, "../../../pipelines/apps/releases.yaml"), "utf8");
-const TABLES_APP = readFileSync(join(__dirname, "../../../pipelines/apps/tables.yaml"), "utf8");
+const BILLS_APP = exampleYaml("apps/bills.yaml");
+const PRICES_APP = exampleYaml("apps/prices.yaml");
+const JOBS_APP = exampleYaml("apps/job-search.yaml");
+const RELEASES_APP = exampleYaml("apps/releases.yaml");
+const TABLES_APP = exampleYaml("apps/tables.yaml");
 
 // M33-I1 (Bills): the old Bills page's rows moved into the Bills App, once; its list as the old page showed them
 describe("moving into an App", () => {

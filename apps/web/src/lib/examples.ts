@@ -1,15 +1,15 @@
-import { checkAppSource, joinBundle, readExamples, type AppMapPipeline, type CompiledDefinition, type Example } from "@realentity/storm-shared";
+import { checkAppSource, readAppPackage, readExamples, type AppMapPipeline, type CompiledDefinition, type Example } from "@realentity/storm-shared";
 import { parse } from "yaml";
 
 /**
- * M40: the examples, as pipelines/examples.yaml lists them, with their files read at build time (as the App templates
- * are): each one's bundle, its App and its pipelines for the map on its card.
+ * M40: the examples, the App files of examples/apps read at build time (as the App templates are): each one's file, its
+ * App and its pipelines for the map on its card.
  */
-const FILES = import.meta.glob<string>("../../../../pipelines/**/*.yaml", { query: "?raw", import: "default", eager: true });
-const file = (path: string) => FILES[`../../../../pipelines/${path}`] ?? "";
+const FILES = import.meta.glob<string>("../../../../examples/apps/*.yaml", { query: "?raw", import: "default", eager: true });
+const byId = Object.fromEntries(Object.entries(FILES).map(([path, text]) => [path.replace(/^.*\/|\.yaml$/g, ""), text]));
 
 export interface ExampleEntry extends Example {
-  /** The App then its pipelines, as one file to import. */
+  /** The App with its pipelines, as one file to import. */
   bundle: string;
   app: ReturnType<typeof checkAppSource>["definition"];
   pipelines: AppMapPipeline[];
@@ -17,15 +17,15 @@ export interface ExampleEntry extends Example {
   slots: string[];
 }
 
-export const EXAMPLES: ExampleEntry[] = readExamples(file("examples.yaml")).map((example) => {
-  const [appSource, ...pipelineSources] = example.files.map(file);
+export const EXAMPLES: ExampleEntry[] = readExamples(byId).map((example) => {
+  const [appSource, ...pipelineSources] = readAppPackage(example.text).documents.map((d) => d.source);
   const declared = [appSource, ...pipelineSources].flatMap((source) =>
     Object.entries(((parse(source) ?? {}) as { needs?: Record<string, { label?: string }> }).needs ?? {}).map(([slot, need]) => need.label ?? slot),
   );
   return {
     ...example,
     slots: [...new Set(declared)],
-    bundle: joinBundle([appSource, ...pipelineSources]),
+    bundle: example.text,
     app: checkAppSource(appSource).definition,
     pipelines: pipelineSources.map((source) => {
       const parsed = (parse(source) ?? {}) as Partial<CompiledDefinition>;

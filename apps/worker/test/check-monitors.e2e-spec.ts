@@ -1,3 +1,4 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { readAppSource } from "@realentity/storm-shared";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
@@ -20,8 +21,8 @@ import { Counting, createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
-const SERVER_OPS = readFileSync(join(__dirname, "../../../pipelines/apps/server-ops.yaml"), "utf8");
-const CHECK_MONITORS = readFileSync(join(__dirname, "../../../pipelines/check-monitors.yaml"), "utf8");
+const SERVER_OPS = exampleYaml("apps/server-ops.yaml");
+const CHECK_MONITORS = exampleYaml("check-monitors.yaml");
 
 /**
  * The test's addresses: its servers listen on 127.0.0.1, which here plays a LAN address (private: only from a field of
@@ -117,7 +118,7 @@ describe("checks and monitors", () => {
     return { ...(row.value as Record<string, unknown>), stage: row.stage };
   };
 
-  it("pipelines/check-monitors.yaml: status, response times and certificates kept; an incident opened and resolved, told once each", async () => {
+  it("examples/apps/server-ops.yaml: status, response times and certificates kept; an incident opened and resolved, told once each", async () => {
     await monitor("nas", { kind: "http", url: `http://nas.home.example:${webPort}/moved` });
     await monitor("db", { kind: "tcp", host: "nas.home.example", port: closedPort });
     await monitor("router", { kind: "ping", host: "192.168.1.1" });

@@ -11,6 +11,18 @@
       "types": "./dist/cjs/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
+    },
+    "./example-files": {
+      "types": "./dist/cjs/example-files.d.ts",
+      "import": "./dist/esm/example-files.js",
+      "require": "./dist/cjs/example-files.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "example-files": [
+        "dist/cjs/example-files.d.ts"
+      ]
     }
   },
   "files": [

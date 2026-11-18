@@ -1,0 +1,65 @@
+# M48: the Memos App: notes to keep, each with a photo if you like, added on its list, newest first and searchable.
+# A memo's key is made by Storm, so its title can change. No pipeline: you write them (and, later, from Telegram).
+app:
+  name: Memos
+  description: Notes to keep, with a photo if you like, newest first
+  icon: bookmark
+  summary: >-
+    Notes to keep, each with a photo if you like, newest first and searchable; added on its list, or
+    with /memo on Telegram (a photo with /memo as its caption).
+  setup:
+    - { kind: telegram, label: "Telegram, for /memo (the page works without it)" }
+types:
+  Memo:
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      text: { type: longtext }
+      photo: { type: image }
+pages:
+  - list: Memo
+    menu: { label: Memos, icon: bookmark }
+    add: true
+    columns: [photo, title, "@firstSeen"]
+    search: [title, text]
+    sort: -@firstSeen
+  - view: Memo
+    fields: [title, text, photo]
+  - form: Memo
+    fields: [title, text, photo]
+
+pipelines:
+  memo-from-telegram:
+    # /memo on the Storm bot keeps a memo in the Memos App: the text after it,
+    # its first line as the title; a photo sent with /memo as its caption is kept with it. Switch it on to have /memo in
+    # the bot's menu. No LLM.
+    fullName: Memo from Telegram
+    description: /memo on Telegram keeps a memo, with a photo sent with it.
+    trigger: { on: telegram.command, command: memo, description: "Keep a note: /memo text, or a photo with /memo as its caption" }
+    steps:
+      - id: photo
+        type: file.keep
+        with: { type: Memo, field: photo, telegram: "{{trigger.file}}" }
+      - id: memo
+        type: data.map
+        with:
+          from: { text: "{{trigger.text}}", sentAt: "{{trigger.sentAt}}", photo: "{{photo.first}}" }
+          # The first line is its title; a photo alone is named by its day.
+          expression: |-
+            (
+              $first := $trim($split(text, "\n")[0]);
+              $first or photo ? {
+                "title": $first ? $substring($first, 0, 80) : "Photo of " & $substring(sentAt, 0, 10),
+                "text": text ? text : undefined,
+                "photo": photo
+              }
+            )
+      - id: save
+        type: data.save
+        with: { type: Memo, items: "{{memo.items}}" }
+      - id: kept
+        type: notify.telegram
+        when: "{{save.added}}"
+        with: { text: "Kept: {{memo.value.title}}" }

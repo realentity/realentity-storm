@@ -1,0 +1,95 @@
+# M48: the Tasks App: what you have to do, added on its list, each open until you mark it done (a Done button on its
+# row); the ones due today or overdue told every morning (tasks-due). A task's key is made by Storm, so its title
+# can change. No LLM.
+app:
+  name: Tasks
+  description: What you have to do, by due date, open until done
+  icon: list
+  summary: >-
+    What you have to do, added on its list or with /task on Telegram, with a due date and a tag, open
+    until you mark it done; every morning the ones due today or overdue on Telegram. No LLM.
+  setup:
+    - { kind: telegram, label: "Telegram, for /task and the morning list" }
+types:
+  Task:
+    key: id
+    title: title
+    stages:
+      field: state
+      initial: open
+      states: [open, done]
+      moves:
+        - { from: open, to: [done] }
+        - { from: done, to: [open] }
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      notes: { type: longtext }
+      due: { type: date }
+      tag: { type: enum, values: [home, work, errands, health, money] }
+pages:
+  - list: Task
+    menu: { label: Tasks, icon: list }
+    add: true
+    columns: [title, { field: due, due: { days: 1, unless: { state: done } } }, tag, state]
+    filters: [state, tag]
+    search: [title, notes]
+    sort: due
+    moves: true
+  - view: Task
+    fields: [title, notes, due, tag]
+  - form: Task
+    fields: [title, notes, due, tag]
+
+pipelines:
+  tasks-due:
+    # Every morning, the open tasks of the Tasks App due today or overdue, in
+    # one Telegram message; nothing when there are none. No LLM.
+    fullName: Tasks due
+    description: Every morning, the tasks due today or overdue, on Telegram.
+    trigger: { schedule: "0 7 * * *" }
+    steps:
+      - id: open
+        type: data.read
+        with:
+          type: Task
+          where: [{ field: state, op: eq, value: open }]
+      - id: due
+        type: data.map
+        with:
+          from: { tasks: "{{open.items}}" }
+          # One message: today's, then the overdue ones with since when.
+          expression: |-
+            (
+              $today := $substring($now(), 0, 10);
+              $due := tasks[due and due <= $today]^(due);
+              $count($due) > 0 ? {
+                "count": $count($due),
+                "text": "Due: " & $join($due.("• " & title & (due < $today ? " (since " & due & ")" : "")), "\n")
+              }
+            )
+      - id: tell
+        type: notify.telegram
+        when: "{{due.items}}"
+        with: { text: "{{due.value.text}}" }
+
+  task-from-telegram:
+    # /task Renew the passport on the Storm bot adds a task to the Tasks App,
+    # and says so. Switch it on to have /task in the bot's menu. No LLM.
+    fullName: Task from Telegram
+    description: /task Buy milk on Telegram adds a task.
+    trigger: { on: telegram.command, command: task, description: "Add a task: /task Buy milk" }
+    steps:
+      - id: task
+        type: data.map
+        with:
+          from: { text: "{{trigger.text}}" }
+          # The first line is the task; nothing after /task asks what.
+          expression: '$trim($split(text, "\n")[0]) ? { "title": $substring($trim($split(text, "\n")[0]), 0, 200) }'
+      - id: save
+        type: data.save
+        with: { type: Task, items: "{{task.items}}" }
+      - id: added
+        type: notify.telegram
+        when: "{{save.added}}"
+        with: { text: "Added: {{task.value.title}}" }

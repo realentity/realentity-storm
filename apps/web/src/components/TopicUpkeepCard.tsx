@@ -7,9 +7,9 @@ import { formatDateTime, statusLabel } from "../lib/format";
 import { useAction, useLoad } from "../lib/use-load";
 import { ErrorAlert } from "./ui";
 
-/** pipelines/topic-upkeep.yaml, topic-replies.yaml and topic-tidy.yaml, read at build time like the examples. */
+/** examples/pipelines/topic-upkeep.yaml, topic-replies.yaml and topic-tidy.yaml, read at build time like the examples. */
 const FILES = import.meta.glob<string>(
-  ["../../../../pipelines/topic-upkeep.yaml", "../../../../pipelines/topic-replies.yaml", "../../../../pipelines/topic-tidy.yaml"],
+  ["../../../../examples/pipelines/topic-upkeep.yaml", "../../../../examples/pipelines/topic-replies.yaml", "../../../../examples/pipelines/topic-tidy.yaml"],
   { query: "?raw", import: "default", eager: true },
 );
 
@@ -59,7 +59,7 @@ const UPKEEP: TopicPipeline = {
     "and your topics' changed documents every 15 minutes, sorts it into your topics and proposes what it states; you approve each " +
     "fact at its gate. It sends nothing.",
   installed: "Topic upkeep installed, off: try it, then switch it on",
-  source: FILES["../../../../pipelines/topic-upkeep.yaml"] ?? "",
+  source: FILES["../../../../examples/pipelines/topic-upkeep.yaml"] ?? "",
   status: () => api.topics.upkeep(),
 };
 
@@ -75,7 +75,7 @@ const REPLIES: TopicPipeline = {
     "facts and the passages of its documents closest to it; the draft says what it drew on. Each reply waits for you to edit and " +
     "Act; nothing is sent without you. Email of no topic is left alone (Recruiter and client replies leaves your topics' email to it).",
   installed: "Topic replies installed, off: try it, then switch it on",
-  source: FILES["../../../../pipelines/topic-replies.yaml"] ?? "",
+  source: FILES["../../../../examples/pipelines/topic-replies.yaml"] ?? "",
   status: () => api.topics.replies(),
 };
 
@@ -91,7 +91,7 @@ const TIDY: TopicPipeline = {
     "one thing and to retire the ones that no longer hold. You pick at its gate what is done; each change can be undone on the " +
     "topic's page, and what you leave out isn't proposed again. Topics whose facts all fit cost nothing.",
   installed: "Topic tidy-up installed, off: try it, then switch it on",
-  source: FILES["../../../../pipelines/topic-tidy.yaml"] ?? "",
+  source: FILES["../../../../examples/pipelines/topic-tidy.yaml"] ?? "",
   status: () => api.topics.tidy(),
   needs: (u) => [{ label: "The LLM", done: u.llm, note: u.llm ? undefined : "Set on the server (.env)" }],
   note: (u) =>

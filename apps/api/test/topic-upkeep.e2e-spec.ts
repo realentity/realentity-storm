@@ -1,14 +1,13 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { type TopicUpkeepView, type TopicView } from "@realentity/storm-shared";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
-const UPKEEP = readFileSync(join(__dirname, "../../../pipelines/topic-upkeep.yaml"), "utf8");
-const TOPIC_REPLIES = readFileSync(join(__dirname, "../../../pipelines/topic-replies.yaml"), "utf8");
-const TIDY = readFileSync(join(__dirname, "../../../pipelines/topic-tidy.yaml"), "utf8");
-const RECRUITER_REPLIES = readFileSync(join(__dirname, "../../../pipelines/recruiter-replies.yaml"), "utf8");
+const UPKEEP = exampleYaml("topic-upkeep.yaml");
+const TOPIC_REPLIES = exampleYaml("topic-replies.yaml");
+const TIDY = exampleYaml("topic-tidy.yaml");
+const RECRUITER_REPLIES = exampleYaml("recruiter-replies.yaml");
 
 // M42: the Topics page's card: is a pipeline keeping the topics' memory up to date, and what does it still need
 describe("topic upkeep", () => {

@@ -1,0 +1,137 @@
+# M48: the Papers App: receipts, invoices, warranties and contracts, each with its photo or PDF. Add one on its list
+# with its document: read-paper reads it and fills in what it says (what it is, the merchant, the amount, the
+# dates); what you typed stays over what it read. warranty-in-calendar puts a warranty's end in your calendar,
+# after you Act. A paper's key is made by Storm.
+app:
+  name: Papers
+  description: Receipts, invoices and warranties, read for you, with their dates
+  icon: receipt
+  summary: >-
+    Receipts, invoices and warranties with their photo or PDF, added on its list or sent with /paper on
+    Telegram: the LLM reads each one and fills in the merchant, the amount and the dates; a warranty's
+    end goes into your calendar.
+  setup:
+    - { kind: llm, label: "The LLM, to read the papers" }
+    - { kind: google-calendar, label: "Google Calendar, for warranties" }
+types:
+  Paper:
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      document: { type: file }                  # a photo or a PDF
+      kind: { type: enum, values: [receipt, invoice, warranty, contract, other] }
+      merchant: { type: text }
+      amount: { type: money, currency: currency }
+      currency: { type: text }
+      date: { type: date }
+      warrantyUntil: { type: date, label: Warranty until }
+      notes: { type: longtext }
+pages:
+  - list: Paper
+    menu: { label: Papers, icon: receipt }
+    add: true
+    columns: [document, title, kind, merchant, amount, date, { field: warrantyUntil, due: { days: 30 } }]
+    filters: [kind]
+    search: [title, merchant, notes]
+    sort: -date
+  - view: Paper
+    sections:
+      - { title: Paper, fields: [kind, merchant, amount, date, warrantyUntil, notes] }
+      - { title: Document, fields: [document] }
+  - form: Paper
+    fields: [title, document, kind, merchant, amount, currency, date, warrantyUntil, notes]
+
+pipelines:
+  read-paper:
+    # When you add a paper in the Papers App or change its document: the LLM
+    # reads the photo or PDF and fills in what it is, the merchant, the amount and the dates. What you typed yourself stays
+    # over what it read; what it can't read is left empty. The document is data, never instructions.
+    fullName: Read a paper
+    description: Reads a paper's photo or PDF and fills in its merchant, amount and dates.
+    trigger: { on: entity.changed, type: Paper, field: document }
+    steps:
+      - id: read
+        type: llm.extract
+        when: "{{trigger.item.document}}"
+        with:
+          files: ["{{trigger.item.document}}"]
+          fields:
+            kind: "what it is: receipt, invoice, warranty, contract or other"
+            merchant: the shop or company that issued it
+            amount: the total paid or to pay, as a number
+            currency: the currency, as its code (EUR, BGN, USD)
+            date: the date it was issued
+            warrantyUntil: when its warranty ends; a period (2 years) counted from its date
+      - id: save
+        type: data.save
+        with:
+          type: Paper
+          items:
+            - id: "{{trigger.item.id}}"
+              kind: "{{read.values.kind}}"
+              merchant: "{{read.values.merchant}}"
+              amount: "{{read.values.amount}}"
+              currency: "{{read.values.currency}}"
+              date: "{{read.values.date}}"
+              warrantyUntil: "{{read.values.warrantyUntil}}"
+
+  warranty-in-calendar:
+    # When a paper of the Papers App gets a warranty end (typed, or read by read-paper): that day in your calendar,
+    # at 09:00, after you Act at its gate. A date already past does nothing.
+    fullName: Warranty in calendar
+    description: A warranty's end goes into your calendar.
+    trigger: { on: entity.changed, type: Paper, field: warrantyUntil }
+    steps:
+      - id: ahead
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: 'warrantyUntil and $toMillis(warrantyUntil) + 24 * 60 * 60 * 1000 > $toMillis($now()) ? { "start": warrantyUntil & "T09:00" }'
+      - id: event
+        type: calendar.create
+        forEach: "{{ahead.items}}"
+        with:
+          title: "Warranty ends: {{trigger.item.title}}"
+          start: "{{item.start}}"
+          durationMinutes: 30
+          description: "{{trigger.item.merchant}}"
+
+  paper-from-telegram:
+    # A photo or a PDF sent to the Storm bot with /paper and its title as the caption becomes a paper in the Papers App
+    #; read-paper then reads it and fills in the merchant, the amount and
+    # the dates. Switch it on to have /paper in the bot's menu.
+    fullName: Paper from Telegram
+    description: A photo or PDF sent with /paper on Telegram becomes a paper, read for you.
+    trigger: { on: telegram.command, command: paper, description: "Keep a receipt or warranty: a photo or PDF with /paper and its title as the caption" }
+    steps:
+      - id: keep
+        type: file.keep
+        with: { type: Paper, field: document, telegram: "{{trigger.file}}" }
+      - id: paper
+        type: data.map
+        with:
+          from: { text: "{{trigger.text}}", sentAt: "{{trigger.sentAt}}", document: "{{keep.first}}" }
+          expression: 'document ? { "title": $trim(text) ? $substring($trim(text), 0, 120) : "Paper of " & $substring(sentAt, 0, 10), "document": document }'
+      - id: save
+        type: data.save
+        with: { type: Paper, items: "{{paper.items}}" }
+      - id: kept
+        type: notify.telegram
+        when: "{{save.added}}"
+        with: { text: "Kept: {{paper.value.title}}. Reading it now." }
+      - id: nothing
+        type: notify.telegram
+        when: "{{keep.skipped}}"
+        with: { text: "Not kept: send a photo or a PDF, with /paper and its title as the caption." }
+      # /paper with no photo or file at all (typed as a message, or the file sent apart from it): said too, not a quiet run.
+      - id: noFile
+        type: data.map
+        with:
+          from: { document: "{{keep.first}}", skipped: "{{keep.skipped}}" }
+          expression: '(document or $count(skipped) > 0) ? "" : "missing"'
+      - id: noFileSaid
+        type: notify.telegram
+        when: "{{noFile.value}}"
+        with: { text: "Nothing kept: /paper needs a photo or a PDF with it. Attach the file and write /paper and its title as its caption, in the same message." }

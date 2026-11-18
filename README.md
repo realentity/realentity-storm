@@ -124,7 +124,7 @@ also read its past email, after showing what that would cost. The guide: [docs/t
   on the way.
 
 Each one is a pipeline you can read: [docs/capabilities.md](docs/capabilities.md#5-putting-it-together) lists them
-with their steps, and [pipelines/](pipelines) has them ready to paste.
+with their steps, and [examples/](examples/) has them ready to paste.
 
 ## How it works
 
@@ -329,7 +329,7 @@ the ports and folders themselves.
 | [docs/self-hosting.md](docs/self-hosting.md) | Install, HTTPS, webhooks and Telegram, updates, backups |
 | [docs/telegram.md](docs/telegram.md) | What the bot does |
 | [docs/google-setup.md](docs/google-setup.md) | Connecting Google: Calendar, and Drive for topics |
-| [pipelines/](pipelines) | Example pipelines and Apps |
+| [examples/](examples/) | Example pipelines and Apps |
 
 Comments and commits cite milestone ids such as `M12-T5`: they come from the project's development plan and mark
 when and why something was added.

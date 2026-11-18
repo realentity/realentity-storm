@@ -1,10 +1,9 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
-import { join } from "node:path";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry, NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { HistoryStep } from "../src/steps/history-step";
@@ -38,7 +37,7 @@ class Sources {
 
 /** A template from /pipelines, its https address pointed at the local stand-in. */
 const template = (file: string, host: string, port: number) =>
-  readFileSync(join(__dirname, "../../../pipelines", file), "utf8").replace(`https://${host}/`, `http://${host}:${port}/`);
+  exampleYaml(file).replace(`https://${host}/`, `http://${host}:${port}/`);
 
 describe("M29: data.map and data.alert", () => {
   let db: PrismaConnection;
@@ -140,7 +139,7 @@ describe("M29: data.map and data.alert", () => {
     });
   });
 
-  it("M29-I2: pipelines/cold-weather.yaml: one email when the next 12 hours go below 10°, one when back over 12°", async () => {
+  it("M29-I2: examples/pipelines/cold-weather.yaml: one email when the next 12 hours go below 10°, one when back over 12°", async () => {
     const versionId = await createVersion(db.client, userId, template("cold-weather.yaml", "api.open-meteo.com", sources.port), new PipelineCompiler(defaultCatalog()));
     const run = async () => {
       const runId = await runner.start(versionId, { trigger: "manual" });

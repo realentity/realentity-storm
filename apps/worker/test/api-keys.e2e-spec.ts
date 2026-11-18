@@ -1,12 +1,11 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { KeyRing, payloadHash, seal } from "@realentity/storm-crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
-import { join } from "node:path";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry, NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
@@ -208,8 +207,8 @@ steps:
       await expect(request({ method: "DELETE", url: api.url("/repos/me/infra/issues/7", "other.test") })).rejects.toThrow("other.test isn't in the pipeline's allowedDomains");
     });
 
-    it("M29-I6: pipelines/failed-run-issue.yaml: the issue waits at its gate with {{cred:…}}, and is created once approved", async () => {
-      const source = readFileSync(join(__dirname, "../../../pipelines/failed-run-issue.yaml"), "utf8").replace("https://api.github.com/", `http://api.github.com:${api.port}/`);
+    it("M29-I6: examples/pipelines/failed-run-issue.yaml: the issue waits at its gate with {{cred:…}}, and is created once approved", async () => {
+      const source = exampleYaml("failed-run-issue.yaml").replace("https://api.github.com/", `http://api.github.com:${api.port}/`);
       const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()));
       await db.client.credential.updateMany({ data: { allowedHosts: ["api.github.com"] } });
       await bindSlots(db.client, versionId, { github: credentialId }, { repository: "me/infra" });

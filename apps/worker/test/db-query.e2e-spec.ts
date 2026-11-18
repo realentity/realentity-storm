@@ -1,11 +1,10 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { KeyRing, seal } from "@realentity/storm-crypto";
 import { readAppSource } from "@realentity/storm-shared";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry, NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
@@ -134,13 +133,13 @@ describe("M29: db.query", () => {
     );
   });
 
-  it("M29-I3: pipelines/table-growth.yaml: told when a table grows 3 times faster than usual, and when it is back", async () => {
+  it("M29-I3: examples/apps/tables.yaml: told when a table grows 3 times faster than usual, and when it is back", async () => {
     // M33: in the Tables App.
-    const tables = readFileSync(join(__dirname, "../../../pipelines/apps/tables.yaml"), "utf8");
+    const tables = exampleYaml("apps/tables.yaml");
     const app = await db.client.app.create({ data: { userId, name: "Tables" } });
     const appVersion = await db.client.appVersion.create({ data: { appId: app.appId, version: 1, definition: {}, source: tables } });
     await db.client.app.update({ where: { appId: app.appId }, data: { currentVersionId: appVersion.appVersionId } });
-    const versionId = await createVersion(db.client, userId, readFileSync(join(__dirname, "../../../pipelines/table-growth.yaml"), "utf8"), new PipelineCompiler(defaultCatalog()), {
+    const versionId = await createVersion(db.client, userId, exampleYaml("table-growth.yaml"), new PipelineCompiler(defaultCatalog()), {
       app: readAppSource(tables),
     });
     // The Tables App's database: filled once for its install.

@@ -1,22 +1,19 @@
+import { exampleFiles } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import {
   definitionToSource,
-  joinBundle,
   readExamples,
   type BundleCheckView,
   type ChecklistView,
   type CompiledDefinition,
   type SetupView,
 } from "@realentity/storm-shared";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type request from "supertest";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { createTestApp, type TestApp } from "./support/test-app";
 
-const PIPELINES = join(__dirname, "../../../pipelines");
-const EXAMPLES = readExamples(readFileSync(join(PIPELINES, "examples.yaml"), "utf8"));
-const bundleOf = (files: string[]) => joinBundle(files.map((f) => readFileSync(join(PIPELINES, f), "utf8")));
+const EXAMPLES = readExamples(exampleFiles());
 
 // M40-I1: every example installs into an empty account and compiles; installed twice, there are two
 describe("examples", () => {
@@ -46,7 +43,7 @@ describe("examples", () => {
       const check = (
         await agent
           .post("/api/bundles/check")
-          .send({ text: bundleOf(example.files) })
+          .send({ text: example.text })
           .expect(201)
       ).body as BundleCheckView;
       expect({ ok: check.ok, errors: check.errors, items: check.items.flatMap((i) => i.errors) }).toEqual({
@@ -54,7 +51,7 @@ describe("examples", () => {
         errors: [],
         items: [],
       });
-      expect(check.items.map((i) => i.action)).toEqual(example.files.map(() => "create"));
+      expect(new Set(check.items.map((i) => i.action))).toEqual(new Set(["create"]));
     });
   }
 
@@ -66,7 +63,7 @@ describe("examples", () => {
     const prices = EXAMPLES.find((e) => e.id === "prices")!;
     await agent
       .post("/api/bundles")
-      .send({ text: bundleOf(prices.files), example: { id: prices.id, needs: prices.needs } })
+      .send({ text: prices.text, example: { id: prices.id, needs: prices.needs } })
       .expect(201);
     const app = await db.client.app.findFirstOrThrow({ where: { name: "Prices" } });
     const pipeline = await db.client.pipeline.findFirstOrThrow({ where: { name: "Prices" } });
@@ -106,9 +103,9 @@ describe("examples", () => {
     const [starter] = EXAMPLES;
     await agent
       .post("/api/bundles")
-      .send({ text: bundleOf(starter.files) })
+      .send({ text: starter.text })
       .expect(201);
-    const again = { text: bundleOf(starter.files), mode: "copy" };
+    const again = { text: starter.text, mode: "copy" };
     const check = (await agent.post("/api/bundles/check").send(again).expect(201)).body as BundleCheckView;
     expect(check.ok).toBe(true);
     expect(check.items.map((i) => [i.name, i.action])).toEqual([

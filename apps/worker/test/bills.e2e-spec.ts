@@ -1,11 +1,10 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { KeyRing } from "@realentity/storm-crypto";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { type z } from "zod";
 import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
@@ -38,7 +37,7 @@ class BillReader implements LlmClient {
 }
 
 /** The Bills App bill.save writes into (M33). */
-const BILLS_APP = readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8");
+const BILLS_APP = exampleYaml("apps/bills.yaml");
 
 // M23, M33
 describe("bills", () => {

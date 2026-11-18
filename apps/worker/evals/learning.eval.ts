@@ -1,7 +1,8 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { config } from "dotenv";
 import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@realentity/storm-llm";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NO_LEARNING, type StepLearning } from "../src/learning/learning";
 import { REFLECTION_SYSTEM, ReflectionAnswerSchema, reflectionPrompt, type ReflectedDecision } from "../src/learning/reflection";
@@ -31,9 +32,9 @@ async function main(): Promise<void> {
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set in .env");
 
   const compiled = new PipelineCompiler(defaultCatalog()).compileText(
-    readFileSync(resolve(__dirname, "../../../pipelines/recruiter-replies.yaml"), "utf8"),
+    exampleYaml("recruiter-replies.yaml"),
   );
-  if (!compiled.ok) throw new Error("pipelines/recruiter-replies.yaml doesn't compile");
+  if (!compiled.ok) throw new Error("examples/pipelines/recruiter-replies.yaml doesn't compile");
   const draftWith = compiled.definition.steps.find((s) => s.id === "draft")!.with as { instruction: string };
   // Warm openings are where the phrase comes from; the rules have to win against this.
   const instruction = `${draftWith.instruction} Open with a warm, polite first sentence before getting to the point.`;

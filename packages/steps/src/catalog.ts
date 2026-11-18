@@ -1318,7 +1318,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "price.watch",
     description:
-      "Checks the user's enabled Products of the pipeline's App (M33, pipelines/apps/prices.yaml): each shop line's page read " +
+      "Checks the user's enabled Products of the pipeline's App (M33, examples/apps/prices.yaml): each shop line's page read " +
       "like shop.product, kept as an Offer with its price history (a removed line's Offer goes). `news`: a shop now at or under the user's target (once, when it crosses), the lowest in `lowestDays`, back in " +
       "stock; `text` says so with the cheapest shop for each (empty when nothing is new, for `when`). The addresses " +
       "are mine (a type of mine), so they need no allowedDomains. A dry run records nothing.",
@@ -1373,7 +1373,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "bill.save",
     description:
-      "Keeps bills from bill.read as Bill entities of the pipeline's App (M33; see pipelines/apps/bills.yaml): the same " +
+      "Keeps bills from bill.read as Bill entities of the pipeline's App (M33; see examples/apps/bills.yaml): the same " +
       "bill again (same sender, reference or period) updates it, a new one is `due` until the user marks it paid. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
       "(`remindDaysBefore` days before, 09:00) for calendar.create; `jumps`: new bills more than `jumpPercent` above " +
       "the usual (the median of the issuer's last six), and `jumpText` saying so (empty when none, for `when`).",

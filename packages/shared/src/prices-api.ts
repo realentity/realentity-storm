@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 /**
- * pipelines/prices.yaml, for "Create the Prices pipeline" on the Prices page (the api image has no pipelines/
+ * examples/apps/prices.yaml, for "Create the Prices pipeline" on the Prices page (the api image has no examples/
  * folder). A test keeps the two the same.
  */
 export const PRICES_PIPELINE = `# M24: every morning, the watched products at each of their shops; a message only when something is new: a shop at or
 # under its target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
-# in the Prices App (pipelines/apps/prices.yaml: save it first), added on its Watched products page: no
+# in the Prices App, added on its Watched products page: no
 # allowedDomains needed here.
 name: Prices
 app: Prices

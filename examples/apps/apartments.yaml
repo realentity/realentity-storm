@@ -1,0 +1,285 @@
+# The Apartments App, for finding a place to rent: what you're looking for (Search, mine), the listings a site's recipe
+# finds (listings), each marked by how well it fits and with its price history, and where you are with each, from
+# new to favorite, contacted, viewing and offer. A favorite's button asks its agent for a viewing (ask-for-viewing),
+# by email to an Agent you added, never to an address a page gave; the viewing time you set goes into your calendar
+# (viewing); the list's button compares your favorites (compare-favorites). Save it on the Apps page before
+# its pipelines.
+app:
+  name: Apartments
+  description: Listings that fit what you look for, and viewings
+  icon: home
+  summary: >-
+    Listings to rent from a site you choose, marked against what you look for, with their price history;
+    a request for a viewing to an agent you added, the viewing in your calendar, and your favorites
+    compared.
+  setup:
+    - { kind: recipe, name: listings.example/rent, label: "A listing site's recipe, listings.example/rent (Recipes: import or teach)" }
+    - { kind: entities, type: Search, label: "What you look for, added on its page" }
+    - { kind: llm, label: "The LLM, to mark and compare listings" }
+    - { kind: telegram, label: "Telegram, for new matches and price drops" }
+    - { kind: email, label: "An email account, to ask agents for viewings" }
+    - { kind: google-calendar, label: "Google Calendar, for the viewings" }
+types:
+  Search:
+    mine: true                     # what you look for: the listings are marked against it
+    key: name
+    fields:
+      name: { type: text, required: true }
+      areas: { type: list }        # districts or streets you want
+      maxPrice: { type: money, currency: currency, label: Up to }
+      currency: { type: text }
+      minRooms: { type: number, label: Rooms }
+      mustHave: { type: longtext, label: Must have }  # a balcony, pets allowed, near a metro
+      enabled: { type: yesno, label: Looking }
+  Agent:
+    mine: true                     # agents and owners you write to: their address is the only one Storm writes to
+    key: name
+    fields:
+      name: { type: text, required: true }
+      email: { type: email, required: true }
+      agency: { type: text }
+      phone: { type: text }
+      notes: { type: longtext }    # when you can see a place: the request for a viewing offers it
+  Listing:
+    key: url
+    title: title
+    stages:
+      field: status
+      initial: new
+      states: [new, favorite, contacted, viewing, offer, rejected]
+      moves:
+        - { from: new, to: [rejected], by: [me, pipeline] }            # one that doesn't fit starts rejected
+        - { from: [new, rejected], to: [favorite] }
+        - { from: favorite, to: [contacted], by: [me, pipeline] }      # once the request for a viewing is sent
+        - { from: [new, favorite, contacted], to: [viewing], by: [me, pipeline] }   # once a viewing time is set
+        - { from: viewing, to: [offer] }
+        - { from: [favorite, contacted, viewing, offer], to: [rejected] }
+        - { from: rejected, to: [new] }
+    fields:
+      url: { type: url, required: true }
+      title: { type: text, required: true }
+      price: { type: money, currency: currency }
+      currency: { type: text }
+      area: { type: text }
+      rooms: { type: number }
+      size: { type: number, label: m² }
+      floor: { type: text }
+      agency: { type: text }
+      source: { type: text }
+      fit: { type: enum, values: [match, maybe, no] }
+      fitReason: { type: longtext, label: Why }
+      agent: { type: text, mine: true }            # the Agent's name: a request for a viewing goes to their address
+      viewingAt: { type: datetime, mine: true, label: Viewing }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Listing
+    menu: { label: Apartments, icon: home }
+    columns: [title, price, area, rooms, size, fit, status]
+    filters: [status, fit]
+    sort: price
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check now, run: listings }
+      - { label: Compare favorites, run: compare-favorites }
+  - view: Listing
+    sections:
+      - { title: Listing, fields: [title, price, area, rooms, size, floor, agency, url] }
+      - { title: Fit, fields: [fit, fitReason] }
+    history: { collection: listing-prices, label: Price, stepped: true }
+    actions:
+      - { label: Ask for a viewing, run: ask-for-viewing, when: { status: favorite }, confirm: "Draft a request for a viewing to this listing's agent? You see it before it goes." }
+  - form: Listing
+    fields: [agent, viewingAt, notes]
+  - list: Search
+    menu: { label: What I look for, icon: star }
+    columns: [name, areas, maxPrice, minRooms, enabled]
+  - list: Agent
+    menu: { label: Agents, icon: bookmark }
+    columns: [name, agency, email, phone]
+    sort: name
+
+pipelines:
+  listings:
+    # Listings to rent, in the Apartments App: a listing site's districts
+    # read with a recipe (recipes/example-listings: import it on the Recipes page, and set the site and the districts
+    # here), each price kept as a history, each new listing marked by the LLM against what you look for (Search) and kept;
+    # one that doesn't fit starts rejected. You're told about the new matches, and when one of your favorites gets
+    # cheaper. Nothing is sent.
+    fullName: Listings
+    description: New listings that fit what you look for, and price drops on your favorites.
+    trigger: { schedule: "0 8,13,19 * * *" }
+    policy:
+      allowedDomains: [listings.example]
+    steps:
+      - id: search
+        type: browser.extract
+        with:
+          recipes: [listings.example/rent]
+          params: { district: [center, north] }
+          maxItems: 300
+      - id: prices
+        type: data.history
+        with: { items: "{{search.items}}", collection: listing-prices, key: url, value: price }
+      - id: fresh
+        type: data.dedupe
+        with: { from: "{{search.items}}", key: url, againstType: Listing }
+      - id: wishes
+        type: data.read
+        with: { type: Search, where: [{ field: enabled, op: eq, value: true }] }
+      - id: fit
+        type: llm.classify
+        when: "{{fresh.items}}"
+        with:
+          items: "{{fresh.items}}"
+          instruction: >-
+            How each listing fits what I look for: "match" fits all of it, "maybe" misses something small or doesn't say,
+            "no" misses something I must have. What I look for: {{wishes.items}}
+          labels: [match, maybe, no]
+          keep: [match, maybe]
+      - id: listings
+        type: data.map
+        with:
+          from: { items: "{{fresh.items}}", results: "{{fit.results}}" }
+          # Each new listing with its fit, its price ("1 200 €"), rooms ("2 rooms") and size ("65 m²") as numbers, or
+          # without them when there is none ("Price on request").
+          expression: |-
+            (
+              $num := function($t) { ($m := $match($string($t), /\d+([.,]\d+)?/)[0].match; $m ? $number($replace($m, ",", "."))) };
+              $amount := function($t) { ($d := $replace($replace($string($t), /[^\d.,]/, ""), /[.,](?=\d{3}(?!\d))/, ""); $d ? $number($replace($d, ",", "."))) };
+              $currency := function($t) { $contains($string($t), "€") or $contains($string($t), "EUR") ? "EUR" : $contains($string($t), "£") ? "GBP" : $contains($string($t), "$") ? "USD" : undefined };
+              $map(items, function($v, $i) {
+                (
+                  $r := results[index = $i];
+                  $merge([$sift($v, function($x, $k) { $not($k in ["price", "rooms", "size"]) }), {
+                    "price": $amount($v.price),
+                    "currency": $currency($v.price),
+                    "rooms": $num($v.rooms),
+                    "size": $num($v.size),
+                    "fit": $r.label,
+                    "fitReason": $r.reason,
+                    "status": $r.label = "no" ? "rejected" : "new"
+                  }])
+                )
+              })
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{listings.items}}", type: Listing }
+      - id: matches
+        type: data.filter
+        with: { items: "{{save.added}}", where: [{ field: fit, op: eq, value: match }] }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{matches.items}}"
+        with: { text: "New: {{item.title}}, {{item.price}} {{item.currency}}, {{item.area}}.\n{{item.fitReason}}\n{{item.url}}" }
+      - id: watched
+        type: data.read
+        with: { type: Listing, where: [{ field: status, op: in, value: [favorite, contacted, viewing, offer] }] }
+      - id: drops
+        type: data.map
+        with:
+          from: { seen: "{{prices.items}}", watched: "{{watched.items}}" }
+          expression: 'seen[history.direction = "down" and url in $$.watched.url]'
+      - id: cheaper
+        type: notify.telegram
+        forEach: "{{drops.items}}"
+        with: { text: "Cheaper: {{item.title}}, {{item.history.previous}} → {{item.price}}\n{{item.url}}" }
+
+  ask-for-viewing:
+    # From a favorite Listing's button in the Apartments App: a request for a viewing,
+    # sent to the Agent you set on the Listing (its form), after you Act at the gate, where you can edit it; then the Listing
+    # moves to contacted. A Listing without an Agent of that name sends nothing: add the Agent first. The address is the
+    # Agent's, which you wrote, never one the listing's page gave.
+    fullName: Ask for a viewing
+    description: A request for a viewing to a listing's agent, from its button, sent after you approve it.
+    trigger: { on: entity.action, type: Listing }
+    limits:
+      email.send: 10/day
+    steps:
+      - id: listing
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # The Listing as a pipeline writes it: without its stage and your fields.
+          expression: '$sift($, function($v, $k) { $not($k in ["status", "agent", "viewingAt", "notes"]) })'
+      - id: agents
+        type: data.read
+        with: { type: Agent, where: [{ field: name, op: eq, value: "{{trigger.item.agent}}" }], limit: 1 }
+      - id: draft
+        type: llm.generate
+        forEach: "{{agents.items}}"
+        with:
+          instruction: >-
+            A short email body to the agent asking to see this apartment: which listing (its title and address), that I'm
+            interested, two or three times I can come from the agent's notes (else ask for theirs), and one question the
+            listing leaves open. Plain and friendly, no subject line.
+          context: { listing: "{{trigger.item}}", agent: "{{item}}" }
+      - id: send
+        type: email.send
+        forEach: "{{agents.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Viewing: {{trigger.item.title}}"
+          body: "{{draft.text}}"
+      - id: moved
+        type: data.save
+        forEach: "{{agents.items}}"
+        with: { items: "{{listing.items}}", type: Listing, stage: contacted }
+
+  viewing:
+    # When you set a Listing's viewing time in the Apartments App (its form): an event in your calendar, after you Act at
+    # its gate, and the Listing moves to viewing. A time already past, or one cleared, does nothing.
+    fullName: Viewing
+    description: A viewing time you set goes into your calendar.
+    trigger: { on: entity.changed, type: Listing, field: viewingAt }
+    steps:
+      - id: ahead
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # Still ahead: the Listing as a pipeline writes it, without its stage and your fields.
+          expression: |-
+            viewingAt and $toMillis(viewingAt) > $toMillis($now()) ? $sift($, function($v, $k) { $not($k in ["status", "agent", "viewingAt", "notes"]) })
+      - id: event
+        type: calendar.create
+        forEach: "{{ahead.items}}"
+        with:
+          title: "Viewing: {{trigger.item.title}}"
+          start: "{{trigger.item.viewingAt}}"
+          durationMinutes: 45
+          location: "{{trigger.item.area}}"
+          description: "{{trigger.item.url}}"
+      - id: moved
+        type: data.save
+        forEach: "{{ahead.items}}"
+        with: { items: "{{ahead.items}}", type: Listing, stage: viewing }
+
+  compare-favorites:
+    # From the Apartments list's button: your favorites side by side against what you look
+    # for, ranked, on Telegram.
+    fullName: Compare favorites
+    description: Your favorite listings compared and ranked, from the list's button.
+    steps:
+      - id: favorites
+        type: data.read
+        with:
+          type: Listing
+          where: [{ field: status, op: in, value: [favorite, contacted, viewing, offer] }]
+          sort: price
+          limit: 10
+      - id: wishes
+        type: data.read
+        with: { type: Search, where: [{ field: enabled, op: eq, value: true }] }
+      - id: compare
+        type: llm.generate
+        when: "{{favorites.items}}"
+        with:
+          instruction: >-
+            Compare these apartments for me, for Telegram: a line each with the price, the price per m², the area, the
+            rooms and what speaks for and against it against what I look for and my notes; then rank them, best first, with
+            one sentence why. No other text.
+          context: { favorites: "{{favorites.items}}", lookingFor: "{{wishes.items}}" }
+      - id: tell
+        type: notify.telegram
+        with: { text: "Your favorites, compared:\n\n{{compare.text}}" }

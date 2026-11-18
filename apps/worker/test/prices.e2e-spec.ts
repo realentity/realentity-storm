@@ -1,9 +1,8 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { ModelRouter, type LlmClient } from "@realentity/storm-llm";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
@@ -54,7 +53,7 @@ blocked.addSubnet("10.0.0.0", 8, "ipv4");
 const NO_LLM: LlmClient = { structured: () => Promise.reject(new Error("no LLM in this test")) };
 
 /** The Prices App price.watch reads Products from and writes Offers into (M33). */
-const PRICES_APP = readFileSync(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8");
+const PRICES_APP = exampleYaml("apps/prices.yaml");
 
 // M24, M33
 describe("price.watch", () => {

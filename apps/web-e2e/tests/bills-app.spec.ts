@@ -1,6 +1,5 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createPipeline, startRun, unique } from "./support";
 
 // M33-E1 (Bills): what the Bills page did, on the Bills App's list: months with their totals and what is unpaid,
@@ -8,7 +7,7 @@ import { createPipeline, startRun, unique } from "./support";
 test("the Bills App's list: months, totals, unpaid, due badges and paid on the row", async ({ page }) => {
   const name = unique("Bills");
   const label = `Bills ${name.split(" ")[1]}`;
-  const source = readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8")
+  const source = exampleYaml("apps/bills.yaml")
     .replace("name: Bills", `name: ${name}`)
     .replace("menu: { label: Bills, icon: receipt }", `menu: { label: "${label}", icon: receipt }`);
   const created = await page.request.post("/api/apps", { data: { source } });

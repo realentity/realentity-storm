@@ -1,0 +1,221 @@
+# The Orders App: what you buy online, from the shops' emails (orders): ordered, shipped, delivered, returned,
+# each email adding to the same Order. A delivered order's return window is watched (return-window,
+# return-reminder) unless you mark it Keep, and Return it on its page drafts the request (return-request).
+#
+app:
+  name: Orders
+  description: Online orders from email, and their return windows
+  icon: package
+  summary: >-
+    Online orders from the shops' emails, each email adding to its order as it ships and arrives; a
+    reminder before the return window closes, unless you keep it, and a return request on a button.
+  setup:
+    - { kind: email, label: "An email account, to read the shops' emails from" }
+    - { kind: llm, label: "The LLM, to read each email" }
+    - { kind: telegram, label: "Telegram, for the orders and return reminders" }
+types:
+  Order:
+    key: order                     # the shop's domain and the order number: every email about it is the same Order
+    title: shop
+    stages:
+      field: status
+      initial: ordered
+      states: [ordered, shipped, delivered, returning, returned, cancelled]
+      moves:                       # the emails move it forward, never back
+        - { from: ordered, to: [shipped, delivered, cancelled], by: [me, pipeline] }
+        - { from: shipped, to: [delivered, cancelled], by: [me, pipeline] }
+        - { from: delivered, to: [returning, returned], by: [me, pipeline] }
+        - { from: returning, to: [returned], by: [me, pipeline] }
+        - { from: [returning, returned, cancelled], to: [delivered] }    # a mistake undone
+    fields:
+      order: { type: text, required: true }
+      number: { type: text, required: true, label: Order number }
+      shop: { type: text }
+      items: { type: longtext, label: What }
+      total: { type: money, currency: currency }
+      currency: { type: text }
+      ordered: { type: date }
+      delivered: { type: date }
+      returnBy: { type: date, label: Return by }
+      tracking: { type: text }
+      trackingUrl: { type: url, label: Track }
+      from: { type: email }
+      subject: { type: text }
+      keep: { type: yesno, mine: true, label: Keep }   # no return reminder for it
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Order
+    menu: { label: Orders, icon: package }
+    columns: [shop, items, total, status, { field: returnBy, due: { days: 3, unless: { keep: true } } }, keep]
+    filters: [status, keep]
+    sort: -ordered
+    group: { by: ordered, period: month, totals: [total] }
+    moves: true
+  - view: Order
+    sections:
+      - { title: Order, fields: [shop, number, items, total, ordered] }
+      - { title: Delivery, fields: [tracking, trackingUrl, delivered, returnBy] }
+      - { title: Email, fields: [from, subject] }
+    actions:
+      - { label: Return it, run: return-request, when: { status: delivered }, confirm: "Draft a return request for this order and mark it returning?" }
+  - form: Order
+    fields: [keep, notes]
+
+pipelines:
+  orders:
+    # Orders from the shops' emails, in the Orders App: an order confirmation,
+    # a shipping or delivery notice, a refund or a cancellation, each read by the LLM and added to its Order (the shop's
+    # domain with the order number), whose stage it moves forward. What an earlier email said is kept: each is merged into
+    # the Order as it was. A delivered order without a return date in its emails gets 14 days from delivery. Nothing is
+    # sent.
+    fullName: Orders
+    description: Order, shipping, delivery and refund emails kept as Orders.
+    trigger: { schedule: "*/30 * * * *" }
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { sinceDays: 7 }
+      - id: triage
+        type: email.classify
+        with:
+          messages: "{{fetch.messages}}"
+          instruction: >-
+            "order": a shop writes about an order of mine with its order number: a confirmation, a shipping or delivery
+            notice, a return, a refund or a cancellation. "other": everything else, also offers, newsletters, reviews
+            asked for and abandoned carts.
+          labels: [order, other]
+          keep: [order]
+      - id: existing
+        type: data.read
+        with: { type: Order, sort: -ordered, limit: 500 }
+      - id: read
+        type: llm.extract
+        forEach: "{{triage.kept}}"
+        with:
+          content: "{{item}}"
+          fields:
+            number: the order number
+            shop: the shop's name
+            items: what was ordered, short, like "Running shoes, 2 T-shirts"
+            total: the order's total, a number
+            currency: the total's currency code, like EUR
+            ordered: when it was ordered, a date
+            status: one of ordered (a confirmation), shipped, delivered, refunded, cancelled
+            returnBy: the last day to return it, if the email says, a date
+            tracking: the tracking number
+            trackingUrl: the address to track the parcel
+      - id: orders
+        type: data.map
+        with:
+          from: { emails: "{{triage.kept}}", values: "{{read.values}}", existing: "{{existing.items}}" }
+          # Each email merged into its Order as it was: its new values over the old, the stage it reached, the delivery
+          # date (today when the email doesn't say) and a return date 14 days after it when none was given.
+          expression: |-
+            (
+              $today := $fromMillis($toMillis($now()), "[Y0001]-[M01]-[D01]");
+              $site := function($from) { ($p := $split($lowercase($substringAfter($from, "@")), "."); $join($p[[$count($p) - 2 .. $count($p) - 1]], ".")) };
+              $stages := { "ordered": "ordered", "shipped": "shipped", "delivered": "delivered", "refunded": "returned", "cancelled": "cancelled" };
+              $map(values, function($v, $i) {
+                (
+                  $key := $site(emails[$i].from) & "/" & $v.number;
+                  $old := $sift($$.existing[order = $key][0], function($x, $k) { $not($k in ["status", "keep", "notes"]) });
+                  $new := $sift($v, function($x, $k) { $x != "" and $k != "status" });
+                  $stage := $lookup($stages, $lowercase($v.status));
+                  $merged := $merge([$old, $new, { "order": $key, "from": emails[$i].from, "subject": emails[$i].subject }]);
+                  $delivered := $merged.delivered ? $merged.delivered : ($stage = "delivered" ? $today);
+                  $returnBy := $merged.returnBy ? $merged.returnBy : ($delivered ? $fromMillis($toMillis($delivered) + 14 * 24 * 60 * 60 * 1000, "[Y0001]-[M01]-[D01]"));
+                  $merge([$merged, { "delivered": $delivered, "returnBy": $returnBy, "status": $stage }])
+                )
+              })[number]
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{orders.items}}", type: Order }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{save.changed}}"
+        when: "{{item.item.status}}"
+        with: { text: "{{item.item.shop}} order {{item.item.number}}: {{item.item.status}}. {{item.item.items}}" }
+
+  return-reminder:
+    # Started by return-window a few days before a delivered order's return window closes: what it is and until when,
+    # on Telegram.
+    fullName: Return reminder
+    description: A delivered order's return window closes soon.
+    trigger: { on: flow.later }
+    steps:
+      - id: tell
+        type: notify.telegram
+        with:
+          text: >-
+            Return window: {{trigger.data.order.shop}} order {{trigger.data.order.number}} ({{trigger.data.order.items}})
+            can be returned until {{trigger.data.order.returnBy}}. Keeping it? Mark Keep on its page; returning it? Return
+            it is there too.
+
+  return-window:
+    # When an Order of the Orders App changes: a delivered one you haven't marked Keep gets a reminder at 09:00 three days
+    # before its return date (return-reminder), or soon when that is already past and the date isn't; moved with the
+    # date, and cancelled once it is returning, returned or cancelled, or you mark it Keep. Save return-reminder first:
+    # this one names it.
+    fullName: Return window
+    description: Schedules a reminder before a delivered order's return window closes.
+    trigger: { on: entity.changed, type: Order }
+    steps:
+      - id: open
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: |-
+            (
+              $t := $toMillis($now());
+              $end := returnBy ? $toMillis(returnBy) + 24 * 60 * 60 * 1000;
+              $day := $end - 4 * 24 * 60 * 60 * 1000;
+              $at := $day + 9 * 60 * 60 * 1000 > $t ? $fromMillis($day, "[Y0001]-[M01]-[D01]") & "T09:00" : $fromMillis($t + 10 * 60 * 1000);
+              status = "delivered" and $not(keep = true) and $end > $t ? { "remindAt": $at }
+            )
+      - id: later
+        type: flow.later
+        forEach: "{{open.items}}"
+        with:
+          pipeline: return-reminder
+          at: "{{item.remindAt}}"
+          key: "return:{{trigger.key}}"
+          data: { order: "{{trigger.item}}" }
+      - id: closed
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: '(status in ["returning", "returned", "cancelled"] or keep = true) ? { "order": order }'
+      - id: stop
+        type: flow.cancel
+        forEach: "{{closed.items}}"
+        with: { key: "return:{{trigger.key}}" }
+
+  return-request:
+    # From a delivered Order's button in the Orders App: a return request to send the shop
+    # (through its returns page or a reply to its email), on Telegram, and the Order moves to returning, which ends its
+    # return reminder. Storm sends nothing to the shop: the shop's address came from its email, and you send it yourself.
+    fullName: Return request
+    description: A return request to send, from an order's button; the order moves to returning.
+    trigger: { on: entity.action, type: Order }
+    steps:
+      - id: order
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # The Order as a pipeline writes it: without its stage and your fields.
+          expression: '$sift($, function($v, $k) { $not($k in ["status", "keep", "notes"]) })'
+      - id: draft
+        type: llm.generate
+        with:
+          instruction: >-
+            A short message to the shop asking to return this order, in the language of its email: the order number, what
+            I return, and asking for the return label or address and the refund. Then one line on the return date. No
+            subject line, no other text.
+          context: { order: "{{trigger.item}}" }
+      - id: moved
+        type: data.save
+        with: { items: "{{order.items}}", type: Order, stage: returning }
+      - id: tell
+        type: notify.telegram
+        with: { text: "Returning {{trigger.item.shop}} order {{trigger.item.number}}. A request to send them:\n\n{{draft.text}}" }

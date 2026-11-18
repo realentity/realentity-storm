@@ -18,6 +18,8 @@ export interface BundleDocument {
   name?: string;
   /** Its first line in the file: a problem's line in the document is this plus its own, less one. */
   line: number;
+  /** A pipeline read from one structured file: its key there. */
+  key?: string;
   /** Read from one structured file: a problem's line there, by its path. */
   lineOf?: (path: string) => number | undefined;
 }

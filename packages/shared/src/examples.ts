@@ -4,7 +4,7 @@ import { editAppSource } from "./app-source";
 import { type BundleDocument } from "./bundle";
 
 /**
- * M40: the examples on the Apps page (pipelines/examples.yaml): an App with the pipelines that fill it, installed
+ * M40: the examples on the Apps page (examples/apps): an App with the pipelines that fill it in one file, installed
  * together, and what has to be set up before its pipelines can run.
  */
 
@@ -34,16 +34,11 @@ export const ExampleSchema = z
     /** First in the gallery: needs nothing set up. */
     starter: z.boolean().default(false),
     needs: z.array(ExampleNeedSchema).max(10),
-    /** Relative to pipelines/: the App first, then its pipelines. */
-    files: z
-      .array(z.string().regex(/^[\w./-]+\.yaml$/))
-      .min(1)
-      .max(10),
+    /** Its file, as written: what is installed. */
+    text: z.string().min(1),
   })
   .strict();
 export type Example = z.output<typeof ExampleSchema>;
-
-export const ExamplesManifestSchema = z.object({ examples: z.array(ExampleSchema).min(1) }).strict();
 
 /** M40-T2: what is set up, for the examples' needs: the server's (email, Telegram, the LLM) and the user's. */
 export interface SetupView {
@@ -83,10 +78,24 @@ export function needMet(need: ExampleNeed, setup: SetupView, entities = 0): bool
   }
 }
 
-/** The manifest, the starter first. */
-export function readExamples(manifest: string): Example[] {
-  const { examples } = ExamplesManifestSchema.parse(parse(manifest));
-  return [...examples].sort((a, b) => Number(b.starter) - Number(a.starter));
+/** One App's file as an example: `id` is the file's name. */
+function readExample(id: string, text: string): Example {
+  const { app } = parse(text) as { app: { name: string; description?: string; summary?: string; starter?: boolean; setup?: ExampleNeed[] } };
+  return ExampleSchema.parse({
+    id,
+    name: app.name,
+    description: app.summary ?? app.description,
+    starter: app.starter ?? false,
+    needs: app.setup ?? [],
+    text,
+  });
+}
+
+/** The App files by id, as examples: the starter first, then by name. */
+export function readExamples(files: Record<string, string>): Example[] {
+  return Object.entries(files)
+    .map(([id, text]) => readExample(id, text))
+    .sort((a, b) => Number(b.starter) - Number(a.starter) || a.name.localeCompare(b.name));
 }
 
 /** The name, or the first of its numbered ones not used yet. */

@@ -1,8 +1,7 @@
+import { exampleFiles } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { type AppDetailView, type BindingView, type CredentialView, type PipelineDetailView } from "@realentity/storm-shared";
-import { joinBundle, readExamples, type ChecklistView } from "@realentity/storm-shared";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readExamples, type ChecklistView } from "@realentity/storm-shared";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
@@ -141,13 +140,12 @@ describe("bindings", () => {
 
   // M50-T6, T13, T14, T15
   describe("what keeps slots filled", () => {
-    const PIPELINES = join(__dirname, "../../../pipelines");
-    const serverOps = readExamples(readFileSync(join(PIPELINES, "examples.yaml"), "utf8")).find((e) => e.id === "server-ops")!;
+    const serverOps = readExamples(exampleFiles()).find((e) => e.id === "server-ops")!;
 
     it("Server ops from the gallery: its slots on the checklist, a pipeline switched on only once they are filled, each credential's uses", async () => {
       await agent
         .post("/api/bundles")
-        .send({ text: joinBundle(serverOps.files.map((f) => readFileSync(join(PIPELINES, f), "utf8"))), example: { id: serverOps.id, needs: serverOps.needs } })
+        .send({ text: serverOps.text, example: { id: serverOps.id, needs: serverOps.needs } })
         .expect(201);
       const app = await db.client.app.findFirstOrThrow({ where: { name: "Server ops" } });
       const checklist = async () => (await agent.get(`/api/examples/apps/${app.appId}/checklist`).expect(200)).body as ChecklistView;
