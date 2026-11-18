@@ -26,7 +26,7 @@ Ready-made pipelines to copy are in [pipelines/](../pipelines/). This document e
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
 | Browser | Open pages (with sign-in), read lists with recipes and each item's own page, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.details`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
 | Documents | Read a stored document, a downloaded file or an App's file; keep an email's attachments in an App | `file.read`, `file.keep` |
-| You in the loop | Pick items from a list, approve an action | `gate.review`, `gate.act` |
+| You in the loop | Pick items from a list, approve an action, or a list's actions at once (a pipeline you start yourself can act without asking, when you switch that on) | `gate.review`, `gate.act` |
 | Telling you | A Telegram message, a digest | `notify.telegram`, `notify.digest` |
 | Timing | Start another pipeline later, cancel it | `flow.later`, `flow.cancel` |
 

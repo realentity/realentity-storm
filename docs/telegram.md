@@ -112,8 +112,10 @@ Bot:  Kill switch off: pipelines run again (stopped runs stay stopped).
 
 ### 3.1 Proposals: approve or reject from the chat
 
-When a run reaches a gate (`gate.act` or `gate.review`), each new proposal arrives as its own message. If a run
-produces more than 5 at once, you get a single message with a link to the inbox. Dry runs never notify.
+When a run reaches a gate (`gate.act` or `gate.review`), each new proposal arrives as its own message, except a
+batch: a `gate.act` step's proposals over a list (`forEach`) come as one message (see below). If a run brings more than
+5 messages at once, you get a single message with a link to the inbox instead. Dry runs never notify, and a run of a
+pipeline that acts without asking (its switch on, started by you) has nothing to approve.
 
 ```
 Bot:  Storm · Application replies: approve email.send?
@@ -143,6 +145,25 @@ are removed.
 
 If any of these fails, the button says why and you open the proposal in Storm instead. **Reject** always works on a
 waiting `gate.act` proposal.
+
+**A batch.** A step that acts on each item of a list makes one proposal per item; they arrive as one message, each
+item on a line with its target and payload (encrypted values as `***`):
+
+```
+Bot:  Storm · Lockbox sync: approve 3 × http.request?
+
+      #1 → api.github.com
+         method: PUT · url: …/actions/secrets/DATABASE_URL · body: {"encrypted_value":"***", …}
+      #2 → api.github.com
+         …
+      [Approve all 3] [Open the inbox]
+```
+
+**Approve all** approves every item as shown, at once, and the run goes on once. It works under the same conditions
+as Approve, for the whole batch: the message shows it in full, nothing new is targeted, and the batch is as it was
+when told (the button carries a hash of its proposals: one decided in Storm since refuses it). To approve only some,
+or to edit one, open the inbox: the batch is one card there, every item ticked; untick the ones you don't want and
+press **Approve**.
 
 ### 3.2 "Storm needs you": takeovers
 
