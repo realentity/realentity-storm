@@ -10,6 +10,8 @@ import { useAction, useLoad } from "../lib/use-load";
 const PAGE = 50;
 const FILTERS = ["pipelineId", "version", "status", "from", "to", "target"] as const;
 type FilterKey = (typeof FILTERS)[number];
+/** The status filter's choice for failed runs and done runs with failed items together. */
+const FAILURES = "failures";
 
 /** Every run, newest first, filtered by pipeline, version, status, date and target (docs/design.md §12). */
 export function HistoryPage() {
@@ -23,7 +25,8 @@ export function HistoryPage() {
   const query: Partial<RunFilter> = {
     pipelineId: filter.pipelineId || undefined,
     version: filter.version ? Number(filter.version) : undefined,
-    status: (filter.status || undefined) as RunFilter["status"],
+    status: (filter.status && filter.status !== FAILURES ? filter.status : undefined) as RunFilter["status"],
+    failures: filter.status === FAILURES ? true : undefined,
     from: filter.from || undefined,
     to: filter.to || undefined,
     target: filter.target || undefined,
@@ -102,6 +105,7 @@ export function HistoryPage() {
           <div className="col-md-2">
             <select className="form-select" value={filter.status} onChange={(e) => set("status", e.target.value)} aria-label="Status">
               <option value="">Any status</option>
+              <option value={FAILURES}>Has failures</option>
               {RUN_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {statusLabel(s)}

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type CompiledDefinition, type CompiledPolicy, type CompileResult } from "./pipeline";
-import { type RunDetailView } from "./runs-api";
+import { type LastRunView, type RunDetailView } from "./runs-api";
 
 /** Pipeline source as authored: YAML (JSON is valid YAML). */
 export const PipelineSourceSchema = z.object({ source: z.string().min(1).max(200_000) });
@@ -149,6 +149,8 @@ export interface PipelineSummaryView {
   hasDraft: boolean;
   /** The App it belongs to (its current version's, else its draft's), under the App's name now; null: none. */
   app: { appId: string; name: string } | null;
+  /** In the list of pipelines only; null: it has no real run yet. */
+  lastRun?: LastRunView | null;
   dateCreated: string;
   dateUpdated: string;
 }

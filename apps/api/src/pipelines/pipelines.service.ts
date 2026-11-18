@@ -26,6 +26,7 @@ import { appOf } from "../apps/app-pipelines";
 import { AppsService } from "../apps/apps.service";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
+import { lastRuns } from "../runs/last-runs";
 import { RunsService } from "../runs/runs.service";
 import { TelegramCommands } from "../telegram/telegram-commands";
 import { BindingsService } from "../bindings/bindings.service";
@@ -281,10 +282,11 @@ export class PipelinesService {
     });
     const byId = new Map(current.map((v) => [v.pipelineVersionId, v]));
     const apps = await this.prisma.client.app.findMany({ where: { userId }, select: { appId: true, name: true } });
+    const latest = await lastRuns(this.prisma, userId);
     return pipelines.map((p) => {
       const version = byId.get(p.currentVersionId ?? "");
       const definition = (version?.definition ?? p.versions[0]?.definition) as unknown as CompiledDefinition | undefined;
-      return summary(p, version?.version ?? null, p.versions.length > 0, appOf(definition, apps));
+      return { ...summary(p, version?.version ?? null, p.versions.length > 0, appOf(definition, apps)), lastRun: latest.get(p.pipelineId) ?? null };
     });
   }
 

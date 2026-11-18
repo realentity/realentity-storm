@@ -2,14 +2,14 @@ import { IconApps, IconMessage, IconPlus, IconSearch } from "@tabler/icons-react
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ImportYaml } from "../components/ImportYaml";
-import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
+import { Empty, ErrorAlert, Loading, PageHeader, StatusBadge } from "../components/ui";
 import { api } from "../lib/endpoints";
-import { formatDateTime } from "../lib/format";
+import { formatDateTime, runStatus } from "../lib/format";
 import { groupByApp } from "../lib/pipeline-groups";
 import { useLoad } from "../lib/use-load";
 
 export function PipelinesPage() {
-  const pipelines = useLoad(() => api.pipelines.list(), []);
+  const pipelines = useLoad(() => api.pipelines.list(), [], (signal) => signal.type === "run");
   const [query, setQuery] = useState("");
   const groups = useMemo(() => groupByApp(pipelines.data ?? [], query), [pipelines.data, query]);
   // Headings only when there is an App to tell apart: pipelines in no App alone are just a list.
@@ -63,6 +63,7 @@ export function PipelinesPage() {
                   <th>Name</th>
                   <th>Version</th>
                   <th>Status</th>
+                  <th>Last run</th>
                   <th>Updated</th>
                 </tr>
               </thead>
@@ -71,7 +72,7 @@ export function PipelinesPage() {
                   <Fragment key={group.app?.appId ?? "none"}>
                     {headings && (
                       <tr className="pipelines-group" data-testid="pipelines-group">
-                        <th colSpan={4} className="bg-body-tertiary">
+                        <th colSpan={5} className="bg-body-tertiary">
                           {group.app ? (
                             <Link to={`/apps/${group.app.appId}`} className="d-inline-flex align-items-center gap-1">
                               <IconApps size={16} />
@@ -100,6 +101,16 @@ export function PipelinesPage() {
                             {p.enabled ? "enabled" : "disabled"}
                           </span>
                           {p.essential && <span className="badge bg-purple-lt">essential</span>}
+                        </td>
+                        <td data-testid="pipeline-last-run">
+                          {p.lastRun ? (
+                            <Link to={`/runs/${p.lastRun.runId}`} className="d-inline-flex align-items-center gap-2 text-reset text-nowrap">
+                              <StatusBadge status={runStatus(p.lastRun)} />
+                              <span className="small text-secondary">{formatDateTime(p.lastRun.startedAt)}</span>
+                            </Link>
+                          ) : (
+                            <span className="text-secondary">—</span>
+                          )}
                         </td>
                         <td className="text-secondary">{formatDateTime(p.dateUpdated)}</td>
                       </tr>

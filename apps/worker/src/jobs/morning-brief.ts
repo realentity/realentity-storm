@@ -88,7 +88,13 @@ export class MorningBrief {
 
   private async failed(userId: string, now: Date): Promise<string | null> {
     const runs = await this.prisma.run.findMany({
-      where: { userId, status: "FAILED", dryRun: false, startedAt: { gte: new Date(now.getTime() - DAY_MS) } },
+      where: {
+        userId,
+        dryRun: false,
+        startedAt: { gte: new Date(now.getTime() - DAY_MS) },
+        // A done run with failed items (onError: continue) counts: its summary says which.
+        OR: [{ status: "FAILED" }, { status: "DONE", steps: { some: { status: "FAILED" } } }],
+      },
       include: {
         pipelineVersion: { select: { pipeline: { select: { name: true } } } },
         steps: { where: { status: "FAILED" }, select: { stepKey: true, error: true }, take: 1 },

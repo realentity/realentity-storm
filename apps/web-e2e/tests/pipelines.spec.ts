@@ -93,6 +93,30 @@ test.describe("pipelines", () => {
     await page.goto(`/history?pipelineId=${pipeline.pipelineId}&status=FAILED`);
     await expect(page.getByTestId("runs").locator("tbody tr")).toContainText(reason);
   });
+  // A failure is noticed without opening each pipeline: on the menu, in the list of pipelines, under one filter
+  test("a failed run: a count on History until it is opened, its status in the pipelines list, the Has failures filter", async ({ page }) => {
+    const name = unique("Noticed failure");
+    const pipeline = await createPipeline(page, REPLIES(name).replace("query: dotnet", "query: unreachable"));
+    const run = await startRun(page, pipeline.pipelineId);
+    await page.goto(`/runs/${run.runId}`);
+    await expect(page.getByTestId("run-summary")).toBeVisible();
+
+    await page.goto("/pipelines");
+    await expect(page.getByTestId("history-failures")).toBeVisible();
+    const row = page.getByTestId("pipeline-row").filter({ hasText: name });
+    await expect(row.getByTestId("pipeline-last-run")).toContainText("failed");
+    await expect(row.getByTestId("pipeline-last-run").getByRole("link")).toHaveAttribute("href", `/runs/${run.runId}`);
+
+    await page.getByRole("link", { name: /History/ }).click();
+    await expect(page.getByTestId("history-failures")).toHaveCount(0);
+    await page.getByLabel("Status").selectOption("failures");
+    await expect(page).toHaveURL(/status=failures/);
+    await expect(page.getByTestId("runs").locator("tbody tr", { hasText: name })).toBeVisible();
+
+    await page.goto("/pipelines");
+    await expect(page.getByTestId("pipeline-row").first()).toBeVisible();
+    await expect(page.getByTestId("history-failures")).toHaveCount(0);
+  });
   // M12-E1
   test("a webhook pipeline: create its address, see the secret once, rotate it", async ({ page }) => {
     const name = unique("E1 hook");

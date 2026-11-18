@@ -116,6 +116,8 @@ export const RunFilterSchema = z
     pipelineId: z.uuid().optional(),
     version: z.coerce.number().int().positive().optional(),
     status: z.enum(RUN_STATUSES).optional(),
+    /** Only runs where something failed: failed ones, and done ones with failed items (onError: continue). */
+    failures: z.stringbool().optional(),
     /** Started on or after this day (UTC). */
     from: z.iso.date().optional(),
     /** Started on or before this day (UTC). */
@@ -131,6 +133,23 @@ export const RunFilterSchema = z
     message: "needs pipelineId",
   });
 export type RunFilter = z.infer<typeof RunFilterSchema>;
+
+/** The menu's count of new failures: real runs that ended with something failed after this time. */
+export const FailureCountQuerySchema = z.object({ since: z.iso.datetime() }).strict();
+export type FailureCountQuery = z.infer<typeof FailureCountQuerySchema>;
+
+export interface FailureCountView {
+  count: number;
+}
+
+/** A pipeline's latest real run (dry runs aside), for the Pipelines list. */
+export interface LastRunView {
+  runId: string;
+  status: RunStatusName;
+  /** A done run's items that failed and didn't stop it. */
+  failedItems: number;
+  startedAt: string;
+}
 
 export interface RunSummaryView {
   runId: string;
