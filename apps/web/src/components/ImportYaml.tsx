@@ -1,4 +1,4 @@
-import { type BundleCheckView, type BundleItemView } from "@realentity/storm-shared";
+import { type BundleCheckView, type BundleItemView, type BundleMode } from "@realentity/storm-shared";
 import { IconDownload, IconFileImport, IconUpload } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -16,7 +16,8 @@ const ACTION: Record<BundleItemView["action"], { label: string; badge: string }>
 /**
  * M35-T5: "Import YAML": a file (or pasted text) holding an App and its pipelines, or pipelines alone, checked as a
  * whole first: what each would be (new, its next version with what changes, the same) and every problem with its line.
- * Import saves all of it, App first, or nothing.
+ * When some of it is here already, the user chooses: update it, or install a copy under free names. Import saves all of
+ * it, App first, or nothing.
  */
 export function ImportYaml({ onImported }: Readonly<{ onImported?: () => void }>) {
   const [open, setOpen] = useState(false);
@@ -34,6 +35,7 @@ export function ImportYaml({ onImported }: Readonly<{ onImported?: () => void }>
 function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; onImported?: () => void }>) {
   const navigate = useNavigate();
   const [text, setText] = useState("");
+  const [mode, setMode] = useState<BundleMode>();
   const [check, setCheck] = useState<BundleCheckView | null>(null);
   const [checking, setChecking] = useState(false);
   const checkError = useAction();
@@ -50,23 +52,29 @@ function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; o
     const ticket = ++latest.current;
     setChecking(true);
     const timer = setTimeout(() => {
-      void runCheck(() => api.bundles.check(text)).then((view) => {
+      void runCheck(() => api.bundles.check(text, mode)).then((view) => {
         if (ticket !== latest.current) return;
         setCheck(view ?? null);
         setChecking(false);
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [text, runCheck]);
+  }, [text, mode, runCheck]);
 
+  // Another file: asked again.
+  const edit = (next: string) => {
+    setText(next);
+    setMode(undefined);
+  };
   const read = async (chosen: File | undefined) => {
     if (!chosen) return;
-    setText(await chosen.text());
+    edit(await chosen.text());
   };
 
   const todo = check?.items.filter((i) => i.action !== "same") ?? [];
+  const asks = mode !== undefined || (check?.items.some((i) => i.id !== null) ?? false);
   const save = async () => {
-    const saved = await action.run(() => api.bundles.save(text));
+    const saved = await action.run(() => api.bundles.save(text, { mode }));
     if (!saved) return;
     toast.success(
       `Imported: ${saved.items
@@ -95,7 +103,7 @@ function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; o
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!check?.ok || checking || todo.length === 0 || action.busy}
+            disabled={!check?.ok || checking || todo.length === 0 || action.busy || (asks && !mode)}
             onClick={() => void save()}
             data-testid="import-save"
           >
@@ -107,8 +115,8 @@ function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; o
     >
       <div className="d-flex flex-column gap-3">
         <div className="text-secondary small">
-          An App (its <code>types</code>) and the pipelines that name it, with <code>---</code> between them; or pipelines alone. One you
-          already have by name becomes its next version. Everything is checked first; nothing is saved unless all of it can be.
+          An App (its <code>types</code>) and the pipelines that name it, with <code>---</code> between them; or pipelines alone. If you
+          already have some of it, you choose what happens. Everything is checked first; nothing is saved unless all of it can be.
         </div>
         <div className="d-flex gap-2 align-items-center">
           <input
@@ -127,12 +135,39 @@ function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; o
           spellCheck={false}
           placeholder="…or paste it here"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => edit(e.target.value)}
           aria-label="The YAML to import"
           data-testid="import-text"
         />
         <ErrorAlert error={checkError.error} />
         <ErrorAlert error={action.error} />
+        {asks && (
+          <fieldset data-testid="import-mode">
+            <legend className="form-label">You already have some of this</legend>
+            <label className="form-check">
+              <input
+                type="radio"
+                name="import-mode"
+                className="form-check-input"
+                checked={mode === "update"}
+                onChange={() => setMode("update")}
+                data-testid="import-mode-update"
+              />
+              <span className="form-check-label">Update what I have</span>
+            </label>
+            <label className="form-check mb-0">
+              <input
+                type="radio"
+                name="import-mode"
+                className="form-check-input"
+                checked={mode === "copy"}
+                onChange={() => setMode("copy")}
+                data-testid="import-mode-copy"
+              />
+              <span className="form-check-label">Install a copy under new names</span>
+            </label>
+          </fieldset>
+        )}
         {check && <CheckList check={check} />}
       </div>
     </Modal>

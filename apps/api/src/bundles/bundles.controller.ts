@@ -12,13 +12,13 @@ export class BundlesController {
   /** What importing the file would do, nothing saved. */
   @Post("check")
   check(@CurrentUser() user: AuthenticatedUser, @Body(new ZodBodyPipe(BundleRequestSchema)) body: BundleRequest): Promise<BundleCheckView> {
-    return this.bundles.check(user.userId, body.text);
+    return this.bundles.check(user.userId, body.text, body.mode);
   }
 
   /** The file imported: all of it, or nothing when any of it has a problem. */
   @Post()
   save(@CurrentUser() user: AuthenticatedUser, @Body(new ZodBodyPipe(BundleRequestSchema)) body: BundleRequest): Promise<BundleCheckView> {
-    return this.bundles.save(user.userId, body.text, body.example);
+    return this.bundles.save(user.userId, body.text, body.mode, body.example);
   }
 
   @Get("apps/:appId")

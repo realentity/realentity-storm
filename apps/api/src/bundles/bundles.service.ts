@@ -1,11 +1,14 @@
 import {
   checkAppSource,
   definitionToSource,
+  freeNames,
   joinBundle,
   splitBundle,
   type AppDefinition,
   type AppIssue,
   type BundleCheckView,
+  type BundleDocument,
+  type BundleMode,
   type BundleRequest,
   type BundleExportView,
   type BundleItemView,
@@ -13,8 +16,9 @@ import {
   withCurrentNames,
 } from "@realentity/storm-shared";
 import { diffApps, diffDefinitions } from "@realentity/storm-steps";
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { parse as parseYaml } from "yaml";
+import { appOf } from "../apps/app-pipelines";
 import { AppsService } from "../apps/apps.service";
 import { PrismaService } from "../database/prisma.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
@@ -22,8 +26,9 @@ import { PipelinesService } from "../pipelines/pipelines.service";
 /**
  * M35-T5: Apps and pipelines in and out as YAML files. A file is checked whole before anything is saved: its App,
  * each of its pipelines against that App (or the one they name that the user has), and the user's pipelines of that App it
- * leaves out. Then the App first (its pipelines compile against it), then the pipelines; one there is by name gets its next
- * version, one that is the same is left as it is.
+ * leaves out. Then the App first (its pipelines compile against it), then the pipelines. When some of it is there by
+ * name the user chooses: `update` gives each its next version (one that is the same is left as it is), `copy` installs
+ * the file under free names.
  */
 @Injectable()
 export class BundlesService {
@@ -33,13 +38,16 @@ export class BundlesService {
     private readonly pipelines: PipelinesService,
   ) {}
 
-  async check(userId: string, text: string): Promise<BundleCheckView> {
-    return (await this.read(userId, text)).view;
+  async check(userId: string, text: string, mode?: BundleMode): Promise<BundleCheckView> {
+    return (await this.read(userId, text, mode)).view;
   }
 
-  async save(userId: string, text: string, example?: BundleRequest["example"]): Promise<BundleCheckView> {
-    const { view, app, pipelines } = await this.read(userId, text);
+  async save(userId: string, text: string, mode?: BundleMode, example?: BundleRequest["example"]): Promise<BundleCheckView> {
+    const { view, app, pipelines } = await this.read(userId, text, mode);
     if (!view.ok) throw new BadRequestException({ message: "The file has problems: nothing was saved", ...view });
+    if (!mode && view.items.some((i) => i.id !== null)) {
+      throw new ConflictException({ message: "Some of this file is here already: choose to update it or to install a copy", ...view });
+    }
     // All of the file or none of it: an App never stays without the pipelines it came with.
     await this.prisma.transaction(async () => {
       if (app) {
@@ -77,8 +85,19 @@ export class BundlesService {
     return { filename: `${fileName(pipeline.name)}.yaml`, text: definitionToSource(definition) };
   }
 
-  private async read(userId: string, text: string) {
-    const documents = splitBundle(text);
+  /** A copy: the App and pipelines under names not taken yet, and what refers to them renamed with them. */
+  private async asCopy(userId: string, documents: BundleDocument[]): Promise<BundleDocument[]> {
+    if (documents.some((d) => d.kind === "unknown")) return documents;
+    const [apps, pipelines] = await Promise.all([
+      this.prisma.client.app.findMany({ where: { userId }, select: { name: true } }),
+      this.prisma.client.pipeline.findMany({ where: { userId }, select: { name: true } }),
+    ]);
+    return splitBundle(joinBundle(freeNames(documents, { apps: apps.map((a) => a.name), pipelines: pipelines.map((p) => p.name) })));
+  }
+
+  private async read(userId: string, text: string, mode?: BundleMode) {
+    const split = splitBundle(text);
+    const documents = mode === "copy" ? await this.asCopy(userId, split) : split;
     const errors: AppIssue[] = [];
     const items: BundleItemView[] = [];
     const at = (line: number, issue: AppIssue): AppIssue => ({
@@ -120,6 +139,7 @@ export class BundlesService {
     // Each pipeline: against the App in the file when it names it, else as Save would (the App there is, if any).
     const pipelineDocuments = documents.filter((d) => d.kind === "pipeline");
     const byName = new Map((await this.prisma.client.pipeline.findMany({ where: { userId } })).map((p) => [p.name, p]));
+    const userApps = await this.prisma.client.app.findMany({ where: { userId }, select: { appId: true, name: true } });
     const seen = new Set<string>();
     for (const document of pipelineDocuments) {
       const named = (parseYaml(document.source) as { app?: unknown }).app;
@@ -137,6 +157,12 @@ export class BundlesService {
       const current = existing?.currentVersionId
         ? await this.prisma.client.pipelineVersion.findUnique({ where: { pipelineVersionId: existing.currentVersionId } })
         : null;
+      // The same name in another App is another pipeline: never replaced by this one.
+      const owner = current ? (appOf(current.definition as unknown as CompiledDefinition, userApps)?.name ?? null) : null;
+      if (current && owner !== (typeof named === "string" ? named.trim() : null)) {
+        const where = owner ? `in "${owner}"` : "outside any App";
+        issues.push({ path: "name", message: `"${name}" is another pipeline, ${where}: install a copy, or rename this one in the file`, line: document.line });
+      }
       const diff = current && result.ok ? diffDefinitions(current.definition as unknown as CompiledDefinition, result.definition) : null;
       const changes = diff && diff.changes.length > 0 ? diff.summary.split("\n") : [];
       items.push({

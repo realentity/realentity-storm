@@ -1,10 +1,8 @@
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import {
   definitionToSource,
-  freeNames,
   joinBundle,
   readExamples,
-  splitBundle,
   type BundleCheckView,
   type ChecklistView,
   type CompiledDefinition,
@@ -110,18 +108,14 @@ describe("examples", () => {
       .post("/api/bundles")
       .send({ text: bundleOf(starter.files) })
       .expect(201);
-    const taken = {
-      apps: (await db.client.app.findMany()).map((a) => a.name),
-      pipelines: (await db.client.pipeline.findMany()).map((p) => p.name),
-    };
-    const again = joinBundle(freeNames(splitBundle(bundleOf(starter.files)), taken));
-    const check = (await agent.post("/api/bundles/check").send({ text: again }).expect(201)).body as BundleCheckView;
+    const again = { text: bundleOf(starter.files), mode: "copy" };
+    const check = (await agent.post("/api/bundles/check").send(again).expect(201)).body as BundleCheckView;
     expect(check.ok).toBe(true);
     expect(check.items.map((i) => [i.name, i.action])).toEqual([
       ["Releases to read 2", "create"],
       ["Read release feeds (2)", "create"],
     ]);
-    await agent.post("/api/bundles").send({ text: again }).expect(201);
+    await agent.post("/api/bundles").send(again).expect(201);
     expect(await db.client.app.count()).toBe(2);
     expect(await db.client.pipeline.count()).toBe(2);
   });
