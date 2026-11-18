@@ -1,0 +1,120 @@
+# Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub with its GitHub owner's
+# token (a credential, sent only to api.github.com), at the address its destination, owner, repository and GitHub
+# environment make. Its entries of the bundle's project
+# and environment, on its paths; a name on several paths takes the value of the last path. Secrets are
+# sealed to the scope's public key (sealedBox: only GitHub opens them) and PUT; variables are created or updated. It
+# only adds and updates, never deletes. One that fails doesn't stop the others; run it again to send them.
+# Turn on "Act without asking when I start it" on this pipeline's page: pressing Sync is then the approval.
+name: Lockbox sync
+app: Lockbox
+description: A bundle's variables and secrets sent to GitHub; it never deletes.
+trigger: { on: entity.action, type: Bundle }
+policy: { allowedDomains: [api.github.com] }
+steps:
+  # The bundle's GitHub owner, with its token (a handle: opened only as a request sends it to GitHub).
+  - id: owners
+    type: data.read
+    with:
+      type: GitHubOwner
+      where: [{ field: name, op: eq, value: "{{trigger.item.owner}}" }]
+      limit: 1
+  - id: account
+    type: data.map
+    with:
+      from: { owners: "{{owners.items}}", destination: "{{trigger.item.destination}}" }
+      expression: >-
+        $count(owners) = 0 ? $error("The bundle's GitHub owner is gone: choose one on the bundle")
+        : destination = "organization" and owners[0].kind != "organization" ? $error("An organization bundle's GitHub owner is an organization: " & owners[0].name & " is a user")
+        : owners[0]
+  # GitHub's address for the bundle's destination, without /secrets or /variables.
+  - id: address
+    type: data.map
+    with:
+      from: "{{trigger.item}}"
+      expression: >-
+        destination = "organization" ? "orgs/" & owner & "/actions"
+        : destination = "environment" ? "repos/" & owner & "/" & repository & "/environments/" & githubEnvironment
+        : destination = "dependabot" ? "repos/" & owner & "/" & repository & "/dependabot"
+        : "repos/" & owner & "/" & repository & "/actions"
+  - id: entries
+    type: data.read
+    with:
+      type: Entry
+      where:
+        - { field: project, op: eq, value: "{{trigger.item.project}}" }
+        - { field: environment, op: eq, value: "{{trigger.item.environment}}" }
+        - { field: path, op: in, value: "{{trigger.item.paths}}" }
+      limit: 1000
+  # One entry per name: the paths in the bundle's order, a later one's value winning.
+  - id: chosen
+    type: data.map
+    with:
+      from: { entries: "{{entries.items}}", paths: "{{trigger.item.paths}}" }
+      expression: >-
+        ( $byName := $reduce(paths, function($acc, $p) { $merge([$acc, $merge($filter(entries, function($e) { $e.path = $p }).{ name: $ })]) }, {});
+        [$each($byName, function($v) { $v })] )
+  - id: secrets
+    type: data.map
+    with: { from: "{{chosen.items}}", expression: '[$[kind = "secret" and $exists(secret)]]' }
+  - id: variables
+    type: data.map
+    with: { from: "{{chosen.items}}", expression: '[$[kind = "variable"]]' }
+
+  # Secrets: sealed to the scope's public key, each PUT (created or replaced).
+  - id: key
+    type: http.fetch
+    when: "{{secrets.items}}"
+    with:
+      url: "https://api.github.com/{{address.value}}/secrets/public-key"
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
+  - id: putSecret
+    type: http.request
+    forEach: "{{secrets.items}}"
+    onError: continue
+    with:
+      method: PUT
+      url: "https://api.github.com/{{address.value}}/secrets/{{item.name}}"
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
+      body:
+        encrypted_value: "{{item.secret | sealedBox: key.json.key}}"
+        key_id: "{{key.json.key_id}}"
+        visibility: "{{trigger.item.visibility}}"
+
+  # Variables: the ones GitHub has already (up to 120) are updated, the others created.
+  - id: existing
+    type: http.fetch
+    when: "{{variables.items}}"
+    with:
+      urls:
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=1"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=2"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=3"
+        - "https://api.github.com/{{address.value}}/variables?per_page=30&page=4"
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
+      itemsAt: variables
+  - id: plan
+    type: data.map
+    when: "{{variables.items}}"
+    with:
+      from: { variables: "{{variables.items}}", existing: "{{existing.items}}" }
+      expression: '[$map(variables, function($v) { $merge([$v, { "isNew": $not($v.name in $$.existing.name), "isOld": $v.name in $$.existing.name }]) })]'
+  - id: createVariable
+    type: http.request
+    forEach: "{{plan.items}}"
+    when: "{{item.isNew}}"
+    onError: continue
+    with:
+      method: POST
+      url: "https://api.github.com/{{address.value}}/variables"
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
+      body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }
+  - id: updateVariable
+    type: http.request
+    forEach: "{{plan.items}}"
+    when: "{{item.isOld}}"
+    onError: continue
+    with:
+      method: PATCH
+      url: "https://api.github.com/{{address.value}}/variables/{{item.name}}"
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
+      body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }

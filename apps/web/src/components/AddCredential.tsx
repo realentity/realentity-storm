@@ -77,6 +77,7 @@ export function AddCredential({
   preset,
   hosts: presetHosts,
   name: presetName,
+  help,
   onClose,
   onSaved,
 }: {
@@ -85,6 +86,8 @@ export function AddCredential({
   hosts?: string[];
   /** A name to start from (any name: pipelines never use it). */
   name?: string;
+  /** What the slot it is added for says it takes (a token's permissions), from the pipeline or App. */
+  help?: string;
   onClose: () => void;
   onSaved: (saved: CredentialView) => void;
 }) {
@@ -128,6 +131,11 @@ export function AddCredential({
     <Modal title={github ? "Add a GitHub token" : "Add a credential"} onClose={onClose}>
       <form onSubmit={(e) => void submit(e)} autoComplete="off" data-testid="credential-form">
         <ErrorAlert error={action.error} title="Not stored" />
+        {help && (
+          <div className="alert alert-info" style={{ whiteSpace: "pre-line" }} data-testid="credential-help">
+            {help}
+          </div>
+        )}
         {!github && <AccountsNote onLeave={onClose} />}
         <div className="mb-3">
           <label className="form-label" htmlFor="cred-name">

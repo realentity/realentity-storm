@@ -61,7 +61,7 @@ Apps are typed and versioned, so they keep working as they grow:
 - Forms take files and images, and pipelines can keep them too: an email's attachment, a download or a photo sent to
   the bot is kept on an entity and read back.
 
-Ready-made Apps install from **Apps → Examples**: Releases to read (the starter: it needs nothing set up), Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos and Papers (receipts and warranties, read from their photo or PDF).
+Ready-made Apps install from **Apps → Examples**: Releases to read (the starter: it needs nothing set up), Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos, Papers (receipts and warranties, read from their photo or PDF) and Lockbox (your GitHub variables and secrets, kept encrypted and synced when you press Sync).
 
 Each App's page maps how it connects: what starts its pipelines, which types they write and read, and the pages that
 show them. The Trips App:

@@ -6,6 +6,8 @@ import {
   canonicalJson,
   checkEntity,
   comparableSealed,
+  credentialAt,
+  credentialFields,
   encryptedFields,
   entityItem,
   FILE_KINDS,
@@ -227,7 +229,11 @@ const READ_MAX = 5000;
 export class ReadStep implements StepExecutor {
   readonly type = "data.read";
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    /** M57: seals a credential field's id as a handle; without it the field is left out. */
+    private readonly vault?: CredentialVault,
+  ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const {
@@ -245,10 +251,13 @@ export class ReadStep implements StepExecutor {
     });
     // M52: an encrypted field as its sealed value (a handle), only when it is this entity's.
     const sealed = encryptedFields(type);
+    const credentials = credentialFields(type);
     let entities = rows.map((row) => ({
       row,
-      item: inPlace(entityItem(row.value, row.mine, stageOf(type, row.stage)), sealed, (field) =>
-        sealedAt(appId, typeName, row.key, field),
+      item: this.withCredentials(
+        inPlace(entityItem(row.value, row.mine, stageOf(type, row.stage)), sealed, (field) => sealedAt(appId, typeName, row.key, field)),
+        credentials,
+        (field) => credentialAt(appId, typeName, row.key, field),
       ),
     }));
     if (where) entities = entities.filter(({ item }) => matchesAll(item, where));
@@ -260,6 +269,23 @@ export class ReadStep implements StepExecutor {
       entities.sort((a, b) => order(valueOf(a), valueOf(b), desc));
     }
     return { items: entities.slice(0, limit).map((e) => e.item), count: entities.length };
+  }
+
+  /**
+   * M57: a credential field as a handle to it: its id sealed where it belongs, so only the worker opens it, and only
+   * as a request sends it to a host the credential allows. Never its secret: that stays in the vault.
+   */
+  private withCredentials(
+    item: Record<string, unknown>,
+    fields: readonly string[],
+    at: (field: string) => string,
+  ): Record<string, unknown> {
+    for (const field of fields) {
+      const id = item[field];
+      if (typeof id === "string" && this.vault) item[field] = this.vault.sealFor(at(field), id);
+      else delete item[field];
+    }
+    return item;
   }
 }
 

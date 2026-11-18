@@ -83,7 +83,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new DedupeStep(deps.prisma),
     new FilterStep(),
     new SaveStep(deps.prisma, deps.appFiles?.root, deps.vault),
-    new ReadStep(deps.prisma),
+    new ReadStep(deps.prisma, deps.vault),
     new HistoryStep(deps.prisma),
     new MapStep(),
     new AlertStep(deps.prisma),

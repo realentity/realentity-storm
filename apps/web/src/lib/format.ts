@@ -46,7 +46,16 @@ const TONES: Record<RunStatusName | StepStatusName | ProposalStatusName | JobSta
 };
 
 export function statusTone(status: string): Tone {
+  if (status === DONE_WITH_FAILURES) return "orange";
   return (TONES as Record<string, Tone | undefined>)[status] ?? "secondary";
+}
+
+/** M54-T5: a run that is done, with items that failed and didn't stop it: "done with failures". */
+export const DONE_WITH_FAILURES = "DONE_WITH_FAILURES";
+
+/** A run's status as it is shown: done with failures when some of its items failed. */
+export function runStatus(run: { status: string; failedItems: number }): string {
+  return run.status === "DONE" && run.failedItems > 0 ? DONE_WITH_FAILURES : run.status;
 }
 
 /** "WAITING_FOR_USER" → "waiting for you". */

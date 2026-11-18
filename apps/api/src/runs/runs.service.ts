@@ -26,6 +26,8 @@ const COSTS_LIMIT = 2000;
 
 const RUN_INCLUDE = {
   pipelineVersion: { select: { pipelineId: true, version: true, pipeline: { select: { name: true } } } },
+  // M54-T5: a done run's failed items (onError: continue), for "done with failures".
+  _count: { select: { steps: { where: { status: "FAILED" } } } },
 } satisfies Prisma.RunInclude;
 type RunWithPipeline = Prisma.RunGetPayload<{ include: typeof RUN_INCLUDE }>;
 
@@ -292,6 +294,7 @@ function runSummary(run: RunWithPipeline, costUsd: number): RunSummaryView {
     trigger: run.trigger,
     dryRun: run.dryRun,
     status: run.status,
+    failedItems: run.status === "DONE" ? run._count.steps : 0,
     summary: run.summary,
     startedAt: run.startedAt.toISOString(),
     finishedAt: run.finishedAt?.toISOString() ?? null,

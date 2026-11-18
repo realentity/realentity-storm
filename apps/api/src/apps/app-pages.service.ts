@@ -11,6 +11,7 @@ import {
   movesFrom,
   fieldOf,
   groupValue,
+  isRefField,
   listPageOf,
   readAppSource,
   viewPageOf,
@@ -24,6 +25,7 @@ import {
   type AppPreviewView,
   type DataType,
   type EntityGroup,
+  type PageFilter,
   type ResolvedListPage,
   type ViewChart,
   type ViewRow,
@@ -64,10 +66,12 @@ export class AppPagesService {
 
   async list(userId: string, appId: string, type: string, query: AppListQueryParsed): Promise<AppListView> {
     const { header, definition } = await this.header(userId, appId, type);
-    const rows = await this.rows(appId, definition, type);
+    const rows = await this.withTitles(userId, appId, definition, type, await this.rows(appId, definition, type));
     const listed = listOf(definition, type, rows, query);
     const chart = listed.page.chart ? await this.chart(userId, listed.page.chart.history, rows, listed.page.title) : null;
-    return { ...header, ...listed, chart };
+    // M55: a ref filter's values are the entities of its type.
+    const filters = await this.withRefValues(appId, definition, listed.page.filters);
+    return { ...header, ...listed, page: { ...listed.page, filters }, chart };
   }
 
   /**
@@ -129,7 +133,14 @@ export class AppPagesService {
     const { header, definition } = await this.header(userId, appId, type);
     const entity = await this.prisma.client.dataEntity.findUnique({ where: { appId_type_key: { appId, type, key } } });
     if (!entity) throw new NotFoundException();
-    const page = viewPageOf(definition, type);
+    const viewed = viewPageOf(definition, type);
+    // M55: the related lists' ref filters, filled in like a list's.
+    const page = {
+      ...viewed,
+      related: await Promise.all(
+        viewed.related.map(async (r) => ({ ...r, filters: await this.withRefValues(appId, definition, r.filters) })),
+      ),
+    };
     const list = listPageOf(definition, type);
     const history = page.history
       ? (
@@ -141,7 +152,7 @@ export class AppPagesService {
         ).map((p) => ({ at: p.at.toISOString(), value: p.value }))
       : null;
     const dataType = definition.types[type];
-    const row = rowOf(entity, dataType);
+    const [row] = await this.withTitles(userId, appId, definition, type, [rowOf(entity, dataType)]);
     const stages = dataType.stages;
     const current = stages ? (entity.stage ?? stages.initial) : null;
     return {
@@ -156,7 +167,84 @@ export class AppPagesService {
       mine: (entity.mine ?? {}) as Record<string, unknown>,
       written: writtenUnder(dataType, page.form, entity.value, entity.mine),
       actions: page.actions.flatMap((action, i) => (actionApplies(action, row.value, entityValueAt) ? [i] : [])),
+      referencedBy: await this.referencedBy(appId, definition, type, key),
     };
+  }
+
+  /** M55: the entities of each type that point at this one (a ref field of theirs holding its key), counted. */
+  async referencedBy(
+    appId: string,
+    definition: AppDefinition,
+    type: string,
+    key: string,
+  ): Promise<{ type: string; label: string; count: number }[]> {
+    const found: { type: string; label: string; count: number }[] = [];
+    for (const [name, other] of Object.entries(definition.types)) {
+      const fields = Object.entries(other.fields)
+        .filter(([, f]) => isRefField(f) && f.to === type)
+        .map(([f]) => f);
+      if (fields.length === 0) continue;
+      const rows = await this.rows(appId, definition, name);
+      const count = rows.filter((r) => !r.removedAt && fields.some((f) => pointsAt(fieldOf(r, f), key))).length;
+      if (count > 0) found.push({ type: name, label: listPageOf(definition, name).label, count });
+    }
+    return found;
+  }
+
+  /** M55: a ref filter's values: the entities of its type, by key, named by their title. */
+  private async withRefValues(appId: string, definition: AppDefinition, filters: PageFilter[]): Promise<PageFilter[]> {
+    return Promise.all(
+      filters.map(async (f) => {
+        if (!f.ref || !Object.hasOwn(definition.types, f.ref)) return f;
+        const title = listPageOf(definition, f.ref).title;
+        const rows = (await this.rows(appId, definition, f.ref)).filter((r) => !r.removedAt);
+        const values = rows
+          .map((r) => ({ value: r.key, label: text(fieldOf(r, title)) ?? r.key }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+        return { ...f, values };
+      }),
+    );
+  }
+
+  /**
+   * M56: the rows with what their ref fields point at named: each by its title (a list of refs: theirs, in order).
+   * One that points at nothing any more is left out (its key is shown).
+   */
+  private async withTitles(userId: string, appId: string, definition: AppDefinition, type: string, rows: ViewRow[]): Promise<ViewRow[]> {
+    const fields = Object.entries(definition.types[type].fields);
+    const refs = fields.filter(([, f]) => isRefField(f) && f.to && Object.hasOwn(definition.types, f.to));
+    // M57: a credential field by the credential's name.
+    const credentials = fields.filter(([, f]) => f.type === "credential").map(([name]) => name);
+    if (refs.length === 0 && credentials.length === 0) return rows;
+    const names =
+      credentials.length > 0
+        ? new Map(
+            (await this.prisma.client.credential.findMany({ where: { userId }, select: { credentialId: true, name: true } })).map((c) => [
+              c.credentialId,
+              c.name,
+            ]),
+          )
+        : new Map<string, string>();
+    const titles = new Map<string, Map<string, string>>();
+    for (const to of new Set(refs.map(([, f]) => f.to!))) {
+      const title = listPageOf(definition, to).title;
+      const theirs = await this.rows(appId, definition, to);
+      titles.set(to, new Map(theirs.filter((r) => !r.removedAt).map((r) => [r.key, text(fieldOf(r, title)) ?? r.key])));
+    }
+    return rows.map((row) => {
+      const named: Record<string, string> = {};
+      for (const [name, field] of refs) {
+        const of = titles.get(field.to!)!;
+        const value = fieldOf(row, name);
+        const keys = Array.isArray(value) ? value.map((v) => text(v) ?? "") : [text(value) ?? ""];
+        if (keys.length > 0 && keys.every((k) => of.has(k))) named[name] = keys.map((k) => of.get(k)!).join(", ");
+      }
+      for (const name of credentials) {
+        const id = text(fieldOf(row, name));
+        if (id) named[name] = names.get(id) ?? "A credential that is gone";
+      }
+      return Object.keys(named).length > 0 ? { ...row, titles: named } : row;
+    });
   }
 
   private async header(userId: string, appId: string, type: string): Promise<{ header: AppPageHeader; definition: AppDefinition }> {
@@ -181,14 +269,18 @@ function listOf(
   const page = listPageOf(definition, type);
   const counts = { current: rows.filter((r) => !r.removedAt).length, removed: rows.filter((r) => r.removedAt).length };
   for (const field of Object.keys(query.filter)) {
-    if (!page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
+    // M55: any ref field too: an entity's page lists what points at it.
+    const isRef = definition.types[type]?.fields[field]?.type === "ref";
+    if (!isRef && !page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
   }
   const q = query.q?.toLowerCase();
   const matching = rows.filter(
     (row) =>
       (query.tab === "removed") === (row.removedAt !== null) &&
       Object.entries(query.filter).every(([field, value]) => text(fieldOf(row, field)) === value) &&
-      (!q || row.key.toLowerCase().includes(q) || page.search.some((f) => text(fieldOf(row, f))?.toLowerCase().includes(q))),
+      (!q ||
+        row.key.toLowerCase().includes(q) ||
+        page.search.some((f) => (row.titles?.[f] ?? text(fieldOf(row, f)))?.toLowerCase().includes(q))),
   );
   matching.sort((a, b) => compare(fieldOf(a, page.sort.by), fieldOf(b, page.sort.by), page.sort.desc));
 
@@ -258,6 +350,11 @@ function groupOf(page: ResolvedListPage, value: string | null, rows: ViewRow[]):
     return { field: total.field, sums };
   });
   return { value, label: value ?? "—", count: rows.length, totals };
+}
+
+/** M55: a ref holding the key; M56: a list of refs holding it. */
+function pointsAt(value: unknown, key: string): boolean {
+  return Array.isArray(value) ? value.some((v) => text(v) === key) : text(value) === key;
 }
 
 /** A value as filters and search compare it: text, numbers and yes/no as text. */

@@ -23,7 +23,7 @@ trigger: { schedule: "0 9 * * 1" }
 needs:
   api: { kind: credential, type: api_key, for: ${host}, label: "The tracker's API" }
   project: { kind: text, label: "Project", example: infra }
-  database: { kind: credential, type: database, for: db-${id}.example.org, label: "The database it counts" }
+  database: { kind: credential, type: database, for: db-${id}.example.org, label: "The database it counts", help: "A user that may only read." }
 steps:
   - id: count
     type: db.query
@@ -51,7 +51,10 @@ steps:
   await expect(needs.getByTestId("needs-missing")).toHaveText("1 to fill in");
 
   // No database of the user's fits: added here, filled in from the slot, and chosen.
+  // M52: what the slot says it takes, under it and on the form that adds one.
+  await expect(needs.getByTestId("need-help-database")).toHaveText("A user that may only read.");
   await needs.getByTestId("need-credential-database").selectOption({ label: "Add a new one…" });
+  await expect(page.getByTestId("credential-help")).toHaveText("A user that may only read.");
   const form = page.getByTestId("credential-form");
   await expect(form.getByLabel("Name", { exact: true })).toHaveValue("database");
   await form.getByLabel("Name", { exact: true }).fill(`orders-db-${id}`);

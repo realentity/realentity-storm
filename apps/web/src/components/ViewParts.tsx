@@ -27,6 +27,9 @@ export function ViewValue({
 }) {
   const value = fieldOf(row, column.field);
   if (value === undefined || value === null || value === "") return <span className="text-secondary">—</span>;
+  // M56: a ref as what it points at is named.
+  const title = row.titles?.[column.field];
+  if (title !== undefined) return <>{title}</>;
   switch (column.as) {
     case "number": {
       const n = toNumber(value);

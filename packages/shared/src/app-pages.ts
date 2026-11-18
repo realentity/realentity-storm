@@ -1,5 +1,18 @@
 import { z } from "zod";
-import { addedByHand, addFieldNames, formFieldNames, movesFrom, type AppDefinition, type DataType, type EntityActionDef, type FieldKind, type FormPage, type ListPage, type ViewPage } from "./app";
+import {
+  addedByHand,
+  addFieldNames,
+  formFieldNames,
+  isRefField,
+  movesFrom,
+  type AppDefinition,
+  type DataType,
+  type EntityActionDef,
+  type FieldKind,
+  type FormPage,
+  type ListPage,
+  type ViewPage,
+} from "./app";
 import { type ViewChart, type ViewFormat, type ViewIcon, type ViewRow } from "./view";
 
 /**
@@ -21,6 +34,8 @@ const FORMAT: Record<FieldKind, ViewFormat> = {
   list: "text",
   file: "file",
   image: "image",
+  ref: "text",
+  credential: "text",
 };
 
 export interface PageColumn {
@@ -41,8 +56,10 @@ export interface PageTotal extends PageColumn {
 export interface PageFilter {
   field: string;
   label: string;
-  /** The values to pick from: an enum's, or yes and no. */
+  /** The values to pick from: an enum's, or yes and no; M55: a ref's, the entities of its type (the api fills them). */
   values: { value: string; label: string }[];
+  /** M55: a ref's: the type its values are entities of. */
+  ref?: string;
 }
 
 /** A field on a form (M32): its input from its kind. */
@@ -54,6 +71,35 @@ export interface FormField {
   required: boolean;
   /** M52: an encrypted field: the form never shows its value, only that one is set, and sends one only when typed. */
   encrypted?: boolean;
+  /** M55: a ref (M56: or a list of refs): the type whose entities it is picked from. */
+  ref?: string;
+  /** M57: a credential: the host it is for, its choices the credentials allowed there. */
+  for?: string;
+  /** M56: picked among the ones whose field of this name is the form's (an Entry's path, of its project). */
+  match?: string;
+  /** M56: on the form only while its other fields have these values; required only then. */
+  when?: Record<string, string | boolean | string[]>;
+  /** M55: a line under its input. */
+  help?: string;
+}
+
+/** M55: the entities pointing at an entity, on its page: by their ref field `by`. */
+export interface PageRelated {
+  type: string;
+  by: string;
+  label: string;
+  columns: PageColumn[];
+  filters: PageFilter[];
+  title: string;
+  /** The form that adds one there (its `by` set to this entity); null: not added there. */
+  create: FormField[] | null;
+  /** M56: its Add buttons, each with the fields it sets on that form (an Add of `add: true` sets none). */
+  adds: { label: string; set: Record<string, string> }[];
+  /**
+   * M56: rows in groups by this field: an enum's values, or a ref's entities (of `ref`; the ones whose `match` is the
+   * page's entity when it is `by`), each group with its Add.
+   */
+  group: { field: string; label: string; values: string[] | null; ref: string | null; match: string | null } | null;
 }
 
 /** A type's stage (M32), for its pages. */
@@ -100,6 +146,7 @@ export interface ResolvedViewPage {
   link: string | null;
   sections: { title: string | null; fields: PageColumn[] }[];
   history: { collection: string; label: string; stepped: boolean } | null;
+  related: PageRelated[];
 }
 
 /** "salaryCurrency" → "Salary currency"; @firstSeen → "First seen". */
@@ -172,17 +219,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
     title,
     link,
     columns,
-    filters: filterFields.map((field) => ({
-      field,
-      label: fieldLabel(type, field),
-      values:
-        type.fields[field]?.type === "enum"
-          ? (type.fields[field].values ?? []).map((value) => ({ value, label: value }))
-          : [
-              { value: "true", label: "Yes" },
-              { value: "false", label: "No" },
-            ],
-    })),
+    filters: filterFields.map((field) => pageFilter(type, field)),
     search:
       page?.search ??
       entries.filter(([, f]) => (f.type === "text" || f.type === "longtext" || f.type === "enum") && !f.encrypted).map(([n]) => n),
@@ -200,6 +237,57 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
       page?.moves && type.stages
         ? { field: type.stages.field, to: Object.fromEntries(type.stages.states.map((from) => [from, movesFrom(type.stages!, from, "me")])) }
         : null,
+  };
+}
+
+/** A filter's values: an enum's, yes and no; M55: a ref's are its type's entities, filled in by the api. */
+function pageFilter(type: DataType, field: string): PageFilter {
+  const f = type.fields[field];
+  const values =
+    f?.type === "enum"
+      ? (f.values ?? []).map((value) => ({ value, label: value }))
+      : f?.type === "ref"
+        ? []
+        : [
+            { value: "true", label: "Yes" },
+            { value: "false", label: "No" },
+          ];
+  return { field, label: fieldLabel(type, field), values, ...(f?.type === "ref" && f.to ? { ref: f.to } : {}) };
+}
+
+/** M55: what points at the type's entities, as its view page lists them. */
+function relatedOf(app: AppDefinition, page: ViewPage | undefined): PageRelated[] {
+  return (page?.related ?? []).map((related) => {
+    const type = app.types[related.type];
+    const list = listPageOf(app, related.type);
+    const form = app.pages.find((p): p is FormPage => "form" in p && p.form === related.type);
+    return {
+      type: related.type,
+      by: related.by,
+      label: related.label ?? list.label,
+      columns: related.columns ? related.columns.map((c) => column(type, c)) : list.columns.filter((c) => c.field !== related.by),
+      filters: (related.filters ?? []).map((f) => pageFilter(type, f)),
+      title: list.title,
+      create: related.add ? formFields(type, addFieldNames(type, form)) : null,
+      adds: Array.isArray(related.add)
+        ? related.add.map((a) => ({ label: a.label, set: Object.fromEntries(Object.entries(a.set).map(([k, v]) => [k, String(v)])) }))
+        : related.add
+          ? [{ label: "Add", set: {} }]
+          : [],
+      group: related.group ? relatedGroup(type, related.group, related.by) : null,
+    };
+  });
+}
+
+/** M56: a related list's groups: an enum's values, or a ref's entities, the page's own when it matches by `by`. */
+function relatedGroup(type: DataType, field: string, by: string): PageRelated["group"] {
+  const f = type.fields[field];
+  return {
+    field,
+    label: fieldLabel(type, field),
+    values: f?.type === "enum" ? (f.values ?? []) : null,
+    ref: f?.type === "ref" ? (f.to ?? null) : null,
+    match: f?.type === "ref" && f.match === by ? by : null,
   };
 }
 
@@ -223,6 +311,7 @@ export function viewPageOf(app: AppDefinition, typeName: string): ResolvedViewPa
     history: page?.history
       ? { collection: page.history.collection, label: page.history.label ?? "History", stepped: page.history.stepped }
       : null,
+    related: relatedOf(app, page),
   };
 }
 
@@ -238,6 +327,11 @@ function formFields(type: DataType, names: string[]): FormField[] {
         required: field.required,
         ...(field.values ? { values: field.values } : {}),
         ...(field.encrypted ? { encrypted: true } : {}),
+        ...(isRefField(field) && field.to ? { ref: field.to } : {}),
+        ...(field.match ? { match: field.match } : {}),
+        ...(field.for ? { for: field.for } : {}),
+        ...(field.when ? { when: field.when } : {}),
+        ...(field.help ? { help: field.help } : {}),
       };
     });
 }
@@ -335,6 +429,8 @@ export interface AppEntityView extends AppPageHeader {
   written: Record<string, unknown>;
   /** The indexes of the view's buttons that apply to it now (`when`). */
   actions: number[];
+  /** M55: what points at it, per type: deleting it asks first, naming them. */
+  referencedBy: { type: string; label: string; count: number }[];
 }
 
 /** M32: fields of mine on an entity's form; null or "" clears one. A type of mine: any field, the key too on creation. */

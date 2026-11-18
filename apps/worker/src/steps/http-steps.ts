@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { fromSealedToken, hostMatches, MASK, SEALED_TOKEN, tokenTransforms } from "@realentity/storm-shared";
+import { fromSealedToken, hostMatches, isCredentialHandle, MASK, SEALED_TOKEN, tokenTransforms } from "@realentity/storm-shared";
 import { applyTransforms, transformsReady } from "../secrets/transforms";
 import { XMLParser } from "fast-xml-parser";
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -112,8 +112,16 @@ export class HttpFetchStep implements StepExecutor {
     if (!url === !urls) throw new Error("http.fetch reads `url` or `urls`: give one of them");
     const allowed = context.allowedDomains ?? [];
     const documents: Document[] = [];
+    await transformsReady();
     for (const address of urls ?? [url!]) {
-      const keyed = await withCredentials(this.vault, this.type, address, headers, query, context);
+      // M57: an App's credential field (or an encrypted one) in headers or query, opened for this address's host.
+      const opened: Opened = { values: [], credentials: [] };
+      const host = new URL(address).hostname.toLowerCase();
+      const [sentHeaders, sentQuery] = [
+        (await openTokens(this.vault, headers, opened, context, host)) as Record<string, string>,
+        (await openTokens(this.vault, query, opened, context, host)) as Record<string, string>,
+      ];
+      const keyed = withOpened(await withCredentials(this.vault, this.type, address, sentHeaders, sentQuery, context), opened);
       try {
         documents.push(await this.read(address, keyed, context, allowed, { itemsAt, maxBytes: maxKb * 1024, timeout: timeoutSeconds * 1000 }));
       } catch (error) {
@@ -132,7 +140,7 @@ export class HttpFetchStep implements StepExecutor {
 
   private async read(url: string, keyed: Keyed, asker: CredentialAsker, allowed: readonly string[], options: { itemsAt?: string; maxBytes: number; timeout: number }): Promise<Document> {
     const userId = asker.userId;
-    const keys = keyed.secrets.length > 0;
+    const keys = keyed.secrets.length > 0 || keyed.ids.length > 0;
     // A read with a key isn't cached: what it got belongs to that key.
     const cached = keys ? null : await this.prisma.httpCache.findUnique({ where: { userId_url: { userId, url: keyed.target } } });
     const headers: Record<string, string> = {
@@ -147,6 +155,7 @@ export class HttpFetchStep implements StepExecutor {
     const onHop = keys
       ? async (hop: URL) => {
           for (const name of keyed.names) await this.vault!.revealFor(asker, name, hop.hostname.toLowerCase());
+          for (const id of keyed.ids) await this.vault!.revealById(asker.userId, id, hop.hostname.toLowerCase());
         }
       : undefined;
     const response = await this.http.get(keyed.target, headers, allowed, { ...options, onHop });
@@ -170,10 +179,27 @@ export class HttpFetchStep implements StepExecutor {
 interface Keyed {
   target: string;
   headers: Record<string, string>;
-  /** The credentials used: each hop is checked against them. */
+  /** The credentials used: each hop is checked against them (slots by name; M57: an App's, by id). */
   names: string[];
+  ids: string[];
   secrets: string[];
   mask(text: string): string;
+}
+
+/** M57: what openTokens opened: the values (masked in answers) and the credentials revealed, by id. */
+interface Opened {
+  values: string[];
+  credentials: string[];
+}
+
+/** A read's or a request's keys with what its handles opened: each masked, each credential's hosts checked per hop. */
+function withOpened(keyed: Keyed, opened: Opened): Keyed {
+  return {
+    ...keyed,
+    ids: opened.credentials,
+    secrets: [...keyed.secrets, ...opened.values],
+    mask: (text: string) => keyed.mask(maskOpened(text, opened.values)),
+  };
 }
 
 /** The address with `query`, and the headers, their {{cred:…}} opened by the vault for the address's host. */
@@ -204,7 +230,7 @@ async function withCredentials(
   const opened: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) opened[name.toLowerCase()] = await open(value);
   const mask = (text: string) => secrets.reduce((masked, secret) => masked.split(secret).join("•••"), text);
-  return { target: target.href, headers: opened, names: [...names], secrets, mask };
+  return { target: target.href, headers: opened, names: [...names], ids: [], secrets, mask };
 }
 
 interface RequestInput {
@@ -234,11 +260,13 @@ export class HttpRequestStep implements StepExecutor {
     const { method, url, headers: given = {}, query: asked = {}, body: written, timeoutSeconds } = input as unknown as RequestInput;
     // M52: an encrypted field's value, opened only now, as it is sent (the gate showed ***); masked if the API echoes it.
     await transformsReady();
-    const opened: string[] = [];
-    const unseal = (value: unknown) => openTokens(this.vault, value, opened);
-    const [headers, query, body] = [unseal(given) as Record<string, string>, unseal(asked) as Record<string, string>, unseal(written)];
-    const credentials = await withCredentials(this.vault, this.type, url, headers, query, context);
-    const keyed = { ...credentials, mask: (text: string) => credentials.mask(maskOpened(text, opened)) };
+    const opened: Opened = { values: [], credentials: [] };
+    const host = new URL(url).hostname.toLowerCase();
+    const unseal = (value: unknown) => openTokens(this.vault, value, opened, context, host);
+    const headers = (await unseal(given)) as Record<string, string>;
+    const query = (await unseal(asked)) as Record<string, string>;
+    const body = await unseal(written);
+    const keyed = withOpened(await withCredentials(this.vault, this.type, url, headers, query, context), opened);
     const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const sent: Record<string, string> = {
       "user-agent": USER_AGENT,
@@ -267,26 +295,61 @@ export class HttpRequestStep implements StepExecutor {
   }
 }
 
-/** M52: every {{sealed:…}} token in the value (its strings, deep), opened by the vault; what was opened is collected. */
-function openTokens(vault: CredentialVault | undefined, value: unknown, opened: string[], depth = 0): unknown {
+/**
+ * M52: every {{sealed:…}} token in the value (its strings, deep), opened by the vault; what was opened is collected.
+ * M57: a credential's handle opens to its id, and the vault reveals that credential for `host` only (one of the user's,
+ * allowed there), as {{cred:…}} is.
+ */
+async function openTokens(
+  vault: CredentialVault | undefined,
+  value: unknown,
+  opened: Opened,
+  asker: CredentialAsker,
+  host: string,
+  depth = 0,
+): Promise<unknown> {
   if (typeof value === "string") {
-    return value.replace(SEALED_TOKEN, (_token, encoded: string, transforms: string) => {
-      const sealed = fromSealedToken(encoded);
-      if (!sealed) throw new Error("An encrypted value in the request is damaged");
-      if (!vault) throw new Error("http.request can't open an encrypted value here");
-      const text = vault.openSealed(sealed);
-      // Credentials are filled in after: a value holding {{cred:…}} would bring one in.
-      if (new RegExp(CREDENTIAL.source).test(text)) throw new Error("An encrypted value can't hold a {{cred:…}} reference");
-      // M52-T9: its transforms (base64, sealedBox), now that it is open; both forms masked in an answer.
-      const sent = applyTransforms(text, tokenTransforms(transforms), (t) => t.argument ?? "");
-      if (text) opened.push(text);
-      if (sent !== text) opened.push(sent);
-      return sent;
-    });
+    let out = "";
+    let last = 0;
+    for (const match of value.matchAll(SEALED_TOKEN)) {
+      out += value.slice(last, match.index) + (await openToken(vault, match[1], match[2], opened, asker, host));
+      last = match.index + match[0].length;
+    }
+    return last === 0 ? value : out + value.slice(last);
   }
   if (depth > 50 || !value || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map((v) => openTokens(vault, v, opened, depth + 1));
-  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, openTokens(vault, v, opened, depth + 1)]));
+  if (Array.isArray(value)) return Promise.all(value.map((v) => openTokens(vault, v, opened, asker, host, depth + 1)));
+  const entries = await Promise.all(
+    Object.entries(value).map(async ([k, v]) => [k, await openTokens(vault, v, opened, asker, host, depth + 1)] as const),
+  );
+  return Object.fromEntries(entries);
+}
+
+async function openToken(
+  vault: CredentialVault | undefined,
+  encoded: string,
+  transforms: string | undefined,
+  opened: Opened,
+  asker: CredentialAsker,
+  host: string,
+): Promise<string> {
+  const sealed = fromSealedToken(encoded);
+  if (!sealed) throw new Error("An encrypted value in the request is damaged");
+  if (!vault) throw new Error("This step can't open an encrypted value here");
+  let text = vault.openSealed(sealed);
+  if (isCredentialHandle(sealed)) {
+    const id = text;
+    text = (await vault.revealById(asker.userId, id, host)).secret;
+    opened.credentials.push(id);
+  } else if (new RegExp(CREDENTIAL.source).test(text)) {
+    // Credentials are filled in after: a value holding {{cred:…}} would bring one in.
+    throw new Error("An encrypted value can't hold a {{cred:…}} reference");
+  }
+  // M52-T9: its transforms (base64, sealedBox), now that it is open; both forms masked in an answer.
+  const sent = applyTransforms(text, tokenTransforms(transforms), (t) => t.argument ?? "");
+  if (text) opened.values.push(text);
+  if (sent !== text) opened.values.push(sent);
+  return sent;
 }
 
 /**

@@ -20,6 +20,10 @@ export interface FieldPatch {
   currency?: string;
   /** M52: only on text and longtext. */
   encrypted?: boolean;
+  /** M55: a ref's type. */
+  to?: string;
+  /** M55: a line under its input. */
+  help?: string;
 }
 
 export function addType(source: string, name: string, key = "name"): string {
@@ -91,7 +95,14 @@ export function setField(source: string, type: string, name: string, patch: Fiel
     else if (!Array.isArray(next.values) || next.values.length === 0) next.values = ["one", "two"];
     if (next.type !== "money") delete next.currency;
     if (next.type !== "text" && next.type !== "longtext") delete next.encrypted;
-    for (const property of ["type", "label", "required", "mine", "values", "currency", "encrypted"] as const) {
+    // M56: a list of refs keeps its type, as a ref does; `match` goes with it.
+    const pointing = next.type === "ref" || (next.type === "list" && field.get("of") === "ref");
+    if (!pointing) {
+      delete next.to;
+      field.delete("match");
+    }
+    if (next.type !== "list") field.delete("of");
+    for (const property of ["type", "label", "required", "mine", "values", "currency", "encrypted", "to", "help"] as const) {
       const value = next[property];
       if (value === undefined || value === false || value === "") field.delete(property);
       else if (property === "values") {

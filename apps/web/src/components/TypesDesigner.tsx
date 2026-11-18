@@ -88,6 +88,7 @@ export function TypesDesigner({
           editable={editable}
           renamedNote={renamedNote(name)}
           marked={marked}
+          typeNames={app.types.map(([t]) => t)}
         />
       ))}
       {editable && (
@@ -128,9 +129,12 @@ function TypeTable({
   editable,
   renamedNote,
   marked,
+  typeNames,
 }: Readonly<{
   name: string;
   type: LooseType;
+  /** M55: the App's types, a ref's to pick from. */
+  typeNames: string[];
   issues: AppIssue[];
   onLine: (line: number) => void;
   onEdit: (edit: DesignerEdit, note?: string) => void;
@@ -390,6 +394,24 @@ function TypeTable({
                         {textFields.map((f) => (
                           <option key={f} value={f}>
                             currency in {f}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {def.type === "ref" && (
+                      <select
+                        className="form-select form-select-sm"
+                        value={text(def.to)}
+                        disabled={!editable}
+                        onChange={(e) => onEdit((s) => setField(s, name, field, { to: e.target.value || undefined }))}
+                        aria-label={`${name}.${field} points at`}
+                        title={HELP.fieldRef}
+                        data-testid="field-ref"
+                      >
+                        <option value="">points at…</option>
+                        {typeNames.map((t) => (
+                          <option key={t} value={t}>
+                            a {t}
                           </option>
                         ))}
                       </select>

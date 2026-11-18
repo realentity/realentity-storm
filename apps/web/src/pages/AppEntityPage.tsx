@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import { EntityButtons } from "../components/EntityButtons";
 import { EntityForm } from "../components/EntityForm";
 import { EntityLink } from "../components/EntityLink";
+import { RelatedList } from "../components/RelatedList";
 import { SeriesChart } from "../components/SeriesChart";
 import { ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
 import { ViewValue } from "../components/ViewParts";
@@ -32,6 +33,8 @@ export function AppEntityPage() {
   const [deleting, setDeleting] = useState(false);
   // M52: each save starts the form again: a replaced secret is *** before and after, so its values alone don't say so.
   const [saves, setSaves] = useState(0);
+  // M56: one added on a related list: the others load again (a path added: its group shows).
+  const [added, setAdded] = useState(0);
   const action = useAction();
   const data = shown?.row.key === loaded.data?.row.key && shown ? shown : loaded.data;
   if (!data) return loaded.error ? <ErrorAlert error={loaded.error} /> : <Loading />;
@@ -55,7 +58,8 @@ export function AppEntityPage() {
   };
   const remove = async () => {
     const done = await action.run(async () => {
-      await api.apps.remove(appId, type, key);
+      // M55: the dialog said what points at it, so it goes although they do.
+      await api.apps.remove(appId, type, key, data.referencedBy.length > 0);
       return true;
     });
     if (done) void navigate(listUrl);
@@ -120,6 +124,22 @@ export function AppEntityPage() {
               </div>
             </div>
           ))}
+          {/* M55: what points at it, each with its own list (and Add, with this one set). */}
+          {page.related.map((related) => (
+            <RelatedList
+              key={`${related.type}:${related.by}`}
+              appId={appId}
+              related={related}
+              of={row.key}
+              changes={added}
+              onAdded={() => {
+                setAdded((n) => n + 1);
+                // What points at it now, for the delete's warning.
+                setShown(null);
+                loaded.reload();
+              }}
+            />
+          ))}
         </div>
         <div className="col-lg-5 d-flex flex-column gap-3">
           {page.form.length > 0 && (
@@ -136,6 +156,7 @@ export function AppEntityPage() {
                   written={data.written}
                   reset={(field) => void save({ [field]: null }, "Reset to what the pipeline wrote")}
                   upload={(field, file) => action.run(() => api.apps.upload(appId, type, field, file))}
+                  appId={appId}
                   submit={(values) => void save(values)}
                   busy={action.busy}
                   testId="entity-form"
@@ -196,6 +217,12 @@ export function AppEntityPage() {
           }
         >
           It goes from {list.label}; pipelines that read it won&apos;t see it any more.
+          {data.referencedBy.length > 0 && (
+            <div className="alert alert-warning mt-3 mb-0" data-testid="delete-referenced">
+              {data.referencedBy.map((r) => `${r.count} ${r.count === 1 ? r.type : r.label}`).join(" and ")} point at it: they keep its
+              name, and it points at nothing then.
+            </div>
+          )}
         </Modal>
       )}
     </>

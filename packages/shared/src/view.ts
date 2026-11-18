@@ -44,6 +44,7 @@ export const VIEW_ICONS = [
   "briefcase",
   "receipt",
   "cloud",
+  "lock",
 ] as const;
 export type ViewIcon = (typeof VIEW_ICONS)[number];
 
@@ -160,6 +161,8 @@ export interface ViewRow {
   firstSeenAt: string;
   lastSeenAt: string;
   removedAt: string | null;
+  /** M56: an App's ref fields by what they point at: its title (a list of refs: theirs, in order), as shown. */
+  titles?: Record<string, string>;
 }
 
 /** A column's value: a field of the row's value by dotted path, or @key / @firstSeen / @lastSeen. */

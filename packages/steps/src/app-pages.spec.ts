@@ -115,7 +115,7 @@ describe("an App's pages (M31)", () => {
     ).toEqual([
       'pages.0.list: there is no type "Invoice"',
       'pages.1.columns.1: Bill has no field "salery"',
-      'pages.1.filters.0: a filter is an enum or a yes/no field: "payee" is text',
+      'pages.1.filters.0: a filter is an enum, a yes/no or a ref field: "payee" is text',
       'pages.1.search.0: search looks in text fields: "amount" is money',
       'pages.1.sort: Bill has no field "nope"',
       'pages.1.group.period: a period groups a date field: "status" is enum',
