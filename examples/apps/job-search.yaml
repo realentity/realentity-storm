@@ -66,7 +66,7 @@ pipelines:
     # "jobs.example.com/search", and set the site and the categories here), only the postings not kept before, the agencies
     # set aside as skipped, the rest scored against what you look for (edit `against`; `outcomes` learns from what came of
     # your applications) and kept as Jobs. You're told about the ones scored 70 or more. Nothing is sent.
-    fullName: Job board
+    name: Job board
     description: New postings from a job board, scored and kept as Jobs; the best told on Telegram.
     trigger: { schedule: "0 8 * * 1-5" }
     policy:
@@ -115,7 +115,7 @@ pipelines:
     # M16: every 15 minutes, emails about your applications move them on (replied, interview, rejected): the Jobs page
     # and Insight count them, an interview or a rejection cancels the follow-up reminder (follow-up-later), and a
     # message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
-    fullName: Application replies
+    name: Application replies
     description: Replies about your applications update their status, and tell you.
     trigger: { schedule: "*/15 * * * *" }
     steps:

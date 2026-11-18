@@ -103,7 +103,7 @@ pipelines:
     # tells you on Telegram; up again, the Incident is resolved with how long it lasted. A paused one isn't checked.
     # The addresses are the ones you typed on the Monitors page (fields of mine): only those may be on your network or
     # Tailscale. No LLM.
-    fullName: Check monitors
+    name: Check monitors
     description: Checks your monitors every five minutes; one down opens an incident, up again resolves it.
     trigger: { schedule: "*/5 * * * *" }
     steps:
@@ -209,7 +209,7 @@ pipelines:
     # one that is up again resolves it, with how long it lasted. It reads Uptime Kuma's webhook ({ monitor: { name, url },
     # heartbeat: { status: 0 or 1, msg } }) and a plain one ({ "monitor": "api", "status": "down" or "up", "url", "message" }).
     # The body is only read and kept, never used as an address.
-    fullName: Monitor alerts
+    name: Monitor alerts
     description: A monitor down opens an incident, up again resolves it.
     trigger: { webhook: token }
     steps:
@@ -274,7 +274,7 @@ pipelines:
     # "can't connect" Incident (database-down). Its database is the App's: you choose the credential when you
     # install it (kind database: postgresql://reader:…@host:5432/app, a user that may only read). Change `sql` to your
     # tables.
-    fullName: Database check
+    name: Database check
     description: Database checks above 0 open incidents, back at 0 resolve them.
     trigger: { schedule: "*/10 * * * *" }
     steps:
@@ -338,7 +338,7 @@ pipelines:
     # When Database check (database-check) fails, the database can't be reached or answered with an error: an Incident
     # in the Server ops App, once, until a check works again and resolves it. Save database-check first: this one
     # names it.
-    fullName: Database down
+    name: Database down
     description: The database check failing opens an incident, once.
     trigger: { on: run.finished, pipeline: database-check, status: [FAILED] }
     steps:
@@ -380,7 +380,7 @@ pipelines:
     # only when you press Act at its gate (which shows the request); then the Incident is acknowledged, with the issue's
     # address. The GitHub credential and the repository are the App's: you choose them when you install it (a fine-grained
     # token with Issues: read and write on the repository, kind API key, allowed host api.github.com).
-    fullName: Incident issue
+    name: Incident issue
     description: A GitHub issue for an incident, after you approve it; the incident is acknowledged.
     trigger: { on: entity.action, type: Incident }
     steps:
@@ -408,7 +408,7 @@ pipelines:
   ops-week:
     # Every Monday morning, the Server ops App's last week in numbers, on Telegram: incidents per source, how long they
     # lasted, the longest, and what is still open. Counted here, no LLM.
-    fullName: Ops week
+    name: Week
     description: Every Monday, last week's incidents in numbers.
     trigger: { schedule: "0 9 * * 1" }
     steps:

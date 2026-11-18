@@ -58,7 +58,7 @@ pipelines:
     # under its target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
     # in the Prices App, added on its Watched products page: no
     # allowedDomains needed here.
-    fullName: Prices
+    name: Check prices
     description: The watched products, told only when a price is worth knowing.
     trigger: { schedule: "0 9 * * *" }
     steps:

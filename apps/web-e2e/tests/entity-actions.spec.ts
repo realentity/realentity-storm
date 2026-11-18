@@ -223,11 +223,11 @@ test("Server ops: a monitor added on its form, checked by Check now: its status,
   const read = (file: string) => exampleYaml(file);
   const name = unique("Server ops");
   const checks = unique("Check monitors");
-  const app = read("apps/server-ops.yaml").replace("name: Server ops", `name: ${name}`).replace("run: Check monitors }", `run: "${checks}" }`);
+  const app = read("apps/server-ops.yaml").replace("name: Server ops", `name: ${name}`).replace("run: Server ops · Check monitors }", `run: "${checks}" }`);
   const created = await page.request.post("/api/apps", { data: { source: app } });
   expect(created.status(), await created.text()).toBe(201);
   const appId = ((await created.json()) as { appId: string }).appId;
-  await createPipeline(page, read("check-monitors.yaml").replace("name: Check monitors", `name: ${checks}`).replace("app: Server ops", `app: ${name}`));
+  await createPipeline(page, read("check-monitors.yaml").replace("name: Server ops · Check monitors", `name: ${checks}`).replace("app: Server ops", `app: ${name}`));
 
   await page.goto(`/a/${appId}/Monitor`);
   for (const [monitor, url] of [

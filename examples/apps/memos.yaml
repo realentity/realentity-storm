@@ -35,7 +35,7 @@ pipelines:
     # /memo on the Storm bot keeps a memo in the Memos App: the text after it,
     # its first line as the title; a photo sent with /memo as its caption is kept with it. Switch it on to have /memo in
     # the bot's menu. No LLM.
-    fullName: Memo from Telegram
+    name: From Telegram
     description: /memo on Telegram keeps a memo, with a photo sent with it.
     trigger: { on: telegram.command, command: memo, description: "Keep a note: /memo text, or a photo with /memo as its caption" }
     steps:

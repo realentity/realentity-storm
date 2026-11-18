@@ -7,7 +7,7 @@ description: A GitHub issue, after you approve it, when Release watch fails.
 needs:
   github: { kind: credential, type: api_key, for: api.github.com, label: "GitHub, to open issues" }
   repository: { kind: text, label: "Repository (owner/name)", example: me/infra }
-trigger: { on: run.finished, pipeline: Release watch, status: [FAILED] }
+trigger: { on: run.finished, pipeline: Releases · Watch, status: [FAILED] }
 steps:
   - id: issue
     type: http.request

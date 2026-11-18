@@ -37,7 +37,7 @@ pipelines:
     # Its database is the App's: you choose the credential when you install it (kind database:
     # postgresql://reader:…@host:5432/app, a user that may only read). For big tables, pg_stat_user_tables is a free estimate instead of
     # count(*): SELECT relname AS name, n_live_tup AS rows FROM pg_stat_user_tables.
-    fullName: Table growth
+    name: Growth
     description: Told when a table grows much faster than usual, and when it is back to normal.
     trigger: { schedule: "0 * * * *" }
     steps:

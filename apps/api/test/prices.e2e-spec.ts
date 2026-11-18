@@ -101,10 +101,10 @@ describe("prices", () => {
     const app = exampleYaml("apps/prices.yaml");
     await agent.post("/api/apps").send({ source: app }).expect(201);
     const pipeline = (await agent.post("/api/prices/pipeline").expect(201)).body as PipelineDetailView;
-    expect(pipeline).toMatchObject({ name: "Prices", enabled: false, currentVersion: 1 });
-    expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices", enabled: false }]);
+    expect(pipeline).toMatchObject({ name: "Prices · Check prices", enabled: false, currentVersion: 1 });
+    expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices · Check prices", enabled: false }]);
     await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
-    expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices", enabled: true }]);
+    expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices · Check prices", enabled: true }]);
 
     // The template the button uses is examples/apps/prices.yaml.
     const file = exampleYaml("prices.yaml");

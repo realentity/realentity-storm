@@ -155,7 +155,7 @@ describe("bindings", () => {
         'Set "Repository for its issues (owner/name)"',
       ]);
 
-      const check = await db.client.pipeline.findFirstOrThrow({ where: { name: "Database check" } });
+      const check = await db.client.pipeline.findFirstOrThrow({ where: { name: "Server ops · Database check" } });
       const refused = await agent.patch(`/api/pipelines/${check.pipelineId}`).send({ enabled: true }).expect(409);
       expect((refused.body as { message: string }).message).toBe(
         `Fill in "The database to check (a user that may only read)", "GitHub, to open issues", "Repository for its issues (owner/name)" first (its Needs, on its page or its App's)`,

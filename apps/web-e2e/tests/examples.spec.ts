@@ -12,7 +12,7 @@ test("the examples gallery: the starter first, an example installed twice under 
 
   // Its map, before installing.
   await tables.getByTestId("example-map").click();
-  await expect(tables.getByTestId("app-map")).toContainText("Table growth");
+  await expect(tables.getByTestId("app-map")).toContainText("Tables · Growth");
 
   const before = ((await (await page.request.get("/api/apps")).json()) as { name: string }[]).map((a) => a.name);
   const expected = before.includes("Tables") ? /^Tables \d+$/ : /^Tables$/;
@@ -32,7 +32,7 @@ test("the examples gallery: the starter first, an example installed twice under 
   await again.getByTestId("example-install").click();
   expect(await installed()).toMatch(/^Tables \d+$/);
   const pipelines = ((await (await page.request.get("/api/pipelines")).json()) as { name: string }[]).map((p) => p.name);
-  expect(pipelines.filter((n) => n.startsWith("Table growth")).length).toBeGreaterThanOrEqual(2);
+  expect(pipelines.filter((n) => n.includes("· Growth")).length).toBeGreaterThanOrEqual(2);
 });
 
 // M40-E1: the starter installed from the gallery, its pipeline run, its entities on its page, its checklist done

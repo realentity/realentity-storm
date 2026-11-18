@@ -76,7 +76,7 @@ pages:
 pipelines:
   trip-booking-reminder:
     # Started by trip-booking-reminders a day before a booking starts: what it is, on Telegram, with its reference.
-    fullName: Trip booking reminder
+    name: Booking reminder
     description: A booking starts tomorrow; its time, place and reference.
     trigger: { on: flow.later }
     steps:
@@ -91,7 +91,7 @@ pipelines:
     # When a Booking of the Trips App is added or changes, its reminder a day before it starts (trip-booking-reminder)
     # is scheduled, or moved with it; a cancelled one's reminder is cancelled. Save trip-booking-reminder first: this
     # one names it.
-    fullName: Trip booking reminders
+    name: Booking reminders
     description: Schedules each booking's reminder for the day before, and cancels it with the booking.
     trigger: { on: entity.changed, type: Booking }
     steps:
@@ -127,7 +127,7 @@ pipelines:
     # Started by trip-countdown three days before a trip: the destination's forecast from Open-Meteo (free, no key)
     # and the trip's bookings, as a short briefing on Telegram, with what looks missing (a night without a hotel, no way
     # back). The destination is found by its name, so a city works best.
-    fullName: Trip briefing
+    name: Briefing
     description: Three days before a trip, its weather and bookings, and what looks missing.
     trigger: { on: flow.later }
     policy:
@@ -173,7 +173,7 @@ pipelines:
   trip-countdown:
     # When you add a Trip in the Trips App or change its dates, its briefing (trip-briefing) is scheduled for 09:00
     # three days before it starts, or moved with it. Save trip-briefing first: this one names it.
-    fullName: Trip countdown
+    name: Countdown
     description: Schedules each trip's briefing for three days before it starts.
     trigger: { on: entity.changed, type: Trip }
     steps:
@@ -201,7 +201,7 @@ pipelines:
     # tickets, each read by the LLM, matched to one of your Trips and kept by its booking reference. A cancellation moves
     # its booking to cancelled; a change (a new time) updates it. A new booking also goes into your calendar, after you
     # Act at its gate. trip-booking-reminders schedules the reminder the day before each.
-    fullName: Trip bookings
+    name: Bookings
     description: Bookings from your email, matched to your trips, with a calendar event each.
     trigger: { schedule: "*/30 * * * *" }
     steps:
@@ -274,7 +274,7 @@ pipelines:
   packing-list:
     # From a Trip's button in the Trips App: a packing list for it, from where and when it is,
     # its notes and its bookings (a flight's baggage, a hotel), on Telegram.
-    fullName: Packing list
+    name: Packing list
     description: A packing list for a trip, from its button.
     trigger: { on: entity.action, type: Trip }
     steps:
