@@ -35,6 +35,7 @@ const FORMAT: Record<FieldKind, ViewFormat> = {
   file: "file",
   image: "image",
   ref: "text",
+  credential: "text",
 };
 
 export interface PageColumn {
@@ -72,6 +73,8 @@ export interface FormField {
   encrypted?: boolean;
   /** M55: a ref (M56: or a list of refs): the type whose entities it is picked from. */
   ref?: string;
+  /** M57: a credential: the host it is for, its choices the credentials allowed there. */
+  for?: string;
   /** M56: picked among the ones whose field of this name is the form's (an Entry's path, of its project). */
   match?: string;
   /** M56: on the form only while its other fields have these values; required only then. */
@@ -326,6 +329,7 @@ function formFields(type: DataType, names: string[]): FormField[] {
         ...(field.encrypted ? { encrypted: true } : {}),
         ...(isRefField(field) && field.to ? { ref: field.to } : {}),
         ...(field.match ? { match: field.match } : {}),
+        ...(field.for ? { for: field.for } : {}),
         ...(field.when ? { when: field.when } : {}),
         ...(field.help ? { help: field.help } : {}),
       };

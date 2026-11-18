@@ -207,3 +207,80 @@ describe("matching refs and lists of refs", () => {
     expect(path.referencedBy).toEqual([{ type: "Bundle", label: "Bundle", count: 1 }]);
   });
 });
+
+const OWNERS_APP = `
+name: Lockbox owners
+types:
+  Owner:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true }
+      token: { type: credential, for: api.github.com, required: true }
+`;
+
+// M57-I2: a credential field: one of the user's, allowed on its host; shown by name; a handle to pipelines, never its id
+describe("credential fields", () => {
+  let api: TestApp;
+  let agent: ReturnType<typeof request.agent>;
+  let db: PrismaConnection;
+  let appId: string;
+
+  beforeAll(async () => {
+    api = await createTestApp();
+    agent = await api.signedIn();
+    db = createPrismaConnection();
+  });
+
+  beforeEach(async () => {
+    appId = ((await agent.post("/api/apps").send({ source: OWNERS_APP }).expect(201)).body as AppDetailView).appId;
+  });
+
+  afterEach(async () => {
+    await db.client.app.deleteMany();
+    await db.client.credential.deleteMany();
+    await db.client.$executeRaw`DELETE FROM pgboss.job`;
+  });
+
+  afterAll(async () => {
+    await db.close();
+    await api.close();
+  });
+
+  const credential = async (name: string, host: string) =>
+    (
+      (
+        await agent
+          .post("/api/credentials")
+          .send({ name, allowedHosts: [host], kind: "API_KEY", secret: "made-up-token" })
+          .expect(201)
+      ).body as {
+        credentialId: string;
+      }
+    ).credentialId;
+
+  it("takes one of the user's credentials allowed on its host, names it, and tells pipelines a handle to it", async () => {
+    const elsewhere = await credential("elsewhere", "example.com");
+    const github = await credential("acme-github", "api.github.com");
+    const add = (token: string) => agent.post(`/api/apps/${appId}/pages/Owner`).send({ values: { name: "acme", token } });
+
+    const wrongHost = await add(elsewhere).expect(400);
+    expect((wrongHost.body as { errors: unknown[] }).errors).toEqual([
+      { path: "token", message: "elsewhere isn't allowed on api.github.com" },
+    ]);
+    const unknown = await add("0b7e3c2a-1f4d-4c1e-9a7b-2d5e6f708192").expect(400);
+    expect((unknown.body as { errors: unknown[] }).errors).toEqual([{ path: "token", message: "isn't one of your credentials" }]);
+
+    const owner = (await add(github).expect(201)).body as AppEntityView;
+    expect(owner.row.titles).toEqual({ token: "acme-github" });
+    const list = (await agent.get(`/api/apps/${appId}/pages/Owner`).expect(200)).body as AppListView;
+    expect(list.rows[0].titles).toEqual({ token: "acme-github" });
+
+    // entity.changed holds a sealed handle, never the credential's id (nor its value).
+    const events = await db.client.$queryRaw<{ data: unknown }[]>`SELECT data FROM pgboss.job WHERE name = 'pipeline-events'`;
+    const told = JSON.stringify(events);
+    expect(told).toContain("$sealed");
+    expect(told).not.toContain(github);
+    expect(told).not.toContain("made-up-token");
+  });
+});

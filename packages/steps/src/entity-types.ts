@@ -29,6 +29,8 @@ const KIND_TYPES: Record<FieldKind, TypeInfo> = {
   },
   // M55: the key of the entity it points at.
   ref: { kind: "string" },
+  // M57: a handle to a credential, opened only as a request sends it.
+  credential: { kind: "sealed" },
 };
 
 /** An entity as the compiler sees it: its fields by their kinds, dotted names as nested objects. */

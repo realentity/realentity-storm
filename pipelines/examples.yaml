@@ -213,5 +213,6 @@ examples:
       Your projects' GitHub variables and secrets, kept here by path and environment (secrets encrypted); a bundle sends
       one environment's paths to a repository, an organisation or Dependabot when you press Sync. Never deletes. No LLM.
     needs:
+      - { kind: entities, type: GitHubOwner, label: "A GitHub owner with its token (GitHub owners)" }
       - { kind: entities, type: Entry, label: "Your variables and secrets (Entries), and a Bundle to send them" }
     files: [apps/lockbox.yaml, lockbox-sync.yaml]

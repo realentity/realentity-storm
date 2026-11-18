@@ -1,3 +1,4 @@
+import { entityTypeInfo } from "./entity-types";
 import {
   AppDefinitionSchema,
   checkEntity,
@@ -239,7 +240,52 @@ describe("matching refs, lists of refs, when, Add presets and groups (M56)", () 
     expect(entries.group?.ref).toBe("Path");
     expect(entries.adds.map((a) => a.label)).toEqual(["Add variable", "Add secret"]);
     const bundle = lockbox.types.Bundle.fields;
-    expect(fieldApplies(bundle.organization, { destination: "organization" })).toBe(true);
+    expect(fieldApplies(bundle.visibility, { destination: "organization" })).toBe(true);
     expect(fieldApplies(bundle.repository, { destination: "organization" })).toBe(false);
+    // M57: an owner's token is a credential for GitHub; the App needs none of its own.
+    expect(lockbox.types.GitHubOwner.fields.token).toMatchObject({ type: "credential", for: "api.github.com" });
+    expect(bundle.owner).toMatchObject({ type: "ref", to: "GitHubOwner" });
+    expect(lockbox.needs).toBeUndefined();
+  });
+});
+
+// M57-U1: a credential field: one of the user's credentials for a host, only on a type of mine
+describe("credential fields (M57)", () => {
+  const OWNER = {
+    mine: true,
+    key: "name",
+    fields: { name: { type: "text", required: true }, token: { type: "credential", for: "api.github.com", required: true } },
+  };
+
+  it("takes one for a host on a type of mine, kept as its id, a handle to pipelines", () => {
+    const definition = AppDefinitionSchema.parse(app({ Owner: OWNER }));
+    const [, token] = listPageOf(definition, "Owner").create!;
+    expect(token).toMatchObject({ field: "token", kind: "credential", for: "api.github.com" });
+    const id = "0b7e3c2a-1f4d-4c1e-9a7b-2d5e6f708192";
+    expect(fieldValue(definition.types.Owner.fields.token, id.toUpperCase())).toEqual({ ok: true, value: id });
+    expect(fieldValue(definition.types.Owner.fields.token, "github").ok).toBe(false);
+    expect(entityTypeInfo(definition.types.Owner)).toMatchObject({ fields: { token: { kind: "sealed" } } });
+  });
+
+  it("refuses one without its host, on a type pipelines write, naming the entity, or a host on another kind", () => {
+    expect(
+      issues(
+        app({
+          Owner: {
+            ...OWNER,
+            title: "token",
+            fields: { ...OWNER.fields, token: { type: "credential" }, site: { type: "text", for: "example.com" } },
+          },
+          Log: { key: "id", fields: { id: { type: "text" }, token: { type: "credential", for: "api.github.com" } } },
+        }),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "types.Owner.fields.token.for: a credential says the host it is for: for: api.github.com",
+        "types.Owner.fields.token: a credential doesn't name the entity",
+        "types.Owner.fields.site.for: only a credential is for a host",
+        "types.Log.fields.token: a credential is only on a type of mine: pipelines never write which one it is",
+      ]),
+    );
   });
 });

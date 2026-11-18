@@ -15,7 +15,7 @@ import { CredentialVault } from "../src/secrets/credential-vault";
 import { ReadStep } from "../src/steps/entity-steps";
 import { HttpFetchStep, HttpRequestStep } from "../src/steps/http-steps";
 import { MapStep } from "../src/steps/map-alert-steps";
-import { bindSlots, createVersion } from "./support/test-steps";
+import { createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
@@ -96,19 +96,22 @@ describe("Lockbox sync", () => {
     await github.start();
   });
 
-  afterEach(async () => {
+  const clean = async () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
     await db.client.app.deleteMany();
     await db.client.credential.deleteMany();
-  });
+    github.requests = [];
+  };
+  afterEach(clean);
 
   afterAll(async () => {
     await github.stop();
     await db.close();
   });
 
-  it("sends the bundle's entries, a later path winning: secrets sealed to GitHub's key, variables created or updated", async () => {
+  /** Lockbox with its entries, a GitHub owner holding a token credential (allowed on `hosts`), and Sync saved. */
+  async function lockbox(hosts = ["api.github.com"], kind = "user") {
     const appSource = readFileSync(join(PIPELINES, "apps/lockbox.yaml"), "utf8");
     const app = await db.client.app.create({ data: { userId, name: "Lockbox" } });
     const version = await db.client.appVersion.create({ data: { appId: app.appId, version: 1, definition: {}, source: appSource } });
@@ -138,7 +141,16 @@ describe("Lockbox sync", () => {
     await entry("e6", { name: "STAGING_ONLY", kind: "secret", path: "/api", environment: "staging" }, "nope");
     await entry("e7", { name: "ELSEWHERE", kind: "secret", path: "/other", environment: "production" }, "nope");
 
-    // The pipeline as shipped, pointed at the fake; its GitHub slot filled; auto-approve on (Sync is the approval).
+    // M57: the owner's token is a credential of the user's, by id; no slot is bound.
+    const credentialId = randomUUID();
+    await db.client.credential.create({
+      data: { credentialId, userId, name: "acme-github", kind: "API_KEY", allowedHosts: hosts, ...seal(keys, credentialId, TOKEN) },
+    });
+    await db.client.dataEntity.create({
+      data: { appId: app.appId, type: "GitHubOwner", key: "acme", value: { name: "acme" }, mine: { kind, token: credentialId } },
+    });
+
+    // The pipeline as shipped, pointed at the fake; auto-approve on (Sync is the approval).
     const source = readFileSync(join(PIPELINES, "lockbox-sync.yaml"), "utf8").replaceAll(
       "https://api.github.com/",
       `http://api.github.com:${github.port}/`,
@@ -146,11 +158,6 @@ describe("Lockbox sync", () => {
     const versionId = await createVersion(db.client, userId, source, new PipelineCompiler(defaultCatalog()), {
       app: readAppSource(appSource),
     });
-    const credentialId = randomUUID();
-    await db.client.credential.create({
-      data: { credentialId, userId, name: "github", kind: "API_KEY", allowedHosts: ["api.github.com"], ...seal(keys, credentialId, TOKEN) },
-    });
-    await bindSlots(db.client, versionId, { github: credentialId });
     const { pipelineId } = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: versionId } });
     await db.client.pipeline.update({ where: { pipelineId }, data: { autoApproveVersionId: versionId } });
 
@@ -163,30 +170,40 @@ describe("Lockbox sync", () => {
       db.client,
       defaultCatalog(),
       new ExecutorRegistry([
-        new ReadStep(db.client),
+        new ReadStep(db.client, vault),
         new MapStep(),
         new HttpFetchStep(db.client, http, vault),
         new HttpRequestStep(http, vault),
       ]),
     );
-    const bundle = {
-      name: "api production",
-      project: "Acme",
-      environment: "production",
-      paths: ["/_deploy", "/_backend", "/api"],
-      destination: "repository",
-      repository: "acme/api",
+    const sync = async (bundle: Record<string, unknown>) => {
+      const runId = await runner.start(versionId, {
+        trigger: "manual",
+        triggerData: { app: "Lockbox", type: "Bundle", key: bundle.name, item: bundle, action: "Sync" },
+      });
+      const status = await runner.advance(runId);
+      return { status, run: await db.client.run.findUniqueOrThrow({ where: { runId } }), runId };
     };
-    const runId = await runner.start(versionId, {
-      trigger: "manual",
-      triggerData: { app: "Lockbox", type: "Bundle", key: bundle.name, item: bundle, action: "Sync" },
-    });
-    expect(await runner.advance(runId)).toBe("DONE");
+    return { sync };
+  }
 
-    const run = await db.client.run.findUniqueOrThrow({ where: { runId } });
+  const BUNDLE = {
+    name: "api production",
+    project: "Acme",
+    environment: "production",
+    paths: ["/_deploy", "/_backend", "/api"],
+    destination: "repository",
+    owner: "acme",
+    repository: "api",
+  };
+
+  it("sends the bundle's entries with its owner's token, a later path winning: secrets sealed to GitHub's key, variables created or updated", async () => {
+    const { sync } = await lockbox();
+    const { status, run, runId } = await sync(BUNDLE);
+    expect(status).toBe("DONE");
     expect(run.summary).toMatch(/^1 item failed: updateVariable #\d+\./);
     const writes = github.requests.filter((r) => r.method !== "GET");
-    expect(writes.every((r) => r.authorization === `Bearer ${TOKEN}`)).toBe(true);
+    expect(github.requests.every((r) => r.authorization === `Bearer ${TOKEN}`)).toBe(true);
     // Only /api's DB (the later path), sealed so only GitHub's key opens it; nothing of staging or another path.
     const put = writes.filter((r) => r.method === "PUT");
     expect(put.map((r) => r.path)).toEqual(["/repos/acme/api/actions/secrets/DB"]);
@@ -202,10 +219,26 @@ describe("Lockbox sync", () => {
         ["PATCH", "/repos/acme/api/actions/variables/BROKEN", "y"],
       ]),
     );
-    // No proposal waited, and nothing stored holds a secret's value.
+    // No proposal waited, and nothing stored holds a secret's value or the token.
     expect(await db.client.proposal.count({ where: { runId, status: "PENDING_REVIEW" } })).toBe(0);
     const stored = JSON.stringify(await db.client.step.findMany({ where: { runId } }));
     expect(stored).not.toContain("api-db");
     expect(stored).not.toContain("backend-db");
+    expect(stored).not.toContain(TOKEN);
+  });
+
+  // M57-I1: the token is sent only where its credential allows; an organization bundle's owner is an organization
+  it("sends nothing when the owner's credential isn't allowed on GitHub, or an organization bundle's owner is a user", async () => {
+    const { sync } = await lockbox(["example.com"]);
+    const refused = await sync(BUNDLE);
+    expect(refused.status).toBe("FAILED");
+    expect(JSON.stringify(await db.client.step.findMany({ where: { runId: refused.runId } }))).toContain("not allowed on api.github.com");
+    expect(github.requests).toHaveLength(0);
+
+    await clean();
+    const user = await (await lockbox()).sync({ ...BUNDLE, destination: "organization", visibility: "private" });
+    expect(user.status).toBe("FAILED");
+    expect(JSON.stringify(await db.client.step.findMany({ where: { runId: user.runId } }))).toContain("acme is a user");
+    expect(github.requests).toHaveLength(0);
   });
 });

@@ -3,25 +3,11 @@
 # is of a path and an environment. A bundle names where they go (a repository, one of its environments, an
 # organisation, Dependabot) and which paths, in order: a later path's value of a name wins, so /_backend's shared
 # values can be overridden by /backend-api's own. Sync (lockbox-sync.yaml) adds and updates; it never deletes in
-# GitHub. Save it on the Apps page before its pipeline.
+# GitHub. Each GitHub owner (you, or an organization) has its token, a credential: one fine-grained token reaches
+# only its owner's repositories. Save it on the Apps page before its pipeline.
 name: Lockbox
 description: GitHub variables and secrets, kept here and synced when you press Sync
 icon: lock
-# Chosen when you install it; `help` says how to make the token, under the slot and on the form that adds it.
-needs:
-  github:
-    kind: credential
-    type: api_key
-    for: api.github.com
-    label: "GitHub, to write variables and secrets"
-    help: |-
-      A fine-grained personal access token. On GitHub: Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
-      • Resource owner: you, or the organization that owns the repositories (an organization may have to approve the token first: it shows as pending until then).
-      • Repository access: Only select repositories, the ones your bundles send to.
-      • Repository permissions, each Read and write: Secrets, Variables, and Environments (needed for a repository environment's, e.g. production). Dependabot secrets: Read and write too, for a Dependabot bundle.
-      • Organization permissions, only for an organization bundle: Secrets and Variables, Read and write.
-      • Metadata: Read is added by GitHub.
-      A permission missing shows as "Resource not accessible by personal access token" on the run.
 types:
   Project:
     mine: true
@@ -29,6 +15,25 @@ types:
     fields:
       name: { type: text, required: true }
       description: { type: longtext }
+  # A user or an organization on GitHub, with the token Sync writes there with: a credential, chosen or added here.
+  GitHubOwner:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true, help: "As in its address: github.com/acme → acme" }
+      kind: { type: enum, values: [user, organization], required: true }
+      token:
+        type: credential
+        for: api.github.com
+        required: true
+        help: |-
+          A fine-grained personal access token. On GitHub: Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+          • Resource owner: this owner (a token reaches one owner's repositories only; an organization may have to approve it first: it shows as pending until then).
+          • Repository access: Only select repositories, the ones your bundles send to.
+          • Repository permissions, each Read and write: Secrets, Variables, and Environments (needed for a repository environment's, e.g. production). Dependabot secrets: Read and write too, for a Dependabot bundle.
+          • Organization permissions, only for an organization bundle: Secrets and Variables, Read and write.
+          • Metadata: Read is added by GitHub.
+          A permission missing shows as "Resource not accessible by personal access token" on the run.
   # Where in a project its values are: each project has its own.
   Path:
     mine: true
@@ -72,22 +77,18 @@ types:
         values: [repository, environment, organization, dependabot]
         required: true
         help: "A repository's secrets and variables, one of its environments', an organization's, or Dependabot's (secrets only)"
+      owner: { type: ref, to: GitHubOwner, required: true, label: GitHub owner, help: "The user or organization the repository is of (an organization bundle: that organization)" }
       repository:
         type: text
         required: true
         when: { destination: [repository, environment, dependabot] }
-        help: "Its owner and name, as in its address: github.com/acme/backend → acme/backend"
+        help: "Its name, as in its address: github.com/acme/backend → backend"
       githubEnvironment:
         type: text
         label: GitHub environment
         required: true
         when: { destination: environment }
         help: "The repository's environment, as named on GitHub, e.g. production"
-      organization:
-        type: text
-        required: true
-        when: { destination: organization }
-        help: "As in its address: github.com/acme → acme"
       visibility:
         type: enum
         values: [all, private]
@@ -115,6 +116,12 @@ pages:
           - { label: Add variable, set: { kind: variable } }
           - { label: Add secret, set: { kind: secret } }
       - { type: Bundle, by: project, label: Bundles, columns: [name, environment, destination], add: true }
+  - list: GitHubOwner
+    menu: { label: GitHub owners, icon: lock }
+    columns: [name, kind, token]
+  - view: GitHubOwner
+    related:
+      - { type: Bundle, by: owner, label: Bundles, columns: [name, project, environment, destination] }
   - list: Path
     menu: false
     columns: [name, project]
@@ -132,11 +139,11 @@ pages:
   - list: Bundle
     menu: { label: Bundles, icon: lock }
     add: true
-    columns: [name, project, environment, destination]
-    filters: [project, environment]
+    columns: [name, project, environment, destination, owner]
+    filters: [project, environment, owner]
   - view: Bundle
-    fields: [project, environment, paths, destination, repository, githubEnvironment, organization, visibility]
+    fields: [project, environment, paths, destination, owner, repository, githubEnvironment, visibility]
     actions:
       - { label: Sync, run: Lockbox sync, confirm: "Send this bundle's variables and secrets to GitHub?" }
   - form: Bundle
-    fields: [project, environment, paths, destination, repository, githubEnvironment, organization, visibility]
+    fields: [project, environment, paths, destination, owner, repository, githubEnvironment, visibility]

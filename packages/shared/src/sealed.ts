@@ -38,6 +38,21 @@ export function sealedAt(appId: string, type: string, key: string, field: string
   return `${appId}/${type}/${encodeURIComponent(key)}/${field}`;
 }
 
+/**
+ * M57: where a credential field's handle belongs: data.read seals the credential's id there (never its secret), and
+ * the worker, opening it as a request sends it, reveals that credential for the request's host only.
+ */
+export function credentialAt(appId: string, type: string, key: string, field: string): string {
+  return `${CREDENTIAL_AT}${sealedAt(appId, type, key, field)}`;
+}
+
+const CREDENTIAL_AT = "cred:";
+
+/** M57: a handle to a credential (its id sealed), not to a value. An App's id is a UUID, so a field's never starts so. */
+export function isCredentialHandle(value: SealedValue): boolean {
+  return value.$sealed.at.startsWith(CREDENTIAL_AT);
+}
+
 /** The value with every sealed value in it as `***`: for anything shown or sent to the LLM. */
 export function maskSealed<T>(value: T): T {
   return mask(value, 0) as T;

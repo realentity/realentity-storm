@@ -690,12 +690,15 @@ export const CORE_STEPS: StepDefinition[] = [
       "summary, id, source), JSON is `json` (a list, or the list at `itemsAt`, also becomes `items`), anything else " +
       "`text`. Only hosts in policy.allowedDomains, never private or CGNAT/Tailscale addresses. Unchanged since the last read " +
       "(ETag / Last-Modified), it reuses what it read then. An API key goes in `headers` or `query` as {{cred:name}} " +
-      "(a stored credential): it is sent only to the hosts the credential allows, also after a redirect.",
+      "(a stored credential): it is sent only to the hosts the credential allows, also after a redirect. An App's " +
+      "credential field (or encrypted one) from data.read goes there too, as {{owner.value.token}}, opened only as it is sent.",
     sideEffect: false,
     saasSafe: true,
     reads: ["url", "urls"],
     primary: ["url"],
     acceptsCredentials: ["headers", "query"],
+    // M57: an App's credential field (or an encrypted one), opened only as it is sent.
+    acceptsSealed: ["headers", "query"],
     input: z.object({
       url: z.string().url().optional(),
       urls: z.array(z.string().url()).min(1).max(25).optional(),

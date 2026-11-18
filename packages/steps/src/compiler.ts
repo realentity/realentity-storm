@@ -357,7 +357,7 @@ export class PipelineCompiler {
 
     // M52: an encrypted field is never compared or ordered by: its value is sealed.
     const sealedIssue = (field: unknown, where: string, what: string) => {
-      if (typeof field === "string" && type.fields[field]?.encrypted)
+      if (typeof field === "string" && (type.fields[field]?.encrypted || type.fields[field]?.type === "credential"))
         errors.push({ path: where, message: `${typeName}.${field} is encrypted: it can't be ${what}` });
     };
     if (Array.isArray(step.with.where)) {

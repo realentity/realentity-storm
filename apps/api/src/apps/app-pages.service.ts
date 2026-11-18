@@ -66,7 +66,7 @@ export class AppPagesService {
 
   async list(userId: string, appId: string, type: string, query: AppListQueryParsed): Promise<AppListView> {
     const { header, definition } = await this.header(userId, appId, type);
-    const rows = await this.withTitles(appId, definition, type, await this.rows(appId, definition, type));
+    const rows = await this.withTitles(userId, appId, definition, type, await this.rows(appId, definition, type));
     const listed = listOf(definition, type, rows, query);
     const chart = listed.page.chart ? await this.chart(userId, listed.page.chart.history, rows, listed.page.title) : null;
     // M55: a ref filter's values are the entities of its type.
@@ -152,7 +152,7 @@ export class AppPagesService {
         ).map((p) => ({ at: p.at.toISOString(), value: p.value }))
       : null;
     const dataType = definition.types[type];
-    const [row] = await this.withTitles(appId, definition, type, [rowOf(entity, dataType)]);
+    const [row] = await this.withTitles(userId, appId, definition, type, [rowOf(entity, dataType)]);
     const stages = dataType.stages;
     const current = stages ? (entity.stage ?? stages.initial) : null;
     return {
@@ -210,11 +210,21 @@ export class AppPagesService {
    * M56: the rows with what their ref fields point at named: each by its title (a list of refs: theirs, in order).
    * One that points at nothing any more is left out (its key is shown).
    */
-  private async withTitles(appId: string, definition: AppDefinition, type: string, rows: ViewRow[]): Promise<ViewRow[]> {
-    const refs = Object.entries(definition.types[type].fields).filter(
-      ([, f]) => isRefField(f) && f.to && Object.hasOwn(definition.types, f.to),
-    );
-    if (refs.length === 0) return rows;
+  private async withTitles(userId: string, appId: string, definition: AppDefinition, type: string, rows: ViewRow[]): Promise<ViewRow[]> {
+    const fields = Object.entries(definition.types[type].fields);
+    const refs = fields.filter(([, f]) => isRefField(f) && f.to && Object.hasOwn(definition.types, f.to));
+    // M57: a credential field by the credential's name.
+    const credentials = fields.filter(([, f]) => f.type === "credential").map(([name]) => name);
+    if (refs.length === 0 && credentials.length === 0) return rows;
+    const names =
+      credentials.length > 0
+        ? new Map(
+            (await this.prisma.client.credential.findMany({ where: { userId }, select: { credentialId: true, name: true } })).map((c) => [
+              c.credentialId,
+              c.name,
+            ]),
+          )
+        : new Map<string, string>();
     const titles = new Map<string, Map<string, string>>();
     for (const to of new Set(refs.map(([, f]) => f.to!))) {
       const title = listPageOf(definition, to).title;
@@ -228,6 +238,10 @@ export class AppPagesService {
         const value = fieldOf(row, name);
         const keys = Array.isArray(value) ? value.map((v) => text(v) ?? "") : [text(value) ?? ""];
         if (keys.length > 0 && keys.every((k) => of.has(k))) named[name] = keys.map((k) => of.get(k)!).join(", ");
+      }
+      for (const name of credentials) {
+        const id = text(fieldOf(row, name));
+        if (id) named[name] = names.get(id) ?? "A credential that is gone";
       }
       return Object.keys(named).length > 0 ? { ...row, titles: named } : row;
     });

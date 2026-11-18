@@ -10,7 +10,10 @@ import {
   canonicalJson,
   checkFormValues,
   comparableSealed,
+  credentialAt,
+  credentialFields,
   encryptedFields,
+  hostMatches,
   sealedAt,
   entityItem,
   entityValueAt,
@@ -76,7 +79,7 @@ export class EntityActionsService {
       await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type)),
     );
     // M56: a ref matching another field is checked against the entity as it will be.
-    await this.checkRefs(appId, type, checked, { ...this.item(type, entity), ...checked });
+    await this.checkRefs(userId, appId, type, checked, { ...this.item(type, entity), ...checked });
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
       if (value === null) delete mine[field];
@@ -135,7 +138,7 @@ export class EntityActionsService {
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
     const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
     let checked = this.check(type, allowed, values);
-    await this.checkRefs(appId, type, checked, checked);
+    await this.checkRefs(userId, appId, type, checked, checked);
     // M48: a key Storm makes.
     if (autoKey(type)) checked = { ...checked, [type.key]: await this.freshKey(appId, typeName) };
     const missing = Object.entries(type.fields).filter(
@@ -240,7 +243,7 @@ export class EntityActionsService {
       );
     }
     const entity = await this.entity(appId, typeName, key);
-    const item = this.item(type, entity);
+    const item = this.handles(appId, typeName, key, type, this.item(type, entity));
     if (!actionApplies({ when: (action as EntityActionDef).when }, item, entityValueAt)) {
       throw new ConflictException(`"${action.label}" doesn't apply to this ${typeName} now`);
     }
@@ -273,8 +276,18 @@ export class EntityActionsService {
    * M55: a ref set on a form points at an entity of its type that is there; M56: each of a list of refs, and one that
    * matches another field (an Entry's path) is one with that field as the entity has it (`as`: as it will be saved).
    */
-  private async checkRefs(appId: string, type: DataType, values: Item, as: Item): Promise<void> {
+  private async checkRefs(userId: string, appId: string, type: DataType, values: Item, as: Item): Promise<void> {
     const errors: { path: string; message: string }[] = [];
+    // M57: a credential of the user's, allowed on the host the field is for.
+    for (const name of credentialFields(type)) {
+      const id = values[name];
+      if (typeof id !== "string") continue;
+      const credential = await this.prisma.client.credential.findFirst({ where: { credentialId: id, userId } });
+      const host = type.fields[name].for!;
+      if (!credential) errors.push({ path: name, message: "isn't one of your credentials" });
+      else if (!hostMatches(host, credential.allowedHosts))
+        errors.push({ path: name, message: `${credential.name} isn't allowed on ${host}` });
+    }
     // A changed project re-checks the path that matches it, although the path wasn't changed.
     const names = Object.entries(type.fields)
       .filter(([name, f]) => name in values || (f.match !== undefined && f.match in values))
@@ -318,6 +331,20 @@ export class EntityActionsService {
     return out;
   }
 
+  /**
+   * M57: an item as a pipeline gets it (its trigger): a credential field as a handle (its id sealed, as data.read gives
+   * it), opened only by the worker as a request sends it.
+   */
+  private handles(appId: string, typeName: string, key: string, type: DataType, item: Item): Item {
+    const out = { ...item };
+    for (const field of credentialFields(type)) {
+      const id = out[field];
+      if (typeof id === "string") out[field] = sealField(this.keys, credentialAt(appId, typeName, key, field), id);
+      else delete out[field];
+    }
+    return out;
+  }
+
   private item(type: DataType, entity: Pick<DataEntity, "value" | "mine" | "stage">): Item {
     return entityItem(entity.value, entity.mine, type.stages ? { field: type.stages.field, value: entity.stage } : undefined);
   }
@@ -334,10 +361,21 @@ export class EntityActionsService {
     changed: string[],
     stage: { from: string | null; to: string } | null,
   ): Promise<void> {
+    const dataType = app.types[type];
     await this.queue.enqueueEvent({
       userId,
       event: "entity.changed",
-      data: { app: app.name, appId, type, key, item, before, changed, by: "me", stage },
+      data: {
+        app: app.name,
+        appId,
+        type,
+        key,
+        item: this.handles(appId, type, key, dataType, item),
+        before: before ? this.handles(appId, type, key, dataType, before) : null,
+        changed,
+        by: "me",
+        stage,
+      },
       source: { depth: 0 },
     });
   }

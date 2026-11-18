@@ -1,6 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { NeedsSchema } from "./needs";
 import { z } from "zod";
+import { HOST_PATTERN } from "./credentials";
 import { holdsSealed, isSealed } from "./sealed";
 import { safeLink, VIEW_ICONS } from "./view";
 
@@ -31,6 +32,7 @@ export const FIELD_KINDS = [
   "file",
   "image",
   "ref",
+  "credential",
 ] as const;
 export type FieldKind = (typeof FIELD_KINDS)[number];
 
@@ -89,10 +91,16 @@ export const EntityFieldSchema = z
      * path among its project's paths (match: project). Both are refs to the same type.
      */
     match: z.string().regex(ENTITY_FIELD).optional(),
+    /**
+     * M57: credential: the host it is for (api.github.com). The field holds one of the user's credentials, by id, picked
+     * on the form among the ones allowed there; a pipeline gets it as a handle, opened only as http.fetch or
+     * http.request sends it to a host the credential allows.
+     */
+    for: z.string().regex(HOST_PATTERN, "a host, e.g. api.github.com").optional(),
     /** M56: on the form only while other fields have these values (enum or yes/no ones); required only then. */
     when: Conditions.optional(),
-    /** M55: a line under its input on the form: what to write there. */
-    help: z.string().trim().min(1).max(300).optional(),
+    /** M55: a line under its input on the form: what to write there (M57: up to 1000: a token's permissions). */
+    help: z.string().trim().min(1).max(1000).optional(),
     /**
      * M48: the key, made by Storm when an entity is added (on its list, or by a pipeline's item without it): a task or a
      * memo is named by its title, which can change. Only on a text key.
@@ -150,6 +158,13 @@ function checkFieldOptions(
       }
     }
   }
+}
+
+/** M57: the type's credential fields, by name. */
+export function credentialFields(type: Pick<DataType, "fields">): string[] {
+  return Object.entries(type.fields)
+    .filter(([, field]) => field.type === "credential")
+    .map(([name]) => name);
 }
 
 /** M52: kinds a field may be encrypted on. */
@@ -249,6 +264,12 @@ export const DataTypeSchema = z
       if (!isRefField(field) && field.to) issue([...at, "to"], "only a ref (or a list of: ref) points at a type");
       checkFieldOptions(type.fields, name, field, type.key, (path, message) => issue([...at, ...path], message));
       if (field.type !== "enum" && field.values) issue([...at, "values"], "only an enum has values");
+      if (field.type === "credential") {
+        if (!field.for) issue([...at, "for"], "a credential says the host it is for: for: api.github.com");
+        if (!type.mine) issue(at, "a credential is only on a type of mine: pipelines never write which one it is");
+        if (name === type.key || name === type.title) issue(at, "a credential doesn't name the entity");
+        if (field.encrypted) issue([...at, "encrypted"], "a credential is kept as one already");
+      } else if (field.for) issue([...at, "for"], "only a credential is for a host");
       if (field.auto && name !== type.key) issue([...at, "auto"], "only the key is made by Storm");
       if (field.encrypted) {
         if (name.includes(".")) issue([...at, "encrypted"], "an encrypted field isn't nested: write it as one name");
@@ -776,6 +797,11 @@ export function fieldValue(field: EntityField, value: unknown): { ok: true; valu
       if (keys.some((k) => k === "")) return { ok: false, problem: "isn't a list of ones to point at" };
       return { ok: true, value: [...new Set(keys)].slice(0, 200) };
     }
+    // M57: one of the user's credentials, by id (the api checks that it is theirs and allowed on its host).
+    case "credential":
+      return text !== null && UUID.test(text)
+        ? { ok: true, value: text.toLowerCase() }
+        : { ok: false, problem: "isn't one of your credentials" };
     // M55: the key of an entity of its type (the api checks that it is one).
     case "ref":
       return text !== null && text !== "" ? { ok: true, value: text.slice(0, 1000) } : { ok: false, problem: "isn't one to point at" };

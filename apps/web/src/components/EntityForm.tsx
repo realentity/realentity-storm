@@ -1,6 +1,17 @@
-import { asFileRef, fieldApplies, fieldOf, MASK, type FileRef, type FormField } from "@realentity/storm-shared";
-import { IconArrowDown, IconArrowUp, IconDeviceFloppy, IconLock, IconPaperclip, IconX } from "@tabler/icons-react";
+import {
+  asFileRef,
+  CredentialKind,
+  fieldApplies,
+  fieldOf,
+  hostMatches,
+  MASK,
+  type FileRef,
+  type FormField,
+} from "@realentity/storm-shared";
+import { IconArrowDown, IconArrowUp, IconDeviceFloppy, IconLock, IconPaperclip, IconPlus, IconX } from "@tabler/icons-react";
+import { AddCredential } from "./AddCredential";
 import { useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
 import { asText } from "../lib/view";
@@ -115,7 +126,9 @@ export function EntityForm({
             <label className={`form-label ${f.required ? "required" : ""}`} htmlFor={id}>
               {f.label}
             </label>
-            {f.ref && f.kind === "list" ? (
+            {f.kind === "credential" ? (
+              <CredentialSelect field={f} value={value} onChange={(v) => set(f.field, v)} />
+            ) : f.ref && f.kind === "list" ? (
               <RefList
                 field={f}
                 appId={appId}
@@ -187,7 +200,11 @@ export function EntityForm({
                 {...common}
               />
             )}
-            {f.help && <div className="form-hint">{f.help}</div>}
+            {f.help && (
+              <div className="form-hint" style={{ whiteSpace: "pre-line" }}>
+                {f.help}
+              </div>
+            )}
             {f.field in written && reset && (
               <div className="form-hint d-flex flex-wrap align-items-center gap-2" data-testid={`written-${f.field}`}>
                 <span>
@@ -266,6 +283,67 @@ function RefSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * M57: a credential field: one of the user's credentials allowed on the field's host, by name (its id is what is
+ * saved); New adds one there (its host set, the field's help on it) and picks it. The value is never shown here.
+ */
+function CredentialSelect({ field, value, onChange }: Readonly<{ field: FormField; value: string; onChange: (value: string) => void }>) {
+  const [adding, setAdding] = useState(false);
+  const list = useLoad(() => api.credentials.list(), []);
+  const host = field.for ?? "";
+  const options = (list.data ?? []).filter((c) => hostMatches(host, c.allowedHosts)).sort((a, b) => a.name.localeCompare(b.name));
+  let prompt = "Choose one…";
+  if (list.loading) prompt = "…";
+  else if (options.length === 0) prompt = `None for ${host} yet: add one`;
+  return (
+    <div className="d-flex gap-2" data-testid={`credential-${field.field}`}>
+      <select
+        id={`field-${field.field}`}
+        name={field.field}
+        className="form-select"
+        value={value}
+        required={field.required}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{prompt}</option>
+        {value && !options.some((c) => c.credentialId === value) && <option value={value}>A credential that is gone</option>}
+        {options.map((c) => (
+          <option key={c.credentialId} value={c.credentialId}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="btn btn-outline-secondary text-nowrap"
+        onClick={() => setAdding(true)}
+        data-testid={`new-credential-${field.field}`}
+      >
+        <IconPlus size={16} className="me-1" />
+        New
+      </button>
+      {/* Its own form, outside this one (forms don't nest); its submit stops here, not saving the entity. */}
+      {adding &&
+        createPortal(
+          <div onSubmit={(e) => e.stopPropagation()}>
+            <AddCredential
+              preset={host === "api.github.com" ? "GITHUB" : CredentialKind.API_KEY}
+              hosts={[host]}
+              help={field.help}
+              onClose={() => setAdding(false)}
+              onSaved={(saved) => {
+                setAdding(false);
+                list.reload();
+                onChange(saved.credentialId);
+              }}
+            />
+          </div>,
+          document.body,
+        )}
+    </div>
   );
 }
 

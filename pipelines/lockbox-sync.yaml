@@ -1,5 +1,6 @@
-# Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub, at the address its
-# destination, repository (owner/name), GitHub environment or organization make. Its entries of the bundle's project
+# Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub with its GitHub owner's
+# token (a credential, sent only to api.github.com), at the address its destination, owner, repository and GitHub
+# environment make. Its entries of the bundle's project
 # and environment, on its paths; a name on several paths takes the value of the last path. Secrets are
 # sealed to the scope's public key (sealedBox: only GitHub opens them) and PUT; variables are created or updated. It
 # only adds and updates, never deletes. One that fails doesn't stop the others; run it again to send them.
@@ -10,16 +11,31 @@ description: A bundle's variables and secrets sent to GitHub; it never deletes.
 trigger: { on: entity.action, type: Bundle }
 policy: { allowedDomains: [api.github.com] }
 steps:
+  # The bundle's GitHub owner, with its token (a handle: opened only as a request sends it to GitHub).
+  - id: owners
+    type: data.read
+    with:
+      type: GitHubOwner
+      where: [{ field: name, op: eq, value: "{{trigger.item.owner}}" }]
+      limit: 1
+  - id: account
+    type: data.map
+    with:
+      from: { owners: "{{owners.items}}", destination: "{{trigger.item.destination}}" }
+      expression: >-
+        $count(owners) = 0 ? $error("The bundle's GitHub owner is gone: choose one on the bundle")
+        : destination = "organization" and owners[0].kind != "organization" ? $error("An organization bundle's GitHub owner is an organization: " & owners[0].name & " is a user")
+        : owners[0]
   # GitHub's address for the bundle's destination, without /secrets or /variables.
   - id: address
     type: data.map
     with:
       from: "{{trigger.item}}"
       expression: >-
-        destination = "organization" ? "orgs/" & organization & "/actions"
-        : destination = "environment" ? "repos/" & repository & "/environments/" & githubEnvironment
-        : destination = "dependabot" ? "repos/" & repository & "/dependabot"
-        : "repos/" & repository & "/actions"
+        destination = "organization" ? "orgs/" & owner & "/actions"
+        : destination = "environment" ? "repos/" & owner & "/" & repository & "/environments/" & githubEnvironment
+        : destination = "dependabot" ? "repos/" & owner & "/" & repository & "/dependabot"
+        : "repos/" & owner & "/" & repository & "/actions"
   - id: entries
     type: data.read
     with:
@@ -50,7 +66,7 @@ steps:
     when: "{{secrets.items}}"
     with:
       url: "https://api.github.com/{{address.value}}/secrets/public-key"
-      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
   - id: putSecret
     type: http.request
     forEach: "{{secrets.items}}"
@@ -58,7 +74,7 @@ steps:
     with:
       method: PUT
       url: "https://api.github.com/{{address.value}}/secrets/{{item.name}}"
-      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
       body:
         encrypted_value: "{{item.secret | sealedBox: key.json.key}}"
         key_id: "{{key.json.key_id}}"
@@ -74,7 +90,7 @@ steps:
         - "https://api.github.com/{{address.value}}/variables?per_page=30&page=2"
         - "https://api.github.com/{{address.value}}/variables?per_page=30&page=3"
         - "https://api.github.com/{{address.value}}/variables?per_page=30&page=4"
-      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
       itemsAt: variables
   - id: plan
     type: data.map
@@ -90,7 +106,7 @@ steps:
     with:
       method: POST
       url: "https://api.github.com/{{address.value}}/variables"
-      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
       body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }
   - id: updateVariable
     type: http.request
@@ -100,5 +116,5 @@ steps:
     with:
       method: PATCH
       url: "https://api.github.com/{{address.value}}/variables/{{item.name}}"
-      headers: { Authorization: "Bearer {{cred:github}}", Accept: application/vnd.github+json }
+      headers: { Authorization: "Bearer {{account.value.token}}", Accept: application/vnd.github+json }
       body: { name: "{{item.name}}", value: "{{item.value}}", visibility: "{{trigger.item.visibility}}" }
