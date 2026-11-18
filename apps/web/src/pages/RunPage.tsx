@@ -26,6 +26,9 @@ export function RunPage() {
   );
   if (!run.data) return run.error ? <ErrorAlert error={run.error} /> : <Loading />;
   const r = run.data;
+  // Runs that failed before the runner wrote the reason into the summary: the failed step says it.
+  const failedStep = r.status === "FAILED" ? r.steps.find((s) => s.status === "FAILED") : undefined;
+  const summary = r.summary ?? (failedStep ? failureOf(failedStep) : null);
 
   return (
     <>
@@ -51,13 +54,13 @@ export function RunPage() {
         <Fact label="Trigger" value={r.trigger} />
         <Fact label="LLM cost" value={formatUsd(r.costUsd)} />
       </div>
-      {r.summary && (
+      {summary && (
         <div
-          className={`alert ${r.status === "ABORTED" || r.status === "FAILED" || r.failedItems > 0 ? "alert-warning" : "alert-info"}`}
+          className={`alert text-break ${r.status === "ABORTED" || r.status === "FAILED" || r.failedItems > 0 ? "alert-warning" : "alert-info"}`}
           style={{ whiteSpace: "pre-line" }}
           data-testid="run-summary"
         >
-          {r.summary}
+          {summary}
           {/* M54-T5: what failed and why, without opening each step. */}
           {r.failedItems > 0 && (
             <ul className="mb-0 mt-2" data-testid="run-failures">
@@ -102,6 +105,11 @@ export function RunPage() {
       {r.artifacts.length > 0 && <Artifacts run={r} />}
     </>
   );
+}
+
+function failureOf(step: RunStepView): string {
+  const item = step.itemIndex === null ? "" : ` #${step.itemIndex + 1}`;
+  return `${step.stepKey}${item}: ${step.error ?? "failed"}`;
 }
 
 /**
@@ -280,6 +288,14 @@ function Timeline({ steps }: { steps: RunStepView[] }) {
                       <tr>
                         <td colSpan={4} className="bg-body-tertiary">
                           <div className="row g-3">
+                            {step.error && (
+                              <div className="col-12" data-testid="step-error">
+                                <div className="fw-bold mb-1">{step.status === "SKIPPED" ? "Why it was skipped" : "Error"}</div>
+                                <div className="text-danger text-break" style={{ whiteSpace: "pre-wrap" }}>
+                                  {step.error}
+                                </div>
+                              </div>
+                            )}
                             <div className="col-md-6">
                               <div className="fw-bold mb-1">Input</div>
                               <Json value={step.input} />

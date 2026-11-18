@@ -387,7 +387,7 @@ steps:
 | --- | --- | --- |
 | `manual` (default) | You press Run, or send `/run <name>` on Telegram | — |
 | `{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }` | A five-field cron time, in `tz` (default: the server's time zone) | — |
-| `{ on: run.finished, pipeline: Bills, status: [FAILED] }` | Another pipeline's run ends (default: only `DONE`) | `runId`, `pipeline`, `status`, `summary`, `outputs` |
+| `{ on: run.finished, pipeline: Bills, status: [FAILED] }` | Another pipeline's run ends (default: only `DONE`) | `runId`, `pipeline`, `status`, `summary` (for a failed run, the step and its error), `outputs` |
 | `{ on: application.status, status: [SUBMITTED] }` | One of your applications changes status | `applicationId`, `status`, `job` (title, company, location, url) |
 | `{ on: recipe.broken, site: jobs.example.com }` | A browser recipe stops matching its site | `site`, `recipe`, `version`, `reason`, `fixProposed` |
 | `{ on: email.classified, label: [interview] }` | An `email.classify` step labels an email | `label`, `reason`, `message` (the email) |

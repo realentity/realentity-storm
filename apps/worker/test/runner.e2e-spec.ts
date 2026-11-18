@@ -292,6 +292,7 @@ steps:
     await expect(runner.advance(runId)).resolves.toBe("FAILED");
     const failed = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "summary" } });
     expect(failed.error).toBe("test.note failed on purpose");
+    expect((await db.client.run.findUniqueOrThrow({ where: { runId } })).summary).toBe("summary: test.note failed on purpose");
     expect(telegram.calls).toHaveLength(0);
   });
 
