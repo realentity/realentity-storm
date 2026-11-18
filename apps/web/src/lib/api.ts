@@ -50,7 +50,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
 }
 
 /** A query string from the set values only. */
-export function query(params: Record<string, string | number | undefined | null>): string {
+export function query(params: Record<string, string | number | boolean | undefined | null>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") search.set(key, String(value));

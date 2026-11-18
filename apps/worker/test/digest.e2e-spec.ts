@@ -62,6 +62,10 @@ describe("notify.digest", () => {
     await db.client.step.create({
       data: { runId: failed.runId, stepKey: "fetch", type: "email.fetch", status: "FAILED", error: "IMAP: connection refused" },
     });
+    const partly = await run(replies, "DONE", 2.5, "1 item failed: note #1");
+    await db.client.step.create({
+      data: { runId: partly.runId, stepKey: "note", itemIndex: 0, type: "test.note", status: "FAILED", error: "refused" },
+    });
     const waiting = await run(replies, "WAITING_FOR_USER", 1);
     const gate = await db.client.step.create({
       data: { runId: waiting.runId, stepKey: "sendGate", itemIndex: 0, type: "gate.act", status: "WAITING" },
@@ -99,10 +103,11 @@ describe("notify.digest", () => {
     const lines = result.text.split("\n");
     expect(lines.slice(0, -1)).toEqual([
       "Storm · last 24 h",
-      "Runs: 3 (1 failed, 1 done, 1 waiting for you)",
+      "Runs: 4 (1 failed, 2 done, 1 waiting for you)",
       "Waiting for you: 1 (Recruiter replies: 1)",
       "Failed:",
       "• Recruiter replies: fetch: IMAP: connection refused",
+      "• Recruiter replies: 1 item failed: note #1",
     ]);
     // The month total depends on the date (2 hours ago may be last month).
     expect(lines[lines.length - 1]).toMatch(/^LLM: \$0\.0123 \(this month \$0\.0[01]\)$/);

@@ -363,6 +363,37 @@ describe("runs, proposals and controls", () => {
       await agent.get("/api/runs?sort=name").expect(400);
     });
 
+    it("finds the runs where something failed, counts the new ones, and gives each pipeline its last real run", async () => {
+      const pipeline = await createPipeline();
+      const pipelineVersionId = pipeline.current!.pipelineVersionId;
+      const finishedAt = new Date("2026-11-10T08:00:00Z");
+      const run = (status: "DONE" | "FAILED", startedAt: string, dryRun = false) =>
+        db.client.run.create({ data: { userId, pipelineVersionId, trigger: "schedule", status, dryRun, startedAt: new Date(startedAt), finishedAt } });
+
+      const clean = await run("DONE", "2026-11-10T01:00:00Z");
+      const failed = await run("FAILED", "2026-11-10T02:00:00Z");
+      const partly = await run("DONE", "2026-11-10T03:00:00Z");
+      await db.client.step.create({ data: { runId: partly.runId, stepKey: "reply", itemIndex: 0, type: "test.send", status: "FAILED", error: "refused" } });
+      const dry = await run("FAILED", "2026-11-10T04:00:00Z", true);
+
+      const found = (await agent.get("/api/runs?failures=true").expect(200)).body as RunSummaryView[];
+      expect(found.map((r) => r.runId)).toEqual([dry.runId, partly.runId, failed.runId]);
+      expect(found.map((r) => r.runId)).not.toContain(clean.runId);
+
+      const count = async (since: string) => (await agent.get(`/api/runs/failures?since=${since}`).expect(200)).body as { count: number };
+      expect(await count("2026-11-10T07:00:00.000Z")).toEqual({ count: 2 }); // the dry run isn't counted
+      expect(await count("2026-11-10T09:00:00.000Z")).toEqual({ count: 0 });
+      await agent.get("/api/runs/failures").expect(400);
+
+      const listed = (await agent.get("/api/pipelines").expect(200)).body as PipelineDetailView[];
+      expect(listed.find((p) => p.pipelineId === pipeline.pipelineId)?.lastRun).toEqual({
+        runId: partly.runId,
+        status: "DONE",
+        failedItems: 1,
+        startedAt: "2026-11-10T03:00:00.000Z",
+      });
+    });
+
     // M3-T6
     it("shows each step's LLM usage and the run's total cost", async () => {
       const { runId } = await waitingAt("review");

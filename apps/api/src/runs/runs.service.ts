@@ -3,6 +3,7 @@ import { JobQueue } from "@realentity/storm-queue";
 import {
   type CompiledDefinition,
   type CostsView,
+  type FailureCountView,
   type RunDetailView,
   type RetryView,
   type RunFilter,
@@ -30,6 +31,11 @@ const RUN_INCLUDE = {
   _count: { select: { steps: { where: { status: "FAILED" } } } },
 } satisfies Prisma.RunInclude;
 type RunWithPipeline = Prisma.RunGetPayload<{ include: typeof RUN_INCLUDE }>;
+
+/** Something failed in the run: it failed, or it is done with failed items (onError: continue). */
+const HAS_FAILURES = {
+  OR: [{ status: "FAILED" }, { status: "DONE", steps: { some: { status: "FAILED" } } }],
+} satisfies Prisma.RunWhereInput;
 
 /** Runs: started here by hand (or as a dry run), by schedules in the worker; executed by the worker. */
 @Injectable()
@@ -102,6 +108,7 @@ export class RunsService {
       where: {
         userId,
         ...(filter.status ? { status: filter.status } : {}),
+        ...(filter.failures ? HAS_FAILURES : {}),
         ...(filter.pipelineId
           ? { pipelineVersion: { pipelineId: filter.pipelineId, ...(filter.version ? { version: filter.version } : {}) } }
           : {}),
@@ -117,6 +124,12 @@ export class RunsService {
       runs.map((r) => r.runId),
     );
     return runs.map((run) => runSummary(run, costs.get(run.runId) ?? 0));
+  }
+
+  /** Real runs that ended with something failed after `since`: the number on the menu's History. */
+  async failureCount(userId: string, since: string): Promise<FailureCountView> {
+    const count = await this.prisma.client.run.count({ where: { userId, dryRun: false, finishedAt: { gt: new Date(since) }, ...HAS_FAILURES } });
+    return { count };
   }
 
   /** M28: every run of the last `days` (up to COSTS_LIMIT, newest first), with the steps that called the LLM. */

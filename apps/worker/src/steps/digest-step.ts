@@ -85,7 +85,8 @@ export class DigestStep implements StepExecutor {
       lines.push("Waiting for you: nothing");
     }
 
-    const failed = runs.filter((r) => r.status === "FAILED");
+    // A done run with failed items (onError: continue) counts: its summary says which.
+    const failed = runs.filter((r) => r.status === "FAILED" || (r.status === "DONE" && r.steps.length > 0));
     if (failed.length > 0) {
       lines.push("Failed:");
       for (const run of failed.slice(0, MAX_FAILURES)) {

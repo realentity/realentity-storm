@@ -17,13 +17,14 @@ import {
   IconTags,
   type Icon as TablerIcon,
 } from "@tabler/icons-react";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { KillSwitchButton } from "../components/KillSwitchButton";
 import { ThemeSwitch } from "../components/ThemeSwitch";
 import { useSession } from "../context/use-session";
 import { api } from "../lib/endpoints";
 import { useConnectionState } from "../lib/events";
+import { failuresSeenAt, markFailuresSeen } from "../lib/failures-seen";
 import { useLoad } from "../lib/use-load";
 import { VIEW_ICON } from "../lib/view";
 
@@ -63,6 +64,18 @@ export function AppLayout() {
     [],
     (signal) => signal.type === "proposal" || signal.type === "killSwitch",
   );
+  // Failures since History was last open: seen while it is open, and up to the moment it is left.
+  const onHistory = pathname === "/history";
+  useEffect(() => {
+    if (!onHistory) return undefined;
+    markFailuresSeen();
+    return () => markFailuresSeen();
+  }, [onHistory]);
+  const failures = useLoad(
+    () => (onHistory ? Promise.resolve({ count: 0 }) : api.runs.failures(failuresSeenAt())),
+    [onHistory],
+    (signal) => signal.type === "run",
+  );
 
   return (
     <div className="page">
@@ -84,6 +97,11 @@ export function AppLayout() {
                   {item.to === "/inbox" && (pending.data?.length ?? 0) > 0 && (
                     <span className="badge bg-yellow text-yellow-fg ms-auto" data-testid="inbox-count">
                       {pending.data?.length}
+                    </span>
+                  )}
+                  {item.to === "/history" && (failures.data?.count ?? 0) > 0 && (
+                    <span className="badge bg-red text-red-fg ms-auto" title="Runs that failed since you last opened History" data-testid="history-failures">
+                      {failures.data?.count}
                     </span>
                   )}
                 </MenuLink>

@@ -1445,7 +1445,8 @@ Sends you a Telegram message (only to you, never to anyone else). See [telegram.
 - Out: `sent`.
 
 #### `notify.digest`
-Sends you a Telegram digest of the last `hours`: what ran, what waits for you, what failed.
+Sends you a Telegram digest of the last `hours`: what ran, what waits for you, what failed (runs that failed, and
+runs done with failed items).
 - In: `hours` [24].
 - Out: `sent`, `text`.
 

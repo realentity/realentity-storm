@@ -67,6 +67,7 @@ import {
   type DryRunPipelineResponse,
   type FactRequest,
   type FactView,
+  type FailureCountView,
   type GoogleStatusView,
   type ImportRecipeRequest,
   type InsightView,
@@ -152,6 +153,7 @@ export const api = {
   },
   runs: {
     list: (filter: Partial<RunFilter> = {}) => request<RunSummaryView[]>("GET", `/runs${query(filter)}`),
+    failures: (since: string) => request<FailureCountView>("GET", `/runs/failures${query({ since })}`),
     get: (runId: string) => request<RunDetailView>("GET", `/runs/${runId}`),
     live: (runId: string) => request<LiveView>("GET", `/runs/${runId}/live`),
     takeOver: (runId: string) => request<void>("POST", `/runs/${runId}/takeover`),

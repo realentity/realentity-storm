@@ -58,6 +58,9 @@ describe("morning brief", () => {
     }
     const live = await run(jobs, "WAITING_FOR_USER", 1);
     await db.client.takeover.create({ data: { runId: live.runId, status: "OPEN", reason: "A CAPTCHA" } });
+    const partly = await run(replies, "DONE", 8, "1 item failed: note #1");
+    await db.client.step.create({ data: { runId: partly.runId, stepKey: "note", itemIndex: 0, type: "test.note", status: "FAILED", error: "refused" } });
+    await run(replies, "DONE", 7, "all fine");
     await run(jobs, "FAILED", 6, "dev.bg/search no longer matches the page");
     await run(jobs, "FAILED", 30, "too old to tell");
     await run(jobs, "FAILED", 3, "a dry run", true);
@@ -94,6 +97,7 @@ describe("morning brief", () => {
       "• all day Mum's birthday",
       "Waiting for you: 2 to approve (Recruiter replies: 2); 1 run(s) need you in the live view",
       "Failed in the last day:",
+      "• Recruiter replies: 1 item failed: note #1",
       "• Job search: dev.bg/search no longer matches the page",
       "Bills:",
       "• telco: 30.00 BGN, overdue since 2026-11-01",
