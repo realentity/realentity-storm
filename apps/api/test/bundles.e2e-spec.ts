@@ -80,10 +80,11 @@ describe("bundles", () => {
     expect(app.source).toBe(APP);
     expect(app.pipelines.map((p) => p.name).sort()).toEqual(["Cheapest disks", "Disk prices"]);
 
-    // Exported: the App as written, then its pipelines; imported again, nothing changes.
+    // Exported as one file, the App with its pipelines in it; imported again, nothing changes.
     const exported = (await agent.get(`/api/bundles/apps/${appId}`).expect(200)).body as BundleExportView;
     expect(exported.filename).toBe("disks.yaml");
-    expect(exported.text.startsWith(`${APP}---\n`)).toBe(true);
+    expect(exported.text).toContain("app:\n  name: Disks\n");
+    expect(exported.text).toContain("pipelines:\n  cheapestDisks:\n    fullName: Cheapest disks\n");
     expect((await check(exported.text)).items.map((i) => i.action)).toEqual(["same", "same", "same"]);
 
     // A changed file: the App's next version and the one pipeline that changed, with what changes.
@@ -239,6 +240,84 @@ steps:
     const copy = (await agent.post("/api/bundles/check").send({ text: other, mode: "copy" }).expect(201)).body as BundleCheckView;
     expect(copy.ok).toBe(true);
     expect(copy.items.map((i) => i.name)).toEqual(["Drives", "Disk prices (2)"]);
+  });
+
+  const PACKAGE = `# my disks
+app:
+  name: Disks
+  icon: cpu
+  setup:
+    - { kind: entities, type: Disk, label: "The disks to watch" }
+types:
+  Disk:
+    key: id
+    fields:
+      id: { type: text, required: true }
+      name: { type: text, required: true }
+pages:
+  - list: Disk
+    actions:
+      - { label: Fetch, run: prices }
+pipelines:
+  after:
+    name: After the prices
+    trigger: { on: run.finished, pipeline: prices }
+    steps:
+      - { id: read, type: data.read, with: { type: Disk, limit: 3 } }
+  prices:
+    name: Prices
+    steps:
+      - id: save
+        type: data.save
+        with:
+          type: Disk
+          items:
+            - { id: a, name: "WD Purple 8TB" }
+`;
+
+  it("imports an App with its pipelines from one structured file: named after the App, held by id, with its checklist", async () => {
+    const preview = await check(PACKAGE);
+    expect(preview.items.map((i) => [i.kind, i.name, i.action])).toEqual([
+      ["app", "Disks", "create"],
+      ["pipeline", "Disks · After the prices", "create"],
+      ["pipeline", "Disks · Prices", "create"],
+    ]);
+    const saved = (await agent.post("/api/bundles").send({ text: PACKAGE }).expect(201)).body as BundleCheckView;
+    const appId = saved.items[0].id!;
+    const { pipelineId } = await db.client.pipeline.findFirstOrThrow({ where: { name: "Disks · Prices" } });
+    expect((await pressFetch(appId)).pipelineId).toBe(pipelineId);
+    const follower = await db.client.pipeline.findFirstOrThrow({ where: { name: "Disks · After the prices" } });
+    const version = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: follower.currentVersionId! } });
+    expect((version.definition as { refs?: { pipelines: Record<string, string> } }).refs?.pipelines).toEqual({ "Disks · Prices": pipelineId });
+    expect((await db.client.app.findUniqueOrThrow({ where: { appId } })).example).toEqual({
+      id: "disks",
+      needs: [{ kind: "entities", type: "Disk", label: "The disks to watch" }],
+    });
+
+    // Exported the same way, and the same when imported again.
+    const exported = (await agent.get(`/api/bundles/apps/${appId}`).expect(200)).body as BundleExportView;
+    expect(exported.text).toContain("  setup:\n");
+    expect(exported.text).toContain("run: prices");
+    expect((await check(exported.text)).items.map((i) => i.action)).toEqual(["same", "same", "same"]);
+  });
+
+  it("a copy of a structured file is named after the copy", async () => {
+    await agent.post("/api/bundles").send({ text: PACKAGE }).expect(201);
+    const copy = (await agent.post("/api/bundles").send({ text: PACKAGE, mode: "copy" }).expect(201)).body as BundleCheckView;
+    expect(copy.items.map((i) => i.name)).toEqual(["Disks 2", "Disks 2 · After the prices", "Disks 2 · Prices"]);
+    const { pipelineId } = await db.client.pipeline.findFirstOrThrow({ where: { name: "Disks 2 · Prices" } });
+    expect((await pressFetch(copy.items[0].id!)).pipelineId).toBe(pipelineId);
+  });
+
+  it("says where a structured file has a problem", async () => {
+    const line = (text: string) => PACKAGE.split("\n").findIndex((l) => l.includes(text)) + 1;
+    const badField = await check(PACKAGE.replace("id: { type: text, required: true }", "id: { type: nope, required: true }"));
+    expect(badField.items[0].errors[0]).toMatchObject({ path: "types.Disk.fields.id.type", line: line("id: { type: text") });
+    const badStep = await check(PACKAGE.replace("type: Disk, limit: 3", "type: Drive, limit: 3"));
+    expect(badStep.items[1].errors[0].message).toContain("Drive");
+    expect(badStep.items[1].errors[0].line).toBe(line("  after:"));
+    const unnamed = await check(PACKAGE.replace("    name: Prices\n", ""));
+    expect(unnamed.errors[0]).toMatchObject({ path: "pipelines.prices", message: "a pipeline has a name" });
   });
 
   it("saves nothing when a save fails halfway through the file", async () => {

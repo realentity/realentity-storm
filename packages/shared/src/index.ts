@@ -10,6 +10,7 @@ export * from "./auth";
 export * from "./bills-api";
 export * from "./builder-api";
 export * from "./bundle";
+export * from "./app-package";
 export * from "./canonical-json";
 export * from "./sealed";
 export * from "./credentials";
