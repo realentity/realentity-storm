@@ -442,9 +442,9 @@ test("the App's map: what starts its pipelines, what they write, its pages' butt
   const pipelineName = unique("Table growth");
   const app = exampleYaml("apps/tables.yaml")
     .replace("name: Tables", `name: ${appName}`)
-    .replace("run: Table growth", `run: ${pipelineName}`);
+    .replace("run: Tables · Growth", `run: ${pipelineName}`);
   const pipeline = exampleYaml("table-growth.yaml")
-    .replace("name: Table growth", `name: ${pipelineName}`)
+    .replace("name: Tables · Growth", `name: ${pipelineName}`)
     .replace("app: Tables", `app: ${appName}`);
   const saved = await page.request.post("/api/bundles", { data: { text: `${app}---\n${pipeline}` } });
   expect(saved.ok(), await saved.text()).toBe(true);

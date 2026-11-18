@@ -165,7 +165,7 @@ pipelines:
     # sealed to the scope's public key (sealedBox: only GitHub opens them) and PUT; variables are created or updated. It
     # only adds and updates, never deletes. One that fails doesn't stop the others; run it again to send them.
     # Turn on "Act without asking when I start it" on this pipeline's page: pressing Sync is then the approval.
-    fullName: Lockbox sync
+    name: Sync
     description: A bundle's variables and secrets sent to GitHub; it never deletes.
     trigger: { on: entity.action, type: Bundle }
     policy: { allowedDomains: [api.github.com] }

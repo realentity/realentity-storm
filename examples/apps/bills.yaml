@@ -55,7 +55,7 @@ pipelines:
     # M23: bills from email (the text or a PDF): kept in the Bills App (M33, this App: save it first), a
     # calendar reminder 3 days before each is due (after Act at the gate, like every event), and a message when one is much
     # higher than usual. Nothing is paid.
-    fullName: Bills
+    name: Read bills
     description: Bills from email, kept with a reminder before they're due.
     trigger: { schedule: "0 8,18 * * *" }
     steps:

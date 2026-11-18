@@ -58,7 +58,7 @@ pipelines:
     # mileage: told once when one has 30 days left, once more at 7, once when a service is 1 000 km away, and once when you
     # renew it (move its date on, or its mileage). data.alert remembers what it told, so it is one message each, not one a
     # day. No LLM.
-    fullName: Car papers due
+    name: Papers due
     description: Tells you when a car paper or service runs out soon, and when it's renewed.
     trigger: { schedule: "0 8 * * *" }
     steps:
@@ -120,7 +120,7 @@ pipelines:
     # When you add a car Paper in the Car App or move its date: the day it runs out in your calendar, at 09:00, after you
     # Act at its gate. A date already past does nothing; an event already there (the same title at the same time) isn't
     # made again.
-    fullName: Paper in calendar
+    name: Paper in calendar
     description: A car paper's expiry date goes into your calendar.
     trigger: { on: entity.changed, type: Paper, field: expires }
     steps:

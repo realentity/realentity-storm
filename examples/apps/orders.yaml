@@ -68,7 +68,7 @@ pipelines:
     # domain with the order number), whose stage it moves forward. What an earlier email said is kept: each is merged into
     # the Order as it was. A delivered order without a return date in its emails gets 14 days from delivery. Nothing is
     # sent.
-    fullName: Orders
+    name: Read orders
     description: Order, shipping, delivery and refund emails kept as Orders.
     trigger: { schedule: "*/30 * * * *" }
     steps:
@@ -140,7 +140,7 @@ pipelines:
   return-reminder:
     # Started by return-window a few days before a delivered order's return window closes: what it is and until when,
     # on Telegram.
-    fullName: Return reminder
+    name: Return reminder
     description: A delivered order's return window closes soon.
     trigger: { on: flow.later }
     steps:
@@ -157,7 +157,7 @@ pipelines:
     # before its return date (return-reminder), or soon when that is already past and the date isn't; moved with the
     # date, and cancelled once it is returning, returned or cancelled, or you mark it Keep. Save return-reminder first:
     # this one names it.
-    fullName: Return window
+    name: Return window
     description: Schedules a reminder before a delivered order's return window closes.
     trigger: { on: entity.changed, type: Order }
     steps:
@@ -195,7 +195,7 @@ pipelines:
     # From a delivered Order's button in the Orders App: a return request to send the shop
     # (through its returns page or a reply to its email), on Telegram, and the Order moves to returning, which ends its
     # return reminder. Storm sends nothing to the shop: the shop's address came from its email, and you send it yourself.
-    fullName: Return request
+    name: Return request
     description: A return request to send, from an order's button; the order moves to returning.
     trigger: { on: entity.action, type: Order }
     steps:

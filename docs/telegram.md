@@ -118,7 +118,7 @@ batch: a `gate.act` step's proposals over a list (`forEach`) come as one message
 pipeline that acts without asking (its switch on, started by you) has nothing to approve.
 
 ```
-Bot:  Storm · Application replies: approve email.send?
+Bot:  Storm · Job Search · Application replies: approve email.send?
       Target: hr@example.com
 
       From: me@example.com (Job search)
@@ -150,7 +150,7 @@ waiting `gate.act` proposal.
 item on a line with its target and payload (encrypted values as `***`):
 
 ```
-Bot:  Storm · Lockbox sync: approve 3 × http.request?
+Bot:  Storm · Lockbox · Sync: approve 3 × http.request?
 
       #1 → api.github.com
          method: PUT · url: …/actions/secrets/DATABASE_URL · body: {"encrypted_value":"***", …}

@@ -70,7 +70,7 @@ pipelines:
     # receipt, a renewal notice, a price change or a cancellation, each read by the LLM and merged into its Subscription
     # (by the service's name) as it was, with what it costs a month. Each price is kept as a history; you're told about a new
     # subscription and about a price that went up. Nothing is paid or cancelled.
-    fullName: Subscriptions
+    name: Read emails
     description: Subscription emails kept as Subscriptions, with a message when a price goes up.
     trigger: { schedule: "0 */2 * * *" }
     steps:
@@ -149,7 +149,7 @@ pipelines:
   renewal-reminder:
     # Started by renewal-watch before a trial ends or a yearly subscription renews: what, when and for how much, on
     # Telegram, while there is still time to cancel.
-    fullName: Renewal reminder
+    name: Renewal reminder
     description: A trial ends or a yearly subscription renews soon.
     trigger: { on: flow.later }
     steps:
@@ -166,7 +166,7 @@ pipelines:
     # trial ends, or seven days before a yearly one renews (in a few minutes when that is past and the day isn't); moved
     # with the date, and cancelled once it is cancelling or cancelled. A monthly renewal isn't reminded: the review tells them. Save
     # renewal-reminder first: this one names it.
-    fullName: Renewal watch
+    name: Renewal watch
     description: Schedules a reminder before a trial ends or a yearly subscription renews.
     trigger: { on: entity.changed, type: Subscription }
     steps:
@@ -209,7 +209,7 @@ pipelines:
     # On the 1st of every month, and from the Subscriptions list's button: what your subscriptions cost a month and a year
     # (summed here, per currency), the dearest, the ones that look like they overlap, and the ones your notes say you
     # hardly use, on Telegram.
-    fullName: Subscription review
+    name: Review
     description: What your subscriptions cost, and which to drop, every month.
     trigger: { schedule: "0 9 1 * *" }
     steps:
@@ -243,7 +243,7 @@ pipelines:
     # From an active Subscription's button in the Subscriptions App: how to cancel it
     # and by when to avoid the next charge, on Telegram, and it moves to cancelling (its renewal reminder ends). You cancel
     # it yourself; the email confirming it moves it to cancelled.
-    fullName: Cancel subscription
+    name: How to cancel
     description: How to cancel a subscription, from its button; it moves to cancelling.
     trigger: { on: entity.action, type: Subscription }
     steps:

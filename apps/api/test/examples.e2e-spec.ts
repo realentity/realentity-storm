@@ -66,7 +66,7 @@ describe("examples", () => {
       .send({ text: prices.text, example: { id: prices.id, needs: prices.needs } })
       .expect(201);
     const app = await db.client.app.findFirstOrThrow({ where: { name: "Prices" } });
-    const pipeline = await db.client.pipeline.findFirstOrThrow({ where: { name: "Prices" } });
+    const pipeline = await db.client.pipeline.findFirstOrThrow({ where: { name: "Prices · Check prices" } });
     const checklist = async () => (await agent.get(`/api/examples/apps/${app.appId}/checklist`).expect(200)).body as ChecklistView;
 
     const first = await checklist();
@@ -74,8 +74,8 @@ describe("examples", () => {
     expect(first.items.map((i) => [i.label, i.done])).toEqual([
       ["The products to watch, added on its page", false],
       ["Telegram, to tell you about drops", setup.telegram],
-      ['Try "Prices": a dry run, which sends and saves nothing', false],
-      ['Switch "Prices" on', false],
+      ['Try "Prices · Check prices": a dry run, which sends and saves nothing', false],
+      ['Switch "Prices · Check prices" on', false],
     ]);
     expect(first.items[0].link).toBe(`/a/${app.appId}/Product`);
     expect(first.done).toBe(false);
@@ -110,7 +110,7 @@ describe("examples", () => {
     expect(check.ok).toBe(true);
     expect(check.items.map((i) => [i.name, i.action])).toEqual([
       ["Releases to read 2", "create"],
-      ["Read release feeds (2)", "create"],
+      ["Releases to read 2 · Read feeds", "create"],
     ]);
     await agent.post("/api/bundles").send(again).expect(201);
     expect(await db.client.app.count()).toBe(2);

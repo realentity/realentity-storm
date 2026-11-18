@@ -118,7 +118,7 @@ pipelines:
     # Inquiries from email, in the Clients App: someone asking you for work
     # becomes a Lead, by its email thread, with what they need, their budget and deadline, and a score against the work you
     # take (edit it in the read step's instruction). A reply in the same thread updates its Lead. Nothing is sent.
-    fullName: Client inquiries
+    name: Inquiries
     description: Inquiries from email become scored Leads.
     trigger: { schedule: "*/15 * * * *" }
     steps:
@@ -182,7 +182,7 @@ pipelines:
     # set on the Lead (its form), after you Act at the gate, where you can edit it; then the Lead moves to proposal. A Lead
     # without a Client of that name sends nothing: add the Client first. The address is the Client's, which you wrote,
     # never the one the inquiry came from.
-    fullName: Proposal
+    name: Proposal
     description: A proposal to a lead's client, from its button, sent after you approve it.
     trigger: { on: entity.action, type: Lead }
     limits:
@@ -222,7 +222,7 @@ pipelines:
   lead-won:
     # When a Lead of the Clients App moves to won: an Invoice draft for it, due in 14 days, with the lead's budget as what
     # was quoted. You set its amount on its page and mark it sent; overdue-invoices watches it from there.
-    fullName: Lead won
+    name: Lead won
     description: A won lead gets an invoice draft.
     trigger: { on: entity.changed, type: Lead, stage: won }
     steps:
@@ -256,7 +256,7 @@ pipelines:
     # Every weekday morning, the sent Invoices of the Clients App past their due date move to overdue, and you are told
     # once: an overdue one isn't sent any more, so it isn't read again. The reminder to the client is on its button
     # (payment-reminder).
-    fullName: Overdue invoices
+    name: Overdue invoices
     description: Sent invoices past their due date move to overdue.
     trigger: { schedule: "0 9 * * 1-5" }
     steps:
@@ -281,7 +281,7 @@ pipelines:
   payment-reminder:
     # From an overdue Invoice's button in the Clients App: a polite payment reminder to its
     # Client's address (which you wrote), sent after you Act at the gate, where you can edit it.
-    fullName: Payment reminder
+    name: Payment reminder
     description: A payment reminder for an overdue invoice, from its button, sent after you approve it.
     trigger: { on: entity.action, type: Invoice }
     limits:

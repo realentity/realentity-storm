@@ -106,7 +106,7 @@ pipelines:
     # here), each price kept as a history, each new listing marked by the LLM against what you look for (Search) and kept;
     # one that doesn't fit starts rejected. You're told about the new matches, and when one of your favorites gets
     # cheaper. Nothing is sent.
-    fullName: Listings
+    name: Listings
     description: New listings that fit what you look for, and price drops on your favorites.
     trigger: { schedule: "0 8,13,19 * * *" }
     policy:
@@ -191,7 +191,7 @@ pipelines:
     # sent to the Agent you set on the Listing (its form), after you Act at the gate, where you can edit it; then the Listing
     # moves to contacted. A Listing without an Agent of that name sends nothing: add the Agent first. The address is the
     # Agent's, which you wrote, never one the listing's page gave.
-    fullName: Ask for a viewing
+    name: Ask for a viewing
     description: A request for a viewing to a listing's agent, from its button, sent after you approve it.
     trigger: { on: entity.action, type: Listing }
     limits:
@@ -230,7 +230,7 @@ pipelines:
   viewing:
     # When you set a Listing's viewing time in the Apartments App (its form): an event in your calendar, after you Act at
     # its gate, and the Listing moves to viewing. A time already past, or one cleared, does nothing.
-    fullName: Viewing
+    name: Viewing
     description: A viewing time you set goes into your calendar.
     trigger: { on: entity.changed, type: Listing, field: viewingAt }
     steps:
@@ -258,7 +258,7 @@ pipelines:
   compare-favorites:
     # From the Apartments list's button: your favorites side by side against what you look
     # for, ranked, on Telegram.
-    fullName: Compare favorites
+    name: Compare favorites
     description: Your favorite listings compared and ranked, from the list's button.
     steps:
       - id: favorites

@@ -45,7 +45,7 @@ pipelines:
   tasks-due:
     # Every morning, the open tasks of the Tasks App due today or overdue, in
     # one Telegram message; nothing when there are none. No LLM.
-    fullName: Tasks due
+    name: Due
     description: Every morning, the tasks due today or overdue, on Telegram.
     trigger: { schedule: "0 7 * * *" }
     steps:
@@ -76,7 +76,7 @@ pipelines:
   task-from-telegram:
     # /task Renew the passport on the Storm bot adds a task to the Tasks App,
     # and says so. Switch it on to have /task in the bot's menu. No LLM.
-    fullName: Task from Telegram
+    name: From Telegram
     description: /task Buy milk on Telegram adds a task.
     trigger: { on: telegram.command, command: task, description: "Add a task: /task Buy milk" }
     steps:

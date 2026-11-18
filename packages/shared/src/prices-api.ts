@@ -8,7 +8,7 @@ export const PRICES_PIPELINE = `# M24: every morning, the watched products at ea
 # under its target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
 # in the Prices App, added on its Watched products page: no
 # allowedDomains needed here.
-name: Prices
+name: Prices · Check prices
 app: Prices
 description: The watched products, told only when a price is worth knowing.
 trigger: { schedule: "0 9 * * *" }

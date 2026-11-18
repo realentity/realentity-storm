@@ -156,7 +156,7 @@ test("table-growth.yaml built on cards compiles the same as the template", async
       }
     ).result;
   const made = await compile(built);
-  const expected = await compile(template.replace("name: Table growth", `name: ${name}`));
+  const expected = await compile(template.replace("name: Tables · Growth", `name: ${name}`));
   expect([made.errors ?? [], built]).toEqual([[], built]);
   expect(made.definition).toEqual(expected.definition);
 });

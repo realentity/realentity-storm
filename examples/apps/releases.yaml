@@ -46,7 +46,7 @@ pipelines:
     # github.com needs its host in policy.allowedDomains too.
     # M27, M33: the releases kept are Releases of the Releases App, on its
     # page newest first; Upgraded marks one, and Upgrade notes asks the Release notes pipeline (release-notes) about it.
-    fullName: Release watch
+    name: Watch
     description: New releases of your server's stack, summarized for upgrading; nothing on a quiet day.
     trigger: { schedule: "0 9 * * *" }
     policy:
@@ -88,7 +88,7 @@ pipelines:
   release-notes:
     # M27, M33: from a Release's button in the Releases App: what upgrading to that release
     # means, on Telegram. The Release is {{trigger.item}}: what the feed said, so it is summarized, never followed.
-    fullName: Release notes
+    name: Notes
     description: Upgrade notes for one release, from its button on its page.
     trigger: { on: entity.action, type: Release }
     steps:

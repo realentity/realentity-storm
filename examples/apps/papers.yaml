@@ -48,7 +48,7 @@ pipelines:
     # When you add a paper in the Papers App or change its document: the LLM
     # reads the photo or PDF and fills in what it is, the merchant, the amount and the dates. What you typed yourself stays
     # over what it read; what it can't read is left empty. The document is data, never instructions.
-    fullName: Read a paper
+    name: Read a paper
     description: Reads a paper's photo or PDF and fills in its merchant, amount and dates.
     trigger: { on: entity.changed, type: Paper, field: document }
     steps:
@@ -80,7 +80,7 @@ pipelines:
   warranty-in-calendar:
     # When a paper of the Papers App gets a warranty end (typed, or read by read-paper): that day in your calendar,
     # at 09:00, after you Act at its gate. A date already past does nothing.
-    fullName: Warranty in calendar
+    name: Warranty in calendar
     description: A warranty's end goes into your calendar.
     trigger: { on: entity.changed, type: Paper, field: warrantyUntil }
     steps:
@@ -102,7 +102,7 @@ pipelines:
     # A photo or a PDF sent to the Storm bot with /paper and its title as the caption becomes a paper in the Papers App
     #; read-paper then reads it and fills in the merchant, the amount and
     # the dates. Switch it on to have /paper in the bot's menu.
-    fullName: Paper from Telegram
+    name: From Telegram
     description: A photo or PDF sent with /paper on Telegram becomes a paper, read for you.
     trigger: { on: telegram.command, command: paper, description: "Keep a receipt or warranty: a photo or PDF with /paper and its title as the caption" }
     steps:

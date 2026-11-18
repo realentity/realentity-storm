@@ -19,7 +19,7 @@ const pipeline = (
 // M37-T4: the map of an App: what starts its pipelines, what they write and read, its pages and their buttons
 describe("an App's map (M37-T4)", () => {
   it("shows Tables: Table growth on a schedule writing Table, Count now on its list starting it", () => {
-    const growth = pipeline("g", "Table growth", { schedule: "0 * * * *", tz: "Europe/Sofia" }, [
+    const growth = pipeline("g", "Tables · Growth", { schedule: "0 * * * *", tz: "Europe/Sofia" }, [
       ["db.query"],
       ["data.save", { type: "Table", items: "{{counts.items}}" }],
     ]);
