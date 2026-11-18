@@ -189,10 +189,19 @@ types:
 - **References (M55):** `project: { type: ref, to: Project }` points at an entity of another type of the App: its form
   picks one from a list (by title), it holds that entity's key (`{{item.project}}` is the key), and a list can filter
   by it (`filters: [project]`, its choices the Projects). Only one that is there is saved. Deleting an entity others
-  point at says how many first; they keep its key.
+  point at says how many first; they keep its key. Lists, pages and search show a ref by its entity's title (M56).
+- **Matching refs, lists of refs (M56):** `path: { type: ref, to: Path, match: project }` is picked only among the
+  Paths whose `project` is the entry's (both refs to the same type); the form lists them once the project is chosen,
+  and the api refuses another's. `paths: { type: list, of: ref, to: Path }` holds several, in the order picked (the
+  form moves them up and down); `{{item.paths}}` is their keys.
+- **Fields shown by others (M56):** `when: { kind: secret }` (or `{ destination: [repository, environment] }`, by an
+  enum or a yes/no field) puts a field on the form only while the others are so; it is required only then.
 - **Related lists (M55):** a view page's `related: [{ type: Entry, by: project, label, columns, filters, add: true }]`
   lists on a Project's page the Entries whose `project` is that Project, with their own filters; `add` adds one there,
-  its `project` set and kept.
+  its `project` set and kept. M56: `add: [{ label: Add secret, set: { kind: secret } }, …]` gives a button each, its
+  form with those fields set; `group: path` (an enum or a ref) shows a group for each value, or each entity (the
+  Project's own Paths, as `path` matches by `project`), empty ones too, each with its buttons; an add takes the
+  group and the filters chosen.
 - **Files and images (M46):** uploaded on the entity's form (up to `DOWNLOAD_MAX_MB`), checked by their content: an
   `image` is a PNG, JPEG, WebP or GIF (never SVG) and gets a thumbnail, shown in lists and on its page; a `file` is
   also a PDF, an office document (DOCX, XLSX, ODT, ODS) or text (TXT, MD, CSV), a download. The entity holds

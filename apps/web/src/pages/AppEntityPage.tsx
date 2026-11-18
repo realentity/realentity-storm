@@ -33,6 +33,8 @@ export function AppEntityPage() {
   const [deleting, setDeleting] = useState(false);
   // M52: each save starts the form again: a replaced secret is *** before and after, so its values alone don't say so.
   const [saves, setSaves] = useState(0);
+  // M56: one added on a related list: the others load again (a path added: its group shows).
+  const [added, setAdded] = useState(0);
   const action = useAction();
   const data = shown?.row.key === loaded.data?.row.key && shown ? shown : loaded.data;
   if (!data) return loaded.error ? <ErrorAlert error={loaded.error} /> : <Loading />;
@@ -124,7 +126,19 @@ export function AppEntityPage() {
           ))}
           {/* M55: what points at it, each with its own list (and Add, with this one set). */}
           {page.related.map((related) => (
-            <RelatedList key={`${related.type}:${related.by}`} appId={appId} related={related} of={row.key} />
+            <RelatedList
+              key={`${related.type}:${related.by}`}
+              appId={appId}
+              related={related}
+              of={row.key}
+              changes={added}
+              onAdded={() => {
+                setAdded((n) => n + 1);
+                // What points at it now, for the delete's warning.
+                setShown(null);
+                loaded.reload();
+              }}
+            />
           ))}
         </div>
         <div className="col-lg-5 d-flex flex-column gap-3">

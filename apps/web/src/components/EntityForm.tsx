@@ -1,5 +1,5 @@
-import { asFileRef, fieldOf, MASK, type FileRef, type FormField } from "@realentity/storm-shared";
-import { IconDeviceFloppy, IconLock, IconPaperclip, IconX } from "@tabler/icons-react";
+import { asFileRef, fieldApplies, fieldOf, MASK, type FileRef, type FormField } from "@realentity/storm-shared";
+import { IconArrowDown, IconArrowUp, IconDeviceFloppy, IconLock, IconPaperclip, IconX } from "@tabler/icons-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
@@ -71,13 +71,21 @@ export function EntityForm({
     Object.fromEntries(fields.map((f) => [f.field, f.field in fixed ? fixed[f.field] : shown(f, values[f.field])])),
   );
   const [draft, setDraft] = useState<Record<string, string>>(initial);
-  const set = (field: string, value: string) => setDraft((d) => ({ ...d, [field]: value }));
+  // M56: a ref picked among the ones matching another field (a project's paths) starts again when that one changes.
+  const set = (field: string, value: string) =>
+    setDraft((d) => {
+      const next = { ...d, [field]: value };
+      for (const f of fields) if (f.match === field && !(f.field in fixed) && d[field] !== value) next[f.field] = "";
+      return next;
+    });
+  // M56: the fields their `when` leaves out now: not shown, not sent.
+  const shownFields = fields.filter((f) => fieldApplies(f, draft));
   // M52: encrypted fields cleared on purpose (an empty input otherwise keeps the value that is set).
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     const typed: Values = {};
-    for (const f of fields) {
+    for (const f of shownFields) {
       const text = draft[f.field] ?? "";
       if (f.encrypted) {
         if (text !== "") typed[f.field] = text;
@@ -92,7 +100,7 @@ export function EntityForm({
 
   return (
     <form onSubmit={onSubmit} data-testid={testId}>
-      {fields.map((f) => {
+      {shownFields.map((f) => {
         const id = `field-${f.field}`;
         const value = draft[f.field] ?? "";
         const common = {
@@ -107,8 +115,23 @@ export function EntityForm({
             <label className={`form-label ${f.required ? "required" : ""}`} htmlFor={id}>
               {f.label}
             </label>
-            {f.ref ? (
-              <RefSelect field={f} appId={appId} value={value} fixed={f.field in fixed} onChange={(v) => set(f.field, v)} />
+            {f.ref && f.kind === "list" ? (
+              <RefList
+                field={f}
+                appId={appId}
+                value={value}
+                matching={f.match ? draft[f.match] : undefined}
+                onChange={(v) => set(f.field, v)}
+              />
+            ) : f.ref ? (
+              <RefSelect
+                field={f}
+                appId={appId}
+                value={value}
+                fixed={f.field in fixed}
+                matching={f.match ? draft[f.match] : undefined}
+                onChange={(v) => set(f.field, v)}
+              />
             ) : f.encrypted ? (
               <SecretInput
                 field={f}
@@ -130,7 +153,7 @@ export function EntityForm({
                 placeholder={f.kind === "list" ? "One per line" : undefined}
               />
             ) : f.kind === "enum" || f.kind === "yesno" ? (
-              <select className="form-select" {...common}>
+              <select className="form-select" {...common} disabled={f.field in fixed}>
                 <option value="">—</option>
                 {(f.kind === "enum"
                   ? (f.values ?? []).map((v) => [v, v])
@@ -186,21 +209,43 @@ export function EntityForm({
   );
 }
 
-/** M55: a ref field: one of its type's entities, by title (its key is what is saved). */
+/**
+ * M55: a ref's choices: its type's entities, by title (the key is what is saved), sorted. M56: with `match`, only the
+ * ones whose field of that name is `matching` (none until it is set).
+ */
+function useChoices(field: FormField, appId: string | undefined, matching: string | undefined) {
+  const waiting = field.match !== undefined && !matching;
+  const choices = useLoad(
+    () =>
+      appId && field.ref && !waiting
+        ? api.apps.page(appId, field.ref, { limit: 200, filter: field.match ? JSON.stringify({ [field.match]: matching }) : undefined })
+        : Promise.resolve(null),
+    [appId, field.ref, field.match, matching],
+  );
+  const options = (choices.data?.rows ?? [])
+    .map((r) => ({ value: r.key, label: asText(fieldOf(r, choices.data!.page.title) ?? r.key) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const empty = choices.loading ? "…" : waiting ? `Choose its ${field.match} first` : `No ${field.ref} yet`;
+  return { options, empty, waiting };
+}
+
+/** M55: a ref field: one of its type's entities. */
 function RefSelect({
   field,
   appId,
   value,
   fixed,
+  matching,
   onChange,
-}: Readonly<{ field: FormField; appId: string | undefined; value: string; fixed: boolean; onChange: (value: string) => void }>) {
-  const choices = useLoad(
-    () => (appId && field.ref ? api.apps.page(appId, field.ref, { limit: 200 }) : Promise.resolve(null)),
-    [appId, field.ref],
-  );
-  const options = (choices.data?.rows ?? [])
-    .map((r) => ({ value: r.key, label: asText(fieldOf(r, choices.data!.page.title) ?? r.key) }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+}: Readonly<{
+  field: FormField;
+  appId: string | undefined;
+  value: string;
+  fixed: boolean;
+  matching: string | undefined;
+  onChange: (value: string) => void;
+}>) {
+  const { options, empty, waiting } = useChoices(field, appId, matching);
   // One saved before its entity went: still shown, as its key.
   if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: value });
   return (
@@ -210,17 +255,103 @@ function RefSelect({
       className="form-select"
       value={value}
       required={field.required}
-      disabled={fixed}
+      disabled={fixed || waiting}
       onChange={(e) => onChange(e.target.value)}
       data-testid={`ref-${field.field}`}
     >
-      <option value="">{choices.loading ? "…" : options.length ? "Choose one…" : `No ${field.ref} yet`}</option>
+      <option value="">{options.length ? "Choose one…" : empty}</option>
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * M56: a list of refs, in order (a bundle's paths: a later one wins): the ones picked, each moved up or down or
+ * removed, and a select adding one more. The value is their keys, a line each (as a list is sent).
+ */
+function RefList({
+  field,
+  appId,
+  value,
+  matching,
+  onChange,
+}: Readonly<{
+  field: FormField;
+  appId: string | undefined;
+  value: string;
+  matching: string | undefined;
+  onChange: (value: string) => void;
+}>) {
+  const { options, empty, waiting } = useChoices(field, appId, matching);
+  const picked = value.split("\n").filter(Boolean);
+  const label = (key: string) => options.find((o) => o.value === key)?.label ?? key;
+  const put = (keys: string[]) => onChange(keys.join("\n"));
+  const swap = (i: number, j: number) => {
+    const next = [...picked];
+    [next[i], next[j]] = [next[j], next[i]];
+    put(next);
+  };
+  const left = options.filter((o) => !picked.includes(o.value));
+  let prompt = `Add a ${field.ref}…`;
+  if (options.length === 0) prompt = empty;
+  else if (left.length === 0) prompt = "All are picked";
+  return (
+    <div data-testid={`reflist-${field.field}`}>
+      {picked.length > 0 && (
+        <ol className="list-group list-group-numbered mb-2">
+          {picked.map((key, i) => (
+            <li key={key} className="list-group-item d-flex align-items-center gap-1 py-1" data-testid="reflist-item">
+              <span className="me-auto ms-1">{label(key)}</span>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost-secondary btn-icon"
+                disabled={i === 0}
+                onClick={() => swap(i, i - 1)}
+                aria-label={`Move ${label(key)} up`}
+              >
+                <IconArrowUp size={16} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost-secondary btn-icon"
+                disabled={i === picked.length - 1}
+                onClick={() => swap(i, i + 1)}
+                aria-label={`Move ${label(key)} down`}
+              >
+                <IconArrowDown size={16} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost-danger btn-icon"
+                onClick={() => put(picked.filter((k) => k !== key))}
+                aria-label={`Remove ${label(key)}`}
+              >
+                <IconX size={16} />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <select
+        id={`field-${field.field}`}
+        className="form-select"
+        value=""
+        disabled={waiting || left.length === 0}
+        onChange={(e) => e.target.value && put([...picked, e.target.value])}
+        data-testid={`reflist-add-${field.field}`}
+      >
+        <option value="">{prompt}</option>
+        {left.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

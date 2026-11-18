@@ -1,5 +1,18 @@
 import { z } from "zod";
-import { addedByHand, addFieldNames, formFieldNames, movesFrom, type AppDefinition, type DataType, type EntityActionDef, type FieldKind, type FormPage, type ListPage, type ViewPage } from "./app";
+import {
+  addedByHand,
+  addFieldNames,
+  formFieldNames,
+  isRefField,
+  movesFrom,
+  type AppDefinition,
+  type DataType,
+  type EntityActionDef,
+  type FieldKind,
+  type FormPage,
+  type ListPage,
+  type ViewPage,
+} from "./app";
 import { type ViewChart, type ViewFormat, type ViewIcon, type ViewRow } from "./view";
 
 /**
@@ -57,8 +70,12 @@ export interface FormField {
   required: boolean;
   /** M52: an encrypted field: the form never shows its value, only that one is set, and sends one only when typed. */
   encrypted?: boolean;
-  /** M55: a ref: the type whose entities it is picked from. */
+  /** M55: a ref (M56: or a list of refs): the type whose entities it is picked from. */
   ref?: string;
+  /** M56: picked among the ones whose field of this name is the form's (an Entry's path, of its project). */
+  match?: string;
+  /** M56: on the form only while its other fields have these values; required only then. */
+  when?: Record<string, string | boolean | string[]>;
   /** M55: a line under its input. */
   help?: string;
 }
@@ -73,6 +90,13 @@ export interface PageRelated {
   title: string;
   /** The form that adds one there (its `by` set to this entity); null: not added there. */
   create: FormField[] | null;
+  /** M56: its Add buttons, each with the fields it sets on that form (an Add of `add: true` sets none). */
+  adds: { label: string; set: Record<string, string> }[];
+  /**
+   * M56: rows in groups by this field: an enum's values, or a ref's entities (of `ref`; the ones whose `match` is the
+   * page's entity when it is `by`), each group with its Add.
+   */
+  group: { field: string; label: string; values: string[] | null; ref: string | null; match: string | null } | null;
 }
 
 /** A type's stage (M32), for its pages. */
@@ -242,8 +266,26 @@ function relatedOf(app: AppDefinition, page: ViewPage | undefined): PageRelated[
       filters: (related.filters ?? []).map((f) => pageFilter(type, f)),
       title: list.title,
       create: related.add ? formFields(type, addFieldNames(type, form)) : null,
+      adds: Array.isArray(related.add)
+        ? related.add.map((a) => ({ label: a.label, set: Object.fromEntries(Object.entries(a.set).map(([k, v]) => [k, String(v)])) }))
+        : related.add
+          ? [{ label: "Add", set: {} }]
+          : [],
+      group: related.group ? relatedGroup(type, related.group, related.by) : null,
     };
   });
+}
+
+/** M56: a related list's groups: an enum's values, or a ref's entities, the page's own when it matches by `by`. */
+function relatedGroup(type: DataType, field: string, by: string): PageRelated["group"] {
+  const f = type.fields[field];
+  return {
+    field,
+    label: fieldLabel(type, field),
+    values: f?.type === "enum" ? (f.values ?? []) : null,
+    ref: f?.type === "ref" ? (f.to ?? null) : null,
+    match: f?.type === "ref" && f.match === by ? by : null,
+  };
 }
 
 /** The type's own page: as written, or every field in the order they are written. */
@@ -282,7 +324,9 @@ function formFields(type: DataType, names: string[]): FormField[] {
         required: field.required,
         ...(field.values ? { values: field.values } : {}),
         ...(field.encrypted ? { encrypted: true } : {}),
-        ...(field.type === "ref" && field.to ? { ref: field.to } : {}),
+        ...(isRefField(field) && field.to ? { ref: field.to } : {}),
+        ...(field.match ? { match: field.match } : {}),
+        ...(field.when ? { when: field.when } : {}),
         ...(field.help ? { help: field.help } : {}),
       };
     });

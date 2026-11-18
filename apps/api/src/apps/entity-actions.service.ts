@@ -15,7 +15,9 @@ import {
   entityItem,
   entityValueAt,
   FILE_KINDS,
+  fieldApplies,
   isEventTrigger,
+  isRefField,
   isWebhookTrigger,
   listPageOf,
   readAppSource,
@@ -73,7 +75,8 @@ export class EntityActionsService {
       type,
       await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type)),
     );
-    await this.checkRefs(appId, type, checked);
+    // M56: a ref matching another field is checked against the entity as it will be.
+    await this.checkRefs(appId, type, checked, { ...this.item(type, entity), ...checked });
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
       if (value === null) delete mine[field];
@@ -132,11 +135,12 @@ export class EntityActionsService {
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
     const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
     let checked = this.check(type, allowed, values);
-    await this.checkRefs(appId, type, checked);
+    await this.checkRefs(appId, type, checked, checked);
     // M48: a key Storm makes.
     if (autoKey(type)) checked = { ...checked, [type.key]: await this.freshKey(appId, typeName) };
     const missing = Object.entries(type.fields).filter(
-      ([name, f]) => (f.required || name === type.key) && allowed.includes(name) && (checked[name] ?? null) === null,
+      ([name, f]) =>
+        ((f.required && fieldApplies(f, checked)) || name === type.key) && allowed.includes(name) && (checked[name] ?? null) === null,
     );
     if (missing.length > 0) {
       throw new BadRequestException({
@@ -254,24 +258,41 @@ export class EntityActionsService {
     const said: string[] = [];
     for (const [name, other] of Object.entries(app.types)) {
       const fields = Object.entries(other.fields)
-        .filter(([, f]) => f.type === "ref" && f.to === typeName)
+        .filter(([, f]) => isRefField(f) && f.to === typeName)
         .map(([f]) => f);
       if (fields.length === 0) continue;
       const rows = await this.prisma.client.dataEntity.findMany({ where: { appId, type: name, removedAt: null } });
-      const count = rows.filter((r) => fields.some((f) => entityValueAt(entityItem(r.value, r.mine), f) === key)).length;
+      const holds = (value: unknown) => (Array.isArray(value) ? value.includes(key) : value === key);
+      const count = rows.filter((r) => fields.some((f) => holds(entityValueAt(entityItem(r.value, r.mine), f)))).length;
       if (count > 0) said.push(`${count} ${count === 1 ? name : `${name}s`}`);
     }
     return said;
   }
 
-  /** M55: a ref set on a form points at an entity of its type that is there. */
-  private async checkRefs(appId: string, type: DataType, values: Item): Promise<void> {
+  /**
+   * M55: a ref set on a form points at an entity of its type that is there; M56: each of a list of refs, and one that
+   * matches another field (an Entry's path) is one with that field as the entity has it (`as`: as it will be saved).
+   */
+  private async checkRefs(appId: string, type: DataType, values: Item, as: Item): Promise<void> {
     const errors: { path: string; message: string }[] = [];
-    for (const [name, value] of Object.entries(values)) {
+    // A changed project re-checks the path that matches it, although the path wasn't changed.
+    const names = Object.entries(type.fields)
+      .filter(([name, f]) => name in values || (f.match !== undefined && f.match in values))
+      .map(([name]) => name);
+    for (const name of names) {
       const field = type.fields[name];
-      if (field?.type !== "ref" || !field.to || typeof value !== "string") continue;
-      const there = await this.prisma.client.dataEntity.findFirst({ where: { appId, type: field.to, key: value, removedAt: null } });
-      if (!there) errors.push({ path: name, message: `isn't one of the ${field.to}s` });
+      const value = name in values ? values[name] : entityValueAt(as, name);
+      if (!isRefField(field) || !field.to || value === null || value === undefined) continue;
+      const keys = (Array.isArray(value) ? value : [value]).map(String);
+      const there = await this.prisma.client.dataEntity.findMany({ where: { appId, type: field.to, key: { in: keys }, removedAt: null } });
+      const missing = keys.filter((k) => !there.some((t) => t.key === k));
+      if (missing.length > 0) {
+        errors.push({ path: name, message: `isn't one of the ${field.to}s${Array.isArray(value) ? `: ${missing.join(", ")}` : ""}` });
+        continue;
+      }
+      const wanted = field.match ? entityValueAt(as, field.match) : undefined;
+      const other = field.match ? there.filter((t) => entityValueAt(entityItem(t.value, t.mine), field.match!) !== wanted) : [];
+      if (other.length > 0) errors.push({ path: name, message: `isn't one of this ${field.match}'s ${field.to}s` });
     }
     if (errors.length > 0) throw new BadRequestException({ message: "Some values can't be saved", errors });
   }

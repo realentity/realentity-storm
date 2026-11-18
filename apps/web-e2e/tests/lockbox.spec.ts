@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { unique } from "./support";
 
-// M55-E1 (Lockbox v2): a project's entries added on its page (the project set), filtered by project on Entries; an
-// entry's project picked from a list; a field's help under its input; deleting a project in use asks first
-test("Lockbox: entries added on their project's page, filtered by project, deleting a project in use asks", async ({ page }) => {
+// M55-E1, M56-E1 (Lockbox v3): on a project's page its paths, and its variables and secrets by path, each path with Add
+// variable and Add secret (its path, the environment chosen and the kind set); a bundle's paths picked in order, its
+// fields as its destination needs; an entry's path among its project's; deleting a project in use asks first
+test("Lockbox: variables and secrets added by path on their project's page, a bundle's paths in order", async ({ page }) => {
   const name = unique("Lockbox");
   const source = readFileSync(join(__dirname, "../../../pipelines/apps/lockbox.yaml"), "utf8").replace(/^name: Lockbox$/m, `name: ${name}`);
   const created = await page.request.post("/api/apps", { data: { source } });
@@ -15,43 +16,84 @@ test("Lockbox: entries added on their project's page, filtered by project, delet
     const added = await page.request.post(`/api/apps/${appId}/pages/Project`, { data: { values: { name: project } } });
     expect(added.status(), await added.text()).toBe(201);
   }
+  const globexPath = await page.request.post(`/api/apps/${appId}/pages/Path`, { data: { values: { project: "Globex", name: "/web" } } });
+  expect(globexPath.status(), await globexPath.text()).toBe(201);
 
-  // On Acme's page: Add a variable; its project is Acme, and stays.
+  // Acme's paths, added on its page.
   await page.goto(`/a/${appId}/Project/Acme`);
+  const paths = page.getByTestId("related-Path");
   const entries = page.getByTestId("related-Entry");
-  await expect(entries).toContainText("None yet.");
-  await entries.getByTestId("related-add-Entry").click();
-  const form = page.getByTestId("related-form");
-  await expect(form.getByTestId("ref-project")).toHaveValue("Acme");
-  await expect(form.getByTestId("ref-project")).toBeDisabled();
-  await expect(form).toContainText("Where in the project, e.g. /backend-api");
+  await expect(entries).toContainText("No path yet: add one first.");
+  for (const path of ["/_backend", "/api"]) {
+    await paths.getByTestId("related-add-Path").click();
+    const form = page.getByTestId("related-form");
+    await form.getByLabel("Name").fill(path);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(paths.getByTestId("related-row").filter({ hasText: path })).toHaveCount(1);
+  }
+
+  // A group per path; production chosen above, Add secret in /api's: the kind, the path and the environment are set,
+  // and only the secret's input is there.
+  await expect(entries.getByTestId("related-group-label")).toHaveText([/^\/_backend/, /^\/api/]);
+  await entries.getByTestId("related-filter-environment").selectOption("production");
+  const api = entries.getByTestId("related-group").filter({ hasText: "/api" });
+  await api.getByRole("button", { name: "Add secret" }).click();
+  let form = page.getByTestId("related-form");
+  await expect(form.getByLabel("Kind")).toHaveValue("secret");
+  await expect(form.getByLabel("Kind")).toBeDisabled();
+  await expect(form.getByTestId("ref-path")).toBeDisabled();
+  await expect(form.getByTestId("ref-path").locator("option:checked")).toHaveText("/api");
+  await expect(form.getByLabel("Environment")).toHaveValue("production");
+  await expect(form.getByLabel("Value")).toHaveCount(0);
   await form.getByLabel("Name").fill("DATABASE_URL");
-  await form.getByLabel("Kind").selectOption("secret");
-  await form.getByLabel("Path").fill("/_backend");
-  await form.getByLabel("Environment").selectOption("production");
   await form.getByLabel("Secret").fill("postgres://made-up");
   await form.getByRole("button", { name: "Add" }).click();
-  await expect(entries.getByTestId("related-row")).toHaveCount(1);
-  await expect(entries).toContainText("DATABASE_URL");
+  await expect(api.getByTestId("related-row")).toHaveCount(1);
+  await expect(api).toContainText("DATABASE_URL");
 
-  // One for Globex, added on Entries with its project picked from the list.
+  // Add variable in /_backend's: a value, no secret.
+  const backend = entries.getByTestId("related-group").filter({ hasText: "/_backend" });
+  await backend.getByRole("button", { name: "Add variable" }).click();
+  form = page.getByTestId("related-form");
+  await expect(form.getByLabel("Secret")).toHaveCount(0);
+  await form.getByLabel("Name").fill("LOG_LEVEL");
+  await form.getByLabel("Value").fill("info");
+  await form.getByRole("button", { name: "Add" }).click();
+  await expect(backend.getByTestId("related-row")).toHaveCount(1);
+
+  // A bundle: its paths picked in order (moved), an organization's fields only.
+  await page.getByTestId("related-Bundle").getByTestId("related-add-Bundle").click();
+  form = page.getByTestId("related-form");
+  await form.getByLabel("Name").fill("acme production");
+  await form.getByLabel("Environment").selectOption("production");
+  await form.getByTestId("reflist-add-paths").selectOption({ label: "/api" });
+  await form.getByTestId("reflist-add-paths").selectOption({ label: "/_backend" });
+  await expect(form.getByTestId("reflist-add-paths").locator("option")).toHaveText(["All are picked"]);
+  await form.getByRole("button", { name: "Move /_backend up" }).click();
+  await expect(form.getByTestId("reflist-item")).toHaveText([/\/_backend/, /\/api/]);
+  await expect(form.getByLabel("Repository")).toHaveCount(0);
+  await form.getByLabel("Destination").selectOption("repository");
+  await expect(form.getByLabel("Organization")).toHaveCount(0);
+  await expect(form).toContainText("github.com/acme/backend → acme/backend");
+  await form.getByLabel("Destination").selectOption("organization");
+  await expect(form.getByLabel("Repository")).toHaveCount(0);
+  await form.getByLabel("Organization").fill("acme");
+  await form.getByLabel("Visibility").selectOption("private");
+  await form.getByRole("button", { name: "Add" }).click();
+  await page.getByTestId("related-Bundle").getByRole("link", { name: "acme production" }).click();
+  await expect(page.getByTestId("entity-fields")).toContainText("/_backend, /api");
+
+  // On Entries: an entry's path is picked among its project's, by name.
   await page.goto(`/a/${appId}/Entry`);
+  await expect(page.getByTestId("entity-row").filter({ hasText: "DATABASE_URL" })).toContainText("/api");
   await page.getByTestId("add-entity").click();
   const add = page.getByTestId("add-form");
-  await add.getByLabel("Name").fill("LOG_LEVEL");
-  await add.getByLabel("Kind").selectOption("variable");
+  await expect(add.getByTestId("ref-path")).toBeDisabled();
   await add.getByTestId("ref-project").selectOption({ label: "Globex" });
-  await add.getByLabel("Path").fill("/api");
-  await add.getByLabel("Environment").selectOption("staging");
-  await add.getByRole("button", { name: "Add" }).click();
-  await page.goto(`/a/${appId}/Entry`);
-  await expect(page.getByTestId("entity-row")).toHaveCount(2);
-  await page.getByTestId("filter-project").selectOption({ label: "Project: Acme" });
-  await expect(page.getByTestId("entity-row")).toHaveCount(1);
-  await expect(page.getByTestId("entity-row")).toContainText("DATABASE_URL");
+  await expect(add.getByTestId("ref-path").locator("option")).toHaveText(["Choose one…", "/web"]);
 
-  // Deleting Acme says its entry points at it.
+  // Deleting Acme says what points at it.
   await page.goto(`/a/${appId}/Project/Acme`);
   await page.getByTestId("delete-entity").click();
-  await expect(page.getByTestId("delete-referenced")).toContainText("1 Entry point at it");
+  await expect(page.getByTestId("delete-referenced")).toContainText("2 Path");
 });

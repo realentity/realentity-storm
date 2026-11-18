@@ -1,6 +1,6 @@
 # Lockbox's Sync (pipelines/apps/lockbox.yaml): a bundle's variables and secrets sent to GitHub, at the address its
-# destination, owner, repository and environment make. Its entries of the
-# bundle's project and environment, on its paths; a name on several paths takes the value of the last path. Secrets are
+# destination, repository (owner/name), GitHub environment or organization make. Its entries of the bundle's project
+# and environment, on its paths; a name on several paths takes the value of the last path. Secrets are
 # sealed to the scope's public key (sealedBox: only GitHub opens them) and PUT; variables are created or updated. It
 # only adds and updates, never deletes. One that fails doesn't stop the others; run it again to send them.
 # Turn on "Act without asking when I start it" on this pipeline's page: pressing Sync is then the approval.
@@ -16,10 +16,10 @@ steps:
     with:
       from: "{{trigger.item}}"
       expression: >-
-        destination = "organization" ? "orgs/" & owner & "/actions"
-        : destination = "environment" ? "repos/" & owner & "/" & repository & "/environments/" & githubEnvironment
-        : destination = "dependabot" ? "repos/" & owner & "/" & repository & "/dependabot"
-        : "repos/" & owner & "/" & repository & "/actions"
+        destination = "organization" ? "orgs/" & organization & "/actions"
+        : destination = "environment" ? "repos/" & repository & "/environments/" & githubEnvironment
+        : destination = "dependabot" ? "repos/" & repository & "/dependabot"
+        : "repos/" & repository & "/actions"
   - id: entries
     type: data.read
     with:

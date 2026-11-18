@@ -63,6 +63,12 @@ export function asFileRef(value: unknown): FileRef | null {
 /** Kinds a key can be: one that names the entity as text. */
 const KEY_KINDS: readonly FieldKind[] = ["text", "url", "email", "number"];
 
+/** Field values an entity must have: one, or one of a list (a button's `when`, a total's, a due date's `unless`). */
+const Conditions = z.record(z.string().regex(ENTITY_FIELD), z.union([z.string().max(60), z.boolean(), z.array(z.string().max(60)).min(1)]));
+
+/** M56: kinds a field's `when` looks at: the form shows the field while they have its values. */
+const WHEN_KINDS: readonly FieldKind[] = ["enum", "yesno"];
+
 export const EntityFieldSchema = z
   .object({
     type: z.enum(FIELD_KINDS),
@@ -76,6 +82,15 @@ export const EntityFieldSchema = z
     currency: z.string().regex(ENTITY_FIELD).optional(),
     /** M55: ref: the type of this App it points at; the field holds that entity's key. */
     to: z.string().regex(TYPE_NAME).optional(),
+    /** M56: a list of refs (`to` says of what), in the order they are picked: { type: list, of: ref, to: Path }. */
+    of: z.literal("ref").optional(),
+    /**
+     * M56: a ref (or a list of refs) picked only among the ones whose field of this name is this entity's: an Entry's
+     * path among its project's paths (match: project). Both are refs to the same type.
+     */
+    match: z.string().regex(ENTITY_FIELD).optional(),
+    /** M56: on the form only while other fields have these values (enum or yes/no ones); required only then. */
+    when: Conditions.optional(),
     /** M55: a line under its input on the form: what to write there. */
     help: z.string().trim().min(1).max(300).optional(),
     /**
@@ -92,6 +107,50 @@ export const EntityFieldSchema = z
   })
   .strict();
 export type EntityField = z.output<typeof EntityFieldSchema>;
+
+/** M56: a ref, or a list of refs: it points at entities of its type `to`. */
+export function isRefField(field: Pick<EntityField, "type" | "of">): boolean {
+  return field.type === "ref" || (field.type === "list" && field.of === "ref");
+}
+
+/** M56: does an entity (or a form's values) have what a field's `when` asks for? A field without one always applies. */
+export function fieldApplies(field: Pick<EntityField, "when">, values: Record<string, unknown>): boolean {
+  return Object.entries(field.when ?? {}).every(([name, wanted]) => {
+    const value = entityValueAt(values, name);
+    const text = typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
+    return Array.isArray(wanted) ? wanted.includes(text) : text === String(wanted);
+  });
+}
+
+/** M56: a field's `of`, `match` and `when`, against the other fields of its type. */
+function checkFieldOptions(
+  fields: Record<string, EntityField>,
+  name: string,
+  field: EntityField,
+  key: string,
+  issue: (path: string[], message: string) => void,
+): void {
+  if (field.of && field.type !== "list") issue(["of"], "only a list holds refs: type: list, of: ref");
+  if (field.match !== undefined) {
+    const other = fields[field.match];
+    if (!isRefField(field)) issue(["match"], "only a ref picks among the ones that match");
+    else if (field.match === name) issue(["match"], "a ref matches another field of its type");
+    else if (other?.type !== "ref") issue(["match"], `"${field.match}" isn't a ref field of this type`);
+  }
+  if (!field.when) return;
+  if (name === key) issue(["when"], "the key is always on the form");
+  for (const [other, wanted] of Object.entries(field.when)) {
+    const by = fields[other];
+    if (!by || other === name) issue(["when", other], `"${other}" isn't another field of this type`);
+    else if (!WHEN_KINDS.includes(by.type)) issue(["when", other], `a field shows by an enum or a yes/no field: "${other}" is ${by.type}`);
+    else if (by.type === "enum") {
+      for (const value of Array.isArray(wanted) ? wanted : [wanted]) {
+        if (!by.values?.includes(String(value)))
+          issue(["when", other], `"${String(value)}" isn't one of ${other}'s values (${by.values?.join(", ")})`);
+      }
+    }
+  }
+}
 
 /** M52: kinds a field may be encrypted on. */
 export const ENCRYPTABLE_KINDS: readonly FieldKind[] = ["text", "longtext"];
@@ -186,8 +245,9 @@ export const DataTypeSchema = z
       const at = ["fields", name];
       if (names.some((other) => other.startsWith(`${name}.`))) issue(at, `"${name}" can't be a field and hold fields too`);
       if (field.type === "enum" && !field.values) issue([...at, "values"], "an enum needs its values");
-      if (field.type === "ref" && !field.to) issue([...at, "to"], "a ref says which type it points at: to: Project");
-      if (field.type !== "ref" && field.to) issue([...at, "to"], "only a ref points at a type");
+      if (isRefField(field) && !field.to) issue([...at, "to"], "a ref says which type it points at: to: Project");
+      if (!isRefField(field) && field.to) issue([...at, "to"], "only a ref (or a list of: ref) points at a type");
+      checkFieldOptions(type.fields, name, field, type.key, (path, message) => issue([...at, ...path], message));
       if (field.type !== "enum" && field.values) issue([...at, "values"], "only an enum has values");
       if (field.auto && name !== type.key) issue([...at, "auto"], "only the key is made by Storm");
       if (field.encrypted) {
@@ -255,9 +315,6 @@ const PageAction = z
     confirm: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
-
-/** Field values an entity must have: one, or one of a list (a button's `when`, a total's, a due date's `unless`). */
-const Conditions = z.record(z.string().regex(ENTITY_FIELD), z.union([z.string().max(60), z.boolean(), z.array(z.string().max(60)).min(1)]));
 
 /**
  * An entity's button (M32): starts a pipeline triggered by { on: entity.action } with the entity. `when`: only while
@@ -381,7 +438,31 @@ export const ViewPageSchema = z
             label: z.string().trim().min(1).max(40).optional(),
             columns: z.array(z.string().regex(ENTITY_FIELD)).min(1).max(8).optional(),
             filters: z.array(z.string().regex(ENTITY_FIELD)).max(4).optional(),
-            add: z.boolean().default(false),
+            /**
+             * true: an Add button; M56: or a button each, its form with fields set: { label: Add secret, set: { kind:
+             * secret } }. An add takes the list's filters and group too.
+             */
+            add: z
+              .union([
+                z.boolean(),
+                z
+                  .array(
+                    z
+                      .object({
+                        label: z.string().trim().min(1).max(30),
+                        set: z.record(z.string().regex(ENTITY_FIELD), z.union([z.string().max(60), z.boolean()])).default({}),
+                      })
+                      .strict(),
+                  )
+                  .min(1)
+                  .max(4),
+              ])
+              .default(false),
+            /**
+             * M56: rows in groups by an enum or a ref field, a group for each of its values (a ref's: the entities of its
+             * type, the ones matching this entity when it matches by `by`), empty ones too: each with its own Add.
+             */
+            group: z.string().regex(ENTITY_FIELD).optional(),
           })
           .strict(),
       )
@@ -425,7 +506,8 @@ export const AppDefinitionSchema = z
 export type AppDefinition = z.output<typeof AppDefinitionSchema>;
 
 const FILTER_KINDS: readonly FieldKind[] = ["enum", "yesno", "ref"];
-const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", "enum"];
+// M56: a ref is searched by what it points at's title.
+const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", "enum", "ref"];
 const TOTAL_KINDS: readonly FieldKind[] = ["number", "money"];
 const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
 
@@ -437,8 +519,19 @@ function checkPages(
   // M55: a ref points at a type of this App.
   for (const [typeName, type] of Object.entries(app.types)) {
     for (const [name, field] of Object.entries(type.fields)) {
-      if (field.type === "ref" && field.to && !Object.hasOwn(app.types, field.to)) {
+      if (!isRefField(field) || !field.to) continue;
+      if (!Object.hasOwn(app.types, field.to)) {
         issue(["types", typeName, "fields", name, "to"], `there is no type "${field.to}" (types: ${Object.keys(app.types).join(", ")})`);
+        continue;
+      }
+      // M56: a path of the entry's project: Path.project and Entry.project point at the same type.
+      const by = field.match ? type.fields[field.match] : undefined;
+      const theirs = field.match ? app.types[field.to].fields[field.match] : undefined;
+      if (by?.type === "ref" && (theirs?.type !== "ref" || theirs.to !== by.to)) {
+        issue(
+          ["types", typeName, "fields", name, "match"],
+          `${field.to}.${field.match} isn't a ref to ${by.to} as ${typeName}.${field.match} is`,
+        );
       }
     }
   }
@@ -540,6 +633,25 @@ function checkPages(
         });
         if (related.add && !addedByHand(app, related.type))
           issue([...where, "add"], `${related.type} isn't added by hand (a type of mine, or add: true on its list)`);
+        if (Array.isArray(related.add)) {
+          related.add.forEach((preset, k) => {
+            for (const [name, value] of Object.entries(preset.set)) {
+              const f = other.fields[name];
+              const at2 = [...where, "add", k, "set", name];
+              if (!f) issue(at2, `${related.type} has no field "${name}"`);
+              else if (name === related.by) issue(at2, `${related.by} is set to this ${typeName} already`);
+              else if (!fieldValue(f, value).ok)
+                issue(at2, `${related.type}.${name} ${(fieldValue(f, value) as { problem: string }).problem}`);
+            }
+          });
+        }
+        if (related.group !== undefined) {
+          const g = other.fields[related.group];
+          if (!g) issue([...where, "group"], `${related.type} has no field "${related.group}"`);
+          else if (g.type !== "enum" && g.type !== "ref")
+            issue([...where, "group"], `a related list groups by an enum or a ref field: "${related.group}" is ${g.type}`);
+          else if (related.group === related.by) issue([...where, "group"], `${related.by} is this ${typeName}: every row has it`);
+        }
       });
       page.fields?.forEach((f, j) => field(f, [...at, "fields", j]));
       page.sections?.forEach((section, j) => section.fields.forEach((f, k) => field(f, [...at, "sections", j, "fields", k])));
@@ -656,8 +768,14 @@ export function fieldValue(field: EntityField, value: unknown): { ok: true; valu
       return text !== null && field.values?.includes(text)
         ? { ok: true, value: text }
         : { ok: false, problem: `isn't one of ${field.values?.join(", ")}` };
-    case "list":
-      return Array.isArray(value) ? { ok: true, value: value.slice(0, 200) } : { ok: false, problem: "isn't a list" };
+    case "list": {
+      if (!Array.isArray(value)) return { ok: false, problem: "isn't a list" };
+      if (field.of !== "ref") return { ok: true, value: value.slice(0, 200) };
+      // M56: keys of entities of its type (the api checks that they are), each once, in the order given.
+      const keys = value.map((v) => (typeof v === "string" || typeof v === "number" ? String(v).trim() : ""));
+      if (keys.some((k) => k === "")) return { ok: false, problem: "isn't a list of ones to point at" };
+      return { ok: true, value: [...new Set(keys)].slice(0, 200) };
+    }
     // M55: the key of an entity of its type (the api checks that it is one).
     case "ref":
       return text !== null && text !== "" ? { ok: true, value: text.slice(0, 1000) } : { ok: false, problem: "isn't one to point at" };
@@ -730,7 +848,8 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
     }
     if (raw === undefined || raw === null || raw === "") {
       deleteAt(value, name);
-      if (field.required || name === type.key) {
+      // M56: a field the entity's other fields leave out (when) isn't required then.
+      if ((field.required && fieldApplies(field, item)) || name === type.key) {
         problems.push(`${name} is missing`);
         rejected = true;
       }

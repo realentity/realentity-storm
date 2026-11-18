@@ -1,8 +1,9 @@
-# Lockbox: your projects' GitHub variables and secrets, kept here and sent to GitHub when you press Sync. One flat list
-# of entries: each a variable or a secret (encrypted, never shown again), for a project, a path and an environment. A
-# bundle names where they go (a repository, one of its environments, an organisation, Dependabot) and which paths, in
-# order: a later path's value of a name wins, so /_backend's shared values can be overridden by /backend-api's own.
-# Sync (lockbox-sync.yaml) adds and updates; it never deletes in GitHub. Save it on the Apps page before its pipeline.
+# Lockbox: your projects' GitHub variables and secrets, kept here and sent to GitHub when you press Sync. A project has
+# its paths (/backend-api, /_backend for values several share); each variable or secret (encrypted, never shown again)
+# is of a path and an environment. A bundle names where they go (a repository, one of its environments, an
+# organisation, Dependabot) and which paths, in order: a later path's value of a name wins, so /_backend's shared
+# values can be overridden by /backend-api's own. Sync (lockbox-sync.yaml) adds and updates; it never deletes in
+# GitHub. Save it on the Apps page before its pipeline.
 name: Lockbox
 description: GitHub variables and secrets, kept here and synced when you press Sync
 icon: lock
@@ -28,8 +29,16 @@ types:
     fields:
       name: { type: text, required: true }
       description: { type: longtext }
-  # A variable or a secret of a project: its value in `value` (a variable's, shown) or `secret` (encrypted). Your own
-  # environments: edit the values here and in Bundle.
+  # Where in a project its values are: each project has its own.
+  Path:
+    mine: true
+    key: id
+    title: name
+    fields:
+      id: { type: text, auto: true }
+      project: { type: ref, to: Project, required: true }
+      name: { type: text, required: true, help: "e.g. /backend-api; /_backend for values several share" }
+  # A variable (its value shown) or a secret (encrypted) of a project's path, for one environment.
   Entry:
     mine: true
     key: id
@@ -39,10 +48,10 @@ types:
       name: { type: text, required: true, help: "As GitHub will have it, e.g. DATABASE_URL" }
       kind: { type: enum, values: [variable, secret], required: true }
       project: { type: ref, to: Project, required: true }
-      path: { type: text, required: true, help: "Where in the project, e.g. /backend-api; /_backend for values several share" }
+      path: { type: ref, to: Path, match: project, required: true }
       environment: { type: enum, values: [production, staging, development], required: true }
-      value: { type: longtext, help: "A variable's value" }
-      secret: { type: longtext, encrypted: true, help: "A secret's value: encrypted, never shown again" }
+      value: { type: longtext, when: { kind: variable } }
+      secret: { type: longtext, encrypted: true, required: true, when: { kind: secret }, help: "Encrypted when saved; never shown again" }
   # Where a project's entries of one environment go, and which paths, in order: a later path's value of a name wins.
   Bundle:
     mine: true
@@ -51,33 +60,70 @@ types:
       name: { type: text, required: true }
       project: { type: ref, to: Project, required: true }
       environment: { type: enum, values: [production, staging, development], required: true }
-      paths: { type: list, required: true, help: "One per line, in order: a later path's value of a name wins, e.g. /_deploy, /_backend, /backend-api" }
+      paths:
+        type: list
+        of: ref
+        to: Path
+        match: project
+        required: true
+        help: "In order: a later path's value of a name wins, e.g. /_deploy, /_backend, /backend-api"
       destination:
         type: enum
         values: [repository, environment, organization, dependabot]
         required: true
         help: "A repository's secrets and variables, one of its environments', an organization's, or Dependabot's (secrets only)"
-      owner: { type: text, required: true, help: "The user or organization on GitHub, e.g. acme" }
-      repository: { type: text, help: "The repository's name, e.g. api (not for an organization)" }
-      githubEnvironment: { type: text, label: GitHub environment, help: "The repository's environment, e.g. production (only for environment)" }
+      repository:
+        type: text
+        required: true
+        when: { destination: [repository, environment, dependabot] }
+        help: "Its owner and name, as in its address: github.com/acme/backend → acme/backend"
+      githubEnvironment:
+        type: text
+        label: GitHub environment
+        required: true
+        when: { destination: environment }
+        help: "The repository's environment, as named on GitHub, e.g. production"
+      organization:
+        type: text
+        required: true
+        when: { destination: organization }
+        help: "As in its address: github.com/acme → acme"
       visibility:
         type: enum
         values: [all, private]
-        help: "Only for an organization: which of its repositories may use them, all or the private and internal ones"
+        required: true
+        when: { destination: organization }
+        help: "Which of its repositories may use them: all, or the private and internal ones"
 pages:
   - list: Project
     menu: { label: Projects, icon: lock }
     add: true
     columns: [name, description]
+  # A project's paths, then its variables and secrets by path, each path with its Add buttons: choose an environment
+  # above, and the ones you add are of it.
   - view: Project
     fields: [description]
     related:
-      - { type: Entry, by: project, label: Variables and secrets, columns: [name, kind, path, environment], filters: [kind, environment], add: true }
-      - { type: Bundle, by: project, label: Bundles, columns: [name, environment, destination, owner, repository], add: true }
+      - { type: Path, by: project, label: Paths, columns: [name], add: true }
+      - type: Entry
+        by: project
+        label: Variables and secrets
+        columns: [name, kind, environment]
+        filters: [environment]
+        group: path
+        add:
+          - { label: Add variable, set: { kind: variable } }
+          - { label: Add secret, set: { kind: secret } }
+      - { type: Bundle, by: project, label: Bundles, columns: [name, environment, destination], add: true }
+  - list: Path
+    menu: false
+    columns: [name, project]
+    filters: [project]
+    sort: name
   - list: Entry
     menu: { label: Entries, icon: lock }
     add: true
-    columns: [name, kind, path, environment, project]
+    columns: [name, kind, project, path, environment]
     filters: [project, kind, environment]
     search: [name, path]
     sort: name
@@ -89,8 +135,8 @@ pages:
     columns: [name, project, environment, destination]
     filters: [project, environment]
   - view: Bundle
-    fields: [project, environment, paths, destination, owner, repository, githubEnvironment, visibility]
+    fields: [project, environment, paths, destination, repository, githubEnvironment, organization, visibility]
     actions:
       - { label: Sync, run: Lockbox sync, confirm: "Send this bundle's variables and secrets to GitHub?" }
   - form: Bundle
-    fields: [project, environment, paths, destination, owner, repository, githubEnvironment, visibility]
+    fields: [project, environment, paths, destination, repository, githubEnvironment, organization, visibility]

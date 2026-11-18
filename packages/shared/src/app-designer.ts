@@ -95,7 +95,13 @@ export function setField(source: string, type: string, name: string, patch: Fiel
     else if (!Array.isArray(next.values) || next.values.length === 0) next.values = ["one", "two"];
     if (next.type !== "money") delete next.currency;
     if (next.type !== "text" && next.type !== "longtext") delete next.encrypted;
-    if (next.type !== "ref") delete next.to;
+    // M56: a list of refs keeps its type, as a ref does; `match` goes with it.
+    const pointing = next.type === "ref" || (next.type === "list" && field.get("of") === "ref");
+    if (!pointing) {
+      delete next.to;
+      field.delete("match");
+    }
+    if (next.type !== "list") field.delete("of");
     for (const property of ["type", "label", "required", "mine", "values", "currency", "encrypted", "to", "help"] as const) {
       const value = next[property];
       if (value === undefined || value === false || value === "") field.delete(property);
