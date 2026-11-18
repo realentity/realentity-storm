@@ -252,6 +252,40 @@ export class AppsService {
     return { pipelines: Object.fromEntries(found.map((p) => [p.name, p.pipelineId])) };
   }
 
+  /**
+   * A pipeline saved: the current versions that name it and were saved before it (an App installed ahead of its
+   * pipelines, a trigger on one further down the file) hold it by id from now on, so a rename doesn't lose it. One bound
+   * already stays as it is.
+   */
+  async bindPipeline(userId: string, name: string, pipelineId: string): Promise<void> {
+    const client = this.prisma.client;
+    const apps = await client.app.findMany({ where: { userId, currentVersionId: { not: null } }, select: { currentVersionId: true } });
+    const appVersions = await client.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
+    for (const version of appVersions) {
+      const refs = (version.refs as AppRefs | null)?.pipelines ?? {};
+      const { pages } = version.definition as unknown as AppDefinition;
+      const named = pages.some((page) => "actions" in page && page.actions.some((action) => action.run === name));
+      if (named && !Object.hasOwn(refs, name)) {
+        await client.appVersion.update({
+          where: { appVersionId: version.appVersionId },
+          data: { refs: toJson({ pipelines: { ...refs, [name]: pipelineId } }) },
+        });
+      }
+    }
+    const pipelines = await client.pipeline.findMany({ where: { userId, currentVersionId: { not: null } }, select: { currentVersionId: true } });
+    const versions = await client.pipelineVersion.findMany({ where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } } });
+    for (const version of versions) {
+      const definition = version.definition as unknown as CompiledDefinition;
+      const refs = definition.refs?.pipelines ?? {};
+      if (namedPipelines(definition).includes(name) && !Object.hasOwn(refs, name)) {
+        await client.pipelineVersion.update({
+          where: { pipelineVersionId: version.pipelineVersionId },
+          data: { definition: toJson({ ...definition, refs: { ...definition.refs, pipelines: { ...refs, [name]: pipelineId } } }) },
+        });
+      }
+    }
+  }
+
   async list(userId: string): Promise<AppSummaryView[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId }, orderBy: { name: "asc" } });
     const pipelines = await pipelinesByApp(this.prisma.client, userId);

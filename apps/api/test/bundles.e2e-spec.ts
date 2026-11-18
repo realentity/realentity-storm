@@ -1,6 +1,7 @@
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { type AppDetailView, type BundleCheckView, type BundleExportView, type PipelineDetailView } from "@realentity/storm-shared";
 import type request from "supertest";
+import { AppsService } from "../src/apps/apps.service";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 const APP = `# my disks, from shops
@@ -155,5 +156,61 @@ describe("bundles", () => {
     const saved = (await agent.post("/api/bundles").send({ text: READ }).expect(201)).body as BundleCheckView;
     const pipeline = (await agent.get(`/api/pipelines/${saved.items[0].id}`).expect(200)).body as PipelineDetailView;
     expect(pipeline.name).toBe("Cheapest disks");
+  });
+
+  const WITH_BUTTON = `${APP}pages:
+  - list: Disk
+    actions:
+      - { label: Fetch, run: Disk prices }
+`;
+  const rename = async (name: string, to: string) => {
+    const { pipelineId } = await db.client.pipeline.findFirstOrThrow({ where: { name } });
+    await agent
+      .post(`/api/pipelines/${pipelineId}/versions`)
+      .send({ source: SAVE.replace(`name: ${name}`, `name: ${to}`) })
+      .expect(201);
+    return pipelineId;
+  };
+  const pressFetch = async (appId: string) => (await agent.post(`/api/apps/${appId}/actions/Disk/0`).send({}).expect(202)).body as { pipelineId: string };
+
+  it("a button of an imported App starts its pipeline after the pipeline is renamed", async () => {
+    const saved = (await agent.post("/api/bundles").send({ text: file(WITH_BUTTON, SAVE) }).expect(201)).body as BundleCheckView;
+    const pipelineId = await rename("Disk prices", "Disk prices daily");
+    expect((await pressFetch(saved.items[0].id!)).pipelineId).toBe(pipelineId);
+  });
+
+  it("a button installed before this was bound follows the first rename too", async () => {
+    const saved = (await agent.post("/api/bundles").send({ text: file(WITH_BUTTON, SAVE) }).expect(201)).body as BundleCheckView;
+    await db.client.appVersion.updateMany({ data: { refs: { pipelines: {} } } });
+    const pipelineId = await rename("Disk prices", "Disk prices daily");
+    expect((await pressFetch(saved.items[0].id!)).pipelineId).toBe(pipelineId);
+  });
+
+  it("a pipeline holds by id the one it follows, saved after it in the file", async () => {
+    const after = `name: After the prices
+app: Disks
+trigger: { on: run.finished, pipeline: Disk prices }
+steps:
+  - id: read
+    type: data.read
+    with: { type: Disk, limit: 3 }
+`;
+    await agent.post("/api/bundles").send({ text: file(APP, after, SAVE) }).expect(201);
+    const follower = await db.client.pipeline.findFirstOrThrow({ where: { name: "After the prices" } });
+    const version = await db.client.pipelineVersion.findUniqueOrThrow({ where: { pipelineVersionId: follower.currentVersionId! } });
+    const { pipelineId } = await db.client.pipeline.findFirstOrThrow({ where: { name: "Disk prices" } });
+    expect((version.definition as { refs?: { pipelines: Record<string, string> } }).refs?.pipelines).toEqual({ "Disk prices": pipelineId });
+  });
+
+  it("saves nothing when a save fails halfway through the file", async () => {
+    // The second pipeline's save fails, after the App and the first are in.
+    const failing = jest.spyOn(AppsService.prototype, "bindPipeline").mockResolvedValueOnce().mockRejectedValueOnce(new Error("The disk is full"));
+    try {
+      await agent.post("/api/bundles").send({ text: file(APP, SAVE, READ) }).expect(500);
+    } finally {
+      failing.mockRestore();
+    }
+    expect(await db.client.app.count()).toBe(0);
+    expect(await db.client.pipeline.count()).toBe(0);
   });
 });
