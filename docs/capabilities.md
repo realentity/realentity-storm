@@ -328,6 +328,32 @@ Ready-made Apps in [pipelines/apps/](../pipelines/apps/): Job Search, Bills, Pri
 `type: Job`) and by [application-replies.yaml](../pipelines/application-replies.yaml). Save the App before its
 pipelines.
 
+**An App with its pipelines in one file.** **Export YAML** on an App writes this, and **Import YAML** reads it:
+
+```yaml
+app:
+  name: Lockbox
+  description: GitHub variables and secrets, kept here and synced when you press Sync
+  icon: lock
+  setup:                     # what to set up first: the checklist on the App's page
+    - { kind: entities, type: GitHubOwner, label: "A GitHub owner with its token" }
+types: { ... }
+pages:
+  - view: Bundle
+    actions:
+      - { label: Sync, run: sync }     # a pipeline of this file, by its key
+pipelines:
+  sync:
+    name: Sync               # saved as "Lockbox · Sync"
+    trigger: { on: entity.action, type: Bundle }
+    steps: [ ... ]
+```
+
+A pipeline's key is the file's own: a button's `run:`, a `run.finished` trigger's `pipeline` and a `flow.later` step's
+`pipeline` may use it, and the import puts the pipeline there by id. `app:` also takes the App's `needs` (its slots, §2.6).
+`fullName` instead of `name` saves a pipeline under exactly that name. A name that isn't a key of the file is looked up as
+a pipeline you have. Files with an App and its pipelines as documents with `---` between them still import.
+
 ---
 
 ### 2.6 Credentials and settings: slots, never names (M50)

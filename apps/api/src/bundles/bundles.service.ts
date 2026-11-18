@@ -1,9 +1,12 @@
 import {
   checkAppSource,
   definitionToSource,
+  freeName,
   freeNames,
-  joinBundle,
+  isAppPackage,
+  readAppPackage,
   splitBundle,
+  toAppPackage,
   type AppDefinition,
   type AppIssue,
   type BundleCheckView,
@@ -13,6 +16,7 @@ import {
   type BundleExportView,
   type BundleItemView,
   type CompiledDefinition,
+  type ExampleNeed,
   withCurrentNames,
 } from "@realentity/storm-shared";
 import { diffApps, diffDefinitions } from "@realentity/storm-steps";
@@ -24,7 +28,8 @@ import { PrismaService } from "../database/prisma.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 
 /**
- * M35-T5: Apps and pipelines in and out as YAML files. A file is checked whole before anything is saved: its App,
+ * M35-T5: Apps and pipelines in and out as YAML files: an App with its pipelines in one structured file (app-package.ts),
+ * or documents with `---` between them, as files exported earlier have them. A file is checked whole before anything is saved: its App,
  * each of its pipelines against that App (or the one they name that the user has), and the user's pipelines of that App it
  * leaves out. Then the App first (its pipelines compile against it), then the pipelines. When some of it is there by
  * name the user chooses: `update` gives each its next version (one that is the same is left as it is), `copy` installs
@@ -43,7 +48,7 @@ export class BundlesService {
   }
 
   async save(userId: string, text: string, mode?: BundleMode, example?: BundleRequest["example"]): Promise<BundleCheckView> {
-    const { view, app, pipelines } = await this.read(userId, text, mode);
+    const { view, app, pipelines, setup } = await this.read(userId, text, mode);
     if (!view.ok) throw new BadRequestException({ message: "The file has problems: nothing was saved", ...view });
     if (!mode && view.items.some((i) => i.id !== null)) {
       throw new ConflictException({ message: "Some of this file is here already: choose to update it or to install a copy", ...view });
@@ -54,8 +59,9 @@ export class BundlesService {
         const item = view.items.find((i) => i.kind === "app")!;
         if (item.action === "create") {
           item.id = (await this.apps.create(userId, app.source)).appId;
-          // M40-T2: installed from an example: kept with it, for its checklist.
-          if (example) await this.prisma.client.app.update({ where: { appId: item.id }, data: { example } });
+          // M40-T2: installed from an example, or a file saying what to set up: kept with it, for its checklist.
+          const checklist = example ?? (setup ? { id: fileName(setup.name), needs: setup.needs } : null);
+          if (checklist) await this.prisma.client.app.update({ where: { appId: item.id }, data: { example: checklist } });
         } else if (item.action === "update") await this.apps.save(userId, item.id!, app.source);
       }
       for (const pipeline of pipelines) {
@@ -67,11 +73,13 @@ export class BundlesService {
     return view;
   }
 
-  /** An App as one file: its YAML as written, then its pipelines'. */
+  /** An App as one file: its YAML as written, its pipelines in it, and what to set up first. */
   async exportApp(userId: string, appId: string): Promise<BundleExportView> {
     const { name, source, pipelines } = await this.apps.forBuilder(userId, appId);
     const sorted = [...pipelines].sort((a, b) => a.name.localeCompare(b.name));
-    return { filename: `${fileName(name)}.yaml`, text: joinBundle([source, ...sorted.map((p) => definitionToSource(p))]) };
+    const app = await this.prisma.client.app.findFirst({ where: { appId, userId }, select: { example: true } });
+    const setup = (app?.example as { needs?: ExampleNeed[] } | null)?.needs;
+    return { filename: `${fileName(name)}.yaml`, text: toAppPackage(source, sorted.map((p) => definitionToSource(p)), setup) };
   }
 
   async exportPipeline(userId: string, pipelineId: string): Promise<BundleExportView> {
@@ -85,27 +93,42 @@ export class BundlesService {
     return { filename: `${fileName(pipeline.name)}.yaml`, text: definitionToSource(definition) };
   }
 
-  /** A copy: the App and pipelines under names not taken yet, and what refers to them renamed with them. */
-  private async asCopy(userId: string, documents: BundleDocument[]): Promise<BundleDocument[]> {
-    if (documents.some((d) => d.kind === "unknown")) return documents;
+  private async takenNames(userId: string): Promise<{ apps: string[]; pipelines: string[] }> {
     const [apps, pipelines] = await Promise.all([
       this.prisma.client.app.findMany({ where: { userId }, select: { name: true } }),
       this.prisma.client.pipeline.findMany({ where: { userId }, select: { name: true } }),
     ]);
-    return splitBundle(joinBundle(freeNames(documents, { apps: apps.map((a) => a.name), pipelines: pipelines.map((p) => p.name) })));
+    return { apps: apps.map((a) => a.name), pipelines: pipelines.map((p) => p.name) };
+  }
+
+  /** The file's documents; as a copy, under names not taken yet, with what refers to them renamed with them. */
+  private async documentsOf(userId: string, text: string, mode?: BundleMode) {
+    const copied = (documents: BundleDocument[], taken: { apps: string[]; pipelines: string[] }) =>
+      freeNames(documents, taken).map((source, i) => ({ ...documents[i], ...splitBundle(source)[0], line: documents[i].line }));
+    if (!isAppPackage(text)) {
+      const documents = splitBundle(text);
+      if (mode !== "copy" || documents.some((d) => d.kind === "unknown")) return { documents, errors: [], setup: null };
+      return { documents: copied(documents, await this.takenNames(userId)), errors: [], setup: null };
+    }
+    const written = readAppPackage(text);
+    const setup = written.setup ? { name: written.name, needs: written.setup } : null;
+    if (mode !== "copy" || written.errors.length > 0) return { documents: written.documents, errors: written.errors, setup };
+    // A copy's pipelines are named after its App: "Lockbox 2 · Sync".
+    const taken = await this.takenNames(userId);
+    const copy = readAppPackage(text, freeName(written.name, taken.apps, (n) => `${written.name} ${n}`));
+    return { documents: copied(copy.documents, taken), errors: [], setup };
   }
 
   private async read(userId: string, text: string, mode?: BundleMode) {
-    const split = splitBundle(text);
-    const documents = mode === "copy" ? await this.asCopy(userId, split) : split;
-    const errors: AppIssue[] = [];
+    const { documents, errors: fileErrors, setup } = await this.documentsOf(userId, text, mode);
+    const errors: AppIssue[] = [...fileErrors];
     const items: BundleItemView[] = [];
-    const at = (line: number, issue: AppIssue): AppIssue => ({
-      ...issue,
-      ...(issue.line !== undefined ? { line: line + issue.line - 1 } : { line }),
-    });
+    const at = (document: BundleDocument, issue: AppIssue): AppIssue => {
+      if (document.lineOf) return { ...issue, line: document.lineOf(issue.path) ?? document.line };
+      return { ...issue, ...(issue.line !== undefined ? { line: document.line + issue.line - 1 } : { line: document.line }) };
+    };
 
-    if (documents.length === 0) errors.push({ path: "", message: "The file has no App or pipeline in it" });
+    if (documents.length === 0 && errors.length === 0) errors.push({ path: "", message: "The file has no App or pipeline in it" });
     for (const unknown of documents.filter((d) => d.kind === "unknown")) {
       errors.push({
         path: "",
@@ -132,7 +155,7 @@ export class BundlesService {
         id: existing?.appId ?? null,
         action: !existing ? "create" : changes.length > 0 ? "update" : "same",
         changes,
-        errors: checked.errors.map((e) => at(appDocument.line, e)),
+        errors: checked.errors.map((e) => at(appDocument, e)),
       });
     }
 
@@ -180,6 +203,7 @@ export class BundlesService {
     const ok = errors.length === 0 && items.every((i) => i.errors.length === 0) && broken.length === 0;
     return {
       view: { ok, errors, items, broken } satisfies BundleCheckView,
+      setup,
       app: appDocument && app ? { source: appDocument.source } : null,
       pipelines: pipelineDocuments.map((d, i) => ({ source: d.source, name: items.filter((x) => x.kind === "pipeline")[i].name })),
     };

@@ -115,8 +115,8 @@ function ImportDialog({ onClose, onImported }: Readonly<{ onClose: () => void; o
     >
       <div className="d-flex flex-column gap-3">
         <div className="text-secondary small">
-          An App (its <code>types</code>) and the pipelines that name it, with <code>---</code> between them; or pipelines alone. If you
-          already have some of it, you choose what happens. Everything is checked first; nothing is saved unless all of it can be.
+          An App with its pipelines, as Export YAML writes it; or pipelines alone. If you already have some of it, you choose what
+          happens. Everything is checked first; nothing is saved unless all of it can be.
         </div>
         <div className="d-flex gap-2 align-items-center">
           <input

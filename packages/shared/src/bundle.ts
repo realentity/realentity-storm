@@ -18,6 +18,8 @@ export interface BundleDocument {
   name?: string;
   /** Its first line in the file: a problem's line in the document is this plus its own, less one. */
   line: number;
+  /** Read from one structured file: a problem's line there, by its path. */
+  lineOf?: (path: string) => number | undefined;
 }
 
 /** The documents of a file, split at the lines that are `---`; an App is the one with types, a pipeline has steps. */

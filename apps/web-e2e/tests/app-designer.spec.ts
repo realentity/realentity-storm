@@ -344,8 +344,8 @@ steps:
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^shelf-.*\.yaml$/);
   const text = readFileSync(await file.path(), "utf8");
-  expect(text.startsWith(`${app}---\n`)).toBe(true);
-  expect(text).toContain(`name: ${pipelineName}`);
+  expect(text).toContain(`app:\n  name: ${name}\n`);
+  expect(text).toContain(`fullName: ${pipelineName}`);
 
   // Imported again: the same, nothing to do.
   await page.goto("/pipelines");

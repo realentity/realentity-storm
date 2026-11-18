@@ -89,6 +89,14 @@ export function readExamples(manifest: string): Example[] {
   return [...examples].sort((a, b) => Number(b.starter) - Number(a.starter));
 }
 
+/** The name, or the first of its numbered ones not used yet. */
+export function freeName(name: string, used: string[], numbered: (n: number) => string): string {
+  if (!used.includes(name)) return name;
+  let n = 2;
+  while (used.includes(numbered(n))) n++;
+  return numbered(n);
+}
+
 /**
  * M40-T2: an example installed again: its App and pipelines under names not taken yet ("Bills 2": an App's name has no
  * brackets; "Bills (2)" for a pipeline, as M39 named duplicates), and what refers to
@@ -96,12 +104,6 @@ export function readExamples(manifest: string): Example[] {
  * comments kept. Installed the first time, the documents are as they are.
  */
 export function freeNames(documents: BundleDocument[], taken: { apps: string[]; pipelines: string[] }): string[] {
-  const free = (name: string, used: string[], numbered: (n: number) => string) => {
-    if (!used.includes(name)) return name;
-    let n = 2;
-    while (used.includes(numbered(n))) n++;
-    return numbered(n);
-  };
   const apps = new Map<string, string>();
   const pipelines = new Map<string, string>();
   for (const document of documents) {
@@ -110,12 +112,12 @@ export function freeNames(documents: BundleDocument[], taken: { apps: string[]; 
     if (document.kind === "app")
       apps.set(
         name,
-        free(name, taken.apps, (n) => `${name} ${n}`),
+        freeName(name, taken.apps, (n) => `${name} ${n}`),
       );
     if (document.kind === "pipeline")
       pipelines.set(
         name,
-        free(name, taken.pipelines, (n) => `${name} (${n})`),
+        freeName(name, taken.pipelines, (n) => `${name} (${n})`),
       );
   }
   const renamed = (map: Map<string, string>, value: unknown) =>
