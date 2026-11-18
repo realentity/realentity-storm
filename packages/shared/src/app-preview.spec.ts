@@ -1,12 +1,11 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { exampleYaml } from "./example-files";
 import { listPageOf } from "./app-pages";
 import { sampleRows } from "./app-preview";
 import { checkAppSource } from "./app-source";
 
 // M37-T2: a type with no entities yet still shows its pages, from made-up ones
 describe("the preview's made-up entities (M37-T2)", () => {
-  const bills = checkAppSource(readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8")).definition!;
+  const bills = checkAppSource(exampleYaml("apps/bills.yaml")).definition!;
   const rows = sampleRows("Bill", bills.types.Bill, 6, new Date("2026-11-07T10:00:00Z"));
 
   it("gives each field a value of its kind, the key its own", () => {

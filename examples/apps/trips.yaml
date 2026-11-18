@@ -1,0 +1,299 @@
+# The Trips App: the trips you add (mine), and the bookings read from your email (trip-bookings), each matched to
+# a trip and kept until it is cancelled. A booking's reminder the day before (trip-booking-reminders,
+# trip-booking-reminder), a briefing three days before a trip with its weather and bookings
+# (trip-countdown, trip-briefing), and a packing list on a trip's button (packing-list). Save it on the
+# Apps page before its pipelines.
+app:
+  name: Trips
+  description: Your trips, with the bookings from your email
+  icon: world
+  summary: >-
+    Bookings read from your email and matched to the trips you add, each in your calendar with a
+    reminder the day before, a briefing with the weather three days before a trip, and a packing list on
+    a button.
+  setup:
+    - { kind: entities, type: Trip, label: "Your trips, added on its page" }
+    - { kind: email, label: "An email account, to read the bookings from" }
+    - { kind: llm, label: "The LLM, to read each booking" }
+    - { kind: google-calendar, label: "Google Calendar, for the bookings" }
+    - { kind: telegram, label: "Telegram, for the reminders and briefings" }
+types:
+  Trip:
+    mine: true                     # you add your trips; pipelines read them to match bookings
+    key: name
+    fields:
+      name: { type: text, required: true }        # "Lisbon, May 2027"
+      destination: { type: text, required: true } # a city, for the weather
+      start: { type: date }
+      end: { type: date }
+      notes: { type: longtext }                   # who comes, what it's for: the packing list reads it
+  Booking:
+    key: reference                 # the booking reference: the same booking again (a change) is the same Booking
+    title: title
+    stages:
+      field: status
+      initial: booked
+      states: [booked, cancelled]
+      moves:
+        - { from: booked, to: [cancelled], by: [me, pipeline] }
+        - { from: cancelled, to: [booked], by: [me, pipeline] }
+    fields:
+      reference: { type: text, required: true }
+      title: { type: text, required: true }
+      kind: { type: enum, values: [flight, train, bus, hotel, car, event, other] }
+      provider: { type: text }
+      start: { type: datetime }
+      end: { type: datetime }
+      place: { type: text }        # from → to, or the address
+      trip: { type: text }         # the name of the Trip it belongs to
+      price: { type: money, currency: currency }
+      currency: { type: text }
+      from: { type: email }
+      subject: { type: text }
+      messageId: { type: text }
+pages:
+  - list: Trip
+    menu: { label: Trips, icon: world }
+    columns: [name, destination, start, end]
+    sort: -start
+  - view: Trip
+    sections:
+      - { title: Trip, fields: [destination, start, end, notes] }
+    actions:
+      - { label: Packing list, run: packing-list, confirm: "Send a packing list for this trip to Telegram?" }
+  - list: Booking
+    menu: { label: Bookings, icon: calendar }
+    columns: [title, kind, start, place, price, status]
+    filters: [kind, status]
+    sort: start
+    group: { by: trip, totals: [price] }
+    moves: true
+  - view: Booking
+    sections:
+      - { title: Booking, fields: [kind, provider, reference, start, end, place, price, trip] }
+      - { title: Email, fields: [from, subject] }
+
+pipelines:
+  trip-booking-reminder:
+    # Started by trip-booking-reminders a day before a booking starts: what it is, on Telegram, with its reference.
+    fullName: Trip booking reminder
+    description: A booking starts tomorrow; its time, place and reference.
+    trigger: { on: flow.later }
+    steps:
+      - id: tell
+        type: notify.telegram
+        with:
+          text: >-
+            Tomorrow: {{trigger.data.booking.title}}, {{trigger.data.booking.start}}, {{trigger.data.booking.place}}.
+            Reference {{trigger.data.booking.reference}} ({{trigger.data.booking.provider}}). A flight: check in online.
+
+  trip-booking-reminders:
+    # When a Booking of the Trips App is added or changes, its reminder a day before it starts (trip-booking-reminder)
+    # is scheduled, or moved with it; a cancelled one's reminder is cancelled. Save trip-booking-reminder first: this
+    # one names it.
+    fullName: Trip booking reminders
+    description: Schedules each booking's reminder for the day before, and cancels it with the booking.
+    trigger: { on: entity.changed, type: Booking }
+    steps:
+      - id: upcoming
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # A day before it starts, if that is still ahead and it isn't cancelled.
+          expression: |-
+            (
+              $at := $toMillis(start) - 24 * 60 * 60 * 1000;
+              status != "cancelled" and $at > $toMillis($now()) ? { "remindAt": $fromMillis($at) }
+            )
+      - id: later
+        type: flow.later
+        forEach: "{{upcoming.items}}"
+        with:
+          pipeline: trip-booking-reminder
+          at: "{{item.remindAt}}"
+          key: "booking:{{trigger.key}}"
+          data: { booking: "{{trigger.item}}" }
+      - id: gone
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: 'status = "cancelled" ? { "reference": reference }'
+      - id: stop
+        type: flow.cancel
+        forEach: "{{gone.items}}"
+        with: { key: "booking:{{trigger.key}}" }
+
+  trip-briefing:
+    # Started by trip-countdown three days before a trip: the destination's forecast from Open-Meteo (free, no key)
+    # and the trip's bookings, as a short briefing on Telegram, with what looks missing (a night without a hotel, no way
+    # back). The destination is found by its name, so a city works best.
+    fullName: Trip briefing
+    description: Three days before a trip, its weather and bookings, and what looks missing.
+    trigger: { on: flow.later }
+    policy:
+      allowedDomains: [geocoding-api.open-meteo.com, api.open-meteo.com]
+    steps:
+      - id: place
+        type: http.fetch
+        with:
+          url: https://geocoding-api.open-meteo.com/v1/search
+          query: { name: "{{trigger.data.trip.destination}}", count: "1" }
+          itemsAt: results
+      - id: forecast
+        type: http.fetch
+        forEach: "{{place.items}}"
+        with:
+          url: https://api.open-meteo.com/v1/forecast
+          query:
+            latitude: "{{item.latitude}}"
+            longitude: "{{item.longitude}}"
+            daily: temperature_2m_max,temperature_2m_min,precipitation_probability_max
+            timezone: auto
+            forecast_days: "16"
+      - id: bookings
+        type: data.read
+        with:
+          type: Booking
+          where:
+            - { field: trip, op: eq, value: "{{trigger.data.trip.name}}" }
+            - { field: status, op: eq, value: booked }
+          sort: start
+      - id: brief
+        type: llm.generate
+        with:
+          instruction: >-
+            A short briefing for my trip, for Telegram: the weather for each day of the trip from the forecast (high, low,
+            chance of rain), then the bookings in order with their times and references, then anything that looks missing
+            (a night without a place to stay, no way there or back). No other text.
+          context: { trip: "{{trigger.data.trip}}", forecast: "{{forecast.json}}", bookings: "{{bookings.items}}" }
+      - id: tell
+        type: notify.telegram
+        with: { text: "{{trigger.data.trip.name}} starts in 3 days.\n\n{{brief.text}}" }
+
+  trip-countdown:
+    # When you add a Trip in the Trips App or change its dates, its briefing (trip-briefing) is scheduled for 09:00
+    # three days before it starts, or moved with it. Save trip-briefing first: this one names it.
+    fullName: Trip countdown
+    description: Schedules each trip's briefing for three days before it starts.
+    trigger: { on: entity.changed, type: Trip }
+    steps:
+      - id: ahead
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # 09:00 (the server's time zone) three days before the start, if that is still ahead.
+          expression: |-
+            (
+              $day := $toMillis(start) - 3 * 24 * 60 * 60 * 1000;
+              $day + 9 * 60 * 60 * 1000 > $toMillis($now()) ? { "briefAt": $fromMillis($day, "[Y0001]-[M01]-[D01]") & "T09:00" }
+            )
+      - id: later
+        type: flow.later
+        forEach: "{{ahead.items}}"
+        with:
+          pipeline: trip-briefing
+          at: "{{item.briefAt}}"
+          key: "trip:{{trigger.key}}"
+          data: { trip: "{{trigger.item}}" }
+
+  trip-bookings:
+    # Bookings from email, in the Trips App: flights, trains, hotels, cars and
+    # tickets, each read by the LLM, matched to one of your Trips and kept by its booking reference. A cancellation moves
+    # its booking to cancelled; a change (a new time) updates it. A new booking also goes into your calendar, after you
+    # Act at its gate. trip-booking-reminders schedules the reminder the day before each.
+    fullName: Trip bookings
+    description: Bookings from your email, matched to your trips, with a calendar event each.
+    trigger: { schedule: "*/30 * * * *" }
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { sinceDays: 7 }
+      - id: triage
+        type: email.classify
+        with:
+          messages: "{{fetch.messages}}"
+          instruction: >-
+            "booking": a confirmation, change or cancellation of a booking of mine with a booking reference: a flight, a
+            train or bus ticket, a hotel or apartment, a rental car, a ticket for an event. "other": everything else, also
+            offers, newsletters and reminders to book.
+          labels: [booking, other]
+          keep: [booking]
+      - id: trips
+        type: data.read
+        with: { type: Trip, sort: -start, limit: 50 }
+      - id: book
+        type: llm.extract
+        forEach: "{{triage.kept}}"
+        with:
+          content: "{{item}}"
+          instruction: "My trips, to match the booking to: {{trips.items}}"
+          fields:
+            reference: the booking reference or confirmation number
+            title: a short title, like "Flight SOF → LIS" or "Hotel Avenida"
+            kind: one of flight, train, bus, hotel, car, event, other
+            provider: the airline, hotel, company or venue
+            start: when it starts (departure, check-in, pick-up), date and time
+            end: when it ends (arrival, check-out, return), date and time
+            place: from → to, or the address
+            price: the total price, a number
+            currency: the price's currency code, like EUR
+            status: '"cancelled" when the email cancels the booking, else "booked"'
+            trip: the name of the trip in my list it belongs to (its destination and dates fit), exactly as written there; empty when none fits
+      - id: bookings
+        type: data.map
+        with:
+          from: { emails: "{{triage.kept}}", values: "{{book.values}}" }
+          # Each booking with its email's sender and subject; one without a reference isn't kept.
+          expression: |-
+            $map(values, function($v, $i) {
+              $merge([$v, {
+                "kind": $lowercase($v.kind),
+                "status": $contains($lowercase($v.status), "cancel") ? "cancelled" : "booked",
+                "from": emails[$i].from,
+                "subject": emails[$i].subject,
+                "messageId": emails[$i].messageId
+              }])
+            })[reference != ""]
+      - id: save
+        type: data.save
+        with: { items: "{{bookings.items}}", type: Booking }
+      - id: event
+        type: calendar.create
+        forEach: "{{save.added}}"
+        when: "{{item.start}}"
+        with:
+          title: "{{item.title}}"
+          start: "{{item.start}}"
+          location: "{{item.place}}"
+          description: "{{item.provider}}, reference {{item.reference}}"
+      - id: tell
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "New booking: {{item.title}} ({{item.reference}}), {{item.start}}. Trip: {{item.trip}}" }
+
+  packing-list:
+    # From a Trip's button in the Trips App: a packing list for it, from where and when it is,
+    # its notes and its bookings (a flight's baggage, a hotel), on Telegram.
+    fullName: Packing list
+    description: A packing list for a trip, from its button.
+    trigger: { on: entity.action, type: Trip }
+    steps:
+      - id: bookings
+        type: data.read
+        with:
+          type: Booking
+          where:
+            - { field: trip, op: eq, value: "{{trigger.item.name}}" }
+            - { field: status, op: eq, value: booked }
+          sort: start
+      - id: list
+        type: llm.generate
+        with:
+          instruction: >-
+            A packing list for this trip, for Telegram: grouped (documents, clothes, toiletries, electronics, other), short
+            lines, for the destination's usual weather in those dates and what the notes and bookings say (a cabin bag
+            only on a flight, a hike, a wedding). Then up to three things to do before leaving. No other text.
+          context: { trip: "{{trigger.item}}", bookings: "{{bookings.items}}" }
+      - id: tell
+        type: notify.telegram
+        with: { text: "Packing list: {{trigger.item.name}}\n\n{{list.text}}" }

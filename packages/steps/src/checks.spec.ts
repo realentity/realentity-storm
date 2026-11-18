@@ -1,12 +1,12 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { AppDefinitionSchema, type CompileResult } from "@realentity/storm-shared";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { defaultCatalog } from "./catalog";
 import { PipelineCompiler } from "./compiler";
 
 const compiler = new PipelineCompiler(defaultCatalog());
-const serverOps = AppDefinitionSchema.parse(parseYaml(readFileSync(join(__dirname, "../../../pipelines/apps/server-ops.yaml"), "utf8")));
+const serverOps = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/server-ops.yaml")));
 
 function ok(result: CompileResult): Extract<CompileResult, { ok: true }> {
   if (!result.ok) throw new Error(`expected success, got:\n${result.errors.map((e) => `${e.path}: ${e.message}`).join("\n")}`);
@@ -25,7 +25,7 @@ const WHY =
 // M47-U1, S1 (the compiler's half): a check's address is written in the pipeline or typed by the user
 describe("checks (M47)", () => {
   it("marks the checks of your Monitors' addresses as the only ones that may reach a private address", () => {
-    const result = ok(compiler.compile(parseYaml(readFileSync(join(__dirname, "../../../pipelines/check-monitors.yaml"), "utf8")), { app: serverOps }));
+    const result = ok(compiler.compile(parseYaml(exampleYaml("check-monitors.yaml")), { app: serverOps }));
     expect(result.policy.privateHosts).toEqual(["webCheck", "netCheck"]);
   });
 

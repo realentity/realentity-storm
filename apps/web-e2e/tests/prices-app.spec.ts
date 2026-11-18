@@ -1,13 +1,12 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { unique } from "./support";
 
 // M33-E1 (Prices): a product of mine added on its list, its shops a line each; its offers' list in the menu
 test("the Prices App: a watched product added with its shops, and the Prices list", async ({ page }) => {
   const name = unique("Prices");
   const tag = name.split(" ")[1];
-  const source = readFileSync(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8")
+  const source = exampleYaml("apps/prices.yaml")
     .replace("name: Prices", `name: ${name}`)
     .replace("menu: { label: Prices, icon: tag }", `menu: { label: "Prices ${tag}", icon: tag }`)
     .replace("menu: { label: Watched products, icon: tag }", `menu: { label: "Watched ${tag}", icon: tag }`);

@@ -45,8 +45,8 @@ the Recipes page                   a pipeline
   runs one search per value.
 - Every item comes back with the recipe's **fields** plus `source` (the recipe's name). The pipeline's next steps read
   those names: `data.dedupe` with `key: url`, an App type whose fields are `title`, `company`… **Name the fields the way
-  the pipeline reads them.** The examples ([job-board.yaml](../pipelines/job-board.yaml),
-  [listings.yaml](../pipelines/listings.yaml)) read `url`, `title`, `company`, `location`, `posted` for jobs and `url`,
+  the pipeline reads them.** The examples ([job-board.yaml](../examples/apps/job-search.yaml),
+  [listings.yaml](../examples/apps/apartments.yaml)) read `url`, `title`, `company`, `location`, `posted` for jobs and `url`,
   `title`, `price`, `rooms`, `size` for listings.
 - Runs always use the recipe's **latest version**. Editing a recipe changes what every pipeline using it reads, from
   the next run.
@@ -274,7 +274,7 @@ list still reads: edit its `detail` section.
 | `"article.job" matched nothing` | The item selector is wrong, or the page is different for a browser without your cookies (a consent page, another language). **Try** shows the page the recipe saw. |
 | Items without the required fields | A field's selector is wrong for some items (e.g. promoted ads). Make it optional, or narrow `item` (`article.job:not(.promoted)`). |
 | Try shows one page only | No `next`, or its selector doesn't match. For "Load more" or endless lists use `more` or `scroll`. |
-| Prices or numbers as text | Recipes read text as shown. Convert in the pipeline with `data.map` (see [listings.yaml](../pipelines/listings.yaml)). |
+| Prices or numbers as text | Recipes read text as shown. Convert in the pipeline with `data.map` (see [listings.yaml](../examples/apps/apartments.yaml)). |
 | `url` is empty | Read the link with `attr: href`; the visible text of a link is its title. |
 | `has no detail fields` | `browser.details` needs a `detail` section in the recipe's latest version. |
 | `None of the N item pages opened has the detail fields` | The item pages changed (or need a sign-in): fix the `detail` selectors, then **Try**. |

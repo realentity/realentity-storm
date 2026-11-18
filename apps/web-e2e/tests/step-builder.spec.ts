@@ -1,6 +1,5 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { unique } from "./support";
 
 /** Type into a card's box and leave it: written into the YAML then. */
@@ -86,12 +85,12 @@ steps:
 test("table-growth.yaml built on cards compiles the same as the template", async ({ page }) => {
   test.setTimeout(120_000);
   const appName = unique("Tables");
-  const tables = readFileSync(resolve(__dirname, "../../../pipelines/apps/tables.yaml"), "utf8").replace(
+  const tables = exampleYaml("apps/tables.yaml").replace(
     "name: Tables",
     `name: ${appName}`,
   );
   await page.request.post("/api/bundles", { data: { text: tables } });
-  const template = readFileSync(resolve(__dirname, "../../../pipelines/table-growth.yaml"), "utf8")
+  const template = exampleYaml("table-growth.yaml")
     .replaceAll("\r\n", "\n")
     .replace("app: Tables", `app: ${appName}`);
   const name = unique("Table growth");

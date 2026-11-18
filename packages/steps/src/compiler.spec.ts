@@ -1,5 +1,6 @@
+import { exampleApps, examplePipelineFiles, exampleYaml } from "@realentity/storm-shared/example-files";
 import { readAppSource, type CompileResult, type CompiledDefinition } from "@realentity/storm-shared";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { CORE_STEPS, defaultCatalog, type StepDefinition } from "./catalog";
@@ -37,7 +38,6 @@ const TEST_STEPS: StepDefinition[] = [
 ];
 
 /** Hand-written pipelines, ready to paste into the web app. */
-const PIPELINES = join(__dirname, "../../../pipelines");
 
 const compiler = new PipelineCompiler(defaultCatalog().with(...TEST_STEPS));
 
@@ -474,12 +474,11 @@ steps:
       expect(errorsOf(compiler.compileText(REPLIES(to))).join("\n")).toMatch(/recipient can't come from LLM output/);
     });
 
-    // M4-T6: the hand-written pipelines in /pipelines stay valid.
-    // M30: a pipeline of an App compiles against the App's definition in pipelines/apps.
-    const apps = readdirSync(join(PIPELINES, "apps")).map((f) => readAppSource(readFileSync(join(PIPELINES, "apps", f), "utf8")));
-    // examples.yaml is the examples' manifest (M40), not a pipeline: its pipelines compile in apps/api's examples test.
-    it.each(readdirSync(PIPELINES).filter((f) => f.endsWith(".yaml") && f !== "examples.yaml"))("pipelines/%s compiles", (file) => {
-      const text = readFileSync(join(PIPELINES, file), "utf8");
+    // M4-T6: the hand-written pipelines in /examples stay valid.
+    // M30: a pipeline of an App compiles against the App's definition in its file.
+    const apps = exampleApps().map((source) => readAppSource(source));
+    it.each(examplePipelineFiles())("the example %s compiles", (file) => {
+      const text = exampleYaml(file);
       const app = apps.find((a) => /^app: (.+)$/m.exec(text)?.[1]?.trim() === a.name);
       const result = ok(compiler.compileText(text, app ? { app } : {}));
       // M44: both reply pipelines sort by topic first, and gate the send.

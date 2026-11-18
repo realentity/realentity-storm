@@ -1,7 +1,7 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { checkAppSource, listPageOf, viewPageOf } from "@realentity/storm-shared";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { createPipeline, startRun, unique } from "./support";
 
 /** Type into a designer box and leave it: the designer writes it into the YAML then. */
@@ -168,8 +168,8 @@ test("the stages diagram: states, a move drawn, who makes it, a state renamed ev
 });
 
 // M35-E1, M37-E1: the Bills App's types, stages and pages made in the designer from empty, without the YAML tab
-test("the Bills App made in the designer, as pipelines/apps/bills.yaml has it", async ({ page }) => {
-  const bills = readFileSync(resolve(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8");
+test("the Bills App made in the designer, as examples/apps/bills.yaml has it", async ({ page }) => {
+  const bills = exampleYaml("apps/bills.yaml");
   const name = unique("Bills");
   await page.goto("/apps/new");
   await page.getByTestId("start-empty").click();
@@ -440,10 +440,10 @@ steps:
 test("the App's map: what starts its pipelines, what they write, its pages' buttons", async ({ page }) => {
   const appName = unique("Tables");
   const pipelineName = unique("Table growth");
-  const app = readFileSync(resolve(__dirname, "../../../pipelines/apps/tables.yaml"), "utf8")
+  const app = exampleYaml("apps/tables.yaml")
     .replace("name: Tables", `name: ${appName}`)
     .replace("run: Table growth", `run: ${pipelineName}`);
-  const pipeline = readFileSync(resolve(__dirname, "../../../pipelines/table-growth.yaml"), "utf8")
+  const pipeline = exampleYaml("table-growth.yaml")
     .replace("name: Table growth", `name: ${pipelineName}`)
     .replace("app: Tables", `app: ${appName}`);
   const saved = await page.request.post("/api/bundles", { data: { text: `${app}---\n${pipeline}` } });
@@ -544,7 +544,7 @@ test("every control of the App designer and the step cards has its help", async 
   await page.goto("/pipelines/new");
   await page.getByTestId("pipeline-tab-yaml").click();
   await page.getByTestId("pipeline-source").fill(
-    readFileSync(resolve(__dirname, "../../../pipelines/table-growth.yaml"), "utf8").replace(/^app: .*\n/m, ""),
+    exampleYaml("table-growth.yaml").replace(/^app: .*\n/m, ""),
   );
   await page.getByTestId("pipeline-tab-cards").click();
   for (const more of await page.getByTestId("more-inputs").all()) await more.click();

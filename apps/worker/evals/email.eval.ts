@@ -1,7 +1,8 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { config } from "dotenv";
 import { addUsage, ClaudeClient, emptyUsage, ModelRouter, type LlmUsage } from "@realentity/storm-llm";
 import { defaultCatalog, PipelineCompiler, type EmailMessage } from "@realentity/storm-steps";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
@@ -12,7 +13,7 @@ import { EMAILS, toMessage, type LabeledEmail } from "./email-dataset";
  * M4-V1 and M4-V2 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
  *   pnpm --filter @realentity/storm-worker eval:email            both evals
  *   pnpm --filter @realentity/storm-worker eval:email classify   classification only (cheap: Haiku)
- * Uses the instructions of pipelines/recruiter-replies.yaml, the models from .env/defaults, and writes
+ * Uses the instructions of examples/pipelines/recruiter-replies.yaml, the models from .env/defaults, and writes
  * evals/results/<date>-email.json.
  */
 const CLASSIFY_TARGET = 0.9;
@@ -25,9 +26,9 @@ async function main(): Promise<void> {
   const only = process.argv[2];
 
   const compiled = new PipelineCompiler(defaultCatalog()).compileText(
-    readFileSync(resolve(__dirname, "../../../pipelines/recruiter-replies.yaml"), "utf8"),
+    exampleYaml("recruiter-replies.yaml"),
   );
-  if (!compiled.ok) throw new Error("pipelines/recruiter-replies.yaml doesn't compile");
+  if (!compiled.ok) throw new Error("examples/pipelines/recruiter-replies.yaml doesn't compile");
   const stepWith = (id: string) => compiled.definition.steps.find((s) => s.id === id)!.with;
 
   const llm = ClaudeClient.fromApiKey(apiKey);

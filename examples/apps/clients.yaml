@@ -1,0 +1,307 @@
+# The Clients App, for freelance work: inquiries from email become Leads (client-inquiries), scored against the
+# work you take; a qualified one gets a proposal on its button (proposal), sent to a Client you added; a won one
+# gets an invoice draft (lead-won); a sent invoice past its due date turns overdue (overdue-invoices), with a
+# payment reminder on its button (payment-reminder). Emails only ever go to a Client's address, which you wrote:
+# never to one a pipeline read.
+app:
+  name: Clients
+  description: Leads from email, proposals and invoices
+  icon: briefcase
+  summary: >-
+    For freelance work: inquiries from email become scored leads, a proposal and a payment reminder on a
+    button, sent only to clients you added, and an invoice draft for each lead you win, watched until it
+    is paid.
+  setup:
+    - { kind: entities, type: Client, label: "Your clients, added on its page" }
+    - { kind: email, label: "An email account, to read inquiries and send proposals" }
+    - { kind: llm, label: "The LLM, to read inquiries and draft emails" }
+    - { kind: telegram, label: "Telegram, for new leads and overdue invoices" }
+types:
+  Client:
+    mine: true                     # you add your clients: their address is the only one Storm writes to
+    key: name
+    fields:
+      name: { type: text, required: true }
+      email: { type: email, required: true }
+      company: { type: text }
+      rate: { type: money, currency: currency }
+      currency: { type: text }
+      notes: { type: longtext }
+  Lead:
+    key: thread                    # the email thread: a reply in it updates the same Lead
+    title: title
+    stages:
+      field: status
+      initial: new
+      states: [new, qualified, proposal, won, lost]
+      moves:
+        - { from: new, to: [qualified, lost] }
+        - { from: qualified, to: [proposal], by: [me, pipeline] }    # the proposal pipeline moves it once sent
+        - { from: [qualified, proposal], to: [won, lost] }
+        - { from: [proposal, won, lost], to: [qualified] }           # a mistake undone
+        - { from: [qualified, lost], to: [new] }
+    fields:
+      thread: { type: text, required: true }
+      title: { type: text, required: true }
+      from: { type: email }
+      fromName: { type: text, label: From }
+      summary: { type: longtext }
+      budget: { type: money, currency: currency }
+      currency: { type: text }
+      deadline: { type: date }
+      knownClient: { type: text, label: Looks like }  # the LLM's guess of which Client it is
+      score: { type: number }
+      scoreReason: { type: longtext, label: Why }
+      messageId: { type: text }
+      client: { type: text, mine: true }               # the Client's name, set by you: proposals go to their address
+      notes: { type: longtext, mine: true }
+  Invoice:
+    key: lead                      # one invoice per won lead
+    title: number
+    stages:
+      field: status
+      initial: draft
+      states: [draft, sent, overdue, paid]
+      moves:
+        - { from: draft, to: [sent] }
+        - { from: sent, to: [overdue], by: [me, pipeline] }
+        - { from: [sent, overdue], to: [paid] }
+        - { from: [sent, overdue, paid], to: [draft, sent] }         # a mistake undone
+    fields:
+      lead: { type: text, required: true }
+      number: { type: text, required: true }
+      client: { type: text }
+      title: { type: text }
+      quoted: { type: money, currency: currency }       # the lead's budget
+      amount: { type: money, currency: currency, mine: true }
+      currency: { type: text }
+      issued: { type: date }
+      due: { type: date }
+pages:
+  - list: Lead
+    menu: { label: Leads, icon: briefcase }
+    columns: [title, fromName, budget, deadline, score, client, status]
+    filters: [status]
+    sort: -score
+    group: { by: status }
+    moves: true
+  - view: Lead
+    sections:
+      - { title: Lead, fields: [title, fromName, from, budget, deadline, knownClient] }
+      - { title: Score, fields: [score, scoreReason] }
+      - { title: Summary, fields: [summary] }
+    actions:
+      - { label: Send proposal, run: proposal, when: { status: qualified }, confirm: "Draft a proposal to this lead's client? You see it before it goes." }
+  - form: Lead
+    fields: [client, notes]
+  - list: Invoice
+    menu: { label: Invoices, icon: receipt }
+    columns: [number, client, amount, issued, { field: due, due: { days: 3, unless: { status: paid } } }, status]
+    filters: [status]
+    sort: -issued
+    group: { by: issued, period: month, totals: [amount, { field: amount, label: Unpaid, when: { status: overdue } }] }
+    moves: true
+  - view: Invoice
+    sections:
+      - { title: Invoice, fields: [number, client, title, amount, quoted, issued, due] }
+    actions:
+      - { label: Payment reminder, run: payment-reminder, when: { status: overdue }, confirm: "Draft a payment reminder to this client? You see it before it goes." }
+  - form: Invoice
+    fields: [amount]
+  - list: Client
+    menu: { label: Clients, icon: bookmark }
+    columns: [name, company, email, rate]
+    sort: name
+
+pipelines:
+  client-inquiries:
+    # Inquiries from email, in the Clients App: someone asking you for work
+    # becomes a Lead, by its email thread, with what they need, their budget and deadline, and a score against the work you
+    # take (edit it in the read step's instruction). A reply in the same thread updates its Lead. Nothing is sent.
+    fullName: Client inquiries
+    description: Inquiries from email become scored Leads.
+    trigger: { schedule: "*/15 * * * *" }
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { sinceDays: 7 }
+      - id: triage
+        type: email.classify
+        with:
+          messages: "{{fetch.messages}}"
+          instruction: >-
+            "inquiry": someone writes to me personally about paid work: a project, a quote, my availability or rate.
+            "other": everything else, also job alerts, recruiters hiring for a permanent job, newsletters and invoices.
+          labels: [inquiry, other]
+          keep: [inquiry]
+      - id: clients
+        type: data.read
+        with: { type: Client, limit: 200 }
+      - id: read
+        type: llm.extract
+        forEach: "{{triage.kept}}"
+        with:
+          content: "{{item}}"
+          instruction: >-
+            The work I take (edit it): software development and consulting, such as web applications, APIs and
+            integrations, remote, a few weeks or longer, with a budget. Not: unpaid work, equity only, design-only jobs.
+            My clients, to tell which one writes: {{clients.items}}
+          fields:
+            summary: what they need, in two or three sentences
+            budget: the budget they name, a number
+            currency: the budget's currency code, like EUR
+            deadline: when they need it done, a date
+            knownClient: the name of the client in my list who writes (by email address or company), exactly as written there; empty when none fits
+            score: how well it fits the work I take, a number from 0 to 100
+            scoreReason: why that score, in one sentence
+      - id: leads
+        type: data.map
+        with:
+          from: { emails: "{{triage.kept}}", values: "{{read.values}}" }
+          # Each inquiry with its email's thread, sender and subject.
+          expression: |-
+            $map(values, function($v, $i) {
+              $merge([$v, {
+                "thread": emails[$i].threadId ? emails[$i].threadId : emails[$i].messageId,
+                "title": emails[$i].subject,
+                "from": emails[$i].from,
+                "fromName": emails[$i].fromName,
+                "messageId": emails[$i].messageId
+              }])
+            })
+      - id: save
+        type: data.save
+        with: { items: "{{leads.items}}", type: Lead }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "New lead ({{item.score}}): {{item.title}}, from {{item.fromName}}.\n{{item.scoreReason}}" }
+
+  proposal:
+    # From a qualified Lead's button in the Clients App: a proposal, sent to the Client you
+    # set on the Lead (its form), after you Act at the gate, where you can edit it; then the Lead moves to proposal. A Lead
+    # without a Client of that name sends nothing: add the Client first. The address is the Client's, which you wrote,
+    # never the one the inquiry came from.
+    fullName: Proposal
+    description: A proposal to a lead's client, from its button, sent after you approve it.
+    trigger: { on: entity.action, type: Lead }
+    limits:
+      email.send: 10/day
+    steps:
+      - id: lead
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          # The Lead as a pipeline writes it: without its stage and your fields.
+          expression: '$sift($, function($v, $k) { $not($k in ["status", "client", "notes"]) })'
+      - id: clients
+        type: data.read
+        with: { type: Client, where: [{ field: name, op: eq, value: "{{trigger.item.client}}" }], limit: 1 }
+      - id: draft
+        type: llm.generate
+        forEach: "{{clients.items}}"
+        with:
+          instruction: >-
+            A short proposal email body for this lead, to the client: what I understand they need, how I would do it in
+            two or three steps, the time it takes, and my rate from the client's details (or ask theirs when it isn't
+            there). Plain, friendly, no subject line, no promises the lead doesn't support.
+          context: { lead: "{{trigger.item}}", client: "{{item}}" }
+      - id: send
+        type: email.send
+        forEach: "{{clients.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Proposal: {{trigger.item.title}}"
+          body: "{{draft.text}}"
+          inReplyTo: "{{trigger.item.messageId}}"
+      - id: moved
+        type: data.save
+        forEach: "{{clients.items}}"
+        with: { items: "{{lead.items}}", type: Lead, stage: proposal }
+
+  lead-won:
+    # When a Lead of the Clients App moves to won: an Invoice draft for it, due in 14 days, with the lead's budget as what
+    # was quoted. You set its amount on its page and mark it sent; overdue-invoices watches it from there.
+    fullName: Lead won
+    description: A won lead gets an invoice draft.
+    trigger: { on: entity.changed, type: Lead, stage: won }
+    steps:
+      - id: invoice
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: |-
+            (
+              $today := $toMillis($now());
+              {
+                "lead": thread,
+                "number": "INV-" & $fromMillis($today, "[Y0001][M01][D01]") & "-" & $uppercase($substring($replace(thread, /[^A-Za-z0-9]/, ""), 0, 4)),
+                "client": client,
+                "title": title,
+                "quoted": budget,
+                "currency": currency,
+                "issued": $fromMillis($today, "[Y0001]-[M01]-[D01]"),
+                "due": $fromMillis($today + 14 * 24 * 60 * 60 * 1000, "[Y0001]-[M01]-[D01]")
+              }
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{invoice.items}}", type: Invoice }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "Won: {{trigger.item.title}}. Invoice {{item.number}} drafted, due {{item.due}}: set its amount on its page." }
+
+  overdue-invoices:
+    # Every weekday morning, the sent Invoices of the Clients App past their due date move to overdue, and you are told
+    # once: an overdue one isn't sent any more, so it isn't read again. The reminder to the client is on its button
+    # (payment-reminder).
+    fullName: Overdue invoices
+    description: Sent invoices past their due date move to overdue.
+    trigger: { schedule: "0 9 * * 1-5" }
+    steps:
+      - id: open
+        type: data.read
+        with: { type: Invoice, where: [{ field: status, op: eq, value: sent }] }
+      - id: late
+        type: data.map
+        with:
+          from: "{{open.items}}"
+          # Past due; each as a pipeline writes it, without its stage and the amount you set.
+          expression: |-
+            $filter($, function($i) { $exists($i.due) and $toMillis($i.due) < $toMillis($now()) }).$sift($, function($v, $k) { $not($k in ["status", "amount"]) })
+      - id: save
+        type: data.save
+        with: { items: "{{late.items}}", type: Invoice, stage: overdue }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{late.items}}"
+        with: { text: "Overdue: invoice {{item.number}} to {{item.client}}, due {{item.due}}. Payment reminder is on its page." }
+
+  payment-reminder:
+    # From an overdue Invoice's button in the Clients App: a polite payment reminder to its
+    # Client's address (which you wrote), sent after you Act at the gate, where you can edit it.
+    fullName: Payment reminder
+    description: A payment reminder for an overdue invoice, from its button, sent after you approve it.
+    trigger: { on: entity.action, type: Invoice }
+    limits:
+      email.send: 10/day
+    steps:
+      - id: clients
+        type: data.read
+        with: { type: Client, where: [{ field: name, op: eq, value: "{{trigger.item.client}}" }], limit: 1 }
+      - id: draft
+        type: llm.generate
+        forEach: "{{clients.items}}"
+        with:
+          instruction: >-
+            A short, polite payment reminder email body to the client for this invoice: its number, what it was for, the
+            amount and the date it was due, and a request to let me know when it is paid. No subject line, no pressure.
+          context: { invoice: "{{trigger.item}}", client: "{{item}}" }
+      - id: send
+        type: email.send
+        forEach: "{{clients.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Payment reminder: invoice {{trigger.item.number}}"
+          body: "{{draft.text}}"

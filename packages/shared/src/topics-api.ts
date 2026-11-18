@@ -228,7 +228,7 @@ export function looksSecret(text: string): boolean {
 }
 
 /**
- * Topic upkeep (M42): the pipeline that keeps topics' memory up to date from email (pipelines/topic-upkeep.yaml, or any
+ * Topic upkeep (M42): the pipeline that keeps topics' memory up to date from email (examples/pipelines/topic-upkeep.yaml, or any
  * of the user's with topic.extract), and what it still needs, for the card on the Topics page.
  */
 export interface TopicUpkeepView {

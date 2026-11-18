@@ -1,0 +1,438 @@
+# The Server ops App: incidents on what you run, each open until it is resolved: a monitor that goes down (your
+# Monitors, checked by check-monitors, or an outside monitor's webhook, monitor-alerts), a database check
+# that finds trouble (database-check), the database that can't be reached (database-down). Each is resolved by itself when the cause is gone, or by you. Open issue on an open
+# one files it on GitHub, after you approve the request (incident-issue); every Monday, the week in numbers
+# (ops-week). No LLM.
+app:
+  name: Server ops
+  description: Your monitors, and incidents on what you run
+  icon: cpu
+  # M50: chosen when you install it; two installs can watch two databases and two repositories.
+  needs:
+    database: { kind: credential, type: database, label: "The database to check (a user that may only read)" }
+    github: { kind: credential, type: api_key, for: api.github.com, label: "GitHub, to open issues" }
+    repository: { kind: text, label: "Repository for its issues (owner/name)", example: me/infra }
+  summary: >-
+    Your monitors (web addresses, ports, ping; your network too) checked every five minutes; incidents
+    on what you run (a monitor down, a database check above 0, the database out of reach), each resolved
+    when the cause is gone; a GitHub issue after you approve it; the week in numbers. No LLM.
+  setup:
+    - { kind: telegram, label: "Telegram, for the incidents" }
+types:
+  # M47: what you watch, added on its list. Its address is yours (mine): only such an address may be on your network
+  # or Tailscale; Check monitors writes the rest.
+  Monitor:
+    key: name
+    title: name
+    fields:
+      name: { type: text, required: true }
+      kind: { type: enum, values: [http, tcp, ping], required: true, mine: true }
+      url: { type: url, mine: true, label: Address }        # http: https://nas.home.example:5001 or http://192.168.1.20:8080/health
+      host: { type: text, mine: true }                      # tcp and ping: a name or an IP
+      port: { type: number, mine: true }                    # tcp
+      expect: { type: number, mine: true, label: Expected status }   # http; empty: any 2xx or 3xx
+      ignoreTlsErrors: { type: yesno, mine: true, label: Ignore certificate errors }   # a self-signed certificate
+      paused: { type: yesno, mine: true }
+      status: { type: enum, values: [up, down] }
+      ms: { type: number, label: Response time (ms) }
+      error: { type: text, label: Why down }
+      checkedAt: { type: datetime, label: Checked }
+      certExpires: { type: date, label: Certificate until }
+  Incident:
+    key: id                        # what it is about and when it started: a monitor down twice is two Incidents
+    title: title
+    stages:
+      field: status
+      initial: open
+      states: [open, acknowledged, resolved]
+      moves:
+        - { from: open, to: [acknowledged], by: [me, pipeline] }       # Open issue acknowledges it
+        - { from: [open, acknowledged], to: [resolved], by: [me, pipeline] }
+        - { from: [acknowledged, resolved], to: [open] }               # not over after all
+    fields:
+      id: { type: text, required: true }
+      title: { type: text, required: true }
+      source: { type: enum, values: [monitor, database] }
+      subject: { type: text, label: About }       # the monitor, the check, or "connection"
+      detail: { type: longtext }
+      url: { type: url }
+      startedAt: { type: datetime, label: Started }
+      resolvedAt: { type: datetime, label: Resolved }
+      minutes: { type: number, label: Minutes }   # how long it lasted
+      issueUrl: { type: url, label: Issue }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Monitor
+    menu: { label: Monitors, icon: cpu }
+    add: true
+    columns: [name, status, ms, checkedAt, { field: certExpires, due: { days: 14 } }, kind]
+    filters: [status, kind]
+    sort: name
+    actions:
+      - { label: Check now, run: check-monitors }
+  - view: Monitor
+    sections:
+      - { title: Status, fields: [status, error, ms, checkedAt, certExpires] }
+      - { title: What is checked, fields: [kind, url, host, port, expect, ignoreTlsErrors, paused] }
+    history: { collection: monitor-ms, label: Response time (ms) }
+  - form: Monitor
+    fields: [kind, url, host, port, expect, ignoreTlsErrors, paused]
+  - list: Incident
+    menu: { label: Incidents, icon: cpu }
+    columns: [title, source, startedAt, minutes, status]
+    filters: [status, source]
+    sort: -startedAt
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check the database now, run: database-check }
+  - view: Incident
+    sections:
+      - { title: Incident, fields: [source, subject, startedAt, resolvedAt, minutes, url, issueUrl] }
+      - { title: Detail, fields: [detail] }
+    actions:
+      - { label: Open issue, run: incident-issue, when: { status: open }, confirm: "Propose a GitHub issue for this incident? You see the request before it goes." }
+  - form: Incident
+    fields: [notes]
+
+pipelines:
+  check-monitors:
+    # Your Monitors, in the Server ops App, checked every five minutes:
+    # a web address (http.check: its status, response time and certificate), a port (net.check tcp) or a ping. Each
+    # monitor's status is kept on it, its response time as a chart on its page. One that goes down opens an Incident and
+    # tells you on Telegram; up again, the Incident is resolved with how long it lasted. A paused one isn't checked.
+    # The addresses are the ones you typed on the Monitors page (fields of mine): only those may be on your network or
+    # Tailscale. No LLM.
+    fullName: Check monitors
+    description: Checks your monitors every five minutes; one down opens an incident, up again resolves it.
+    trigger: { schedule: "*/5 * * * *" }
+    steps:
+      - id: web
+        type: data.read
+        with:
+          type: Monitor
+          where:
+            - { field: kind, op: eq, value: http }
+            - { field: paused, op: neq, value: true }
+      - id: webCheck
+        type: http.check
+        forEach: "{{web.items}}"
+        with: { url: "{{item.url}}", expect: "{{item.expect}}", ignoreTlsErrors: "{{item.ignoreTlsErrors}}" }
+      - id: net
+        type: data.read
+        with:
+          type: Monitor
+          where:
+            - { field: kind, op: in, value: [tcp, ping] }
+            - { field: paused, op: neq, value: true }
+      - id: netCheck
+        type: net.check
+        forEach: "{{net.items}}"
+        with: { host: "{{item.host}}", kind: "{{item.kind}}", port: "{{item.port}}" }
+      - id: results
+        type: data.map
+        with:
+          from: { web: "{{web.items}}", webCheck: "{{webCheck}}", net: "{{net.items}}", netCheck: "{{netCheck}}" }
+          # Each monitor with what its check said.
+          expression: |-
+            $append(
+              $map(web, function($m, $i) { $merge([{ "name": $m.name }, webCheck[$i]]) }),
+              $map(net, function($m, $i) { $merge([{ "name": $m.name }, netCheck[$i]]) })
+            ).{
+              "name": name,
+              "status": state,
+              "ms": ms,
+              "error": error,
+              "checkedAt": checkedAt,
+              "certExpires": certExpires
+            }
+      - id: monitors
+        type: data.save
+        with: { items: "{{results.items}}", type: Monitor }
+      - id: times
+        type: data.history
+        with: { items: "{{results.items}}", collection: monitor-ms, key: name, value: ms, keep: 365 }
+      - id: open
+        type: data.read
+        with:
+          type: Incident
+          where:
+            - { field: source, op: eq, value: monitor }
+            - { field: status, op: in, value: [open, acknowledged] }
+      - id: incident
+        type: data.map
+        with:
+          from: { results: "{{results.items}}", open: "{{open.items}}" }
+          # A monitor down without an open Incident opens one; up again with one resolves it, with how long it lasted.
+          expression: |-
+            (
+              $at := $now();
+              $map(results, function($r) {(
+                $current := open[subject = $r.name][0];
+                $kept := $sift($current, function($v, $k) { $not($k in ["status", "notes"]) });
+                $down := $r.status = "down";
+                $down and $current ? undefined
+                : $down ? {
+                    "id": "monitor:" & $r.name & ":" & $at,
+                    "title": $r.name & " is down",
+                    "source": "monitor",
+                    "subject": $r.name,
+                    "detail": $r.error,
+                    "startedAt": $at,
+                    "status": "open"
+                  }
+                : $current ? $merge([$kept, {
+                    "resolvedAt": $at,
+                    "minutes": $round(($toMillis($at) - $toMillis($current.startedAt)) / 60000),
+                    "status": "resolved"
+                  }])
+              )})
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{incident.items}}", type: Incident }
+      - id: resolved
+        type: data.filter
+        with: { items: "{{save.changed}}", where: [{ field: item.status, op: eq, value: resolved }] }
+      - id: down
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "Down: {{item.subject}}. {{item.detail}}" }
+      - id: up
+        type: notify.telegram
+        forEach: "{{resolved.items}}"
+        with: { text: "Up again: {{item.item.subject}}, after {{item.item.minutes}} minutes." }
+
+  monitor-alerts:
+    # An uptime monitor's alerts, in the Server ops App, by webhook: its
+    # address and token are on this pipeline's page (docs/self-hosting.md §5). A monitor that goes down opens an Incident,
+    # one that is up again resolves it, with how long it lasted. It reads Uptime Kuma's webhook ({ monitor: { name, url },
+    # heartbeat: { status: 0 or 1, msg } }) and a plain one ({ "monitor": "api", "status": "down" or "up", "url", "message" }).
+    # The body is only read and kept, never used as an address.
+    fullName: Monitor alerts
+    description: A monitor down opens an incident, up again resolves it.
+    trigger: { webhook: token }
+    steps:
+      - id: open
+        type: data.read
+        with:
+          type: Incident
+          where:
+            - { field: source, op: eq, value: monitor }
+            - { field: status, op: in, value: [open, acknowledged] }
+      - id: incident
+        type: data.map
+        with:
+          from: { body: "{{trigger.body}}", open: "{{open.items}}" }
+          # The monitor, whether it is down, and its open Incident: a new one when it goes down, resolved when it is up.
+          expression: |-
+            (
+              $at := $now();
+              $name := $type(body.monitor) = "object" ? body.monitor.name : body.monitor ? body.monitor : body.name;
+              $url := $type(body.monitor) = "object" ? body.monitor.url : body.url;
+              $message := body.heartbeat.msg ? body.heartbeat.msg : body.message ? body.message : body.msg;
+              $down := body.heartbeat ? body.heartbeat.status = 0 : $lowercase($string(body.status)) in ["down", "fail", "failed", "critical", "firing", "alert"];
+              $current := open[subject = $name][0];
+              $kept := $sift($current, function($v, $k) { $not($k in ["status", "notes"]) });
+              $not($exists($name)) ? undefined
+                : $down and $current ? $merge([$kept, { "detail": $message }])
+                : $down ? {
+                    "id": "monitor:" & $name & ":" & $at,
+                    "title": $name & " is down",
+                    "source": "monitor",
+                    "subject": $name,
+                    "detail": $message,
+                    "url": $url,
+                    "startedAt": $at,
+                    "status": "open"
+                  }
+                : $current ? $merge([$kept, {
+                    "resolvedAt": $at,
+                    "minutes": $round(($toMillis($at) - $toMillis($current.startedAt)) / 60000),
+                    "status": "resolved"
+                  }])
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{incident.items}}", type: Incident }
+      - id: resolved
+        type: data.filter
+        with: { items: "{{save.changed}}", where: [{ field: item.status, op: eq, value: resolved }] }
+      - id: down
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "Down: {{item.subject}}. {{item.detail}}\n{{item.url}}" }
+      - id: up
+        type: notify.telegram
+        forEach: "{{resolved.items}}"
+        with: { text: "Up again: {{item.item.subject}}, after {{item.item.minutes}} minutes." }
+
+  database-check:
+    # Every 10 minutes, checks of your database in the Server ops App: each
+    # row of `sql` is a check, its name and a number that is fine at 0 (orders stuck for 30 minutes, failed jobs in the last
+    # hour). A check above 0 opens an Incident, once, and back at 0 resolves it; a query that works resolves the database's
+    # "can't connect" Incident (database-down). Its database is the App's: you choose the credential when you
+    # install it (kind database: postgresql://reader:…@host:5432/app, a user that may only read). Change `sql` to your
+    # tables.
+    fullName: Database check
+    description: Database checks above 0 open incidents, back at 0 resolve them.
+    trigger: { schedule: "*/10 * * * *" }
+    steps:
+      - id: checks
+        type: db.query
+        with:
+          connection: "{{cred:database}}"
+          sql: |-
+            SELECT 'Orders stuck for 30 minutes' AS name, count(*) AS value FROM orders
+              WHERE status = 'pending' AND created_at < now() - interval '30 minutes'
+            UNION ALL
+            SELECT 'Jobs failed in the last hour', count(*) FROM jobs
+              WHERE status = 'failed' AND finished_at > now() - interval '1 hour'
+      - id: trouble
+        type: data.alert
+        with: { items: "{{checks.items}}", key: name, value: value, above: 0 }
+      - id: open
+        type: data.read
+        with:
+          type: Incident
+          where:
+            - { field: source, op: eq, value: database }
+            - { field: status, op: in, value: [open, acknowledged] }
+      - id: incidents
+        type: data.map
+        with:
+          from: { crossed: "{{trouble.crossed}}", cleared: "{{trouble.cleared}}", open: "{{open.items}}" }
+          # A new Incident for each check that went above 0; the open ones of the checks back at 0, and the connection's,
+          # resolved.
+          expression: |-
+            (
+              $at := $now();
+              $done := function($i) { $merge([$sift($i, function($v, $k) { $not($k in ["status", "notes"]) }), {
+                "resolvedAt": $at,
+                "minutes": $round(($toMillis($at) - $toMillis($i.startedAt)) / 60000),
+                "status": "resolved"
+              }]) };
+              $back := cleared.name;
+              [
+                crossed.{
+                  "id": "database:" & name & ":" & $at,
+                  "title": name & ": " & value,
+                  "source": "database",
+                  "subject": name,
+                  "detail": name & " is " & value & ", fine at 0.",
+                  "startedAt": $at,
+                  "status": "open"
+                },
+                open[subject in $back or subject = "connection"].$done($)
+              ]
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{incidents.items}}", type: Incident }
+      - id: tell
+        type: notify.telegram
+        when: "{{trouble.text}}"
+        with: { text: "Database checks:\n{{trouble.text}}" }
+
+  database-down:
+    # When Database check (database-check) fails, the database can't be reached or answered with an error: an Incident
+    # in the Server ops App, once, until a check works again and resolves it. Save database-check first: this one
+    # names it.
+    fullName: Database down
+    description: The database check failing opens an incident, once.
+    trigger: { on: run.finished, pipeline: database-check, status: [FAILED] }
+    steps:
+      - id: open
+        type: data.read
+        with:
+          type: Incident
+          where:
+            - { field: subject, op: eq, value: connection }
+            - { field: status, op: in, value: [open, acknowledged] }
+      - id: incident
+        type: data.map
+        with:
+          from: { open: "{{open.items}}", summary: "{{trigger.summary}}" }
+          # A new one only when none is open: a check every 10 minutes is one Incident, not one each.
+          expression: |-
+            (
+              $at := $now();
+              $count(open) = 0 ? {
+                "id": "database:connection:" & $at,
+                "title": "The database check fails",
+                "source": "database",
+                "subject": "connection",
+                "detail": summary,
+                "startedAt": $at,
+                "status": "open"
+              }
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{incident.items}}", type: Incident }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{save.added}}"
+        with: { text: "The database check fails: {{item.detail}}" }
+
+  incident-issue:
+    # From an open Incident's button in the Server ops App: a GitHub issue for it, created
+    # only when you press Act at its gate (which shows the request); then the Incident is acknowledged, with the issue's
+    # address. The GitHub credential and the repository are the App's: you choose them when you install it (a fine-grained
+    # token with Issues: read and write on the repository, kind API key, allowed host api.github.com).
+    fullName: Incident issue
+    description: A GitHub issue for an incident, after you approve it; the incident is acknowledged.
+    trigger: { on: entity.action, type: Incident }
+    steps:
+      - id: issue
+        type: http.request
+        with:
+          method: POST
+          url: "https://api.github.com/repos/{{setting.repository}}/issues"
+          headers:
+            Authorization: "Bearer {{cred:github}}"
+            Accept: application/vnd.github+json
+          body:
+            title: "{{trigger.item.title}}"
+            body: "{{trigger.item.detail}}\n\nSince {{trigger.item.startedAt}}. {{trigger.item.url}}"
+            labels: [incident]
+      - id: acknowledged
+        type: data.map
+        with:
+          from: { incident: "{{trigger.item}}", issue: "{{issue.json}}" }
+          expression: '$merge([$sift(incident, function($v, $k) { $not($k in ["status", "notes"]) }), { "issueUrl": issue.html_url }])'
+      - id: save
+        type: data.save
+        with: { items: "{{acknowledged.items}}", type: Incident, stage: acknowledged }
+
+  ops-week:
+    # Every Monday morning, the Server ops App's last week in numbers, on Telegram: incidents per source, how long they
+    # lasted, the longest, and what is still open. Counted here, no LLM.
+    fullName: Ops week
+    description: Every Monday, last week's incidents in numbers.
+    trigger: { schedule: "0 9 * * 1" }
+    steps:
+      - id: incidents
+        type: data.read
+        with: { type: Incident, sort: -startedAt, limit: 500 }
+      - id: week
+        type: data.map
+        with:
+          from: "{{incidents.items}}"
+          expression: |-
+            (
+              $since := $toMillis($now()) - 7 * 24 * 60 * 60 * 1000;
+              $all := $[$toMillis(startedAt) > $since];
+              $open := $[status != "resolved"];
+              $longest := $all[minutes = $max($all.minutes)][0];
+              $lines := [
+                "Incidents last week: " & $string($count($all)) & ($count($all) > 0 ? " (" & $join($each($all{ source: $count(id) }, function($v, $k) { $k & " " & $string($v) }), ", ") & ")" : ""),
+                "Down for " & $string($sum($all.minutes) ? $sum($all.minutes) : 0) & " minutes in all",
+                $longest ? "The longest: " & $longest.title & ", " & $longest.minutes & " minutes",
+                $count($open) > 0 ? $string($count($open)) & " still open: " & $join($open.title, "; ") : "Nothing open"
+              ];
+              { "text": $join($lines, "\n") }
+            )
+      - id: tell
+        type: notify.telegram
+        with: { text: "{{week.value.text}}" }

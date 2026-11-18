@@ -1,9 +1,10 @@
+import { exampleApps, exampleYaml } from "@realentity/storm-shared/example-files";
 import { config } from "dotenv";
 import { readAppSource } from "@realentity/storm-shared";
 import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type ChatMessage, type LlmUsage } from "@realentity/storm-llm";
 import { definitionToSource, type CompiledDefinition } from "@realentity/storm-shared";
 import { defaultCatalog, diffDefinitions, PipelineCompiler } from "@realentity/storm-steps";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Builder, type TurnResult } from "../src/builder/builder";
 
@@ -69,13 +70,13 @@ async function main(): Promise<void> {
   const builder = new Builder(ClaudeChat.fromApiKey(apiKey), compiler, catalog);
   const choice = await new ModelRouter(() => Promise.resolve(null), process.env).choose("eval", "builder");
   const load = (file: string): CompiledDefinition => {
-    const text = readFileSync(resolve(__dirname, "../../../pipelines", file), "utf8");
-    // M33: a pipeline of an App compiles against its definition in pipelines/apps.
+    const text = exampleYaml(file);
+    // M33: a pipeline of an App compiles against its definition in its file.
     const appName = /^app: (.+)$/m.exec(text)?.[1]?.trim();
-    const appFile = appName && readdirSync(resolve(__dirname, "../../../pipelines/apps")).find((f) => readFileSync(resolve(__dirname, "../../../pipelines/apps", f), "utf8").includes(`name: ${appName}\n`));
-    const app = appFile ? readAppSource(readFileSync(resolve(__dirname, "../../../pipelines/apps", appFile), "utf8")) : undefined;
+    const appSource = appName ? exampleApps().find((source) => source.includes(`name: ${appName}\n`)) : undefined;
+    const app = appSource ? readAppSource(appSource) : undefined;
     const compiled = compiler.compileText(text, app ? { app } : {});
-    if (!compiled.ok) throw new Error(`pipelines/${file} doesn't compile`);
+    if (!compiled.ok) throw new Error(`The example ${file} doesn't compile`);
     return compiled.definition;
   };
 

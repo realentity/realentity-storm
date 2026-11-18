@@ -1,0 +1,105 @@
+# M33: the Releases App, once release-watch's page (M27). Release watch keeps each release a feed lists as a
+# Release; Upgraded (mine) hides one from the list, Upgrade notes asks Release notes (release-notes) about it.
+#
+app:
+  name: Releases
+  description: Releases of what runs on your server
+  icon: package
+  summary: >-
+    The releases of what runs on your server, summarized for upgrading, with upgrade notes on a button.
+  setup:
+    - { kind: llm, label: "The LLM, to summarize" }
+    - { kind: telegram, label: "Telegram, for the summaries" }
+types:
+  Release:
+    key: id
+    title: title
+    fields:
+      id: { type: text, required: true }
+      title: { type: text, required: true }
+      published: { type: datetime }
+      url: { type: url }
+      source: { type: url, label: Feed }
+      summary: { type: longtext }
+      upgraded: { type: yesno, mine: true }
+pages:
+  - list: Release
+    menu: { label: Releases, icon: package }
+    columns: [title, published, source, upgraded]
+    filters: [upgraded]
+    sort: -published
+    actions:
+      - { label: Check now, run: release-watch }
+  - view: Release
+    fields: [title, published, summary, url]
+    actions:
+      - { label: Upgrade notes, run: release-notes, confirm: "Send this release's upgrade notes to Telegram?" }
+  - form: Release
+    fields: [upgraded]
+
+pipelines:
+  release-watch:
+    # M13: once a day, the releases of what runs on your server, from their feeds (no browser, no recipe). Only releases
+    # not seen before reach the LLM and you: data.save keeps what was read, and `when` skips the summary and the message on a
+    # day with nothing new. The first run reports everything the feeds list at the moment, once.
+    # Add or remove projects in `urls` (GitHub: https://github.com/<owner>/<repo>/releases.atom); a site other than
+    # github.com needs its host in policy.allowedDomains too.
+    # M27, M33: the releases kept are Releases of the Releases App, on its
+    # page newest first; Upgraded marks one, and Upgrade notes asks the Release notes pipeline (release-notes) about it.
+    fullName: Release watch
+    description: New releases of your server's stack, summarized for upgrading; nothing on a quiet day.
+    trigger: { schedule: "0 9 * * *" }
+    policy:
+      allowedDomains: [github.com, www.postgresql.org]
+    steps:
+      - id: feeds
+        type: http.fetch
+        with:
+          urls:
+            - https://github.com/nodejs/node/releases.atom
+            - https://github.com/prisma/prisma/releases.atom
+            - https://github.com/microsoft/playwright/releases.atom
+            - https://github.com/caddyserver/caddy/releases.atom
+            - https://github.com/pgvector/pgvector/releases.atom
+            - https://github.com/timgit/pg-boss/releases.atom
+            - https://github.com/n8n-io/n8n/releases.atom
+            - https://github.com/paperless-ngx/paperless-ngx/releases.atom
+            - https://github.com/usememos/memos/releases.atom
+            - https://github.com/tailscale/tailscale/releases.atom
+            - https://www.postgresql.org/news.rss
+          maxItems: 300
+      - id: seen
+        type: data.save
+        with: { items: "{{feeds.items}}", type: Release, fields: [title] }
+      - id: summary
+        type: llm.summarize
+        when: "{{seen.added}}"
+        with:
+          content: "{{seen.added}}"
+          instruction: >-
+            One line per project and version (newest first): what matters when upgrading a self-hosted server, i.e.
+            security fixes, breaking changes, required migrations. Say "pre-release" for alphas, betas and RCs and keep
+            those to a few words. Skip PostgreSQL news that isn't a release.
+          maxWords: 300
+      - id: tell
+        type: notify.telegram
+        with: { text: "New releases on your server's stack:\n{{summary.summary}}" }
+
+  release-notes:
+    # M27, M33: from a Release's button in the Releases App: what upgrading to that release
+    # means, on Telegram. The Release is {{trigger.item}}: what the feed said, so it is summarized, never followed.
+    fullName: Release notes
+    description: Upgrade notes for one release, from its button on its page.
+    trigger: { on: entity.action, type: Release }
+    steps:
+      - id: notes
+        type: llm.summarize
+        with:
+          content: "{{trigger.item}}"
+          instruction: >-
+            What upgrading a self-hosted server to this release means: security fixes, breaking changes, required
+            migrations, in that order. Say plainly when the notes don't tell.
+          maxWords: 200
+      - id: tell
+        type: notify.telegram
+        with: { text: "{{trigger.item.title}}\n{{notes.summary}}" }

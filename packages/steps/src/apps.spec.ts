@@ -1,5 +1,5 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { AppDefinitionSchema, checkEntity, type AppDefinition, type CompileResult } from "@realentity/storm-shared";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { diffApps } from "./app-diff";
@@ -283,7 +283,7 @@ describe("Apps (M30)", () => {
 
   // M33: a step that writes entities of its own needs its App to have their type
   it("checks bill.save's Bill against the pipeline's App", () => {
-    const bills = AppDefinitionSchema.parse(parseYaml(readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8")));
+    const bills = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/bills.yaml")));
     const save = (app?: object) => ({ name: "Bills", ...(app ? { app: "Bills" } : {}), steps: [{ id: "save", type: "bill.save", with: { bills: [] } }] });
     ok(compiler.compile(save({}), { app: bills }));
     expect(errorsOf(compiler.compile(save()))).toEqual(["steps[0].type: bill.save writes Bill entities: say which App with `app:` (one with a Bill type)"]);
@@ -307,7 +307,7 @@ describe("Apps (M30)", () => {
 
   // M33: price.watch reads Products of mine and writes Offers
   it("checks price.watch's Product and Offer, and reads a shop line", () => {
-    const prices = AppDefinitionSchema.parse(parseYaml(readFileSync(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8")));
+    const prices = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/prices.yaml")));
     const watch = { name: "Prices", app: "Prices", steps: [{ id: "watch", type: "price.watch", with: {} }] };
     ok(compiler.compile(watch, { app: prices }));
     const notMine = AppDefinitionSchema.parse({ ...prices, pages: [], types: { ...prices.types, Product: { ...prices.types.Product, mine: false } } });

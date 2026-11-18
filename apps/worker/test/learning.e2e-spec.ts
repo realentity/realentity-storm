@@ -1,3 +1,4 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { applyProposal, createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import {
   EMBEDDING_DIMENSIONS,
@@ -11,7 +12,6 @@ import {
 } from "@realentity/storm-llm";
 import { defaultCatalog, PipelineCompiler, TopicProposalSchema, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type z } from "zod";
 import { Learning } from "../src/learning/learning";
@@ -21,7 +21,7 @@ import { emailBlock } from "../src/steps/email-block";
 import { createVersion } from "./support/test-steps";
 
 const catalog = defaultCatalog();
-const RECRUITER_REPLIES = readFileSync(join(__dirname, "../../../pipelines/recruiter-replies.yaml"), "utf8");
+const RECRUITER_REPLIES = exampleYaml("recruiter-replies.yaml");
 
 /** Bag of words hashed into 1024 dimensions: texts sharing words are close, as with a real model (cosine). */
 class FakeEmbeddings implements Embeddings {

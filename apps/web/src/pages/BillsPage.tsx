@@ -13,7 +13,7 @@ export function BillsPage() {
     <>
       <PageHeader title="Bills" pretitle="From email, the last twelve months" />
       {bills.data.bills.length === 0 ? (
-        <Empty>No bills yet. The Bills pipeline (pipelines/bills.yaml) reads them from email, PDFs too.</Empty>
+        <Empty>No bills yet. The Bills pipeline (examples/apps/bills.yaml) reads them from email, PDFs too.</Empty>
       ) : (
         <Months view={bills.data} onChanged={bills.reload} />
       )}

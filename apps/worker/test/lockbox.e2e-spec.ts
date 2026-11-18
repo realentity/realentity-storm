@@ -1,3 +1,4 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { KeyRing, seal } from "@realentity/storm-crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { readAppSource, sealedAt } from "@realentity/storm-shared";
@@ -5,10 +6,8 @@ import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import sodium from "libsodium-wrappers";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, BlockList } from "node:net";
-import { join } from "node:path";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry } from "../src/runner/step-executor";
 import { CredentialVault } from "../src/secrets/credential-vault";
@@ -20,7 +19,6 @@ import { createVersion } from "./support/test-steps";
 jest.setTimeout(60_000);
 
 const TOKEN = "github_pat_example_0123";
-const PIPELINES = join(__dirname, "../../../pipelines");
 
 /** GitHub's API as far as Lockbox uses it: a scope's public key, its variables, secrets PUT, variables POST/PATCH. */
 class FakeGitHub {
@@ -112,7 +110,7 @@ describe("Lockbox sync", () => {
 
   /** Lockbox with its entries, a GitHub owner holding a token credential (allowed on `hosts`), and Sync saved. */
   async function lockbox(hosts = ["api.github.com"], kind = "user") {
-    const appSource = readFileSync(join(PIPELINES, "apps/lockbox.yaml"), "utf8");
+    const appSource = exampleYaml("apps/lockbox.yaml");
     const app = await db.client.app.create({ data: { userId, name: "Lockbox" } });
     const version = await db.client.appVersion.create({ data: { appId: app.appId, version: 1, definition: {}, source: appSource } });
     await db.client.app.update({ where: { appId: app.appId }, data: { currentVersionId: version.appVersionId } });
@@ -151,7 +149,7 @@ describe("Lockbox sync", () => {
     });
 
     // The pipeline as shipped, pointed at the fake; auto-approve on (Sync is the approval).
-    const source = readFileSync(join(PIPELINES, "lockbox-sync.yaml"), "utf8").replaceAll(
+    const source = exampleYaml("lockbox-sync.yaml").replaceAll(
       "https://api.github.com/",
       `http://api.github.com:${github.port}/`,
     );

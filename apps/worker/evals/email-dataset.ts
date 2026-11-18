@@ -2,7 +2,7 @@ import { type EmailMessage } from "@realentity/storm-steps";
 
 /**
  * Labeled emails for the M4 evals (docs/design.md test strategy: LLM eval, run by hand). Written for this purpose: no real
- * people or companies. `reply` follows the triage instruction of pipelines/recruiter-replies.yaml: a recruiter,
+ * people or companies. `reply` follows the triage instruction of examples/pipelines/recruiter-replies.yaml: a recruiter,
  * hiring manager or client writing to the user personally, expecting an answer.
  */
 export interface LabeledEmail {

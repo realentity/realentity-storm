@@ -1,6 +1,5 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createPipeline, startRun, unique } from "./support";
 
 // M32-E1: a comment on a job, a move to Favorite, then Apply starts its pipeline; a type of mine added by hand
@@ -221,7 +220,7 @@ pages:
 
 // M47-E1: a monitor added on its list, checked by the button; its status, response time chart and incident
 test("Server ops: a monitor added on its form, checked by Check now: its status, chart and incident", async ({ page }) => {
-  const read = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+  const read = (file: string) => exampleYaml(file);
   const name = unique("Server ops");
   const checks = unique("Check monitors");
   const app = read("apps/server-ops.yaml").replace("name: Server ops", `name: ${name}`).replace("run: Check monitors }", `run: "${checks}" }`);

@@ -1,9 +1,8 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from "@realentity/storm-llm";
 import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { type z } from "zod";
 import { WeeklyReview } from "../src/jobs/weekly-review";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
@@ -12,7 +11,7 @@ import { DedupeStep, SaveStep } from "../src/steps/data-steps";
 import { prepareApplication, submitApplication } from "../src/steps/form-steps";
 import { ScoreStep } from "../src/steps/llm-steps";
 
-const JOB_SEARCH = readFileSync(join(__dirname, "../../../pipelines/apps/job-search.yaml"), "utf8");
+const JOB_SEARCH = exampleYaml("apps/job-search.yaml");
 
 /** Answers what it's told to; keeps the prompts. */
 class Scripted implements LlmClient {

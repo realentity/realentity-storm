@@ -1,3 +1,4 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { KeyRing, payloadHash } from "@realentity/storm-crypto";
 import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
@@ -5,8 +6,6 @@ import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type z } from "zod";
 import { ImapSmtpConnector } from "../src/mail/imap-smtp-connector";
@@ -258,7 +257,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
 
     // M44: the shipped pipelines: an email of a topic is answered by Topic replies only, any other by Recruiter replies
     it("Topic replies drafts for a topic's email, Recruiter replies for the rest: none twice", async () => {
-      const shipped = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+      const shipped = (file: string) => exampleYaml(file);
       const topic = await db.client.topic.create({
         data: { userId, name: "Acme project", directions: { create: { kind: "DOMAIN", value: "acme.test" } } },
       });
@@ -283,7 +282,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
 
     // M50-T16: a topic's mailbox is a source; Topic replies reads every mailbox the topics read
     it("Topic replies reads each topic's mailbox, matches an email only to the topics of its mailbox, and replies from it", async () => {
-      const shipped = (file: string) => readFileSync(join(__dirname, "../../../pipelines", file), "utf8");
+      const shipped = (file: string) => exampleYaml(file);
       const ana = await addEmailAccount(db.client, userId, server, { address: OTHER_MAILBOX, password: OTHER_PASSWORD });
       const me = (await db.client.emailAccount.findFirstOrThrow({ where: { userId, address: MAILBOX } })).emailAccountId;
       // Acme's mail is in Ana's mailbox; Hiring has no mailbox: the default account (mine).
@@ -551,7 +550,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
     });
 
     it("the follow-ups pipeline: a draft in the thread, to whom the user's email went, waiting at the gate", async () => {
-      const source = await readFile(join(__dirname, "../../../pipelines/email-follow-ups.yaml"), "utf8");
+      const source = exampleYaml("email-follow-ups.yaml");
       const pipelineVersionId = await createVersion(db.client, userId, source);
       const llm = new FakeLlm(() => "Hi Ana, did you have a chance to look at my proposal? Best");
       const steps = coreSteps({

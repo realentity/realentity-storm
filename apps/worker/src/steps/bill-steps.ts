@@ -106,7 +106,7 @@ interface ReadBill {
 }
 
 /**
- * bill.save (M23): bills kept as Bill entities of the pipeline's App (M33, pipelines/apps/bills.yaml), by the sender's
+ * bill.save (M23): bills kept as Bill entities of the pipeline's App (M33, examples/apps/bills.yaml), by the sender's
  * domain with the bill's reference, period or due date: the same bill read again (a reminder, the run retried)
  * updates it, keeping whether the user paid it. A new one is `due`, and compared with the issuer's usual amount; a dry run
  * saves nothing.

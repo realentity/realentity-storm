@@ -1,3 +1,4 @@
+import { readAppPackage } from "@realentity/storm-shared";
 import { parse } from "yaml";
 
 /**
@@ -13,11 +14,12 @@ types:
       name: { type: text, required: true }
 `;
 
-/** The ready-made Apps in pipelines/apps, as written there (comments and all), by their name. */
+/** The ready-made Apps in examples/apps, without their pipelines (comments and all), by their name. */
 export const APP_TEMPLATES: { name: string; description: string; source: string }[] = Object.values(
-  import.meta.glob<string>("../../../../pipelines/apps/*.yaml", { query: "?raw", import: "default", eager: true }),
+  import.meta.glob<string>("../../../../examples/apps/*.yaml", { query: "?raw", import: "default", eager: true }),
 )
-  .map((source) => {
+  .map((text) => {
+    const { source } = readAppPackage(text).documents[0];
     const parsed = parse(source) as { name?: string; description?: string };
     return { name: parsed.name ?? "App", description: parsed.description ?? "", source };
   })

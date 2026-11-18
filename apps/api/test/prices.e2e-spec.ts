@@ -1,7 +1,6 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { PRICE_WATCH_COLLECTION, PRICES_PIPELINE, type PipelineDetailView, type PriceHistoryView, type PricesStatusView, type WatchedProductView } from "@realentity/storm-shared";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -99,7 +98,7 @@ describe("prices", () => {
 
     // M33: the template's pipeline belongs to the Prices App, saved first.
     await agent.post("/api/prices/pipeline").expect(400);
-    const app = await readFile(join(__dirname, "../../../pipelines/apps/prices.yaml"), "utf8");
+    const app = exampleYaml("apps/prices.yaml");
     await agent.post("/api/apps").send({ source: app }).expect(201);
     const pipeline = (await agent.post("/api/prices/pipeline").expect(201)).body as PipelineDetailView;
     expect(pipeline).toMatchObject({ name: "Prices", enabled: false, currentVersion: 1 });
@@ -107,8 +106,8 @@ describe("prices", () => {
     await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
     expect(await status()).toEqual([{ pipelineId: pipeline.pipelineId, name: "Prices", enabled: true }]);
 
-    // The template the button uses is pipelines/prices.yaml.
-    const file = await readFile(join(__dirname, "../../../pipelines/prices.yaml"), "utf8");
+    // The template the button uses is examples/apps/prices.yaml.
+    const file = exampleYaml("prices.yaml");
     expect(PRICES_PIPELINE).toBe(file.replace(/\r\n/g, "\n"));
   });
 });

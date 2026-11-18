@@ -1,6 +1,5 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { unique } from "./support";
 
 // M55-E1, M56-E1, M57-E1 (Lockbox v3): on a project's page its paths, and its variables and secrets by path, each path with Add
@@ -8,7 +7,7 @@ import { unique } from "./support";
 // fields as its destination needs; an entry's path among its project's; deleting a project in use asks first
 test("Lockbox: variables and secrets added by path on their project's page, a bundle's paths in order", async ({ page }) => {
   const name = unique("Lockbox");
-  const source = readFileSync(join(__dirname, "../../../pipelines/apps/lockbox.yaml"), "utf8").replace(/^name: Lockbox$/m, `name: ${name}`);
+  const source = exampleYaml("apps/lockbox.yaml").replace(/^name: Lockbox$/m, `name: ${name}`);
   const created = await page.request.post("/api/apps", { data: { source } });
   expect(created.status(), await created.text()).toBe(201);
   const appId = ((await created.json()) as { appId: string }).appId;

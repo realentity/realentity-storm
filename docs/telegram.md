@@ -198,7 +198,7 @@ the builder instead. The answer is saved on the Profile page as a fact.
 | Message | When (your `TZ`) | Contents | Switch |
 | --- | --- | --- | --- |
 | Morning brief | every day 07:30 | Today's calendar (if Google is connected), what waits for you, failures in the last day, unpaid bills due within 3 days | Settings |
-| Daily digest | every day 19:00 | What ran, what waits, what failed, suggestions, LLM cost | the `Daily digest` pipeline ([pipelines/daily-digest.yaml](../pipelines/daily-digest.yaml)) |
+| Daily digest | every day 19:00 | What ran, what waits, what failed, suggestions, LLM cost | the `Daily digest` pipeline ([examples/pipelines/daily-digest.yaml](../examples/pipelines/daily-digest.yaml)) |
 | Weekly review | Sunday 19:00 | The 7-day digest, budget so far, where the money went, application outcomes, recipes that found nothing for a while | Settings |
 
 ### 3.5 Alerts
@@ -264,7 +264,7 @@ something to say.
 
 ### Example: tell you only when something changed
 
-From [pipelines/price-watch.yaml](../pipelines/price-watch.yaml):
+From [examples/pipelines/price-watch.yaml](../examples/pipelines/price-watch.yaml):
 
 ```yaml
 name: Price watch
@@ -305,7 +305,7 @@ steps:
 
 ### Example: one message per item
 
-From [pipelines/application-replies.yaml](../pipelines/application-replies.yaml). `forEach` sends one message per
+From [examples/apps/job-search.yaml](../examples/apps/job-search.yaml). `forEach` sends one message per
 item, and `when` limits it to items whose status changed:
 
 ```yaml
@@ -330,9 +330,9 @@ steps:
 
 Mark it **Essential** on its page so it keeps running after the LLM budget is spent (it doesn't use the LLM).
 
-Other pipelines that use Telegram: [release-watch.yaml](../pipelines/release-watch.yaml),
-[product-watch.yaml](../pipelines/product-watch.yaml), [bills.yaml](../pipelines/bills.yaml),
-[follow-up.yaml](../pipelines/follow-up.yaml), [release-notes.yaml](../pipelines/release-notes.yaml).
+Other pipelines that use Telegram: [release-watch.yaml](../examples/apps/releases.yaml),
+[product-watch.yaml](../examples/pipelines/product-watch.yaml), [bills.yaml](../examples/apps/bills.yaml),
+[follow-up.yaml](../examples/pipelines/follow-up.yaml), [release-notes.yaml](../examples/apps/releases.yaml).
 
 ---
 

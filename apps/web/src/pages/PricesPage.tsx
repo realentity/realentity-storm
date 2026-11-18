@@ -27,7 +27,7 @@ export function PricesPage() {
       />
       {status.data && <Checker status={status.data} />}
       {products.data.length === 0 ? (
-        <Empty>Nothing watched yet. Add a product with its shops' pages; the Prices pipeline (pipelines/prices.yaml) checks them.</Empty>
+        <Empty>Nothing watched yet. Add a product with its shops' pages; the Prices pipeline (examples/apps/prices.yaml) checks them.</Empty>
       ) : (
         <div className="d-flex flex-column gap-3">
           {products.data.map((product) => (

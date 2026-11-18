@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { exampleYaml } from "./example-files";
 import { addPage, moveListPage, removePage, setPageProperty } from "./app-page-designer";
 import { checkAppSource } from "./app-source";
 
@@ -86,7 +85,7 @@ describe("the Pages tab's edits (M37-T1)", () => {
   });
 
   it("gives a page the App check passes, from each template's", () => {
-    const bills = readFileSync(join(__dirname, "../../../pipelines/apps/bills.yaml"), "utf8");
+    const bills = exampleYaml("apps/bills.yaml");
     const edited = setPageProperty(setPageProperty(bills, "list", "Bill", "sort", "-amount"), "view", "Bill", "fields", ["issuer"]);
     expect(checkAppSource(edited).errors).toEqual([]);
     expect(edited).toContain("  - view: Bill\n    fields: [issuer]\n");

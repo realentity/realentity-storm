@@ -1,10 +1,9 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { applyProposal, createPrismaConnection, undoChange, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
 import { PipelineCompiler, type TopicProposal } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { type z } from "zod";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry, NO_ATTENTION } from "../src/runner/step-executor";
@@ -25,7 +24,7 @@ class TidyLlm implements LlmClient {
 }
 
 const router = new ModelRouter(() => Promise.resolve(null));
-const TIDY = readFileSync(join(__dirname, "../../../pipelines/topic-tidy.yaml"), "utf8");
+const TIDY = exampleYaml("topic-tidy.yaml");
 /** A fact long enough that eight of them don't fit in a draft (six do). */
 const LONG = "Routine detail of the weekly meeting. ".repeat(23).trim();
 

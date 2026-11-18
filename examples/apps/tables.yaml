@@ -1,0 +1,63 @@
+# M33: the Tables App, once table-growth's page (M29). Table growth keeps each table's latest count as a Table,
+# and its hourly counts as the chart above the list; a table's own page charts its own.
+#
+app:
+  name: Tables
+  description: A database's tables and how they grow
+  icon: chart
+  # M50: chosen when you install it.
+  needs:
+    database: { kind: credential, type: database, label: "The database whose tables it counts (a user that may only read)" }
+  summary: >-
+    Your database's tables and how they grow, counted every hour, with an alert when one grows too fast.
+  setup:
+    - { kind: telegram, label: "Telegram, for the alerts" }
+types:
+  Table:
+    key: name
+    fields:
+      name: { type: text, required: true }
+      rows: { type: number }
+pages:
+  - list: Table
+    menu: { label: Tables, icon: chart }
+    columns: [name, rows, "@lastSeen"]
+    sort: -rows
+    chart: { history: table-rows, label: Rows }
+    actions:
+      - { label: Count now, run: table-growth }
+  - view: Table
+    history: { collection: table-rows, label: Rows }
+
+pipelines:
+  table-growth:
+    # M29: every hour, the row count of the tables named in `sql`; a message once when one grows more than 3 times faster
+    # than usual (the median of its hourly growth over the last week), and once when it is back under 1.5 times. M33: the
+    # Tables App lists the latest counts with a chart of the week.
+    # Its database is the App's: you choose the credential when you install it (kind database:
+    # postgresql://reader:…@host:5432/app, a user that may only read). For big tables, pg_stat_user_tables is a free estimate instead of
+    # count(*): SELECT relname AS name, n_live_tup AS rows FROM pg_stat_user_tables.
+    fullName: Table growth
+    description: Told when a table grows much faster than usual, and when it is back to normal.
+    trigger: { schedule: "0 * * * *" }
+    steps:
+      - id: counts
+        type: db.query
+        with:
+          connection: "{{cred:database}}"
+          sql: |-
+            SELECT 'orders' AS name, count(*) AS rows FROM orders
+            UNION ALL SELECT 'users', count(*) FROM users
+      - id: latest
+        type: data.save
+        with: { items: "{{counts.items}}", type: Table, complete: true }
+      - id: trend
+        type: data.history
+        with: { items: "{{counts.items}}", collection: table-rows, key: name, value: rows, keep: 168 }
+      - id: fast
+        type: data.alert
+        with: { items: "{{trend.items}}", key: name, value: history.vsUsual, above: 3, clearAt: 1.5 }
+      - id: tell
+        type: notify.telegram
+        when: "{{fast.text}}"
+        with: { text: "Tables growing faster than usual (times their usual hourly growth):\n{{fast.text}}" }

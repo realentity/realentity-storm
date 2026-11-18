@@ -1,3 +1,4 @@
+import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { entityTypeInfo } from "./entity-types";
 import {
   AppDefinitionSchema,
@@ -8,7 +9,6 @@ import {
   readAppSource,
   viewPageOf,
 } from "@realentity/storm-shared";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const app = (types: object, pages: object[] = []) => ({ name: "Lockbox", types, pages });
@@ -235,7 +235,7 @@ describe("matching refs, lists of refs, when, Add presets and groups (M56)", () 
   });
 
   it("is what Lockbox is built with", () => {
-    const lockbox = readAppSource(readFileSync(join(__dirname, "../../../pipelines/apps/lockbox.yaml"), "utf8"));
+    const lockbox = readAppSource(exampleYaml("apps/lockbox.yaml"));
     const entries = viewPageOf(lockbox, "Project").related.find((r) => r.type === "Entry")!;
     expect(entries.group?.ref).toBe("Path");
     expect(entries.adds.map((a) => a.label)).toEqual(["Add variable", "Add secret"]);
