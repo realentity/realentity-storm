@@ -2,7 +2,6 @@ import {
   IconAlertTriangle,
   IconApps,
   IconBulb,
-  IconChartBar,
   IconCoin,
   IconHeartbeat,
   IconHistory,
@@ -42,11 +41,6 @@ const NAVIGATION = [
   { to: "/costs", label: "Costs", icon: IconCoin },
   { to: "/health", label: "Health", icon: IconHeartbeat },
   { to: "/settings", label: "Settings", icon: IconSettings },
-];
-
-/** What pipelines produce, where the user acts on it: these hand-built pages, then the pipelines' own (M27, `view`). */
-const PAGES = [
-  { to: "/insight", label: "Insight", icon: IconChartBar },
 ];
 
 /** Signed-in area: sidebar, top bar (kill switch always visible), page. */
@@ -106,12 +100,12 @@ export function AppLayout() {
                   )}
                 </MenuLink>
               ))}
-              <li className="nav-item mt-3">
-                <div className="nav-link text-uppercase small text-secondary py-1">Pages</div>
-              </li>
-              {PAGES.map((item) => (
-                <MenuLink key={item.to} to={item.to} label={item.label} icon={item.icon} onClick={() => setMenuOpen(false)} />
-              ))}
+              {/* What Apps and pipelines produce, where the user acts on it; the heading only when there is something under it. */}
+              {(appPages.data?.length ?? 0) + (pages.data?.length ?? 0) > 0 && (
+                <li className="nav-item mt-3">
+                  <div className="nav-link text-uppercase small text-secondary py-1">Pages</div>
+                </li>
+              )}
               {appPages.data?.map((page, i, all) => (
                 <Fragment key={`${page.appId}:${page.type}`}>
                   {/* An App with more than one list: its name above them. */}

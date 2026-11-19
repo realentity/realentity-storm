@@ -68,31 +68,6 @@ export const UpdateApplicationSchema = z
   .strict();
 export type UpdateApplicationRequest = z.infer<typeof UpdateApplicationSchema>;
 
-/** One row of the job-search funnel (M16-T1): a source, a score band, or all of them. */
-export interface FunnelRow {
-  key: string;
-  found: number;
-  shortlisted: number;
-  applied: number;
-  replied: number;
-  interview: number;
-  rejected: number;
-  /** Applied, no answer yet. */
-  waiting: number;
-}
-
-/** The job-search dashboard (M16-T1): postings found in the window and what came of them. */
-export interface InsightView {
-  days: number;
-  from: string;
-  totals: FunnelRow;
-  bySource: FunnelRow[];
-  /** The calibration view: does a higher score get more replies and interviews? Bands 80+, 60-79, 40-59, 0-39, unscored. */
-  byScore: FunnelRow[];
-  /** Applications answered: the median days from applying to the first answer; null without any. */
-  medianDaysToAnswer: number | null;
-}
-
 // #endregion
 
 // #region Documents

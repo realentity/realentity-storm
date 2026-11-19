@@ -71,7 +71,6 @@ import {
   type FailureCountView,
   type GoogleStatusView,
   type ImportRecipeRequest,
-  type InsightView,
   type JobFilter,
   type JobPostingView,
   type JobStatusName,
@@ -378,9 +377,6 @@ export const api = {
     setStatus: (jobPostingId: string, status: JobStatusName) => request<JobPostingView>("PATCH", `/jobs/${jobPostingId}`, { status }),
     setOutcome: (applicationId: string, body: UpdateApplicationRequest) =>
       request<ApplicationView>("PATCH", `/applications/${applicationId}`, body),
-  },
-  insight: {
-    get: (days: number) => request<InsightView>("GET", `/insight?days=${days}`),
   },
   documents: {
     list: () => request<DocumentView[]>("GET", "/documents"),
