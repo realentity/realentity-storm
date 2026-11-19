@@ -1,6 +1,6 @@
 {
   "name": "@realentity/storm-testing",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Integration-test infrastructure for Storm: PostgreSQL with pgvector (Testcontainers or local), migrations, seed and the test environment",
   "main": "dist/index.js",
