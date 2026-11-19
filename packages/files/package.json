@@ -1,6 +1,6 @@
 {
   "name": "@realentity/storm-files",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "The files and images of App entities: checked by content, stored with a thumbnail, made small enough for the LLM to see",
   "main": "dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "realentity-storm",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Storm: a personal, self-hosted agent that proposes and, after approval, acts on your behalf",
   "license": "AGPL-3.0-only",
