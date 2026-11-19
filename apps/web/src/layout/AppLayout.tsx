@@ -107,15 +107,15 @@ export function AppLayout() {
                 </li>
               )}
               {appPages.data?.map((page, i, all) => (
-                <Fragment key={`${page.appId}:${page.type}`}>
-                  {/* An App with more than one list: its name above them. */}
+                <Fragment key={`${page.appId}:${page.kind}:${page.type}`}>
+                  {/* An App with more than one page in the menu: its name above them. */}
                   {all.filter((p) => p.appId === page.appId).length > 1 && all[i - 1]?.appId !== page.appId && (
                     <li className="nav-item">
                       <div className="nav-link small text-secondary py-1">{page.appName}</div>
                     </li>
                   )}
                   <MenuLink
-                    to={`/a/${page.appId}/${encodeURIComponent(page.type)}`}
+                    to={`/${page.kind === "report" ? "r" : "a"}/${page.appId}/${encodeURIComponent(page.type)}`}
                     label={page.label}
                     icon={VIEW_ICON[page.icon] ?? VIEW_ICON.list}
                     title={page.appName}

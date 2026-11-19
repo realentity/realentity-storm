@@ -1,6 +1,7 @@
 import {
   AppListQuerySchema,
   AppPreviewRequestSchema,
+  AppReportQuerySchema,
   EntityValuesRequestSchema,
   MoveStageRequestSchema,
   PageActionRequestSchema,
@@ -10,6 +11,8 @@ import {
   type AppMenuItem,
   type AppPreviewRequest,
   type AppPreviewView,
+  type AppReportQuery,
+  type AppReportView,
   type EntityValuesRequest,
   type MoveStageRequest,
   type PageActionRequest,
@@ -42,6 +45,17 @@ export class AppPagesController {
     @Body(new ZodBodyPipe(AppPreviewRequestSchema)) body: AppPreviewRequest,
   ): Promise<AppPreviewView> {
     return this.pages.preview(user.userId, body);
+  }
+
+  /** A type's report over the last `days` ("all": all time; left out: the page's first period). */
+  @Get(":appId/reports/:type")
+  report(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("appId", ParseUUIDPipe) appId: string,
+    @Param("type") type: string,
+    @Query(new ZodBodyPipe(AppReportQuerySchema)) query: AppReportQuery,
+  ): Promise<AppReportView> {
+    return this.pages.report(user.userId, appId, type, query.days);
   }
 
   @Get(":appId/pages/:type")

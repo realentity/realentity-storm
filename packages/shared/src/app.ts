@@ -505,7 +505,61 @@ export const FormPageSchema = z
   .strict();
 export type FormPage = z.output<typeof FormPageSchema>;
 
-export const AppPageSchema = z.union([ListPageSchema, ViewPageSchema, FormPageSchema]);
+/**
+ * What a report counts: `count: true` (the entities), `sum: <field>` (number or money), or `reached: <state>` (or any of
+ * a list of states); of the ones `when` says.
+ */
+const ReportState = z.string().trim().min(1).max(40);
+const ReportMeasure = {
+  label: z.string().trim().min(1).max(30),
+  count: z.literal(true).optional(),
+  sum: z.string().regex(ENTITY_FIELD).optional(),
+  reached: z.union([ReportState, z.array(ReportState).min(1).max(10)]).optional(),
+  when: Conditions.optional(),
+};
+
+/**
+ * A type's report: tiles of counts and sums over a period, trends over time and tables by a field, of the entities whose
+ * `date` falls in the period. A tile's `of` shows it as a share of another tile; a table's columns are tiles, by group.
+ */
+export const ReportPageSchema = z
+  .object({
+    report: z.string().regex(TYPE_NAME),
+    /** In the menu, after the App's lists. Default: "<type> report". */
+    menu: PageMenu.optional(),
+    /** What puts an entity in a period: a date field, or when it was first or last seen. */
+    date: PageField.default("@firstSeen"),
+    /** The periods to pick from, in days; the first is shown first. All time is always offered. */
+    periods: z.array(z.number().int().min(1).max(3650)).min(1).max(6).default([30, 90, 365]),
+    tiles: z
+      .array(z.object({ ...ReportMeasure, of: z.string().trim().min(1).max(30).optional() }).strict())
+      .min(1)
+      .max(8),
+    /** A line over the period, a point per day, week or month. */
+    trends: z
+      .array(z.object({ ...ReportMeasure, every: z.enum(["day", "week", "month"]).default("week") }).strict())
+      .max(4)
+      .default([]),
+    /** The tiles again, a row per value of a field (or per band of a number). */
+    tables: z
+      .array(
+        z
+          .object({
+            by: z.string().regex(ENTITY_FIELD),
+            label: z.string().trim().min(1).max(40).optional(),
+            /** A number field in bands, from their lower bounds: [80, 60, 40, 0]. */
+            bands: z.array(z.number()).min(1).max(8).optional(),
+            columns: z.array(z.string().trim().min(1).max(30)).min(1).max(6),
+          })
+          .strict(),
+      )
+      .max(4)
+      .default([]),
+  })
+  .strict();
+export type ReportPage = z.output<typeof ReportPageSchema>;
+
+export const AppPageSchema = z.union([ListPageSchema, ViewPageSchema, FormPageSchema, ReportPageSchema]);
 export type AppPage = z.output<typeof AppPageSchema>;
 
 export const AppDefinitionSchema = z
@@ -568,8 +622,7 @@ function checkPages(
   }
   const seen = new Set<string>();
   app.pages.forEach((page, i) => {
-    const kind = "list" in page ? "list" : "view" in page ? "view" : "form";
-    const typeName = "list" in page ? page.list : "view" in page ? page.view : page.form;
+    const [kind, typeName] = pageKind(page);
     const at = ["pages", i];
     const type = Object.hasOwn(app.types, typeName) ? app.types[typeName] : undefined;
     if (!type) return issue([...at, kind], `there is no type "${typeName}"`);
@@ -598,6 +651,7 @@ function checkPages(
       const when = "when" in action ? (action as EntityActionDef).when : undefined;
       for (const name of Object.keys(when ?? {})) shown(name, [...at, "actions", j, "when", name], "a button's condition");
     });
+    if ("report" in page) return checkReport(page, type, typeName, at, field, shown, issue);
     if ("form" in page) {
       for (const [j, name] of (page.fields ?? []).entries()) {
         field(name, [...at, "fields", j]);
@@ -678,6 +732,63 @@ function checkPages(
       page.sections?.forEach((section, j) => section.fields.forEach((f, k) => field(f, [...at, "sections", j, "fields", k])));
       if (page.fields && page.sections) issue([...at, "sections"], "fields or sections, not both");
     }
+  });
+}
+
+/** A page's kind and the type it is of. */
+export function pageKind(page: AppPage): ["list" | "view" | "form" | "report", string] {
+  if ("list" in page) return ["list", page.list];
+  if ("view" in page) return ["view", page.view];
+  if ("form" in page) return ["form", page.form];
+  return ["report", page.report];
+}
+
+/** A report's measures each count one thing, on the type's fields and states; its shares and columns name its tiles. */
+function checkReport(
+  page: ReportPage,
+  type: DataType,
+  typeName: string,
+  at: (string | number)[],
+  field: (name: string, path: (string | number)[], kinds?: readonly FieldKind[], what?: string) => void,
+  shown: (name: string, path: (string | number)[], where: string) => void,
+  issue: (path: (string | number)[], message: string) => void,
+): void {
+  field(page.date, [...at, "date"], PERIOD_KINDS, "a report's date is a date field");
+  const measure = (m: { count?: true; sum?: string; reached?: string | string[]; when?: Record<string, unknown> }, path: (string | number)[]) => {
+    const kinds = [m.count, m.sum, m.reached].filter((k) => k !== undefined).length;
+    if (kinds !== 1) issue(path, "one of count: true, sum: <field> or reached: <state>");
+    if (m.sum !== undefined) shown(m.sum, [...path, "sum"], "summed");
+    if (m.sum !== undefined && type.fields[m.sum] && !TOTAL_KINDS.includes(type.fields[m.sum].type))
+      issue([...path, "sum"], `a sum is of a number or money field: "${m.sum}" is ${type.fields[m.sum].type}`);
+    if (m.reached !== undefined) {
+      if (!type.stages) issue([...path, "reached"], `${typeName} has no stages`);
+      else
+        for (const state of [m.reached].flat())
+          if (!type.stages.states.includes(state)) issue([...path, "reached"], `"${state}" is not one of ${typeName}'s states`);
+    }
+    for (const name of Object.keys(m.when ?? {})) shown(name, [...path, "when", name], "a report's condition");
+  };
+  const labels = page.tiles.map((t) => t.label);
+  const money = (label: string) => {
+    const sum = page.tiles.find((t) => t.label === label)?.sum;
+    return sum !== undefined && type.fields[sum]?.type === "money";
+  };
+  page.tiles.forEach((tile, j) => {
+    const path = [...at, "tiles", j];
+    measure(tile, path);
+    if (labels.indexOf(tile.label) !== j) issue([...path, "label"], `"${tile.label}" is used by an earlier tile`);
+    if (tile.of === undefined) return;
+    if (tile.of === tile.label || !labels.includes(tile.of)) issue([...path, "of"], `"${tile.of}" is not another tile (tiles: ${labels.join(", ")})`);
+    else if (money(tile.label) || money(tile.of)) issue([...path, "of"], "a share is of counts or number sums, not money");
+  });
+  page.trends.forEach((trend, j) => measure(trend, [...at, "trends", j]));
+  page.tables.forEach((table, j) => {
+    const path = [...at, "tables", j];
+    shown(table.by, [...path, "by"], "a report's rows");
+    if (table.bands) field(table.by, [...path, "bands"], TOTAL_KINDS, "bands are of a number or money field");
+    table.columns.forEach((column, k) => {
+      if (!labels.includes(column)) issue([...path, "columns", k], `"${column}" is not a tile (tiles: ${labels.join(", ")})`);
+    });
   });
 }
 

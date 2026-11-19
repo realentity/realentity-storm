@@ -59,16 +59,22 @@ export function PagesDesigner({
   const types = definition ? Object.keys(definition.types) : [];
   // The list pages in the menu's order: the written ones first, as they are; then the defaults.
   const ordered = [...listOrder.filter((t) => types.includes(t)), ...types.filter((t) => !listOrder.includes(t))];
+  // A report is written in the YAML only: its problems here, with the App's others; a type's pages show their own.
+  const reports = new Set(app.pages.flatMap((p, i) => (typeof p.report === "string" ? [String(i)] : [])));
+  const shownHere = (path: string) => {
+    const page = /^pages\.(\d+)/.exec(path)?.[1];
+    return page === undefined || reports.has(page);
+  };
   return (
     <div className="card-body d-flex flex-column gap-4" data-testid="pages-tab">
-      <Issues issues={issues.filter((i) => !/^pages\.\d+/.test(i.path))} onLine={onLine} />
+      <Issues issues={issues.filter((i) => shownHere(i.path))} onLine={onLine} />
       {!definition && (
         <div className="alert alert-warning mb-0">The App has problems on its other tabs: its pages show once they are fixed.</div>
       )}
       {definition && (
         <div className="text-secondary">
           Each type has a list page in the menu and a page of its own. Until you change one it shows its type&apos;s fields as they are; a
-          change writes it into the YAML.
+          change writes it into the YAML. A report (counts and sums over time) is written in the YAML, as a <code>report:</code> page.
         </div>
       )}
       {definition &&

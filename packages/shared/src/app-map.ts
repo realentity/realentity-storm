@@ -1,5 +1,6 @@
 import { addedByHand, type AppDefinition } from "./app";
 import { listPageOf } from "./app-pages";
+import { reportPagesOf } from "./app-report";
 import { type CompiledDefinition, type Trigger } from "./pipeline";
 
 /**
@@ -23,7 +24,7 @@ export interface AppMapView {
   triggers: AppMapNode[];
   pipelines: (AppMapNode & { pipelineId: string; enabled: boolean })[];
   types: (AppMapNode & { type: string; entities: number })[];
-  pages: (AppMapNode & { type: string; kind: "list" | "view" })[];
+  pages: (AppMapNode & { type: string; kind: "list" | "view" | "report" })[];
   edges: { from: string; to: string; kind: AppMapEdgeKind; label?: string }[];
 }
 
@@ -133,6 +134,11 @@ export function appMap(
     pages.push({ id: `view:${type}`, type, kind: "view", label: `a ${type}`, detail: "its own page" });
     edge(`type:${type}`, `list:${type}`, "shows");
     edge(`type:${type}`, `view:${type}`, "shows");
+  }
+  for (const report of reportPagesOf(app)) {
+    if (!types.includes(report.type)) continue;
+    pages.push({ id: `report:${report.type}`, type: report.type, kind: "report", label: report.label, detail: "report, in the menu" });
+    edge(`type:${report.type}`, `report:${report.type}`, "shows");
   }
 
   return {

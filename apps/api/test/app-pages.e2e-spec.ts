@@ -1,5 +1,5 @@
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
-import { type AppDetailView, type AppEntityView, type AppListView, type AppMenuItem } from "@realentity/storm-shared";
+import { type AppDetailView, type AppEntityView, type AppListView, type AppMenuItem, type AppReportView } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -34,6 +34,17 @@ pages:
     history: { collection: bill-amounts }
   - list: Payee
     menu: false
+  - report: Bill
+    date: due
+    periods: [30]
+    tiles:
+      - { label: Bills, count: true }
+      - { label: Amount, sum: amount }
+      - { label: Unpaid, sum: amount, when: { status: due } }
+    trends:
+      - { label: Amount, sum: amount, every: month }
+    tables:
+      - { by: payee, columns: [Bills, Amount] }
 `;
 
 // M31-I1: an App's pages
@@ -93,10 +104,41 @@ describe("app pages", () => {
   const list = async (query = "") => (await agent.get(`/api/apps/${appId}/pages/Bill${query}`).expect(200)).body as AppListView;
   const keys = (view: AppListView) => view.rows.map((r) => r.key);
 
-  it("puts the lists in the menu, those hidden from it left out", async () => {
+  it("puts the lists in the menu, those hidden from it left out, then the reports", async () => {
     expect((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[]).toEqual([
-      { appId, appName: "Bills", type: "Bill", label: "My bills", icon: "receipt", nothingOn: false },
+      { appId, appName: "Bills", kind: "list", type: "Bill", label: "My bills", icon: "receipt", nothingOn: false },
+      { appId, appName: "Bills", kind: "report", type: "Bill", label: "Bill report", icon: "chart", nothingOn: false },
     ]);
+  });
+
+  it("reports counts and sums per currency, a trend and a table, over the period picked", async () => {
+    const report = async (query = "") => (await agent.get(`/api/apps/${appId}/reports/Bill${query}`).expect(200)).body as AppReportView;
+    // All time: every bill, a removed one and one without a due date too.
+    const all = await report("?days=all");
+    expect(all).toMatchObject({ app: "Bills", type: "Bill", days: null, from: null, count: 6, page: { label: "Bill report", date: { field: "due", label: "Due" } } });
+    expect(all.tiles).toEqual([
+      { label: "Bills", sums: { "": 6 }, share: null },
+      { label: "Amount", sums: { BGN: 294.5, EUR: 12.99 }, share: null },
+      { label: "Unpaid", sums: { BGN: 120.5, EUR: 12.99 }, share: null },
+    ]);
+    const [trend] = all.trends;
+    expect(trend.series.map((s) => s.currency)).toEqual(["BGN", "EUR"]);
+    expect(trend.series[0].points.slice(0, 3)).toEqual([
+      { at: "2026-09-01T00:00:00.000Z", value: 40 },
+      { at: "2026-10-01T00:00:00.000Z", value: 99 },
+      { at: "2026-11-01T00:00:00.000Z", value: 150.5 },
+    ]);
+    expect(all.tables[0].rows.map((r) => [r.label, r.cells[0].sums[""], r.cells[1].sums])).toEqual([
+      ["Electricity", 2, { BGN: 219.5 }],
+      ["Netflix", 1, { EUR: 12.99 }],
+      ["No date", 1, { BGN: 5 }],
+      ["Old gym", 1, { BGN: 40 }],
+      ["Water", 1, { BGN: 30 }],
+    ]);
+    // Left out: the page's first period.
+    expect(await report()).toMatchObject({ days: 30 });
+    await agent.get(`/api/apps/${appId}/reports/Bill?days=0`).expect(400);
+    await agent.get(`/api/apps/${appId}/reports/Payee`).expect(404);
   });
 
   it("marks an App in the menu while none of its pipelines that run on their own is on; its page lists them", async () => {

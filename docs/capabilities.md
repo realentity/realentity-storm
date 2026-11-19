@@ -314,6 +314,34 @@ A list can also draw a `data.history` collection keyed by its entities above it 
 the five with the highest latest value), and *Move them here* on an App's page brings a pipeline's collection (a
 `view:` page's) into one of its types: a mark on a row becomes the `mine` yes/no field of its name.
 
+**Reports.** A `report:` page counts a type's entities over a period, picked on the page from `periods` (in days; the
+first is shown first, *All time* is always offered). An entity is in the period by its `date`: a date field, or
+`@firstSeen` (the default) or `@lastSeen`. Each tile measures one thing, of the entities `when` says: `count: true`,
+`sum: <field>` (a number or money field; money per currency), or `reached: <state>` (or a list: any of them), which
+counts the entities that were ever at that stage, wherever they are now. `of: <tile>` also shows a tile as a share of
+another (counts and number sums, not money). A trend draws a measure over the period, a point per `day`, `week` or
+`month`. A table shows tiles again (`columns`), a row per value of a field, the most first (an enum's in its order), or
+per band of a number field (`bands`, their lower bounds). A report reads a type's newest 5000 entities, removed ones
+included, and goes in the menu after the App's lists.
+
+```yaml
+pages:
+  - report: Job
+    menu: { label: Job report, icon: chart }   # default: "Job report"
+    date: "@firstSeen"
+    periods: [90, 30, 365]
+    tiles:
+      - { label: Found, count: true }
+      - { label: Applied, reached: applied }
+      - { label: Replied, reached: [responded, interview, offer, rejected], of: Applied }
+      - { label: Spent, sum: fee, when: { source: board } }
+    trends:
+      - { label: Found, count: true, every: week }
+    tables:
+      - { by: score, label: By score band, bands: [80, 60, 40, 0], columns: [Found, Applied, Replied] }
+      - { by: source, columns: [Found, Applied] }
+```
+
 **From a sentence (M34).** The pipeline builder proposes a whole App ("I'm looking for a job", "keep my bills") with
 its pipelines, as one proposal to review and save together; *Describe a change* on an App's page asks it to change
 one ("add a rating to jobs"), shown as what changes in the App and in each pipeline. It starts a type from the

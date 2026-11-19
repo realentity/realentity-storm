@@ -24,6 +24,7 @@ import { AppEditorPage } from "./pages/AppEditorPage";
 import { AppEntityPage } from "./pages/AppEntityPage";
 import { AppListPage } from "./pages/AppListPage";
 import { AppPage } from "./pages/AppPage";
+import { AppReportPage } from "./pages/AppReportPage";
 import { AppsPage } from "./pages/AppsPage";
 import { RunPage } from "./pages/RunPage";
 import { RulesPage } from "./pages/RulesPage";
@@ -77,6 +78,7 @@ export function App() {
             <Route path="apps/:appId/edit" element={<AppEditorPage />} />
             <Route path="a/:appId/:type" element={<AppListPage />} />
             <Route path="a/:appId/:type/:key" element={<AppEntityPage />} />
+            <Route path="r/:appId/:type" element={<AppReportPage />} />
             <Route path="v/:pipelineId" element={<ViewPage />} />
             <Route path="v/:pipelineId/rows/:key" element={<ViewRowPage />} />
             <Route
