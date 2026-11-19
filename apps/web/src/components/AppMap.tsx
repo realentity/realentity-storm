@@ -40,7 +40,7 @@ export function AppMap({ appId, map, preview = false }: Readonly<{ appId: string
     map.triggers.map((n) => ({ ...n, column: 0, x: 0, y: 0, href: `/pipelines/${n.id.slice("trigger:".length)}` })),
     map.pipelines.map((n) => ({ ...n, column: 1, x: 0, y: 0, href: `/pipelines/${n.pipelineId}`, muted: !n.enabled })),
     map.types.map((n) => ({ ...n, column: 2, x: 0, y: 0, href: `/a/${appId}/${encodeURIComponent(n.type)}` })),
-    map.pages.map((n) => ({ ...n, column: 3, x: 0, y: 0, href: `/a/${appId}/${encodeURIComponent(n.type)}` })),
+    map.pages.map((n) => ({ ...n, column: 3, x: 0, y: 0, href: `/${n.kind === "report" ? "r" : "a"}/${appId}/${encodeURIComponent(n.type)}` })),
   ];
   const rows = Math.max(1, ...columns.map((c) => c.length));
   // Each column centred on the tallest; a trigger beside the pipeline it starts.

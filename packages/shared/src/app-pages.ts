@@ -350,10 +350,11 @@ export function actionApplies(
 
 // --- the api (M31) ---
 
-/** An App's list page in the menu. */
+/** An App's list or report page in the menu. */
 export interface AppMenuItem {
   appId: string;
   appName: string;
+  kind: "list" | "report";
   type: string;
   label: string;
   icon: ViewIcon;

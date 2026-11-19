@@ -35,6 +35,7 @@ import {
   type SetupView,
   type AppMapView,
   type AppPreviewView,
+  type AppReportView,
   type BundleCheckView,
   type BundleMode,
   type BundleExportView,
@@ -319,6 +320,9 @@ export const api = {
     menu: () => request<AppMenuItem[]>("GET", "/apps/menu"),
     page: (appId: string, type: string, q: Partial<AppListQuery> = {}) =>
       request<AppListView>("GET", `/apps/${appId}/pages/${encodeURIComponent(type)}${query(q)}`),
+    /** `days` left out: the page's first period; null: all time. */
+    report: (appId: string, type: string, days?: number | null) =>
+      request<AppReportView>("GET", `/apps/${appId}/reports/${encodeURIComponent(type)}${query({ days: days === null ? "all" : days })}`),
     entity: (appId: string, type: string, key: string) =>
       request<AppEntityView>("GET", `/apps/${appId}/pages/${encodeURIComponent(type)}/${encodeURIComponent(key)}`),
     add: (appId: string, type: string, values: Record<string, unknown>) =>

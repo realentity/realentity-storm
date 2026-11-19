@@ -14,9 +14,13 @@ import {
   isRefField,
   listPageOf,
   readAppSource,
+  reportOf,
+  reportPageOf,
+  reportPagesOf,
   viewPageOf,
   type AppDefinition,
   type AppEntityView,
+  type AppReportView,
   type AppListQueryParsed,
   type AppListView,
   type AppMenuItem,
@@ -57,11 +61,45 @@ export class AppPagesService {
       if (!version) return [];
       const definition = readAppSource(version.source);
       const off = nothingOn(pipelines.get(app.name) ?? []);
-      return Object.keys(definition.types)
-        .map((type) => listPageOf(definition, type))
-        .filter((page) => page.menu)
-        .map((page) => ({ appId: app.appId, appName: definition.name, type: page.type, label: page.label, icon: page.icon, nothingOn: off }));
+      const item = (kind: AppMenuItem["kind"], page: { type: string; label: string; icon: AppMenuItem["icon"] }): AppMenuItem => ({
+        appId: app.appId,
+        appName: definition.name,
+        kind,
+        type: page.type,
+        label: page.label,
+        icon: page.icon,
+        nothingOn: off,
+      });
+      return [
+        ...Object.keys(definition.types)
+          .map((type) => listPageOf(definition, type))
+          .filter((page) => page.menu)
+          .map((page) => item("list", page)),
+        ...reportPagesOf(definition).map((page) => item("report", page)),
+      ];
     });
+  }
+
+  /** A type's report over the last `days` ("all": all time; left out: its first period), of its entities as its list reads them. */
+  async report(userId: string, appId: string, type: string, picked: number | "all" | undefined): Promise<AppReportView> {
+    const { header, definition } = await this.header(userId, appId, type);
+    const page = reportPageOf(definition, type);
+    if (!page) throw new NotFoundException(`"${definition.name}" has no report of ${type}`);
+    const days = picked === "all" ? null : (picked ?? page.periods[0]);
+    const entities = await this.prisma.client.dataEntity.findMany({ where: { appId, type }, orderBy: { firstSeenAt: "desc" }, take: MAX_ROWS });
+    const rows = await this.withTitles(
+      userId,
+      appId,
+      definition,
+      type,
+      entities.map((e) => rowOf(e, definition.types[type])),
+    );
+    const report = reportOf(
+      page,
+      rows.map((row, i) => ({ row, stageDates: (entities[i].stageDates ?? {}) as Record<string, string> })),
+      days,
+    );
+    return { ...header, page, days, ...report };
   }
 
   async list(userId: string, appId: string, type: string, query: AppListQueryParsed): Promise<AppListView> {

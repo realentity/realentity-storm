@@ -1,4 +1,4 @@
-import { canonicalJson, type AppDefinition, type EntityField } from "@realentity/storm-shared";
+import { canonicalJson, pageKind, type AppDefinition, type EntityField } from "@realentity/storm-shared";
 
 /** What changed between two versions of an App (M30), a line each: shown with the version. */
 export function diffApps(before: AppDefinition, after: AppDefinition): string[] {
@@ -22,7 +22,13 @@ export function diffApps(before: AppDefinition, after: AppDefinition): string[] 
       else if (canonicalJson(was) !== canonicalJson(value)) lines.push(`${name}.${field}: ${describe(was)} → ${describe(value)}`);
     }
   }
-  const pages = (app: AppDefinition) => new Map(app.pages.map((p) => ["list" in p ? `list page of ${p.list}` : "view" in p ? `view page of ${p.view}` : `form of ${p.form}`, p]));
+  const pages = (app: AppDefinition) =>
+    new Map(
+      app.pages.map((p) => {
+        const [kind, type] = pageKind(p);
+        return [kind === "form" ? `form of ${type}` : `${kind} page of ${type}`, p];
+      }),
+    );
   const [was, now] = [pages(before), pages(after)];
   for (const name of was.keys()) if (!now.has(name)) lines.push(`${name} removed`);
   for (const [name, page] of now) {

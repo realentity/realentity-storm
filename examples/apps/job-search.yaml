@@ -58,6 +58,22 @@ pages:
       - { title: Job, fields: [title, company, location, posted, url, source] }
       - { title: Score, fields: [score, scoreReason] }
       - { title: Description, fields: [description] }
+  # The jobs found in a period and what came of them; by score band: do better scores get more replies and interviews?
+  - report: Job
+    menu: { label: Job report, icon: chart }
+    periods: [90, 30, 365]
+    tiles:
+      - { label: Found, count: true }
+      - { label: Shortlisted, reached: [shortlisted, prepared, applied] }
+      - { label: Applied, reached: applied }
+      - { label: Replied, reached: [responded, interview, offer, rejected], of: Applied }
+      - { label: Interviews, reached: interview, of: Applied }
+      - { label: Rejected, reached: rejected, of: Applied }
+    trends:
+      - { label: Found, count: true, every: week }
+    tables:
+      - { by: score, label: By score band, bands: [80, 60, 40, 0], columns: [Found, Applied, Replied, Interviews] }
+      - { by: source, columns: [Found, Applied, Replied, Interviews] }
 
 pipelines:
   job-board:
