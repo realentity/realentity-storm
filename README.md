@@ -68,7 +68,7 @@ Apps are typed and versioned, so they keep working as they grow:
 - A field can hold a secret, encrypted like a credential and shown nowhere, or point at one of your credentials; a
   pipeline only carries it sealed, and it is opened only as a request sends it to an allowed host.
 
-Ready-made Apps install from **Apps → Examples**: Releases to read (the starter: it needs nothing set up), Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos, Papers (receipts and warranties, read from their photo or PDF) and Lockbox (your GitHub variables and secrets, kept encrypted and synced when you press Sync).
+Ready-made Apps install from **Apps → Examples**: Releases to read (the starter: it needs nothing set up), Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops (your monitors, checked every five minutes, and incidents), Tasks, Memos, Papers (receipts, warranties and contracts, read from their photo or PDF; claims, contract reminders and a monthly expense report) and Lockbox (your GitHub variables and secrets, kept encrypted and synced when you press Sync).
 
 Each App's page maps how it connects: what starts its pipelines, which types they write and read, and the pages that
 show them. The Trips App:
