@@ -635,6 +635,13 @@ steps:
       expect(errorsOf(compiler.compile(fetch({ headers: { "Bad Header": "x" } })))[0]).toMatch(/^steps\[0\]\.with\.headers: header names are letters/);
     });
 
+    it("M58-T2: a header whose value the data doesn't have isn't sent", () => {
+      const input = defaultCatalog().get("http.request")!.input;
+      const parsed = input.parse({ method: "POST", url: "https://hooks.example.com/restart", headers: { Authorization: undefined, Accept: "application/json" } });
+      expect(parsed).toMatchObject({ headers: { Accept: "application/json" } });
+      expect(Object.keys((parsed as { headers: object }).headers)).toEqual(["Accept"]);
+    });
+
     it("M29-T6: http.request waits at an inserted gate; its literal host joins the allowed domains; keys only in headers and query", () => {
       const request = (url: string, extra: object = {}) =>
         pipeline([{ id: "issue", type: "http.request", with: { method: "POST", url, body: { title: "x" }, ...extra } }]);

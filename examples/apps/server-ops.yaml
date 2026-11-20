@@ -2,7 +2,8 @@
 # Monitors, checked by check-monitors, or an outside monitor's webhook, monitor-alerts), a database check
 # that finds trouble (database-check), the database that can't be reached (database-down). Each is resolved by itself when the cause is gone, or by you. Open issue on an open
 # one files it on GitHub, after you approve the request (incident-issue); every Monday, the week in numbers
-# (ops-week). No LLM.
+# (ops-week). M58-T2: a monitor's Runbooks (a restart or redeploy webhook you add) are proposed when it goes down
+# (fix-offer) and on an incident's Fix button (fix), each sent only after you Act. No LLM.
 app:
   name: Server ops
   description: Your monitors, and incidents on what you run
@@ -13,9 +14,9 @@ app:
     github: { kind: credential, type: api_key, for: api.github.com, label: "GitHub, to open issues" }
     repository: { kind: text, label: "Repository for its issues (owner/name)", example: me/infra }
   summary: >-
-    Your monitors (web addresses, ports, ping; your network too) checked every five minutes; incidents
-    on what you run (a monitor down, a database check above 0, the database out of reach), each resolved
-    when the cause is gone; a GitHub issue after you approve it; the week in numbers. No LLM.
+    Your monitors checked every five minutes; incidents on what you run (a monitor down, a database
+    check above 0, the database out of reach), resolved when the cause is gone; a fix (your restart
+    webhook) or a GitHub issue after you approve it; the week in numbers. No LLM.
   setup:
     - { kind: telegram, label: "Telegram, for the incidents" }
 types:
@@ -61,6 +62,19 @@ types:
       minutes: { type: number, label: Minutes }   # how long it lasted
       issueUrl: { type: url, label: Issue }
       notes: { type: longtext, mine: true }
+  # M58-T2: what fixes a monitor when it goes down: a webhook you add (a restart, a redeploy, a cache purge). Yours
+  # (mine): its address is the only one a fix is sent to, and only after you Act.
+  Runbook:
+    mine: true
+    key: name
+    title: name
+    fields:
+      name: { type: text, required: true }
+      monitor: { type: ref, to: Monitor, required: true, help: "The monitor it fixes: offered when that one goes down" }
+      method: { type: enum, values: [POST, PUT, PATCH, DELETE], required: true }
+      url: { type: url, required: true, label: Webhook, help: "A public address: your restart, redeploy or purge hook" }
+      authorization: { type: text, encrypted: true, label: Authorization header, help: "Sent as the Authorization header (Bearer …); encrypted when saved, never shown again" }
+      notes: { type: longtext }
 pages:
   - list: Monitor
     menu: { label: Monitors, icon: cpu }
@@ -75,6 +89,7 @@ pages:
       - { title: Status, fields: [status, error, ms, checkedAt, certExpires] }
       - { title: What is checked, fields: [kind, url, host, port, expect, ignoreTlsErrors, paused] }
     history: { collection: monitor-ms, label: Response time (ms) }
+    related: [{ type: Runbook, by: monitor, label: Runbooks, columns: [name, method, url], add: true }]
   - form: Monitor
     fields: [kind, url, host, port, expect, ignoreTlsErrors, paused]
   - list: Incident
@@ -92,8 +107,16 @@ pages:
       - { title: Detail, fields: [detail] }
     actions:
       - { label: Open issue, run: incident-issue, when: { status: open }, confirm: "Propose a GitHub issue for this incident? You see the request before it goes." }
+      - { label: Fix, run: fix, when: { status: [open, acknowledged] }, confirm: "Propose this monitor's runbooks? You see each request before it goes." }
   - form: Incident
     fields: [notes]
+  - list: Runbook
+    menu: { label: Runbooks, icon: cpu }
+    add: true
+    columns: [name, monitor, method, url]
+    filters: [monitor]
+  - form: Runbook
+    fields: [name, monitor, method, url, authorization, notes]
 
 pipelines:
   check-monitors:
@@ -436,3 +459,79 @@ pipelines:
       - id: tell
         type: notify.telegram
         with: { text: "{{week.value.text}}" }
+
+  fix-offer:
+    # When an Incident of the Server ops App opens: its monitor's Runbooks, each request waiting at its gate, where you
+    # Act (or Approve on Telegram) or reject it; nothing is sent before. A webhook's host is approved at the gate the
+    # first time (the inbox asks). Then you're told what each answered, and the Incident is acknowledged. One that
+    # resolved itself in the meantime: reject the request. A monitor without runbooks offers nothing.
+    name: Offer a fix
+    description: When a monitor goes down, its runbooks proposed for you to approve.
+    trigger: { on: entity.changed, type: Incident, stage: open }
+    limits:
+      http.request: 20/day
+    steps:
+      - id: runbooks
+        type: data.read
+        with: { type: Runbook, where: [{ field: monitor, op: eq, value: "{{trigger.item.subject}}" }], sort: name, limit: 5 }
+      - id: fix
+        type: http.request
+        forEach: "{{runbooks.items}}"
+        with:
+          method: "{{item.method}}"
+          url: "{{item.url}}"
+          headers: { Authorization: "{{item.authorization}}" }
+      - id: said
+        type: notify.telegram
+        forEach: "{{runbooks.items}}"
+        with: { text: "Ran {{item.name}} for {{trigger.item.subject}}: it answered {{fix.status}}." }
+      - id: acknowledged
+        type: data.map
+        with:
+          from: { incident: "{{trigger.item}}", ran: "{{fix}}" }
+          # Acknowledged once a request was sent; all of them rejected, it stays open.
+          expression: '$count(ran[$exists(status)]) > 0 ? $sift(incident, function($v, $k) { $not($k in ["status", "notes"]) })'
+      - id: save
+        type: data.save
+        with: { items: "{{acknowledged.items}}", type: Incident, stage: acknowledged }
+
+  fix:
+    # From an open or acknowledged Incident's button (Fix) in the Server ops App: its monitor's Runbooks again, as
+    # fix-offer does, each after you Act. A monitor without runbooks says so.
+    name: Fix
+    description: An incident's runbooks, from its button, each after you approve it.
+    trigger: { on: entity.action, type: Incident }
+    limits:
+      http.request: 20/day
+    steps:
+      - id: runbooks
+        type: data.read
+        with: { type: Runbook, where: [{ field: monitor, op: eq, value: "{{trigger.item.subject}}" }], sort: name, limit: 5 }
+      - id: fix
+        type: http.request
+        forEach: "{{runbooks.items}}"
+        with:
+          method: "{{item.method}}"
+          url: "{{item.url}}"
+          headers: { Authorization: "{{item.authorization}}" }
+      - id: said
+        type: notify.telegram
+        forEach: "{{runbooks.items}}"
+        with: { text: "Ran {{item.name}} for {{trigger.item.subject}}: it answered {{fix.status}}." }
+      - id: acknowledged
+        type: data.map
+        with:
+          from: { incident: "{{trigger.item}}", ran: "{{fix}}" }
+          expression: '($count(ran[$exists(status)]) > 0 and incident.status = "open") ? $sift(incident, function($v, $k) { $not($k in ["status", "notes"]) })'
+      - id: save
+        type: data.save
+        with: { items: "{{acknowledged.items}}", type: Incident, stage: acknowledged }
+      - id: none
+        type: data.map
+        with:
+          from: { found: "{{runbooks.count}}" }
+          expression: 'found = 0 ? "missing"'
+      - id: nothing
+        type: notify.telegram
+        when: "{{none.value}}"
+        with: { text: "No runbook for {{trigger.item.subject}}: add one on its monitor's page, under Runbooks." }

@@ -217,12 +217,14 @@ const Items = z.array(z.record(z.string(), z.unknown())).describe("list of objec
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
 const FIXED_HEADERS = ["host", "connection", "content-length", "transfer-encoding", "cookie"];
 const HttpHeaders = z
-  .record(z.string(), z.string().max(8000))
+  // M58-T2: a header whose value the data doesn't have ({{item.authorization}} of a runbook without a token) isn't sent.
+  .record(z.string(), z.string().max(8000).optional())
   .refine(
     (headers) => Object.keys(headers).every((name) => HEADER_NAME.test(name)),
     "header names are letters, digits and -, e.g. Authorization",
   )
   .refine((headers) => Object.keys(headers).every((name) => !FIXED_HEADERS.includes(name.toLowerCase())), `not ${FIXED_HEADERS.join(", ")}`)
+  .transform((headers) => Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== undefined)) as Record<string, string>)
   .optional()
   .describe('request headers, e.g. Authorization: "Bearer {{cred:github}}"');
 const HttpQuery = z
