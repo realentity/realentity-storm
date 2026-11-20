@@ -1,5 +1,6 @@
+import { payloadHash } from "@realentity/storm-crypto";
 import { exampleYaml } from "@realentity/storm-shared/example-files";
-import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
+import { createPrismaConnection, type Prisma, type PrismaConnection, type Proposal } from "@realentity/storm-db";
 import { emptyUsage, ModelRouter, type LlmClient, type LlmFile, type LlmUsage, type StructuredRequest } from "@realentity/storm-llm";
 import { entityItem, readAppSource } from "@realentity/storm-shared";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
@@ -18,7 +19,7 @@ import { SaveStep } from "../src/steps/data-steps";
 import { ReadStep } from "../src/steps/entity-steps";
 import { ExtractStep } from "../src/steps/llm-steps";
 import { MapStep } from "../src/steps/map-alert-steps";
-import { Counting, createVersion } from "./support/test-steps";
+import { bindSlots, Counting, createVersion } from "./support/test-steps";
 
 jest.setTimeout(60_000);
 
@@ -29,7 +30,7 @@ class ReceiptReader implements LlmClient {
   seen: LlmFile[][] = [];
   structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<{ output: z.infer<S>; usage: LlmUsage }> {
     this.seen.push(request.files ?? []);
-    const values = { kind: "receipt", merchant: "Northwind Appliances", amount: "499.00", currency: "EUR", date: "2026-11-10", warrantyUntil: "2028-11-10" };
+    const values = { kind: "receipt", merchant: "Northwind Appliances", amount: "499.00", currency: "EUR", date: "2026-11-10", category: "equipment", warrantyUntil: "2028-11-10" };
     return Promise.resolve({ output: request.schema.parse({ values: Object.entries(values).map(([name, value]) => ({ name, value })) }), usage: { ...emptyUsage(), calls: 1 } });
   }
 }
@@ -143,7 +144,144 @@ describe("Tasks and Papers", () => {
       amount: 499,
       currency: "EUR",
       date: "2026-11-10",
+      category: "equipment",
       warrantyUntil: "2028-11-10",
+    });
+  });
+
+  // M58-T1: a warranty claim and a contract's cancellation to the Merchant you chose, a contract's reminder, last
+  // month's expenses to your accountant; every email after you Act.
+  describe("claims, contracts and expenses", () => {
+    let generate: Counting;
+    let send: Counting;
+    let later: Counting;
+    let cancel: Counting;
+    let actions: PipelineRunner;
+
+    beforeEach(() => {
+      generate = new Counting("llm.generate", () => ({ text: "Dear Northwind, the washing machine stopped spinning." }));
+      send = new Counting("email.send", (input) => ({ messageId: "<m1@example.com>", accepted: [input.to], from: "me@example.com" }));
+      later = new Counting("flow.later", (input) => ({ scheduledStartId: "s1", fireAt: input.at, replaced: 0 }));
+      cancel = new Counting("flow.cancel", () => ({ cancelled: 0 }));
+      actions = new PipelineRunner(
+        db.client,
+        defaultCatalog(),
+        new ExecutorRegistry([new ReadStep(db.client), new SaveStep(db.client, root), new MapStep(), generate, send, later, cancel, telegram]),
+      );
+    });
+
+    const proposals = (runId: string): Promise<Proposal[]> => db.client.proposal.findMany({ where: { runId }, orderBy: [{ itemIndex: "asc" }] });
+    const approve = async (proposal: Proposal, edit = (p: Record<string, unknown>) => p) => {
+      const finalPayload = edit(structuredClone(proposal.originalPayload as Record<string, unknown>));
+      await db.client.proposal.update({
+        where: { proposalId: proposal.proposalId },
+        data: { status: "APPROVED", finalPayload: finalPayload as Prisma.InputJsonValue, payloadHash: payloadHash(finalPayload) },
+      });
+    };
+    /** Advances the run to its end, or says which step failed and why. */
+    const finish = async (runId: string) => {
+      const status = await actions.advance(runId);
+      if (status === "FAILED") {
+        const failed = await db.client.step.findMany({ where: { runId, error: { not: null } }, select: { stepKey: true, error: true } });
+        throw new Error(failed.map((f) => `${f.stepKey}: ${f.error}`).join("\n"));
+      }
+      expect(status).toBe("DONE");
+    };
+    const press = async (file: string, appId: string, definition: ReturnType<typeof readAppSource>, key: string) => {
+      const versionId = await createVersion(db.client, userId, read(file), compiler, { app: definition });
+      const entity = await db.client.dataEntity.findUniqueOrThrow({ where: { appId_type_key: { appId, type: "Paper", key } } });
+      const item = entityItem(entity.value, entity.mine);
+      return actions.start(versionId, { trigger: "event", triggerData: { app: "Papers", appId, type: "Paper", key, item, action: "Claim warranty" } });
+    };
+
+    it("a warranty claim goes to the merchant you chose, after you Act; without one, nothing and why", async () => {
+      const { appId, definition } = await install("apps/papers.yaml");
+      await add(appId, "Merchant", "Northwind", { name: "Northwind", email: "service@northwind.example" });
+      await add(appId, "Paper", "p1", { title: "Washing machine", kind: "receipt", merchant: "Northwind Appliances", date: "2026-11-10", warrantyUntil: "2028-11-10", seller: "Northwind" });
+      await add(appId, "Paper", "p2", { title: "Kettle", kind: "receipt" });
+
+      const runId = await press("warranty-claim.yaml", appId, definition, "p1");
+      expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
+      expect(generate.calls[0]).toMatchObject({ context: { paper: { title: "Washing machine" }, merchant: { email: "service@northwind.example" } } });
+      const [gate] = await proposals(runId);
+      expect(gate.originalPayload).toMatchObject({ to: "service@northwind.example", subject: "Warranty claim: Washing machine" });
+      await approve(gate);
+      await finish(runId);
+      expect(send.calls).toEqual([expect.objectContaining({ to: "service@northwind.example", body: "Dear Northwind, the washing machine stopped spinning." })]);
+      expect(telegram.calls).toEqual([]);
+
+      await finish(await press("warranty-claim.yaml", appId, definition, "p2"));
+      expect(send.calls).toHaveLength(1);
+      expect(telegram.calls.map((c) => c.text)).toEqual([expect.stringContaining("No claim for Kettle: choose who to write to") as unknown]);
+    });
+
+    it("a contract's cancellation goes to its merchant, after you Act", async () => {
+      const { appId, definition } = await install("apps/papers.yaml");
+      await add(appId, "Merchant", "Fibrenet", { name: "Fibrenet", email: "contracts@fibrenet.example" });
+      await add(appId, "Paper", "c1", { title: "Home internet", kind: "contract", endsOn: day(90), noticeDays: 30, seller: "Fibrenet" });
+      const runId = await press("contract-cancel.yaml", appId, definition, "c1");
+      expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
+      await approve((await proposals(runId))[0]);
+      await finish(runId);
+      expect(send.calls).toEqual([expect.objectContaining({ to: "contracts@fibrenet.example", subject: "Cancellation: Home internet" })]);
+    });
+
+    it("a contract is told two weeks before its notice runs out; no longer a contract, the reminder is cancelled", async () => {
+      const { appId, definition } = await install("apps/papers.yaml");
+      // Saved first: contract-watch names it.
+      const reminder = await createVersion(db.client, userId, read("contract-reminder.yaml"), compiler, { app: definition });
+      const watch = await createVersion(db.client, userId, read("contract-watch.yaml"), compiler, { app: definition });
+      const changed = async (item: Record<string, unknown>) => {
+        const runId = await actions.start(watch, { trigger: "event", triggerData: { app: "Papers", appId, type: "Paper", key: "c1", item, before: null, changed: ["endsOn"], stage: null, by: "me" } });
+        await finish(runId);
+      };
+      await changed({ id: "c1", title: "Home internet", kind: "contract", endsOn: day(90), noticeDays: 30 });
+      expect(later.calls).toEqual([expect.objectContaining({ pipeline: "Papers · Contract reminder", at: `${day(90 - 30 - 14)}T09:00`, key: "contract:c1" })]);
+      expect(cancel.calls).toEqual([]);
+      await changed({ id: "c1", title: "Home internet", kind: "other", endsOn: day(90) });
+      expect(later.calls).toHaveLength(1);
+      expect(cancel.calls).toEqual([{ key: "contract:c1" }]);
+
+      const paper = { id: "c1", title: "Home internet", merchant: "Fibrenet", kind: "contract", endsOn: "2027-03-31", noticeDays: 30 };
+      const runId = await actions.start(reminder, { trigger: "event", triggerData: { data: { paper } } });
+      await finish(runId);
+      expect(telegram.calls.map((c) => c.text)).toEqual([
+        "Contract ending: Home internet (Fibrenet) ends on 2027-03-31. To cancel it, tell them by 2027-03-01. Keep it, change it, or press Cancel contract on its page.",
+      ]);
+    });
+
+    it("last month's receipts and invoices, the ones you keep, to your accountant after you Act", async () => {
+      const { appId, definition } = await install("apps/papers.yaml");
+      const thisMonth = new Date().toISOString().slice(0, 7);
+      const first = new Date(`${thisMonth}-01T00:00:00Z`);
+      const last = new Date(first.getTime() - 86_400_000).toISOString().slice(0, 7);
+      await add(appId, "Paper", "e1", { title: "Laptop", kind: "invoice", merchant: "Contoso", amount: 1200, currency: "EUR", date: `${last}-03`, category: "equipment" });
+      await add(appId, "Paper", "e2", { title: "Train", kind: "receipt", merchant: "Rail", amount: 35.5, currency: "EUR", date: `${last}-12`, category: "travel" });
+      await add(appId, "Paper", "e3", { title: "Groceries", kind: "receipt", amount: 80, currency: "EUR", date: `${last}-15`, category: "personal" });
+      await add(appId, "Paper", "e4", { title: "Lunch", kind: "receipt", merchant: "Cafe", amount: 20, currency: "EUR", date: `${last}-20`, category: "meals" });
+      await add(appId, "Paper", "e5", { title: "Monitor", kind: "invoice", amount: 300, currency: "EUR", date: `${thisMonth}-01` });
+      await add(appId, "Paper", "e6", { title: "Phone", kind: "warranty", amount: 600, currency: "EUR", date: `${last}-05` });
+      const versionId = await createVersion(db.client, userId, read("expense-report.yaml"), compiler, { app: definition });
+      await bindSlots(db.client, versionId, {}, { accountant: "books@accounting.example" });
+
+      const runId = await actions.start(versionId, { trigger: "manual" });
+      expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
+      const [review] = await proposals(runId);
+      const offered = (review.originalPayload as { items: { title: string }[] }).items;
+      expect(offered.map((p) => p.title)).toEqual(["Laptop", "Train", "Lunch"]);
+      // Lunch was with a friend: unticked.
+      await approve(review, () => ({ items: offered.filter((p) => p.title !== "Lunch") }));
+      expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
+      const [, mail] = await proposals(runId);
+      const label = new Date(`${last}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+      expect(mail.originalPayload).toMatchObject({
+        to: "books@accounting.example",
+        subject: `Expenses for ${label}`,
+        body: expect.stringContaining(`${last}-03  Contoso  equipment  1,200.00 EUR\n${last}-12  Rail  travel  35.50 EUR\n\nTotal: 1,235.50 EUR`) as unknown,
+      });
+      await approve(mail);
+      await finish(runId);
+      expect(send.calls).toHaveLength(1);
     });
   });
 
