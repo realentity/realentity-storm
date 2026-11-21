@@ -70,6 +70,8 @@ describe("data steps", () => {
       ]),
     ).resolves.toEqual({ items: [items[0]], removed: 2 });
     await expect(run([{ field: "company.country", op: "in", value: ["DE", "AT"] }])).resolves.toEqual({ items: [items[2]], removed: 2 });
+    await expect(run([{ field: "company.country", op: "nin", value: ["DE", "AT"] }])).resolves.toMatchObject({ removed: 1 });
+    await expect(run([{ field: "company.country", op: "nin", value: undefined }])).resolves.toMatchObject({ removed: 0 });
     await expect(run([{ field: "tags", op: "contains", value: "remote" }])).resolves.toMatchObject({ removed: 1 });
     await expect(run([{ field: "salary", op: "gt", value: "lots" }])).resolves.toMatchObject({ items: [], removed: 3 });
     await expect(run([{ field: "missing", op: "neq", value: 1 }])).resolves.toMatchObject({ removed: 0 });
