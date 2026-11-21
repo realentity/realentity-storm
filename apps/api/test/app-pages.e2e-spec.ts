@@ -117,8 +117,19 @@ describe("app pages", () => {
         ],
         nothingOn: false,
         pending: 0,
+        pinned: false,
       },
     ]);
+  });
+
+  it("pins an App to the sidebar and takes it off; only an App of mine", async () => {
+    const pinned = async () => ((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[])[0]?.pinned;
+    await agent.put(`/api/apps/${appId}/pinned`).send({ pinned: true }).expect(204);
+    expect(await pinned()).toBe(true);
+    await agent.put(`/api/apps/${appId}/pinned`).send({ pinned: false }).expect(204);
+    expect(await pinned()).toBe(false);
+    await agent.put(`/api/apps/${appId}/pinned`).send({ pinned: "yes" }).expect(400);
+    await agent.put("/api/apps/00000000-0000-4000-8000-000000000000/pinned").send({ pinned: true }).expect(404);
   });
 
   it("reports counts and sums per currency, a trend and a table, over the period picked", async () => {

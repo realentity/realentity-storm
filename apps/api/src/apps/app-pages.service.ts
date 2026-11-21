@@ -91,9 +91,16 @@ export class AppPagesService {
           ],
           nothingOn: nothingOn(own),
           pending: waiting.filter((w) => ids.has(w.run.pipelineVersion.pipelineId)).length,
+          pinned: app.pinned,
         },
       ];
     });
+  }
+
+  /** Pins an App to the sidebar, or takes it off. */
+  async pin(userId: string, appId: string, pinned: boolean): Promise<void> {
+    const { count } = await this.prisma.client.app.updateMany({ where: { appId, userId }, data: { pinned } });
+    if (count === 0) throw new NotFoundException("No such App");
   }
 
   /** A type's report over the last `days` ("all": all time; left out: its first period), of its entities as its list reads them. */

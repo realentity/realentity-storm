@@ -370,7 +370,12 @@ export interface AppMenuItem {
   nothingOn: boolean;
   /** Proposals of its pipelines waiting for the user's decision. */
   pending: number;
+  /** Pinned to the sidebar by the user. */
+  pinned: boolean;
 }
+
+export const PinAppRequestSchema = z.object({ pinned: z.boolean() }).strict();
+export type PinAppRequest = z.infer<typeof PinAppRequestSchema>;
 
 export const AppListQuerySchema = z
   .object({

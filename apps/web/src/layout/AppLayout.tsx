@@ -6,6 +6,7 @@ import {
   IconCoin,
   IconHeartbeat,
   IconHistory,
+  IconHome,
   IconId,
   IconInbox,
   IconKey,
@@ -20,7 +21,9 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { AppSquares } from "../components/AppSquares";
 import { KillSwitchButton } from "../components/KillSwitchButton";
+import { StartMenu } from "../components/StartMenu";
 import { ThemeSwitch } from "../components/ThemeSwitch";
 import { useSession } from "../context/use-session";
 import { api } from "../lib/endpoints";
@@ -31,7 +34,7 @@ import { useLoad } from "../lib/use-load";
 
 /** What you use every day: the Apps (on Home), what waits for you, what ran; then where Apps and pipelines are made. */
 const NAVIGATION = [
-  { to: "/", label: "Home", icon: IconLayoutGrid },
+  { to: "/", label: "Home", icon: IconHome },
   { to: "/inbox", label: "Inbox", icon: IconInbox },
   { to: "/history", label: "History", icon: IconHistory },
   { to: "/pipelines", label: "Pipelines", icon: IconRoute },
@@ -52,6 +55,9 @@ const SETUP = [
 
 const SETUP_OPEN = "storm.setupOpen";
 
+/** The App a page belongs to: its pages, its reports, where it is managed. */
+const APP_PATH = /^\/(?:a|r|apps)\/([0-9a-f-]{36})(?:\/|$)/;
+
 /** Signed-in area: sidebar, top bar (kill switch always visible), page. */
 export function AppLayout() {
   const { session, logout } = useSession();
@@ -66,6 +72,19 @@ export function AppLayout() {
     [pathname],
     (signal) => signal.type === "proposal",
   );
+  const openAppId = APP_PATH.exec(pathname)?.[1];
+  // The Start menu: every App over the page that is open; Ctrl+K (⌘K) opens and closes it anywhere.
+  const [startOpen, setStartOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setStartOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const onSetup = SETUP.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
   const [setupOpen, setSetupOpen] = useState(() => {
     try {
@@ -144,14 +163,40 @@ export function AppLayout() {
               </li>
               {(setupOpen || onSetup) &&
                 SETUP.map((item) => <MenuLink key={item.to} to={item.to} label={item.label} icon={item.icon} onClick={() => setMenuOpen(false)} />)}
+              <li className="nav-item mt-3">
+                <AppSquares
+                  apps={apps.data ?? []}
+                  openAppId={openAppId}
+                  onAll={() => {
+                    setMenuOpen(false);
+                    setStartOpen(true);
+                  }}
+                  onOpen={() => setMenuOpen(false)}
+                />
+              </li>
             </ul>
           </div>
         </div>
       </aside>
 
+      {startOpen && (
+        <StartMenu apps={apps.data ?? []} views={views.data ?? []} onPinned={apps.reload} onClose={() => setStartOpen(false)} />
+      )}
       <div className="page-wrapper">
         <header className="navbar navbar-expand-md d-print-none sticky-top">
           <div className="container-xl">
+            <button
+              type="button"
+              className="btn btn-ghost-secondary"
+              title="All Apps (Ctrl K)"
+              aria-haspopup="dialog"
+              aria-expanded={startOpen}
+              onClick={() => setStartOpen(true)}
+              data-testid="start-button"
+            >
+              <IconLayoutGrid size={18} className="me-1" />
+              Apps
+            </button>
             <div className="ms-auto d-flex align-items-center gap-3">
               <span
                 className={`status-dot ${connection === "live" ? "status-green" : connection === "connecting" ? "status-yellow" : "status-red"}`}

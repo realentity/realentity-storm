@@ -5,6 +5,7 @@ import {
   EntityValuesRequestSchema,
   MoveStageRequestSchema,
   PageActionRequestSchema,
+  PinAppRequestSchema,
   type AppEntityView,
   type AppListQueryParsed,
   type AppListView,
@@ -16,6 +17,7 @@ import {
   type EntityValuesRequest,
   type MoveStageRequest,
   type PageActionRequest,
+  type PinAppRequest,
   type RunDetailView,
 } from "@realentity/storm-shared";
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query } from "@nestjs/common";
@@ -35,6 +37,17 @@ export class AppPagesController {
   @Get("menu")
   menu(@CurrentUser() user: AuthenticatedUser): Promise<AppMenuItem[]> {
     return this.pages.menu(user.userId);
+  }
+
+  /** Pinned to the sidebar, or taken off it. */
+  @Put(":appId/pinned")
+  @HttpCode(204)
+  pin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("appId", ParseUUIDPipe) appId: string,
+    @Body(new ZodBodyPipe(PinAppRequestSchema)) body: PinAppRequest,
+  ): Promise<void> {
+    return this.pages.pin(user.userId, appId, body.pinned);
   }
 
   /** M37-T2: a page of a draft App, with the App's entities or a sample; nothing is saved. */

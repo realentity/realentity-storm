@@ -238,7 +238,9 @@ types:
   step's items: each field's kind from its values, without the LLM. A draft to rename and trim before saving.
 
 **Pages.** An installed App is a tile on *Home*, the first screen after signing in; it opens on its first page, with
-its pages as tabs and a breadcrumb (*Home › App › list › entity*) above them. Every type gets a list (a tab) and a page per entity, by default from its fields: the
+its pages as tabs and a breadcrumb (*Home › App › list › entity*) above them. *Apps* in the top bar (or Ctrl+K) opens
+the Start menu over any page: every App, found by typing, each one pinned to the sidebar from there; the sidebar shows
+the pinned ones as squares (all of them while there are 8 or fewer and none is pinned). Every type gets a list (a tab) and a page per entity, by default from its fields: the
 title, the required fields and the others that fit a row; enum and yes/no fields as filters; text fields searched;
 newest first. A field's kind sets its format (money with its currency, an enum as a badge, a url as a link). `pages`
 changes them:
