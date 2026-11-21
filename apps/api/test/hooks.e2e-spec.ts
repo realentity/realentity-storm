@@ -631,6 +631,34 @@ describe("M12: the Storm bot and webhooks", () => {
       expect(answer()).toBe("That proposal is gone");
     });
 
+    it("a pipeline of an App waits only for the App's slots it uses: Turn on for one that uses none, the slot named for one that does", async () => {
+      const source = 'name: Ops tg\ntypes:\n  Incident:\n    key: id\n    fields: { id: { type: text } }\nneeds:\n  database: { kind: credential, type: database, label: "The database to check" }\n';
+      await agent.post("/api/apps").send({ source }).expect(201);
+      try {
+        llm.answer(propose({ ...MORNING, app: "Ops tg" }), say("Here it is."));
+        await telegram(press(button(await talk("Say hi every morning"), "Save")!)).expect(200);
+        const hi = sent().at(-1)!;
+        expect(hi.body.text).toBe("Saved: Morning hi v1. It is off: Turn on to run it on the schedule 0 8 * * * (Europe/Sofia).");
+        expect(buttonsOf(hi).map((b) => b.text)).toContain("Turn on");
+
+        const checks = {
+          name: "Checks",
+          app: "Ops tg",
+          trigger: { schedule: "0 * * * *", tz: "Europe/Sofia" },
+          steps: [{ id: "rows", type: "db.query", with: { connection: "{{cred:database}}", sql: "SELECT 1" } }],
+        };
+        await telegram(message("/new")).expect(200);
+        llm.answer(propose(checks), say("Here it is."));
+        await telegram(press(button(await talk("Check my database every hour"), "Save")!)).expect(200);
+        const check = sent().at(-1)!;
+        expect(check.body.text).toBe('Saved: Checks v1. It needs "The database to check": choose it on its page.');
+        expect(buttonsOf(check).map((b) => b.text)).not.toContain("Turn on");
+      } finally {
+        await db.client.pipeline.deleteMany();
+        await db.client.app.deleteMany();
+      }
+    });
+
     it("says when the builder can't answer", async () => {
       llm.answer(() => {
         throw new Error("overloaded");

@@ -109,3 +109,36 @@ policy: { allowedDomains: [status-${id}.example.org] }
     .click();
   await expect(page.getByTestId("needs-card").getByTestId("need-credential-status")).toBeVisible();
 });
+
+// An App's slot waits only for the pipelines that use it: one that doesn't has nothing to fill in and switches on
+test("an App's slot only on the pipelines that use it: one that doesn't switches on without it", async ({ page }) => {
+  // A database no credential of the user's is for: the slot stays empty (one that fits alone would be chosen).
+  const host = `watch-${Date.now().toString(36)}.example.org`;
+  const app = unique("Watch");
+  const created = await page.request.post("/api/apps", {
+    data: {
+      source: `name: ${app}\ntypes:\n  Check:\n    key: id\n    fields: { id: { type: text } }\nneeds:\n  database: { kind: credential, type: database, for: ${host}, label: "The database to check" }\n`,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const ping = await createPipeline(
+    page,
+    `name: ${unique("Ping")}\napp: ${app}\ntrigger: { schedule: "0 9 * * 1" }\nsteps:\n  - id: tell\n    type: notify.telegram\n    with: { text: "Still here" }\n`,
+  );
+  const count = await createPipeline(
+    page,
+    `name: ${unique("Count")}\napp: ${app}\ntrigger: { schedule: "0 9 * * 1" }\nsteps:\n  - id: rows\n    type: db.query\n    with: { connection: "{{cred:database}}", sql: "SELECT 1 AS n" }\n`,
+  );
+
+  await page.goto(`/pipelines/${ping.pipelineId}`);
+  await expect(page.getByTestId("enable-pipeline")).toBeVisible();
+  await expect(page.getByTestId("needs-card")).toHaveCount(0);
+  await page.getByTestId("enable-pipeline").click();
+  await expect(page.getByTestId("enable-pipeline")).toBeChecked();
+
+  await page.goto(`/pipelines/${count.pipelineId}`);
+  await expect(page.getByTestId("needs-card").getByTestId("need-database")).toContainText("the App's");
+  await page.getByTestId("enable-pipeline").click();
+  await expect(page.getByText(/Fill in "The database to check" first/)).toBeVisible();
+  await expect(page.getByTestId("enable-pipeline")).not.toBeChecked();
+});

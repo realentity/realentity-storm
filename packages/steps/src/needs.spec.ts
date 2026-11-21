@@ -1,4 +1,5 @@
-import { AppDefinitionSchema, type CompileResult } from "@realentity/storm-shared";
+import { AppDefinitionSchema, readAppPackage, readAppSource, slotsUsed, type CompileResult } from "@realentity/storm-shared";
+import { exampleFiles } from "@realentity/storm-shared/example-files";
 import { defaultCatalog } from "./catalog";
 import { PipelineCompiler } from "./compiler";
 
@@ -134,5 +135,54 @@ describe("needs (M50)", () => {
     });
     const result = ok(compiler.compile({ name: "P", app: "Ops", steps: [ISSUE] }, { app }));
     expect(result.definition.needs).toBeUndefined();
+  });
+});
+
+// A pipeline of an App needs only the App's slots it uses (Server ops' monitors switched on without its database)
+describe("slotsUsed", () => {
+  it("finds {{cred:…}} and {{setting.…}} anywhere in a step's inputs, and an account step's account by name", () => {
+    expect(
+      slotsUsed([
+        ISSUE,
+        { type: "db.query", with: { connection: "{{ cred:orders-db }}", sql: "SELECT 1" } },
+        { type: "notify.telegram", with: { text: "{{setting.greeting}} and {{setting.greeting}}" } },
+        { type: "email.send", with: { to: "a@mail.example", subject: "x", body: "y", account: "work" } },
+        { type: "calendar.create", with: { title: "x", account: "personal" } },
+      ]),
+    ).toEqual(new Set(["repository", "github", "orders-db", "greeting", "work", "personal"]));
+  });
+
+  it("not: email.fetch's topics, an account from data, an `account` on another step, a step's other parts, a reference that isn't one", () => {
+    expect(
+      slotsUsed([
+        { type: "email.fetch", with: { account: "topics" } },
+        { type: "email.send", with: { to: "a@mail.example", account: "{{item.account}}" } },
+        { type: "http.request", with: { account: "billing", url: "https://api.example.com/{{cred}}", body: { note: "cred:token setting.title" } } },
+        { type: "notify.telegram" },
+      ]),
+    ).toEqual(new Set());
+  });
+
+  it("agrees with the compiler on every example: a pipeline's own slots are ones it uses, its App's all used by one of its pipelines", () => {
+    for (const [id, text] of Object.entries(exampleFiles())) {
+      const documents = readAppPackage(text).documents;
+      const app = readAppSource(documents[0].source);
+      const usedByApp = new Set<string>();
+      for (const document of documents.slice(1)) {
+        const result = ok(compiler.compileText(document.source, { app }));
+        const used = slotsUsed(result.definition.steps);
+        used.forEach((slot) => usedByApp.add(slot));
+        const declared = new Set([...Object.keys(result.definition.needs ?? {}), ...Object.keys(app.needs ?? {})]);
+        expect({ id, pipeline: document.key, undeclared: [...used].filter((s) => !declared.has(s)) }).toEqual({ id, pipeline: document.key, undeclared: [] });
+        const unused = Object.keys(result.definition.needs ?? {}).filter((s) => !used.has(s));
+        expect({ id, pipeline: document.key, unused }).toEqual({ id, pipeline: document.key, unused: [] });
+      }
+      expect({ id, unusedAppSlots: Object.keys(app.needs ?? {}).filter((s) => !usedByApp.has(s)) }).toEqual({ id, unusedAppSlots: [] });
+    }
+    // Server ops: only Database check reads the database.
+    const ops = readAppPackage(exampleFiles()["server-ops"]).documents;
+    const opsApp = readAppSource(ops[0].source);
+    const using = ops.slice(1).filter((d) => slotsUsed(ok(compiler.compileText(d.source, { app: opsApp })).definition.steps).has("database"));
+    expect(using.map((d) => d.key)).toEqual(["database-check"]);
   });
 });

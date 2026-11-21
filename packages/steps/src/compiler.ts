@@ -1,6 +1,9 @@
 import {
+  ACCOUNT_STEPS,
   type AppDefinition,
   addedByHand,
+  CRED_REFERENCE,
+  SETTING_REFERENCE,
   SLOT_NAME,
   type Need,
   type Needs,
@@ -853,7 +856,7 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
     for (const [field, value] of Object.entries(step.with)) {
       const text = JSON.stringify(value ?? null);
       const at = `steps[${index}].with.${field}`;
-      for (const [, slot] of text.matchAll(/\{\{\s*cred:([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g)) {
+      for (const [, slot] of text.matchAll(CRED_REFERENCE)) {
         const database = step.type === "db.query" && field === "connection";
         const need = declared(slot);
         // For the host the step goes to, when it is written: only a credential allowed there fits.
@@ -867,7 +870,7 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
         else if (database && need.type && need.type !== "database")
           errors.push({ path: at, message: `"${slot}" is a ${need.type} credential; db.query's connection is a database` });
       }
-      for (const [, slot] of text.matchAll(/\{\{\s*setting\.([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g)) {
+      for (const [, slot] of text.matchAll(SETTING_REFERENCE)) {
         const need = declared(slot);
         if (!need) own[slot] = { kind: "text" };
         else if (need.kind === "email" || need.kind === "google")
@@ -878,15 +881,6 @@ function collectNeeds(definition: PipelineDefinition, app: AppDefinition | undef
   });
   return own;
 }
-
-/** M50-T7, M50-T8: the steps that go through one of the user's accounts, and which kind. */
-const ACCOUNT_STEPS: Record<string, "email" | "google"> = {
-  "email.fetch": "email",
-  "email.awaiting": "email",
-  "email.send": "email",
-  "calendar.find": "google",
-  "calendar.create": "google",
-};
 
 const KIND_NAMES: Record<Need["kind"], string> = {
   credential: "a credential",
