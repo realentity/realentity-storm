@@ -887,6 +887,8 @@ model App {
   currentVersionId String?  @db.Uuid
   /// M40: { id, needs }: the example it was installed from; its App page shows a checklist of what is left (M40-T3).
   example          Json?
+  /// Pinned to the sidebar, a square among the Apps there (and first in the Start menu).
+  pinned           Boolean  @default(false)
   dateCreated      DateTime @default(now())
   dateUpdated      DateTime @updatedAt
 

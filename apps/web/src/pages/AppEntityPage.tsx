@@ -1,8 +1,9 @@
 import { fieldOf, type AppEntityView } from "@realentity/storm-shared";
 import { IconTrash } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { AppHeader } from "../components/AppHeader";
 import { EntityButtons } from "../components/EntityButtons";
 import { EntityForm } from "../components/EntityForm";
 import { EntityLink } from "../components/EntityLink";
@@ -40,6 +41,7 @@ export function AppEntityPage() {
   if (!data) return loaded.error ? <ErrorAlert error={loaded.error} /> : <Loading />;
   const { page, row, history, list, stage } = data;
   const title = fieldOf(row, page.title);
+  const shownTitle = title === undefined || title === null || title === "" ? row.key : asText(title);
   const listUrl = `/a/${appId}/${encodeURIComponent(type)}`;
 
   const save = async (values: Record<string, unknown>, done = "Saved") => {
@@ -67,13 +69,14 @@ export function AppEntityPage() {
 
   return (
     <>
+      <AppHeader
+        appId={appId}
+        appName={data.app}
+        current={{ kind: "list", type }}
+        trail={[{ label: list.label, to: listUrl }, { label: shownTitle }]}
+      />
       <PageHeader
-        pretitle={
-          <>
-            <Link to={`/apps/${appId}`}>{data.app}</Link> · <Link to={listUrl}>{list.label}</Link>
-          </>
-        }
-        title={title === undefined || title === null || title === "" ? row.key : asText(title)}
+        title={shownTitle}
         actions={
           <>
             <EntityLink row={row} field={page.link} />

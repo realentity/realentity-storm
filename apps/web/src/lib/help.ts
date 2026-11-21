@@ -4,8 +4,8 @@
  */
 export const HELP = {
   // The App.
-  appName: "The App's name. Pipelines belong to it by writing it in `app:`; its pages are under it in the menu.",
-  appIcon: "The App's icon: in the menu beside its pages, and on the Apps page.",
+  appName: "The App's name. Pipelines belong to it by writing it in `app:`; its pages are its tabs once it is open.",
+  appIcon: "The App's icon: on its tile on Home, at the top of its pages, and on the Apps page.",
   appDescription: "What the App keeps, in a sentence. Shown on the App's page, and read by the builder when it proposes changes to it.",
 
   // Types and fields.
@@ -39,9 +39,9 @@ export const HELP = {
   moveByPipeline: "A pipeline may make this move when it saves the entity (data.save with a stage).",
 
   // Pages.
-  pageMenu: "Shown in the menu under Pages. Off: reached only from the App's page.",
-  pageMenuLabel: "Its name in the menu; by default the type's name.",
-  pageMenuIcon: "Its icon in the menu; by default the App's.",
+  pageMenu: "A tab at the top of the App. Off: reached only from the App's page and from links.",
+  pageMenuLabel: "Its name on the tab; by default the type's name.",
+  pageMenuIcon: "Its icon on the tab; by default the App's.",
   pageColumns: "The columns of the list, in order: move them with the arrows, add one from the list. At most 8.",
   pageDue: "A date column's badge: overdue, today, or in N days; not shown while the entity is as 'unless' says (paid).",
   pageDueDays: "How many days before the date the badge shows.",

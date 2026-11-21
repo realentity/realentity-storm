@@ -1,6 +1,6 @@
 import { createPrismaConnection } from "@realentity/storm-db";
 import { expect, test } from "@playwright/test";
-import { createPipeline, startRun, unique } from "./support";
+import { createPipeline, startRun, unique, openPipelinePage } from "./support";
 
 // M29-E1: a pipeline's page with a chart of every key above the list
 test("a page's chart: a line per key with a legend, values on hover, the list below", async ({ page }) => {
@@ -47,8 +47,7 @@ view:
     await db.close();
   }
 
-  await page.goto("/inbox");
-  await page.getByTestId("view-menu-item").filter({ hasText: label }).click();
+  await openPipelinePage(page, label);
   const chart = page.getByTestId("view-chart");
   await expect(chart.getByRole("heading", { name: "Rows" })).toBeVisible();
   await expect(chart.getByLabel("Legend")).toHaveText(/orders.*sessions.*users/);

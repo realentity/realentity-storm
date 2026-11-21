@@ -1,6 +1,6 @@
 import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { createPipeline, startRun, unique } from "./support";
+import { createPipeline, startRun, unique, openAppPage } from "./support";
 
 // M33-E1 (Bills): what the Bills page did, on the Bills App's list: months with their totals and what is unpaid,
 // a badge on what is due soon, Mark paid on the row
@@ -38,8 +38,7 @@ steps:
   );
   await startRun(page, reader.pipelineId);
 
-  await page.goto("/inbox");
-  await page.getByTestId("app-menu-item").filter({ hasText: label }).click();
+  await openAppPage(page, label);
   const rows = page.getByTestId("entity-row");
   await expect(rows).toHaveCount(3, { timeout: 20_000 });
   const totals = page.getByTestId("group-total");

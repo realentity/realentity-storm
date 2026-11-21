@@ -104,11 +104,32 @@ describe("app pages", () => {
   const list = async (query = "") => (await agent.get(`/api/apps/${appId}/pages/Bill${query}`).expect(200)).body as AppListView;
   const keys = (view: AppListView) => view.rows.map((r) => r.key);
 
-  it("puts the lists in the menu, those hidden from it left out, then the reports", async () => {
+  it("puts each App on the launcher: its lists in the menu, those hidden from it left out, then the reports", async () => {
     expect((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[]).toEqual([
-      { appId, appName: "Bills", kind: "list", type: "Bill", label: "My bills", icon: "receipt", nothingOn: false },
-      { appId, appName: "Bills", kind: "report", type: "Bill", label: "Bill report", icon: "chart", nothingOn: false },
+      {
+        appId,
+        name: "Bills",
+        icon: "receipt",
+        description: null,
+        pages: [
+          { kind: "list", type: "Bill", label: "My bills", icon: "receipt" },
+          { kind: "report", type: "Bill", label: "Bill report", icon: "chart" },
+        ],
+        nothingOn: false,
+        pending: 0,
+        pinned: false,
+      },
     ]);
+  });
+
+  it("pins an App to the sidebar and takes it off; only an App of mine", async () => {
+    const pinned = async () => ((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[])[0]?.pinned;
+    await agent.put(`/api/apps/${appId}/pinned`).send({ pinned: true }).expect(204);
+    expect(await pinned()).toBe(true);
+    await agent.put(`/api/apps/${appId}/pinned`).send({ pinned: false }).expect(204);
+    expect(await pinned()).toBe(false);
+    await agent.put(`/api/apps/${appId}/pinned`).send({ pinned: "yes" }).expect(400);
+    await agent.put("/api/apps/00000000-0000-4000-8000-000000000000/pinned").send({ pinned: true }).expect(404);
   });
 
   it("reports counts and sums per currency, a trend and a table, over the period picked", async () => {

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { createPipeline, startRun, unique } from "./support";
+import { createPipeline, startRun, unique, openPipelinePage } from "./support";
 
-// M27: a pipeline's page in the menu, its rows, the user's marks, a row's button
+// M27: a pipeline's page on Home, its rows, the user's marks, a row's button
 test("a pipeline's page lists what it keeps, keeps the user's marks and starts a pipeline from a row", async ({ page }) => {
   const tag = unique("e2e");
   const collection = tag.replace(/\W+/g, "-").toLowerCase();
@@ -42,8 +42,7 @@ view:
   );
   await startRun(page, watch.pipelineId);
 
-  await page.goto("/inbox");
-  await page.getByTestId("view-menu-item").filter({ hasText: label }).click();
+  await openPipelinePage(page, label);
   await expect(page.getByRole("heading", { name: label })).toBeVisible();
   const rows = page.getByTestId("view-row");
   await expect(rows).toHaveCount(2);

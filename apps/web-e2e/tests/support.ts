@@ -48,3 +48,18 @@ export function stepRow(page: Page, type: string, item: number) {
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/** Opens one of an App's pages as a user does: from Home, the tile of the App that has it, then its tab. */
+export async function openAppPage(page: Page, label: string): Promise<void> {
+  await page.goto("/");
+  await page.getByTestId("app-tile").filter({ hasText: label }).click();
+  const tab = page.getByTestId("app-tab").filter({ hasText: new RegExp(`^${escape(label)}$`) });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-current", "page");
+}
+
+/** Opens a pipeline's page from Home. */
+export async function openPipelinePage(page: Page, label: string): Promise<void> {
+  await page.goto("/");
+  await page.getByTestId("view-tile").filter({ hasText: label }).click();
+}

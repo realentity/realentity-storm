@@ -51,7 +51,7 @@ steps:
     type: notify.telegram
     when: "{{feeds.items}}"              # skip the step when the value is empty
     with: { text: "New releases: {{feeds.items}}" }
-view: ...                                # optional: a page in the menu for a saved collection (§2.4)
+view: ...                                # optional: a page on Home for a saved collection (§2.4)
 ```
 
 ### 2.1 References
@@ -130,7 +130,7 @@ transformed only as `http.request` sends it, after its gate. A credential (`{{cr
 > M33: an App's pages (§2.5) do all of this and more; Release watch and Table growth are now in the Releases and
 > Tables Apps ([examples/apps/](../examples/apps/)). `view` still works, until it goes with the old pages.
 
-A pipeline that saves a collection (`data.save` with `collection:`) can show it as a page in the menu, with columns,
+A pipeline that saves a collection (`data.save` with `collection:`) can show it as a page (on *Home*, under Pipeline pages), with columns,
 marks (e.g. *Done*, which hides a row) and buttons that start a pipeline for a row:
 
 ```yaml
@@ -237,7 +237,10 @@ types:
 - **A type from a source:** on the App's editor, *Try the source* dry-runs a pipeline and drafts a type from a
   step's items: each field's kind from its values, without the LLM. A draft to rename and trim before saving.
 
-**Pages.** Every type gets a list in the menu (under *Pages*) and a page per entity, by default from its fields: the
+**Pages.** An installed App is a tile on *Home*, the first screen after signing in; it opens on its first page, with
+its pages as tabs and a breadcrumb (*Home › App › list › entity*) above them. *Apps* in the top bar (or Ctrl+K) opens
+the Start menu over any page: every App, found by typing, each one pinned to the sidebar from there; the sidebar shows
+the pinned ones as squares (all of them while there are 8 or fewer and none is pinned). Every type gets a list (a tab) and a page per entity, by default from its fields: the
 title, the required fields and the others that fit a row; enum and yes/no fields as filters; text fields searched;
 newest first. A field's kind sets its format (money with its currency, an enum as a badge, a url as a link). `pages`
 changes them:
@@ -245,7 +248,7 @@ changes them:
 ```yaml
 pages:
   - list: Bill
-    menu: { label: Bills, icon: receipt }    # or menu: false
+    menu: { label: Bills, icon: receipt }    # its tab; or menu: false (no tab)
     columns: [payee, amount, due, status]
     filters: [status, paid]                  # enum and yes/no fields
     sort: -due
@@ -322,7 +325,7 @@ counts the entities that were ever at that stage, wherever they are now. `of: <t
 another (counts and number sums, not money). A trend draws a measure over the period, a point per `day`, `week` or
 `month`. A table shows tiles again (`columns`), a row per value of a field, the most first (an enum's in its order), or
 per band of a number field (`bands`, their lower bounds). A report reads a type's newest 5000 entities, removed ones
-included, and goes in the menu after the App's lists.
+included, and is a tab after the App's lists.
 
 ```yaml
 pages:

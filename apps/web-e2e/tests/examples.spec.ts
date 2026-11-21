@@ -43,10 +43,12 @@ test("the starter: installed, tried, switched on and run; its releases on its pa
   const appUrl = page.url();
   const appId = new URL(appUrl).pathname.split("/").pop()!;
 
-  // Installed off: the page says its pipeline doesn't run by itself yet, and the menu marks the App.
-  const menuItem = page.locator(`[data-testid="app-menu-item"]:has(a[href^="/a/${appId}/"])`);
+  // Installed off: the page says its pipeline doesn't run by itself yet, and its tile on Home marks the App.
+  const tile = page.locator(`[data-testid="app-tile"][href^="/a/${appId}/"]`);
   await expect(page.getByTestId("pipelines-off").getByTestId("pipeline-off")).toHaveCount(1);
-  await expect(menuItem.getByTestId("app-nothing-on")).toBeVisible();
+  await page.goto("/");
+  await expect(tile.getByTestId("app-nothing-on")).toBeVisible();
+  await page.goto(appUrl);
 
   // Needs nothing: what is left is its pipeline, tried and switched on.
   const checklist = page.getByTestId("example-checklist");
@@ -69,7 +71,9 @@ test("the starter: installed, tried, switched on and run; its releases on its pa
   await page.goto(appUrl);
   await expect(page.getByTestId("example-checklist")).toHaveCount(0);
   await expect(page.getByTestId("pipelines-off")).toHaveCount(0);
-  await expect(menuItem.getByTestId("app-nothing-on")).toHaveCount(0);
+  await page.goto("/");
+  await expect(tile).toBeVisible();
+  await expect(tile.getByTestId("app-nothing-on")).toHaveCount(0);
 
   // Run from its list's button: its releases there, new, to mark read.
   await page.goto(`/a/${appId}/Release`);

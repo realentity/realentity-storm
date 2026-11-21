@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { Empty, ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
+import { useNavigate, useParams } from "react-router-dom";
+import { AppHeader } from "../components/AppHeader";
+import { Empty, ErrorAlert, Loading, Modal } from "../components/ui";
 import { EntityButtons } from "../components/EntityButtons";
 import { EntityForm } from "../components/EntityForm";
 import { ListTable } from "../components/ListTable";
@@ -51,9 +52,11 @@ export function AppListPage() {
 
   return (
     <>
-      <PageHeader
-        pretitle={<Link to={`/apps/${appId}`}>{list.data.app}</Link>}
-        title={page.label}
+      <AppHeader
+        appId={appId}
+        appName={list.data.app}
+        current={{ kind: "list", type }}
+        trail={[{ label: page.label }]}
         actions={
           <>
             <EntityButtons appId={appId} type={type} actions={page.actions.map((a, index) => ({ index, ...a }))} />

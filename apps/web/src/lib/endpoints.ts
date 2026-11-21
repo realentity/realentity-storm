@@ -318,6 +318,7 @@ export const api = {
     importFrom: (appId: string, from: ImportSource, into?: { collection: string; type: string }) =>
       request<AppImportResult>("POST", `/apps/${appId}/import`, { from, ...into }),
     menu: () => request<AppMenuItem[]>("GET", "/apps/menu"),
+    pin: (appId: string, pinned: boolean) => request<void>("PUT", `/apps/${appId}/pinned`, { pinned }),
     page: (appId: string, type: string, q: Partial<AppListQuery> = {}) =>
       request<AppListView>("GET", `/apps/${appId}/pages/${encodeURIComponent(type)}${query(q)}`),
     /** `days` left out: the page's first period; null: all time. */
