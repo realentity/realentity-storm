@@ -73,6 +73,37 @@ export type Needs = z.infer<typeof NeedsSchema>;
 
 /** {{cred:slot}} anywhere in a text. */
 export const CRED_REFERENCE = /\{\{\s*cred:([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g;
+/** {{setting.slot}} anywhere in a text. */
+export const SETTING_REFERENCE = /\{\{\s*setting\.([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g;
+
+/** M50-T7, M50-T8: the steps that go through one of the user's accounts, and which kind: their `account` is a slot. */
+export const ACCOUNT_STEPS: Readonly<Record<string, "email" | "google">> = {
+  "email.fetch": "email",
+  "email.awaiting": "email",
+  "email.send": "email",
+  "calendar.find": "google",
+  "calendar.create": "google",
+};
+
+/**
+ * The slots a pipeline's steps use, as the compiler finds them: {{cred:…}} and {{setting.…}} in a step's inputs, and an
+ * account step's `account` written as a name ("topics" and one from data aren't slots). A pipeline of an App needs only
+ * the App's slots it uses: Server ops' monitors run without the database its database check reads.
+ */
+export function slotsUsed(steps: readonly { type: string; with?: Record<string, unknown> }[]): Set<string> {
+  const used = new Set<string>();
+  for (const step of steps) {
+    const inputs = step.with ?? {};
+    const account = Object.hasOwn(ACCOUNT_STEPS, step.type) ? inputs.account : undefined;
+    if (typeof account === "string" && account !== "topics" && SLOT_NAME.test(account)) used.add(account);
+    for (const value of Object.values(inputs)) {
+      const text = JSON.stringify(value ?? null);
+      for (const [, slot] of text.matchAll(CRED_REFERENCE)) used.add(slot);
+      for (const [, slot] of text.matchAll(SETTING_REFERENCE)) used.add(slot);
+    }
+  }
+  return used;
+}
 
 /** The slot of a value that is exactly {{cred:slot}}; null otherwise. */
 export function credSlotOf(value: unknown): string | null {

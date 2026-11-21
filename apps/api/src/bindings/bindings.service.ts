@@ -4,6 +4,7 @@ import {
   DRIVE_SCOPE,
   hostMatches,
   readAppSource,
+  slotsUsed,
   type BindingsRequest,
   type BindingView,
   type CompiledDefinition,
@@ -30,7 +31,7 @@ export function fits(need: Need, credential: Pick<Credential, "kind" | "allowedH
 export class BindingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** A pipeline's slots, its own and its App's, with what fills them. */
+  /** A pipeline's slots, its own and those of its App's it uses, with what fills them. */
   async ofPipeline(userId: string, pipelineId: string): Promise<BindingView[]> {
     const { own, app } = await this.pipelineNeeds(userId, pipelineId);
     const views = await this.views(userId, { pipelineId }, own, "pipeline");
@@ -220,7 +221,11 @@ export class BindingsService {
       (definition?.app
         ? (await this.prisma.client.app.findUnique({ where: { userId_name: { userId, name: definition.app } } }))?.appId
         : undefined);
-    return { own: definition?.needs ?? {}, app: appId ? { appId, needs: await this.appNeeds(userId, appId) } : null };
+    if (!appId) return { own: definition?.needs ?? {}, app: null };
+    // Of its App's slots, only those its steps use: Server ops' Check monitors needs nothing its database check reads.
+    const used = slotsUsed(definition?.steps ?? []);
+    const needs = Object.fromEntries(Object.entries(await this.appNeeds(userId, appId)).filter(([slot]) => used.has(slot)));
+    return { own: definition?.needs ?? {}, app: { appId, needs } };
   }
 
   private async appNeeds(userId: string, appId: string): Promise<Needs> {

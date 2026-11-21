@@ -142,7 +142,7 @@ describe("bindings", () => {
   describe("what keeps slots filled", () => {
     const serverOps = readExamples(exampleFiles()).find((e) => e.id === "server-ops")!;
 
-    it("Server ops from the gallery: its slots on the checklist, a pipeline switched on only once they are filled, each credential's uses", async () => {
+    it("Server ops from the gallery: its slots on the checklist, a pipeline switched on only once the slots it uses are filled, each credential's uses", async () => {
       await agent
         .post("/api/bundles")
         .send({ text: serverOps.text, example: { id: serverOps.id, needs: serverOps.needs } })
@@ -150,10 +150,19 @@ describe("bindings", () => {
       const app = await db.client.app.findFirstOrThrow({ where: { name: "Server ops" } });
       const checklist = async () => (await agent.get(`/api/examples/apps/${app.appId}/checklist`).expect(200)).body as ChecklistView;
       expect((await checklist()).items.filter((i) => i.link === `/apps/${app.appId}#needs`).map((i) => i.label)).toEqual([
-        'Choose the credential for "The database to check (a user that may only read)"',
+        'Choose the credential for "The database to check (a user that may only read)" (for "Server ops · Database check")',
       ]);
 
+      // Only to monitor: Check monitors doesn't read the database, so it neither shows nor waits for it.
+      const monitors = await db.client.pipeline.findFirstOrThrow({ where: { name: "Server ops · Check monitors" } });
+      expect((await agent.get(`/api/pipelines/${monitors.pipelineId}/bindings`).expect(200)).body).toEqual([]);
+      await agent.patch(`/api/pipelines/${monitors.pipelineId}`).send({ enabled: true }).expect(200);
+      for (const other of await db.client.pipeline.findMany({ where: { name: { startsWith: "Server ops · " }, NOT: { name: "Server ops · Database check" } } })) {
+        expect({ name: other.name, slots: (await agent.get(`/api/pipelines/${other.pipelineId}/bindings`).expect(200)).body as unknown }).toEqual({ name: other.name, slots: [] });
+      }
+
       const check = await db.client.pipeline.findFirstOrThrow({ where: { name: "Server ops · Database check" } });
+      expect(slots((await agent.get(`/api/pipelines/${check.pipelineId}/bindings`).expect(200)).body as BindingView[])).toEqual({ database: null });
       const refused = await agent.patch(`/api/pipelines/${check.pipelineId}`).send({ enabled: true }).expect(409);
       expect((refused.body as { message: string }).message).toBe(
         `Fill in "The database to check (a user that may only read)" first (its Needs, on its page or its App's)`,
@@ -166,6 +175,37 @@ describe("bindings", () => {
 
       const credentials = (await agent.get("/api/credentials").expect(200)).body as CredentialView[];
       expect(credentials.find((c) => c.name === "orders-db")!.usedBy).toEqual([{ owner: "app", id: app.appId, name: "Server ops", slot: "database" }]);
+    });
+
+    it("an App's pipeline waits only for the App's slots it uses: a credential, a setting deep in a body, or none", async () => {
+      const app = (await agent.post("/api/apps").send({ source: OPS("Ops five") }).expect(201)).body as AppDetailView;
+      const pipeline = async (name: string, step: object) =>
+        ((await agent.post("/api/pipelines").send({ source: JSON.stringify({ name, app: "Ops five", trigger: { schedule: "0 9 * * *" }, steps: [step] }) }).expect(201)).body as PipelineDetailView)
+          .pipelineId;
+      const issue = await pipeline("Issue", {
+        id: "issue",
+        type: "http.request",
+        with: { method: "POST", url: "https://api.github.com/repos/me/infra/issues", headers: { Authorization: "Bearer {{cred:github}}" }, body: {} },
+      });
+      const note = await pipeline("Note", { id: "note", type: "notify.telegram", with: { text: "Checks of {{setting.repository}}" } });
+      const ping = await pipeline("Ping", { id: "ping", type: "notify.telegram", with: { text: "Still here" } });
+      const switchOn = (pipelineId: string) => agent.patch(`/api/pipelines/${pipelineId}`).send({ enabled: true });
+      const bindings = async (pipelineId: string) => slots((await agent.get(`/api/pipelines/${pipelineId}/bindings`).expect(200)).body as BindingView[]);
+
+      expect(await bindings(issue)).toEqual({ github: null });
+      expect(await bindings(note)).toEqual({ repository: null });
+      expect(await bindings(ping)).toEqual({});
+      await switchOn(ping).expect(200);
+      expect(((await switchOn(issue).expect(409)).body as { message: string }).message).toBe(`Fill in "GitHub, to open issues" first (its Needs, on its page or its App's)`);
+      expect(((await switchOn(note).expect(409)).body as { message: string }).message).toBe(`Fill in "Repository" first (its Needs, on its page or its App's)`);
+
+      // The App's page still lists all three; filled there, each pipeline that uses one may be switched on.
+      expect(slots((await agent.get(`/api/apps/${app.appId}/bindings`).expect(200)).body as BindingView[])).toEqual({ github: null, database: null, repository: null });
+      const token = await credential("gh-five", "API_KEY", ["api.github.com"]);
+      await agent.put(`/api/apps/${app.appId}/bindings`).send({ github: { credentialId: token.credentialId }, repository: { text: "me/infra" } }).expect(200);
+      expect(await bindings(issue)).toEqual({ github: "gh-five" });
+      await switchOn(issue).expect(200);
+      await switchOn(note).expect(200);
     });
 
     it("a slot renamed in a new version keeps its binding when it asks for the same", async () => {

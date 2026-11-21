@@ -436,7 +436,9 @@ steps:
   your choice when you save. You never type `{{cred:…}}`, and the builder never names a credential: it writes slots,
   and puts one several of an App's pipelines use on the App.
 - **Kept filled:** a pipeline with a slot empty can't be switched on (it says which); an installed example's checklist
-  lists them. A slot renamed in a new version keeps its credential when it asks for the same. The Credentials page
+  lists them. Of its App's slots, a pipeline shows and waits for only those its steps use (`{{cred:…}}`, `{{setting.…}}`,
+  an `account`): Server ops' Check monitors runs without the database only Database check reads, and the checklist says
+  which pipelines an App's slot is for. A slot renamed in a new version keeps its credential when it asks for the same. The Credentials page
   shows where each credential is used, and deleting one in use names what loses it. A copy or an export carries the
   slots, never what fills them.
 - **At run time** a slot without a credential, or a setting not set, fails the step saying which and where to set it. A

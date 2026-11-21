@@ -75,14 +75,8 @@ export class ExamplesService {
       const problem = need.kind === "email" && setup.emailProblem ? { note: `The last mail read failed: ${setup.emailProblem}` } : {};
       items.push({ label: need.label, done: needMet(need, setup, entities), ...where(need, appId), ...problem });
     }
-    // M50-T6: each slot not filled yet, the App's (on its page) and its pipelines' (on theirs).
-    for (const slot of emptySlots(await this.bindings.ofApp(userId, appId)))
-      items.push({ label: slotLabel(slot), done: false, link: `/apps/${appId}#needs` });
     const detail = await this.apps.get(userId, appId);
-    for (const { pipelineId } of detail.pipelines) {
-      const own = (await this.bindings.ofPipeline(userId, pipelineId)).filter((v) => v.owner === "pipeline");
-      for (const slot of emptySlots(own)) items.push({ label: slotLabel(slot), done: false, link: `/pipelines/${pipelineId}#needs` });
-    }
+    items.push(...(await this.emptySlotItems(userId, appId, detail.pipelines)));
     for (const { pipelineId, name, enabled, runsOnItsOwn } of detail.pipelines) {
       const tried = (await this.prisma.client.run.count({ where: { pipelineVersion: { pipelineId } } })) > 0;
       items.push({ label: `Try "${name}": a dry run, which sends and saves nothing`, done: tried, link: `/pipelines/${pipelineId}` });
@@ -90,6 +84,25 @@ export class ExamplesService {
       if (runsOnItsOwn) items.push({ label: `Switch "${name}" on`, done: enabled, link: `/pipelines/${pipelineId}` });
     }
     return { example: example.id, items, done: items.every((i) => i.done) };
+  }
+
+  /**
+   * M50-T6: each slot not filled yet, the App's (on its page) and its pipelines' (on theirs). An App's slot its
+   * pipelines don't all use says which do: only they wait for it.
+   */
+  private async emptySlotItems(userId: string, appId: string, pipelines: { pipelineId: string; name: string }[]): Promise<ChecklistView["items"]> {
+    const slotsOf = await Promise.all(pipelines.map(async (p) => ({ ...p, views: await this.bindings.ofPipeline(userId, p.pipelineId) })));
+    const items: ChecklistView["items"] = [];
+    for (const slot of emptySlots(await this.bindings.ofApp(userId, appId))) {
+      const users = slotsOf.filter((p) => p.views.some((v) => v.owner === "app" && v.slot === slot.slot)).map((p) => `"${p.name}"`);
+      const forSome = users.length > 0 && users.length < slotsOf.length ? ` (for ${users.join(", ")})` : "";
+      items.push({ label: `${slotLabel(slot)}${forSome}`, done: false, link: `/apps/${appId}#needs` });
+    }
+    for (const { pipelineId, views } of slotsOf) {
+      for (const slot of emptySlots(views.filter((v) => v.owner === "pipeline")))
+        items.push({ label: slotLabel(slot), done: false, link: `/pipelines/${pipelineId}#needs` });
+    }
+    return items;
   }
 }
 
