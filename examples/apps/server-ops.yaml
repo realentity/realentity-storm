@@ -3,16 +3,15 @@
 # that finds trouble (database-check), the database that can't be reached (database-down). Each is resolved by itself when the cause is gone, or by you. Open issue on an open
 # one files it on GitHub, after you approve the request (incident-issue); every Monday, the week in numbers
 # (ops-week). M58-T2: a monitor's Runbooks (a restart or redeploy webhook you add) are proposed when it goes down
-# (fix-offer) and on an incident's Fix button (fix), each sent only after you Act. No LLM.
+# (fix-offer) and on an incident's Fix button (fix), each sent only after you Act. M58-T2b: issues go to the
+# monitor's Repository, or the default one, with its GitHub owner's token (as in Lockbox). No LLM.
 app:
   name: Server ops
   description: Your monitors, and incidents on what you run
   icon: cpu
-  # M50: chosen when you install it; two installs can watch two databases and two repositories.
+  # M50: chosen when you install it; two installs can watch two databases. Repositories and their tokens are rows.
   needs:
     database: { kind: credential, type: database, label: "The database to check (a user that may only read)" }
-    github: { kind: credential, type: api_key, for: api.github.com, label: "GitHub, to open issues" }
-    repository: { kind: text, label: "Repository for its issues (owner/name)", example: me/infra }
   summary: >-
     Your monitors checked every five minutes; incidents on what you run (a monitor down, a database
     check above 0, the database out of reach), resolved when the cause is gone; a fix (your restart
@@ -39,6 +38,7 @@ types:
       error: { type: text, label: Why down }
       checkedAt: { type: datetime, label: Checked }
       certExpires: { type: date, label: Certificate until }
+      repository: { type: ref, to: Repository, mine: true, label: Issues go to, help: "Its incidents' GitHub issues; empty: the default repository" }
   Incident:
     key: id                        # what it is about and when it started: a monitor down twice is two Incidents
     title: title
@@ -75,6 +75,31 @@ types:
       url: { type: url, required: true, label: Webhook, help: "A public address: your restart, redeploy or purge hook" }
       authorization: { type: text, encrypted: true, label: Authorization header, help: "Sent as the Authorization header (Bearer …); encrypted when saved, never shown again" }
       notes: { type: longtext }
+  # M58-T2b: a user or an organization on GitHub, with the token its repositories' issues are opened with: a credential,
+  # chosen or added here (the same one Lockbox's GitHub owner may use).
+  GitHubOwner:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true, help: "As in its address: github.com/acme → acme" }
+      kind: { type: enum, values: [user, organization], required: true }
+      token:
+        type: credential
+        for: api.github.com
+        required: true
+        help: |-
+          A fine-grained personal access token. On GitHub: Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+          • Resource owner: this owner (a token reaches one owner's repositories only; an organization may have to approve it first).
+          • Repository access: Only select repositories, the ones its issues go to.
+          • Repository permissions: Issues, Read and write. Metadata: Read is added by GitHub.
+  # M58-T2b: where incidents' issues are opened: a monitor's (on its form), or the default one for the rest (the
+  # database's incidents, an outside monitor's). Its owner (the part before /) is a GitHub owner, with its token.
+  Repository:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true, help: "owner/name, as in its address: github.com/acme/infra → acme/infra" }
+      default: { type: yesno, help: "Issues of incidents whose monitor has no repository go here" }
 pages:
   - list: Monitor
     menu: { label: Monitors, icon: cpu }
@@ -88,10 +113,11 @@ pages:
     sections:
       - { title: Status, fields: [status, error, ms, checkedAt, certExpires] }
       - { title: What is checked, fields: [kind, url, host, port, expect, ignoreTlsErrors, paused] }
+      - { title: Issues, fields: [repository] }
     history: { collection: monitor-ms, label: Response time (ms) }
     related: [{ type: Runbook, by: monitor, label: Runbooks, columns: [name, method, url], add: true }]
   - form: Monitor
-    fields: [kind, url, host, port, expect, ignoreTlsErrors, paused]
+    fields: [kind, url, host, port, expect, ignoreTlsErrors, paused, repository]
   - list: Incident
     menu: { label: Incidents, icon: cpu }
     columns: [title, source, startedAt, minutes, status]
@@ -117,6 +143,17 @@ pages:
     filters: [monitor]
   - form: Runbook
     fields: [name, monitor, method, url, authorization, notes]
+  - list: Repository
+    menu: { label: Repositories, icon: cpu }
+    add: true
+    columns: [name, default]
+  - view: Repository
+    fields: [default]
+    related: [{ type: Monitor, by: repository, label: Monitors, columns: [name, status] }]
+  - list: GitHubOwner
+    menu: { label: GitHub owners, icon: cpu }
+    add: true
+    columns: [name, kind, token]
 
 pipelines:
   check-monitors:
@@ -401,19 +438,48 @@ pipelines:
   incident-issue:
     # From an open Incident's button in the Server ops App: a GitHub issue for it, created
     # only when you press Act at its gate (which shows the request); then the Incident is acknowledged, with the issue's
-    # address. The GitHub credential and the repository are the App's: you choose them when you install it (a fine-grained
-    # token with Issues: read and write on the repository, kind API key, allowed host api.github.com).
+    # address. M58-T2b: it goes to its monitor's Repository, or the default one, with the token of that repository's
+    # GitHub owner (a credential: a handle here, opened only as the request goes to api.github.com). Without
+    # either, you're told what to add.
     name: Incident issue
     description: A GitHub issue for an incident, after you approve it; the incident is acknowledged.
     trigger: { on: entity.action, type: Incident }
     steps:
+      - id: monitors
+        type: data.read
+        with: { type: Monitor, where: [{ field: name, op: eq, value: "{{trigger.item.subject}}" }], limit: 1 }
+      - id: repositories
+        type: data.read
+        with: { type: Repository, limit: 200 }
+      - id: owners
+        type: data.read
+        with: { type: GitHubOwner, limit: 200 }
+      - id: target
+        type: data.map
+        with:
+          from: { incident: "{{trigger.item}}", monitors: "{{monitors.items}}", repositories: "{{repositories.items}}", owners: "{{owners.items}}" }
+          # The monitor's repository, else the default one; its owner is the part of its name before the /.
+          expression: |-
+            (
+              $monitor := incident.source = "monitor" ? monitors[0];
+              $chosen := $monitor.repository;
+              $repository := $chosen ? repositories[name = $chosen][0] : repositories[default = true][0];
+              $ownerName := $substringBefore($repository.name, "/");
+              $owner := owners[name = $ownerName][0];
+              $not($exists($repository)) ? { "missing": $chosen
+                  ? "The repository " & $chosen & " of " & incident.subject & " is gone: choose another on its monitor."
+                  : "No repository for " & incident.subject & "'s issue: choose one on its monitor, or make one the default, under Repositories." }
+              : $not($exists($owner)) ? { "missing": "No GitHub owner " & $ownerName & " for " & $repository.name & ": add it with its token, under GitHub owners." }
+              : { "repository": $repository.name, "token": $owner.token }
+            )
       - id: issue
         type: http.request
+        when: "{{target.value.repository}}"
         with:
           method: POST
-          url: "https://api.github.com/repos/{{setting.repository}}/issues"
+          url: "https://api.github.com/repos/{{target.value.repository}}/issues"
           headers:
-            Authorization: "Bearer {{cred:github}}"
+            Authorization: "Bearer {{target.value.token}}"
             Accept: application/vnd.github+json
           body:
             title: "{{trigger.item.title}}"
@@ -427,6 +493,10 @@ pipelines:
       - id: save
         type: data.save
         with: { items: "{{acknowledged.items}}", type: Incident, stage: acknowledged }
+      - id: nothing
+        type: notify.telegram
+        when: "{{target.value.missing}}"
+        with: { text: "{{target.value.missing}}" }
 
   ops-week:
     # Every Monday morning, the Server ops App's last week in numbers, on Telegram: incidents per source, how long they

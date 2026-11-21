@@ -151,22 +151,16 @@ describe("bindings", () => {
       const checklist = async () => (await agent.get(`/api/examples/apps/${app.appId}/checklist`).expect(200)).body as ChecklistView;
       expect((await checklist()).items.filter((i) => i.link === `/apps/${app.appId}#needs`).map((i) => i.label)).toEqual([
         'Choose the credential for "The database to check (a user that may only read)"',
-        'Choose the credential for "GitHub, to open issues"',
-        'Set "Repository for its issues (owner/name)"',
       ]);
 
       const check = await db.client.pipeline.findFirstOrThrow({ where: { name: "Server ops · Database check" } });
       const refused = await agent.patch(`/api/pipelines/${check.pipelineId}`).send({ enabled: true }).expect(409);
       expect((refused.body as { message: string }).message).toBe(
-        `Fill in "The database to check (a user that may only read)", "GitHub, to open issues", "Repository for its issues (owner/name)" first (its Needs, on its page or its App's)`,
+        `Fill in "The database to check (a user that may only read)" first (its Needs, on its page or its App's)`,
       );
 
       const db1 = await credential("orders-db", "DATABASE", ["db.example.com"], "postgresql://reader:pw@db.example.com:5432/app");
-      const token = await credential("gh", "API_KEY", ["api.github.com"]);
-      await agent
-        .put(`/api/apps/${app.appId}/bindings`)
-        .send({ database: { credentialId: db1.credentialId }, github: { credentialId: token.credentialId }, repository: { text: "me/infra" } })
-        .expect(200);
+      await agent.put(`/api/apps/${app.appId}/bindings`).send({ database: { credentialId: db1.credentialId } }).expect(200);
       expect((await checklist()).items.some((i) => i.link === `/apps/${app.appId}#needs`)).toBe(false);
       await agent.patch(`/api/pipelines/${check.pipelineId}`).send({ enabled: true }).expect(200);
 
