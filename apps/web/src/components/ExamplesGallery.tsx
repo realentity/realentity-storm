@@ -8,16 +8,22 @@ import { api } from "../lib/endpoints";
 import { EXAMPLES, type ExampleEntry } from "../lib/examples";
 import { useAction, useLoad } from "../lib/use-load";
 import { AppMap } from "./AppMap";
-import { ErrorAlert } from "./ui";
+import { ErrorAlert, Modal } from "./ui";
 
 /**
  * M40-T2: examples to start from: an App with the pipelines that fill it, what each needs set up (ticked when it is),
- * its map, and Install: imported as one file, its pipelines off; installed again, under names of its own.
+ * its map, and Install: imported as one file, its pipelines off; installed again, under names of its own. Install asks
+ * first, saying what it adds.
  */
 export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSummaryView[]; onInstalled?: () => void }>) {
   const setup = useLoad(() => api.examples.setup(), []);
   const action = useAction();
   const navigate = useNavigate();
+  const [confirming, setConfirming] = useState<ExampleEntry | null>(null);
+  const close = () => {
+    setConfirming(null);
+    action.clearError();
+  };
   const install = async (example: ExampleEntry) => {
     const done = await action.run(() => api.bundles.save(example.bundle, { mode: "copy", example: { id: example.id, needs: example.needs } }));
     const appId = done?.items.find((i) => i.kind === "app")?.id;
@@ -33,7 +39,6 @@ export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSumma
         An App with the pipelines that fill it, ready to install. Its pipelines start off: try them, then switch them on. Installed twice,
         it is two.
       </p>
-      <ErrorAlert error={action.error} />
       <div className="row row-cards">
         {EXAMPLES.map((example) => (
           <ExampleCard
@@ -42,10 +47,36 @@ export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSumma
             setup={setup.data ?? null}
             installed={installedAs(example, apps)}
             busy={action.busy}
-            onInstall={() => void install(example)}
+            onInstall={() => setConfirming(example)}
           />
         ))}
       </div>
+      {confirming && (
+        <Modal
+          title={`Install ${confirming.name}?`}
+          onClose={close}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={close}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={action.busy}
+                onClick={() => void install(confirming)}
+                data-testid="example-install-confirm"
+              >
+                <IconDownload size={16} className="me-1" />
+                {installedAs(confirming, apps) ? "Install a copy" : "Install"}
+              </button>
+            </>
+          }
+        >
+          <InstallSummary example={confirming} setup={setup.data ?? null} installed={installedAs(confirming, apps)} />
+          <ErrorAlert error={action.error} />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -53,6 +84,41 @@ export function ExamplesGallery({ apps, onInstalled }: Readonly<{ apps: AppSumma
 /** An App already installed from it, or of its App's name (made from the same template): installing it again copies it. */
 function installedAs(example: ExampleEntry, apps: AppSummaryView[]): AppSummaryView | undefined {
   return apps.find((a) => a.example === example.id) ?? apps.find((a) => a.name === example.app?.name);
+}
+
+/** What Install adds and what is left to do after, in the dialog that asks first. */
+function InstallSummary({ example, setup, installed }: Readonly<{ example: ExampleEntry; setup: SetupView | null; installed?: AppSummaryView }>) {
+  const types = Object.keys(example.app?.types ?? {});
+  const todo = [
+    ...example.needs.filter((need) => need.kind === "entities" || setup === null || !needMet(need, setup)).map((need) => need.label),
+    ...example.slots.map((slot) => `choose ${slot}`),
+  ];
+  return (
+    <div data-testid="example-install-summary">
+      <p className="text-secondary">{example.description}</p>
+      {installed && (
+        <div className="alert alert-warning" data-testid="example-install-copy">
+          You have {installed.name} already: this installs a second one, under names of its own.
+        </div>
+      )}
+      <div className="fw-bold mb-1">It adds</div>
+      <ul className="mb-3">
+        <li>
+          the App {example.app?.name ?? example.name}
+          {types.length > 0 && `, keeping ${types.join(", ")}`}
+        </li>
+        <li>
+          {example.pipelines.length === 1 ? "its pipeline" : `its ${example.pipelines.length} pipelines`}:{" "}
+          {example.pipelines.map((p) => p.name).join(", ")}
+        </li>
+      </ul>
+      <p className="mb-2">
+        Its pipelines start <strong>off</strong>: nothing runs by itself, and nothing is sent, until you try them and switch them on.
+      </p>
+      {todo.length > 0 && <p className="mb-2">Left to set up after, on its page: {todo.join(", ")}.</p>}
+      <p className="text-secondary small mb-0">Changed your mind later? Delete on its page removes it with its pipelines.</p>
+    </div>
+  );
 }
 
 function ExampleCard({

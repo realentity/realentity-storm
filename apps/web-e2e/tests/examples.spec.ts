@@ -20,7 +20,17 @@ test("the examples gallery: the starter first, an example installed twice under 
     await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
     return ((await (await page.request.get(`/api${new URL(page.url()).pathname}`)).json()) as { name: string }).name;
   };
+  // Install asks first, saying what it adds; Cancel adds nothing.
   await tables.getByTestId("example-install").click();
+  const summary = page.getByTestId("example-install-summary");
+  await expect(summary).toContainText("Tables · Growth");
+  await expect(summary).toContainText("Its pipelines start off");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(summary).toBeHidden();
+  expect((await (await page.request.get("/api/apps")).json()) as unknown[]).toHaveLength(before.length);
+
+  await tables.getByTestId("example-install").click();
+  await page.getByTestId("example-install-confirm").click();
   expect(await installed()).toMatch(expected);
 
   // Installed: the card says so and opens it; installing again is a copy.
@@ -30,6 +40,8 @@ test("the examples gallery: the starter first, an example installed twice under 
   await expect(again.getByTestId("example-open")).toContainText("Open Tables");
   await expect(again.getByTestId("example-install")).toHaveText("Install a copy");
   await again.getByTestId("example-install").click();
+  await expect(page.getByTestId("example-install-copy")).toContainText("this installs a second one");
+  await page.getByTestId("example-install-confirm").click();
   expect(await installed()).toMatch(/^Tables \d+$/);
   const pipelines = ((await (await page.request.get("/api/pipelines")).json()) as { name: string }[]).map((p) => p.name);
   expect(pipelines.filter((n) => n.includes("· Growth")).length).toBeGreaterThanOrEqual(2);
@@ -39,6 +51,7 @@ test("the examples gallery: the starter first, an example installed twice under 
 test("the starter: installed, tried, switched on and run; its releases on its page, its checklist gone", async ({ page }) => {
   await page.goto("/apps");
   await page.locator('[data-testid="example-card"][data-example="releases-to-read"]').getByTestId("example-install").click();
+  await page.getByTestId("example-install-confirm").click();
   await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
   const appUrl = page.url();
   const appId = new URL(appUrl).pathname.split("/").pop()!;
@@ -103,6 +116,7 @@ test("Tasks, Memos and Papers: installed from the gallery, one of each added on 
   const install = async (id: string) => {
     await page.goto("/apps");
     await page.locator(`[data-testid="example-card"][data-example="${id}"]`).getByTestId("example-install").click();
+    await page.getByTestId("example-install-confirm").click();
     await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
     return new URL(page.url()).pathname.split("/").pop()!;
   };
