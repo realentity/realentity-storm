@@ -45,7 +45,7 @@ test("on cards: a new pipeline has no made-up description, its address shown up 
   expect(source).toContain("policy:\n  allowedDomains: [feeds.test]\nsteps:");
 });
 
-test("an address kept as text is a short link; an App and a pipeline deleted, the App only once its pipelines are gone", async ({
+test("an address kept as text is a short link; a pipeline deleted, then the App uninstalled with its other pipeline", async ({
   page,
 }) => {
   const app = await createApp(page, unique("Posts"));
@@ -63,26 +63,25 @@ test("an address kept as text is a short link; an App and a pipeline deleted, th
     timeout: 20_000,
   });
 
-  // The App can't go while its pipeline belongs to it: the dialog says so.
-  await page.goto(`/apps/${app.appId}`);
-  await page.getByTestId("delete-app").click();
-  await expect(page.getByRole("dialog")).toContainText("belong to it: delete them, or move them to another App, first");
-  await page.getByTestId("confirm-delete").click();
-  await expect(page.getByRole("dialog")).toContainText(`belongs to "${app.name}": delete or move it first`);
-  await page.getByRole("button", { name: "Keep it" }).click();
-
-  // The pipeline, then the App.
-  await page.goto(`/pipelines/${saver.pipelineId}`);
+  // The pipeline alone.
+  const other = await createPipeline(
+    page,
+    `name: ${unique("Posts too")}\napp: ${app.name}\nsteps:\n  - id: save\n    type: data.save\n    with:\n      type: Post\n      items:\n        - { url: "https://example.com/a", title: A }\n`,
+  );
+  await page.goto(`/pipelines/${other.pipelineId}`);
   await page.getByTestId("delete-pipeline").click();
   await expect(page.getByRole("dialog")).toContainText("every run of it go with it");
   await page.getByTestId("confirm-delete").click();
   await page.waitForURL(/\/pipelines$/);
-  expect((await page.request.get(`/api/pipelines/${saver.pipelineId}`)).status()).toBe(404);
+  expect((await page.request.get(`/api/pipelines/${other.pipelineId}`)).status()).toBe(404);
 
+  // The App uninstalled: its pipeline goes with it.
   await page.goto(`/apps/${app.appId}`);
   await page.getByTestId("delete-app").click();
-  await expect(page.getByRole("dialog")).toContainText("Its versions and the 1 entities it keeps go with it.");
-  await page.getByTestId("confirm-delete").click();
+  await expect(page.getByRole("dialog")).toContainText(`Its pipelines (${saver.name}) go with it`);
+  await expect(page.getByRole("dialog")).toContainText("the 1 entities it keeps");
+  await page.getByRole("button", { name: "Delete the App and its pipeline" }).click();
   await page.waitForURL(/\/apps$/);
   expect((await page.request.get(`/api/apps/${app.appId}`)).status()).toBe(404);
+  expect((await page.request.get(`/api/pipelines/${saver.pipelineId}`)).status()).toBe(404);
 });

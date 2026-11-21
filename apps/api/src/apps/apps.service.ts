@@ -198,10 +198,12 @@ export class AppsService {
 
   /**
    * M39-T5: what refers to a pipeline, by id: other pipelines (their run.finished trigger, a flow.later step) and Apps'
-   * buttons, as their current versions say.
+   * buttons, as their current versions say. Those going with it (an App uninstalled with its pipelines) don't count.
    */
-  async referrersOf(userId: string, pipelineId: string): Promise<string[]> {
-    const pipelines = await this.prisma.client.pipeline.findMany({ where: { userId, currentVersionId: { not: null }, pipelineId: { not: pipelineId } } });
+  async referrersOf(userId: string, pipelineId: string, going: { appId?: string; pipelineIds?: string[] } = {}): Promise<string[]> {
+    const pipelines = await this.prisma.client.pipeline.findMany({
+      where: { userId, currentVersionId: { not: null }, pipelineId: { notIn: [pipelineId, ...(going.pipelineIds ?? [])] } },
+    });
     const versions = await this.prisma.client.pipelineVersion.findMany({ where: { pipelineVersionId: { in: pipelines.map((p) => p.currentVersionId!) } } });
     const followers: string[] = [];
     for (const pipeline of pipelines) {
@@ -211,7 +213,9 @@ export class AppsService {
       const how = namedPipelines({ trigger: definition.trigger, steps: [] }).some((n) => names.includes(n)) ? "its trigger" : "a flow.later step";
       followers.push(`"${pipeline.name}" (${how})`);
     }
-    const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } } });
+    const apps = await this.prisma.client.app.findMany({
+      where: { userId, currentVersionId: { not: null }, ...(going.appId ? { appId: { not: going.appId } } : {}) },
+    });
     const appVersions = await this.prisma.client.appVersion.findMany({ where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } } });
     for (const app of apps) {
       const refs = appVersions.find((v) => v.appVersionId === app.currentVersionId)?.refs as AppRefs | null | undefined;

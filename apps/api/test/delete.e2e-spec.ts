@@ -96,4 +96,32 @@ describe("deleting Apps and pipelines", () => {
     expect(await db.client.dataEntity.count({ where: { appId: app.appId } })).toBe(0);
     await agent.get(`/api/apps/${app.appId}`).expect(404);
   });
+
+  it("an App uninstalled goes with its pipelines, though its own button starts one; refused while a run is going or another App starts one", async () => {
+    const app = (await agent.post("/api/apps").send({ source: APP(true) }).expect(201)).body as AppDetailView;
+    const pipeline = (await agent.post("/api/pipelines").send({ source: SAVER }).expect(201)).body as PipelineDetailView;
+    const versionId = pipeline.current!.pipelineVersionId;
+    await db.client.dataEntity.create({ data: { appId: app.appId, type: "Book", key: "978-0", value: { isbn: "978-0" } } });
+
+    // A run still going: refused.
+    const going = await db.client.run.create({ data: { userId, pipelineVersionId: versionId, status: "RUNNING", trigger: "manual" } });
+    const running = await agent.post(`/api/apps/${app.appId}/uninstall`).expect(409);
+    expect((running.body as { message: string }).message).toBe('A run of "Books in" is still going: stop it or let it finish first');
+    await db.client.run.update({ where: { runId: going.runId }, data: { status: "DONE" } });
+
+    // Another App's button starts it: refused, saying which.
+    const other = (await agent.post("/api/apps").send({ source: APP(true).replace("name: Shelf", "name: Library") }).expect(201))
+      .body as AppDetailView;
+    const started = await agent.post(`/api/apps/${app.appId}/uninstall`).expect(409);
+    expect((started.body as { message: string }).message).toBe('a button of "Library" starts "Books in": change it first');
+    await agent.put(`/api/apps/${other.appId}`).send({ source: APP().replace("name: Shelf", "name: Library") }).expect(200);
+
+    await agent.post(`/api/apps/${app.appId}/uninstall`).expect(204);
+    expect(await db.client.app.count({ where: { appId: app.appId } })).toBe(0);
+    expect(await db.client.pipeline.count({ where: { pipelineId: pipeline.pipelineId } })).toBe(0);
+    expect(await db.client.run.count({ where: { pipelineVersionId: versionId } })).toBe(0);
+    expect(await db.client.dataEntity.count({ where: { appId: app.appId } })).toBe(0);
+    expect(await db.client.app.count({ where: { appId: other.appId } })).toBe(1);
+    await agent.post(`/api/apps/${app.appId}/uninstall`).expect(404);
+  });
 });
