@@ -1,0 +1,257 @@
+# The Hiring App (M58-T6): your open Roles (what each needs), and the people who apply by email, their CVs kept and
+# each scored against the role they apply for. On working days at 17:00 the day's applicants come to you as a list:
+# pick who to invite to an interview. The invitations, and a kind no to the others, wait for your approval as two
+# batches; untick a no to hold it back. Candidates by stage: new, invited, hired, rejected.
+app:
+  name: Hiring
+  description: Applicants scored against your roles, invited or declined in batches
+  icon: briefcase
+  summary: >-
+    People applying by email, their CVs kept and each scored against your open role; every working day you
+    pick who to invite, and the invitations and a kind no to the others go out after you approve them, as batches.
+  setup:
+    - { kind: email, label: "An email account, where applications arrive" }
+    - { kind: entities, type: Role, label: "Your open roles, with what each needs (Roles)" }
+types:
+  # A role you're hiring for, written by you: what an applicant is scored against.
+  Role:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true, help: "As applicants would call it, e.g. Backend developer" }
+      description: { type: longtext, required: true, help: "The work, the team, where and how" }
+      mustHave: { type: longtext, label: Must have, help: "What an applicant can't do without, one per line" }
+      closed: { type: yesno, help: "Applicants for it are no longer read" }
+  # Someone who applied: written by applications, moved by it (invited, rejected) and by you.
+  Candidate:
+    key: id
+    title: name
+    stages:
+      field: status
+      initial: new
+      states: [new, invited, hired, rejected]
+      moves:
+        - { from: new, to: [invited], by: [me, pipeline] }
+        - { from: [new, invited], to: [rejected], by: [me, pipeline] }
+        - { from: invited, to: [hired], by: [me] }
+        - { from: [rejected, hired], to: [new], by: [me] }
+    fields:
+      id: { type: text, required: true }
+      name: { type: text }
+      email: { type: text }
+      role: { type: ref, to: Role }
+      score: { type: number }
+      why: { type: longtext, label: Why this score }
+      summary: { type: longtext }
+      cv: { type: file, label: CV }
+      appliedAt: { type: datetime, label: Applied }
+      messageId: { type: text }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Candidate
+    menu: { label: Candidates, icon: briefcase }
+    columns: [name, role, score, appliedAt, status]
+    filters: [role, status]
+    search: [name, email]
+    sort: -score
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check now, run: applications, confirm: "Read the new applications now? You pick who to invite before anything is sent." }
+  - view: Candidate
+    fields: [email, role, score, why, summary, cv, appliedAt, notes]
+  - form: Candidate
+    fields: [notes]
+  - list: Role
+    menu: { label: Roles, icon: briefcase }
+    add: true
+    columns: [name, closed]
+  - view: Role
+    fields: [description, mustHave, closed]
+    related:
+      - { type: Candidate, by: role, label: Candidates, columns: [name, score, appliedAt, status] }
+
+pipelines:
+  applications:
+    # On working days at 17:00, the Hiring App's new emails: an application for one of your open Roles has its CV kept
+    # (PDF or text is read; other files are kept unread) and is scored against the role, and is a new Candidate. Then
+    # the day's applicants wait for you, the best first: pick who to invite. Each invitation is drafted and waits at
+    # the gate with the others; a kind no to everyone else waits as another batch (untick one to hold it back). Each
+    # one sent moves its Candidate: invited, or rejected. Replies go in the applicant's thread, to their address.
+    name: Applications
+    description: The day's applicants scored against your roles; you pick who to invite, the rest get a kind no.
+    trigger: { schedule: "0 17 * * 1-5" }
+    limits:
+      email.send: 60/day
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { limit: 50, sinceDays: 2 }
+      - id: roles
+        type: data.read
+        with: { type: Role, where: [{ field: closed, op: neq, value: true }], sort: name, limit: 50 }
+      - id: hiring
+        type: data.map
+        with:
+          from: "{{roles.items}}"
+          expression: '$count($) > 0 ? "yes"'
+      - id: triage
+        type: email.classify
+        when: "{{hiring.value}}"
+        with:
+          messages: "{{fetch.messages}}"
+          labels: [application, skip]
+          keep: [application]
+          answerable: true
+          instruction: >-
+            "application": someone applying for a job with me, or sending me their CV for one. "skip": everything
+            else, recruiters offering me candidates or jobs too.
+      - id: keep
+        type: file.keep
+        forEach: "{{triage.kept}}"
+        with: { type: Candidate, field: cv, message: "{{item}}", max: 3 }
+      # The CV: the first PDF or text file kept (file.read reads only these), else the first file.
+      - id: cvFile
+        type: data.map
+        forEach: "{{triage.kept}}"
+        with:
+          from: "{{keep.files}}"
+          expression: |-
+            (
+              $readable := $[mime = "application/pdf" or $substring(mime, 0, 5) = "text/"][0];
+              $readable ? { "file": $readable, "readable": "yes" } : $[0] ? { "file": $[0] }
+            )
+      # Each applicant kept as a new Candidate, with the CV attached (file.read reads an attached file).
+      - id: found
+        type: data.map
+        with:
+          from: { kept: "{{triage.kept}}", cvs: "{{cvFile}}" }
+          expression: |-
+            [$map(kept, function($m, $i) {
+              {
+                "id": $m.messageId,
+                "name": $m.fromName ? $m.fromName : $m.from,
+                "email": $m.from,
+                "cv": cvs[$i].value.file,
+                "appliedAt": $m.date,
+                "messageId": $m.messageId
+              }
+            })]
+      - id: listed
+        type: data.save
+        with: { items: "{{found.items}}", type: Candidate }
+      - id: cv
+        type: file.read
+        forEach: "{{triage.kept}}"
+        when: "{{cvFile.value.readable}}"
+        with: { file: "{{cvFile.value.file}}", maxChars: 15000 }
+      - id: rolesText
+        type: data.map
+        with:
+          from: "{{roles.items}}"
+          expression: '$join($.("Role \"" & name & "\": " & description & (mustHave ? "\nMust have: " & mustHave : "")), "\n\n")'
+      - id: read
+        type: llm.extract
+        forEach: "{{triage.kept}}"
+        with:
+          content: { subject: "{{item.subject}}", email: "{{item.text}}", cv: "{{cv.text}}" }
+          instruction: "Someone applies for one of my open roles, by email with their CV. My open roles:\n\n{{rolesText.value}}"
+          fields:
+            name: the applicant's full name
+            role: the role they apply for, its name exactly as in my list; empty when none fits
+            score: how well they fit that role, 0 to 100, a number only; 0 when no role fits
+            why: why that score, in one or two sentences, their strengths and gaps against what the role needs
+            summary: their experience in at most three short lines
+      # Each applicant, the best first: what is kept, and what the replies need (their address and thread).
+      - id: applicants
+        type: data.map
+        with:
+          from: { kept: "{{triage.kept}}", read: "{{read}}", found: "{{found.items}}", roles: "{{roles.items}}" }
+          expression: |-
+            [$map(kept, function($m, $i) {(
+              $v := read[$i].values;
+              $role := $v.role in $$.roles.name ? $v.role;
+              $score := $match($v.score, /[0-9]+(\.[0-9]+)?/)[0].match;
+              {
+                "id": $m.messageId,
+                "name": $v.name ? $v.name : ($m.fromName ? $m.fromName : $m.from),
+                "email": $m.from,
+                "role": $role,
+                "score": $score ? $number($score) : 0,
+                "why": $v.why,
+                "summary": $v.summary,
+                "cv": found[$i].cv,
+                "appliedAt": $m.date,
+                "messageId": $m.messageId,
+                "subject": $m.subject,
+                "references": $append($m.references, [$m.messageId]),
+                "account": $m.account
+              }
+            )})^(>score)]
+      - id: rows
+        type: data.map
+        with:
+          from: "{{applicants.items}}"
+          expression: '[$.$sift($, function($v, $k) { $not($k in ["subject", "references", "account"]) })]'
+      - id: scored
+        type: data.save
+        with: { items: "{{rows.items}}", type: Candidate }
+      - id: shortlist
+        type: gate.review
+        with: { items: "{{applicants.items}}", title: "Today's applicants: pick who to invite to an interview" }
+      - id: draft
+        type: llm.generate
+        forEach: "{{shortlist.selected}}"
+        with:
+          instruction: >-
+            A short, warm email inviting the applicant to an interview for the role: thank them for applying, say
+            what in their experience caught my eye (from the summary), and ask which two or three times next week
+            suit them for a video call of 45 minutes. In the language of their email. No subject line, no other text.
+          context: { name: "{{item.name}}", role: "{{item.role}}", summary: "{{item.summary}}" }
+      - id: invite
+        type: email.send
+        forEach: "{{shortlist.selected}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Re: {{item.subject}}"
+          body: "{{draft.text}}"
+          inReplyTo: "{{item.messageId}}"
+          references: "{{item.references}}"
+          account: "{{item.account}}"
+      - id: others
+        type: data.map
+        with:
+          from: { all: "{{applicants.items}}", chosen: "{{shortlist.selected}}" }
+          expression: '[all[$not(id in $$.chosen.id)]]'
+      - id: decline
+        type: email.send
+        forEach: "{{others.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Re: {{item.subject}}"
+          body: "Hello {{item.name}},\n\nThank you for your application and for the time you took. This time I'm going on with other applicants; I'll keep your details in mind for a future role.\n\nAll the best."
+          inReplyTo: "{{item.messageId}}"
+          references: "{{item.references}}"
+          account: "{{item.account}}"
+      - id: invited
+        type: data.map
+        with:
+          from: { chosen: "{{shortlist.selected}}", sent: "{{invite}}", rows: "{{rows.items}}" }
+          expression: '[$filter(rows, function($r) {(
+              $i := $filter([0..$count(chosen) - 1], function($n) { chosen[$n].id = $r.id });
+              $exists($i) and $exists(sent[$i[0]].messageId)
+            )})]'
+      - id: saveInvited
+        type: data.save
+        with: { items: "{{invited.items}}", type: Candidate, stage: invited }
+      - id: declined
+        type: data.map
+        with:
+          from: { others: "{{others.items}}", sent: "{{decline}}", rows: "{{rows.items}}" }
+          expression: '[$filter(rows, function($r) {(
+              $i := $filter([0..$count(others) - 1], function($n) { others[$n].id = $r.id });
+              $exists($i) and $exists(sent[$i[0]].messageId)
+            )})]'
+      - id: saveDeclined
+        type: data.save
+        with: { items: "{{declined.items}}", type: Candidate, stage: rejected }
