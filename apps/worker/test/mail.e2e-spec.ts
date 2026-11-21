@@ -515,6 +515,14 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       ]);
     });
 
+    // M58-T3: an App's rows keep track instead
+    it("remember: false lists every unanswered thread each time, even one listed before, and remembers none", async () => {
+      await awaiting();
+      expect((await awaiting(false, { remember: false })).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
+      expect((await awaiting(false, { remember: false })).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
+      expect(await db.client.followUp.count()).toBe(1);
+    });
+
     // M42: topic upkeep reads the user's sent mail too
     it('email.fetch reads "Sent": the server\'s Sent folder, whatever its name, read-only', async () => {
       const read = await connector.fetch({ userId }, { mailbox: "sent", after: null, since: ago(30), limit: 50 });

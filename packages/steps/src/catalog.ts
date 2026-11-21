@@ -1270,7 +1270,8 @@ export const CORE_STEPS: StepDefinition[] = [
       "`afterDays`, with nothing from the other side in `mailbox` since. Each of the user's emails is listed once ever: a " +
       "thread comes back only when the user writes in it again. Draft the nudge with email.draftFollowUp (message: " +
       "{{item.message}}) and send it with email.send to {{item.to}}, inReplyTo {{item.message.messageId}}, " +
-      "references {{item.references}}. Read-only.",
+      "references {{item.references}}. With `remember: false` it lists every such thread each time, and keeping track " +
+      "is left to the pipeline (an App's rows: snoozed, dropped). Read-only.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -1281,6 +1282,10 @@ export const CORE_STEPS: StepDefinition[] = [
       maxFollowUps: z.number().int().min(1).max(3).default(1).describe("follow-ups in a row without an answer, at most"),
       limit: z.number().int().min(1).max(20).default(5),
       account: EmailAccount,
+      remember: z
+        .boolean()
+        .default(true)
+        .describe("false: every unanswered thread each time, none remembered as listed (M58-T3: an App keeps its own rows)"),
     }),
     output: z.object({
       threads: z.array(

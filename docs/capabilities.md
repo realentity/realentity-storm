@@ -349,7 +349,7 @@ schema.org type that means the same and, after a dry run, drafts it from what th
 not in the types** on an App's page lists the fields its entities have that their type doesn't name, with *Add to the
 type*.
 
-Ready-made Apps in [examples/apps/](../examples/apps/): Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops, Tasks, Memos, Papers, Lockbox. Job Search
+Ready-made Apps in [examples/apps/](../examples/apps/): Job Search, Bills, Prices, Releases, Tables, Trips, Clients, Apartments, Orders, Subscriptions, Car, Server ops, Tasks, Memos, Papers, Lockbox, Follow-ups. Job Search
 ([examples/apps/job-search.yaml](../examples/apps/job-search.yaml)) is filled by a job-board pipeline
 ([job-board.yaml](../examples/apps/job-search.yaml): `browser.extract` with a recipe like
 [recipes/example-jobs.yaml](../recipes/example-jobs.yaml), the agencies skipped, the rest scored, then `data.save` with
@@ -956,7 +956,8 @@ limits: { email.send: 20/day }
 Your sent emails that got no answer: threads whose last message is yours, older than `afterDays`, with nothing from the
 other side since. Each email is listed once; a thread comes back only when you write in it again.
 - In: `afterDays` [5], `lookbackDays` [30], `mailbox` [INBOX], `sentMailbox` (default: the server's Sent folder),
-  `maxFollowUps` [1], `limit` [5], `account` (an email slot; default: the default account).
+  `maxFollowUps` [1], `limit` [5], `account` (an email slot; default: the default account), `remember` [true]: false
+  lists every unanswered thread each time and remembers none, for an App whose rows keep track (snoozed, dropped).
 - Out: `threads` (threadId, to, subject, sentAt, daysWaiting, followUps, message, references).
 
 #### `email.draftFollowUp` 🧠
@@ -1572,6 +1573,7 @@ What the steps add up to, with the pipeline that does it:
 | Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.attachments`; `git.changes`, `drive.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../examples/pipelines/topic-upkeep.yaml) |
 | Each week, merge your topics' overlapping facts and retire stale ones, with your approval | `topic.tidy` → `gate.review` → `topic.apply` | [topic-tidy.yaml](../examples/pipelines/topic-tidy.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../examples/pipelines/email-follow-ups.yaml) |
+| Your emails nobody answered, listed; every Monday a nudge for each, approved as one batch (the ones you untick snoozed for two weeks); Snooze or Drop a row, at most two nudges a thread | `schedule` → `email.awaiting { remember: false }` → `data.read` → `data.map` → `data.save` → `email.draftFollowUp` → `email.send` (one batch at the gate) → `data.save { stage }`; `entity.changed { stage: snoozed }` → `flow.later`; `{ on: flow.later }` → `data.read` → `data.save { stage }` | the Follow-ups App ([follow-ups.yaml](../examples/apps/follow-ups.yaml)) with [follow-ups.yaml](../examples/apps/follow-ups.yaml), [snooze.yaml](../examples/apps/follow-ups.yaml), [wake.yaml](../examples/apps/follow-ups.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../examples/pipelines/interview-invite.yaml) |
 | Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../examples/apps/bills.yaml) |
 | Keep your trips' bookings from email, with a reminder the day before each, a weather briefing three days before a trip and a packing list on a button | `email.fetch` → `email.classify` → `llm.extract` → `data.map` → `data.save` → `calendar.create`; `entity.changed` → `data.map` → `flow.later` / `flow.cancel`; `http.fetch` (Open-Meteo) → `data.read` → `llm.generate` → `notify.telegram` | the Trips App ([trips.yaml](../examples/apps/trips.yaml)) with [trip-bookings.yaml](../examples/apps/trips.yaml), [trip-booking-reminders.yaml](../examples/apps/trips.yaml), [trip-countdown.yaml](../examples/apps/trips.yaml), [trip-briefing.yaml](../examples/apps/trips.yaml), [packing-list.yaml](../examples/apps/trips.yaml) |

@@ -26,6 +26,8 @@ interface AwaitingInput {
   limit: number;
   /** M50-T7: an email slot, or an account's id; default: the default account. */
   account?: string;
+  /** M58-T3: false lists every unanswered thread each time and remembers none (the App's rows keep track). */
+  remember?: boolean;
 }
 
 /**
@@ -44,7 +46,16 @@ export class EmailAwaitingStep implements StepExecutor {
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { afterDays, lookbackDays, mailbox, sentMailbox, maxFollowUps, limit, account } = input as unknown as AwaitingInput;
+    const {
+      afterDays,
+      lookbackDays,
+      mailbox,
+      sentMailbox,
+      maxFollowUps,
+      limit,
+      account,
+      remember = true,
+    } = input as unknown as AwaitingInput;
     const who = mailWho(context, account);
     const now = Date.now();
     const since = new Date(now - lookbackDays * DAY_MS);
@@ -54,12 +65,14 @@ export class EmailAwaitingStep implements StepExecutor {
     ]);
     const mine = new Set(sent.map((m) => m.messageId));
     const told = new Set(
-      (
-        await this.prisma.followUp.findMany({
-          where: { userId: context.userId, messageId: { in: [...mine] } },
-          select: { messageId: true },
-        })
-      ).map((f) => f.messageId),
+      !remember
+        ? []
+        : (
+            await this.prisma.followUp.findMany({
+              where: { userId: context.userId, messageId: { in: [...mine] } },
+              select: { messageId: true },
+            })
+          ).map((f) => f.messageId),
     );
 
     const threads = [...groupBy(sent, (m) => m.threadId).values()].flatMap((emails) => {
@@ -90,7 +103,7 @@ export class EmailAwaitingStep implements StepExecutor {
     });
     // The longest waiting first.
     const listed = threads.sort((a, b) => b.daysWaiting - a.daysWaiting).slice(0, limit);
-    if (!context.dryRun && listed.length > 0) {
+    if (remember && !context.dryRun && listed.length > 0) {
       await this.prisma.followUp.createMany({
         data: listed.map((t) => ({
           userId: context.userId,
