@@ -1,0 +1,189 @@
+# The Tenders App (M58-T7): open tenders and grant calls from a portal (a recipe, recipes/example-tenders.yaml) and
+# a feed, the new ones scored against your Profile. Every working morning the ones worth a look come to you: pick
+# the ones to apply to. Each application form is filled from your profile and your company document, and waits for
+# you at the gate; the final button is yours (stopBeforeSubmit). Tenders by stage: new, prepared, submitted, won, lost,
+# skipped.
+app:
+  name: Tenders
+  description: Tenders and grants scored against your profile, the forms filled for you to submit
+  icon: news
+  summary: >-
+    Open tenders and grant calls from a portal and a feed, the new ones scored against your profile; you pick
+    the ones to apply to, their forms are filled from your profile, and you press the final button.
+  setup:
+    - { kind: recipe, name: tenders.example/search, label: "The portal's recipe, tenders.example/search (Recipes: import or teach)" }
+    - { kind: llm, label: "The LLM, to score the calls and fill the forms" }
+    - { kind: entities, type: Profile, label: "What you do and what you look for (Profile)" }
+types:
+  # What you do and look for, written by you: what each call is scored against. One is enough.
+  Profile:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true, help: "Your company's or your own name" }
+      about: { type: longtext, required: true, label: What we do, help: "Services, sectors, team size, references" }
+      lookFor: { type: longtext, label: We look for, help: "Kinds of calls, budgets, regions" }
+      avoid: { type: longtext, label: Not for us }
+  # An open call: written by tenders, moved by it (prepared) and by you.
+  Tender:
+    key: url
+    title: title
+    stages:
+      field: status
+      initial: new
+      states: [new, prepared, submitted, won, lost, skipped]
+      moves:
+        - { from: new, to: [prepared], by: [me, pipeline] }
+        - { from: [new, prepared], to: [submitted, skipped], by: [me] }
+        - { from: submitted, to: [won, lost], by: [me] }
+        - { from: [skipped, won, lost], to: [new], by: [me] }
+    fields:
+      url: { type: url, required: true }
+      title: { type: text, required: true }
+      buyer: { type: text }
+      deadline: { type: date }
+      budget: { type: number }
+      summary: { type: longtext }
+      score: { type: number }
+      why: { type: longtext, label: Why this score }
+      source: { type: text }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Tender
+    menu: { label: Tenders, icon: news }
+    columns: [title, buyer, { field: deadline, due: { days: 14 } }, budget, score, status]
+    filters: [status]
+    search: [title, buyer]
+    sort: -score
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check now, run: tenders }
+  - view: Tender
+    sections:
+      - { title: Call, fields: [buyer, deadline, budget, url, source] }
+      - { title: Score, fields: [score, why] }
+      - { title: Summary, fields: [summary, notes] }
+  - form: Tender
+    fields: [notes]
+  - list: Profile
+    menu: { label: Profile, icon: news }
+    add: true
+    columns: [name]
+
+pipelines:
+  tenders:
+    # Every working day at 07:00, the Tenders App's sources: the portal's open calls (its recipe, as
+    # "tenders.example/search": set the categories here) and a feed of grant calls; only the ones not kept before, each
+    # scored 0 to 100 against your Profile and kept as a Tender. The ones scored 50 or more come to you: pick the ones
+    # to apply to. Each one's form is found and filled from your profile (Settings) and your stored document
+    # "company-profile" (browser.agent, which sends nothing), and waits at the gate; approved, it is filled again in the
+    # live browser and you press the final button yourself. Then the Tender is prepared. A form it couldn't find is
+    # left for you (still new).
+    name: Tenders
+    description: New tenders and grants scored against your profile; you pick, their forms are filled for you to submit.
+    trigger: { schedule: "0 7 * * 1-5" }
+    policy:
+      allowedDomains: [tenders.example, grants.example]
+    limits:
+      browser.submit: 5/day
+    steps:
+      - id: portal
+        type: browser.extract
+        with:
+          recipes: [tenders.example/search]
+          params: { category: [software, consulting] }
+          maxItems: 200
+      - id: feed
+        type: http.fetch
+        with: { url: https://grants.example/calls/feed.xml, maxItems: 100 }
+      - id: calls
+        type: data.map
+        with:
+          from: { portal: "{{portal.items}}", feed: "{{feed.items}}" }
+          expression: '[$append(portal, feed.{ "url": url, "title": title, "summary": summary, "source": source })]'
+      - id: fresh
+        type: data.dedupe
+        with: { from: "{{calls.items}}", key: url, againstType: Tender }
+      - id: profile
+        type: data.read
+        with: { type: Profile, limit: 1 }
+      - id: about
+        type: data.map
+        with:
+          from: "{{profile.items}}"
+          expression: |-
+            $count($) > 0 ? $join([
+              "We are " & $[0].name & ": " & $[0].about,
+              $[0].lookFor ? "We look for: " & $[0].lookFor,
+              $[0].avoid ? "Not for us: " & $[0].avoid
+            ], "\n")
+      - id: read
+        type: llm.extract
+        forEach: "{{fresh.items}}"
+        when: "{{about.value}}"
+        with:
+          content: "{{item}}"
+          instruction: "An open tender or grant call. Who we are:\n{{about.value}}"
+          fields:
+            buyer: who buys or funds it
+            deadline: the deadline to apply, a date
+            budget: its budget or value, a number only
+            score: how well it fits us, 0 to 100, a number only
+            why: why that score, in one or two sentences
+      - id: scored
+        type: data.map
+        with:
+          from: { fresh: "{{fresh.items}}", read: "{{read}}" }
+          expression: |-
+            [$map(fresh, function($t, $i) {(
+              $v := read[$i].values;
+              $number1 := function($s) {( $m := $match($s, /[0-9][0-9 .,]*/)[0].match; $m ? $number($replace($m, /[ ,]/, "")) )};
+              $merge([$t, {
+                "buyer": $v.buyer ? $v.buyer : $t.buyer,
+                "deadline": $v.deadline ? $v.deadline,
+                "budget": $number1($v.budget),
+                "score": $number1($v.score),
+                "why": $v.why
+              }])
+            )})^(>score)]
+      - id: save
+        type: data.save
+        with: { items: "{{scored.items}}", type: Tender }
+      - id: worth
+        type: data.filter
+        with: { items: "{{scored.items}}", where: [{ field: score, op: gte, value: 50 }] }
+      - id: shortlist
+        type: gate.review
+        when: "{{worth.items}}"
+        with: { items: "{{worth.items}}", title: "New tenders worth a look: pick the ones to apply to" }
+      # The form found and filled from your profile by browser.agent (mapForm is Job Search's); it sends nothing.
+      - id: form
+        type: browser.agent
+        forEach: "{{shortlist.selected}}"
+        with:
+          url: "{{item.url}}"
+          goal: >-
+            Find this call's application form (follow its Apply or Submit a proposal link) and fill it from my
+            profile; attach the company profile where a document is asked for.
+          documents: [company-profile]
+          message: Why we fit this call and how we would do the work, from our profile only, 3-4 sentences.
+          maxActions: 30
+      - id: apply
+        type: browser.submit
+        forEach: "{{shortlist.selected}}"
+        when: "{{form.submit}}"
+        with:
+          url: "{{form.url}}"
+          actions: "{{form.actions}}"
+          files: "{{form.files}}"
+          submit: "{{form.submit}}"
+          stopBeforeSubmit: true
+      - id: filled
+        type: data.map
+        with:
+          from: { chosen: "{{shortlist.selected}}", done: "{{apply}}" }
+          expression: '[$filter(chosen, function($t, $i) { $exists(done[$i].url) }).$sift($, function($v, $k) { $k != "status" })]'
+      - id: prepared
+        type: data.save
+        with: { items: "{{filled.items}}", type: Tender, stage: prepared }

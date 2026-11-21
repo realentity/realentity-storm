@@ -1,0 +1,21 @@
+# An example list recipe for browser.extract (docs/design.md §2.4): a public tenders portal's open calls, per
+# category. Used by the Tenders example (examples/apps/tenders.yaml). Change the address and the selectors to your
+# portal's, then import it on the Recipes page as "tenders.example/search" (or change the name in the pipeline too),
+# or teach a recipe there in the live browser instead. Check the site's terms and robots.txt first, and keep a
+# person's pace: here one page every 2 s, at most 3 pages per category.
+url: https://tenders.example/search/{category}/
+params:
+  category: { description: "the portal's category slug, e.g. software, consulting" }
+item: .tender-row
+fields:
+  url: { selector: a.tender-link, attr: href, required: true }
+  title: { selector: .tender-title, required: true }
+  buyer: { selector: .buyer }         # who buys
+  deadline: { selector: .deadline }   # "15 Dec 2026": read as a date by the pipeline
+  budget: { selector: .value }        # "€ 120 000": read as a number by the pipeline
+  summary: { selector: .summary }
+key: url
+empty: .no-results
+next: { kind: page, url: "https://tenders.example/search/{category}/?page={page}", start: 2 }
+maxPages: 3
+delayMs: 2000
