@@ -1,0 +1,254 @@
+# The Meetings App (M58-T4): someone asks to meet. Storm answers proposing three times your calendar has free, after
+# you approve the reply; when they choose one, the event is created with their invitation, after you approve it too.
+# One who doesn't answer in 3 days gets one nudge, approved with the day's others. Each request is a Meeting:
+# proposed, booked, or dropped by you.
+app:
+  name: Meetings
+  description: Meeting requests answered with your free times, booked when they choose
+  icon: calendar
+  summary: >-
+    Emails asking to meet answered with three times your calendar has free; their choice booked as an
+    event with their invitation; one nudge when they don't answer. Every reply, event and nudge waits
+    for your approval.
+  setup:
+    - { kind: email, label: "An email account, to read the requests and answer them" }
+    - { kind: google-calendar, label: "Google Calendar, for your free times and the events" }
+types:
+  # A request to meet, by its email thread: written by meetings (proposed, then booked) and meeting-nudge.
+  Meeting:
+    key: threadId
+    title: subject
+    stages:
+      field: status
+      initial: proposed
+      states: [proposed, booked, dropped]
+      moves:
+        - { from: proposed, to: [booked], by: [me, pipeline] }
+        - { from: [proposed, booked], to: [dropped], by: [me] }
+        - { from: dropped, to: [proposed], by: [me] }
+    fields:
+      threadId: { type: text, required: true }
+      subject: { type: text }
+      name: { type: text, label: With }
+      email: { type: text, label: Email }
+      proposedAt: { type: datetime, label: Times proposed }
+      nudgedAt: { type: datetime, label: Nudged }
+      start: { type: datetime, label: When }
+      link: { type: url, label: Event }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: Meeting
+    menu: { label: Meetings, icon: calendar }
+    columns: [subject, name, email, proposedAt, start, status]
+    filters: [status]
+    search: [subject, name, email]
+    sort: -proposedAt
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check now, run: meetings }
+  - view: Meeting
+    fields: [name, email, proposedAt, nudgedAt, start, link, notes]
+  - form: Meeting
+    fields: [notes]
+
+pipelines:
+  meetings:
+    # Every 15 minutes, the Meetings App's new emails. One asking to meet: a reply proposing three times your calendar
+    # has free in the next working days, waiting for your approval; sent, it is a proposed Meeting. An answer in a
+    # proposed Meeting's thread: the time they chose becomes an event with them invited (and a Meet link), waiting for
+    # your approval too; created, the Meeting is booked. An answer without a time: you're told on Telegram.
+    name: Meetings
+    description: Answers meeting requests with your free times, and books the one they choose.
+    trigger: { schedule: "*/15 * * * *" }
+    limits:
+      email.send: 20/day
+      calendar.create: 20/day
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { limit: 50, sinceDays: 2 }
+      - id: known
+        type: data.read
+        with: { type: Meeting, sort: -proposedAt, limit: 1000 }
+      # Answers in a proposed Meeting's thread, and emails of threads it doesn't know yet.
+      - id: split
+        type: data.map
+        with:
+          from: { messages: "{{fetch.messages}}", known: "{{known.items}}" }
+          expression: |-
+            (
+              $proposed := known[status = "proposed"].threadId;
+              $all := known.threadId;
+              {
+                "replies": [messages[threadId in $proposed]],
+                "fresh": [messages[$not(threadId in $all)]]
+              }
+            )
+      - id: triage
+        type: email.classify
+        with:
+          messages: "{{split.value.fresh}}"
+          labels: [meeting, skip]
+          keep: [meeting]
+          answerable: true
+          instruction: >-
+            "meeting": someone writing to me personally to ask for a meeting or a call, or to find a time together.
+            "skip": everything else, invitations with a time already set too.
+      - id: asked
+        type: data.map
+        with:
+          from: "{{triage.kept}}"
+          expression: '$count($) > 0 ? "yes"'
+      - id: busy
+        type: calendar.find
+        when: "{{asked.value}}"
+        with: { maxResults: 100 }
+      - id: busyText
+        type: data.map
+        with:
+          from: "{{busy.events}}"
+          expression: |-
+            (
+              $lines := $.(start & " to " & end);
+              "My calendar in the next 7 days is busy at: " & ($count($lines) > 0 ? $join($lines, "; ") : "no time at all") & "."
+            )
+      - id: draft
+        type: email.draftReply
+        forEach: "{{triage.kept}}"
+        with:
+          message: "{{item}}"
+          context: "{{busyText.value}}"
+          instruction: >-
+            Say I'd be glad to meet, and propose three times on the next working days, Monday to Friday between 9:00
+            and 17:00 in my calendar's time zone, that don't clash with the busy times, each with its day, date and
+            time. Ask which one suits them. A video call, unless they asked to meet in person.
+      - id: send
+        type: email.send
+        forEach: "{{triage.kept}}"
+        with:
+          to: "{{item.from}}"
+          subject: "{{draft.subject}}"
+          body: "{{draft.body}}"
+          inReplyTo: "{{item.messageId}}"
+          references: "{{item.references}}"
+          account: "{{item.account}}"
+      - id: proposed
+        type: data.map
+        with:
+          from: { kept: "{{triage.kept}}", sent: "{{send}}" }
+          expression: |-
+            (
+              $at := $now();
+              [$filter(kept, function($m, $i) { $exists(sent[$i].messageId) }).{
+                "threadId": threadId, "subject": subject, "name": fromName ? fromName : from, "email": from, "proposedAt": $at
+              }]
+            )
+      - id: listed
+        type: data.save
+        with: { items: "{{proposed.items}}", type: Meeting }
+      # Their answers: the time they chose, if they did.
+      - id: pick
+        type: llm.extract
+        forEach: "{{split.value.replies}}"
+        with:
+          content: "{{item}}"
+          instruction: They answer my email that proposed times to meet.
+          fields:
+            start: the time they chose or agreed to, date and time; empty when they chose none
+      - id: book
+        type: data.map
+        with:
+          from: { replies: "{{split.value.replies}}", picked: "{{pick}}", known: "{{known.items}}" }
+          expression: |-
+            [$map(replies, function($m, $i) {(
+              $row := known[threadId = $m.threadId][0];
+              picked[$i].values.start ? $merge([$sift($row, function($v, $k) { $not($k in ["status", "notes"]) }), {
+                "start": picked[$i].values.start,
+                "title": ($row.name ? $row.name : $m.from) & ": " & $replace($m.subject, /^((re|aw|fwd?):\s*)+/i, ""),
+                "attendees": [$m.from]
+              }])
+            )})]
+      - id: event
+        type: calendar.create
+        forEach: "{{book.items}}"
+        with:
+          title: "{{item.title}}"
+          start: "{{item.start}}"
+          durationMinutes: 30
+          attendees: "{{item.attendees}}"
+          meet: true
+          description: "Booked from the email \"{{item.subject}}\"."
+      - id: booked
+        type: data.map
+        with:
+          from: { book: "{{book.items}}", made: "{{event}}" }
+          expression: |-
+            [$map(book, function($b, $i) {
+              $exists(made[$i].eventId) ? $merge([$sift($b, function($v, $k) { $not($k in ["title", "attendees"]) }), { "link": made[$i].link }])
+            })]
+      - id: save
+        type: data.save
+        with: { items: "{{booked.items}}", type: Meeting, stage: booked }
+      - id: unclear
+        type: data.map
+        with:
+          from: { replies: "{{split.value.replies}}", picked: "{{pick}}" }
+          expression: '[$filter(replies, function($m, $i) { $not(picked[$i].values.start) })]'
+      - id: tell
+        type: notify.telegram
+        forEach: "{{unclear.items}}"
+        with: { text: "{{item.from}} answered about \"{{item.subject}}\" without choosing a time: see your inbox." }
+
+  meeting-nudge:
+    # On working days at 09:00: a proposed Meeting of the Meetings App whose email got no answer in 3 days gets one
+    # nudge in its thread, asking which time suits them; the day's nudges wait at the gate as one batch.
+    name: Meeting nudge
+    description: One nudge for a meeting request that got no answer in 3 days.
+    trigger: { schedule: "0 9 * * 1-5" }
+    limits:
+      email.send: 20/day
+    steps:
+      - id: waiting
+        type: email.awaiting
+        with: { afterDays: 3, lookbackDays: 30, maxFollowUps: 1, limit: 20, remember: false }
+      - id: open
+        type: data.read
+        with: { type: Meeting, where: [{ field: status, op: eq, value: proposed }], limit: 1000 }
+      - id: due
+        type: data.map
+        with:
+          from: { threads: "{{waiting.threads}}", open: "{{open.items}}" }
+          expression: '[threads[threadId in $$.open.threadId]]'
+      - id: draft
+        type: email.draftFollowUp
+        forEach: "{{due.items}}"
+        with:
+          message: "{{item.message}}"
+          daysWaiting: "{{item.daysWaiting}}"
+          instruction: Ask kindly whether one of the times I proposed suits them, or which other time would.
+      - id: send
+        type: email.send
+        forEach: "{{due.items}}"
+        with:
+          to: "{{item.to}}"
+          subject: "{{draft.subject}}"
+          body: "{{draft.body}}"
+          inReplyTo: "{{item.message.messageId}}"
+          references: "{{item.references}}"
+          account: "{{item.message.account}}"
+      - id: nudged
+        type: data.map
+        with:
+          from: { due: "{{due.items}}", sent: "{{send}}", open: "{{open.items}}" }
+          expression: |-
+            (
+              $at := $now();
+              [$map(due, function($t, $i) {(
+                $row := open[threadId = $t.threadId][0];
+                $exists(sent[$i].messageId) ? $merge([$sift($row, function($v, $k) { $not($k in ["status", "notes"]) }), { "nudgedAt": $at }])
+              )})]
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{nudged.items}}", type: Meeting }
