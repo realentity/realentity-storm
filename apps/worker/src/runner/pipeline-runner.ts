@@ -801,7 +801,10 @@ export class PipelineRunner {
     scope: ItemScope | undefined,
     input: unknown,
   ): Promise<Step> {
-    const data = { status: "RUNNING" as const, input: input as Prisma.InputJsonValue, startedAt: new Date(), error: null };
+    // Stored as JSON has it: a whole forEach step's output ({{fix}}) holds undefined for an item rejected at its gate,
+    // which the database refuses inside a list; null there, as JSON.stringify writes it. The step gets `input` as it is.
+    const stored = input === undefined ? undefined : (JSON.parse(JSON.stringify(input)) as Prisma.InputJsonValue);
+    const data = { status: "RUNNING" as const, input: stored, startedAt: new Date(), error: null };
     const saved = row
       ? await this.prisma.step.update({ where: { stepId: row.stepId }, data })
       : await this.prisma.step.create({
