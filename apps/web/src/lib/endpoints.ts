@@ -297,11 +297,13 @@ export const api = {
     get: (appId: string) => request<AppDetailView>("GET", `/apps/${appId}`),
     create: (source: string) => request<AppDetailView>("POST", "/apps", { source }),
     save: (appId: string, source: string) => request<AppDetailView>("PUT", `/apps/${appId}`, { source }),
-    /** The App itself (`remove` is an entity's). */
     /** M50: the App install's slots, shared by its pipelines. */
     bindings: (appId: string) => request<BindingView[]>("GET", `/apps/${appId}/bindings`),
     setBindings: (appId: string, body: BindingsRequest) => request<BindingView[]>("PUT", `/apps/${appId}/bindings`, body),
+    /** The App itself (`remove` is an entity's); refused while pipelines belong to it. */
     removeApp: (appId: string) => request<void>("DELETE", `/apps/${appId}`),
+    /** The App with its pipelines. */
+    uninstall: (appId: string) => request<void>("POST", `/apps/${appId}/uninstall`),
     check: (source: string, appId?: string) => request<AppCheckView>("POST", "/apps/check", appId ? { source, appId } : { source }),
     preview: (source: string, type: string, appId?: string) =>
       request<AppPreviewView>("POST", "/apps/preview", appId ? { source, type, appId } : { source, type }),

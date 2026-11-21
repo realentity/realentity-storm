@@ -22,7 +22,7 @@ import {
 } from "@realentity/storm-shared";
 import { diffDefinitions } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
-import { appOf } from "../apps/app-pipelines";
+import { appOf, pipelinesByApp } from "../apps/app-pipelines";
 import { AppsService } from "../apps/apps.service";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
@@ -229,14 +229,46 @@ export class PipelinesService {
         `${referrers.join(", ")} ${referrers.length === 1 ? "starts" : "start"} "${pipeline.name}": change ${referrers.length === 1 ? "it" : "them"} first`,
       );
     }
+    await this.removeAll(userId, [pipelineId], pipeline.enabled);
+  }
+
+  /**
+   * Uninstalls an App: its pipelines go (as `remove` takes each), then the App with its versions, entities and files.
+   * Its own buttons and its pipelines starting each other don't hold it back; a run of one still going, or something
+   * outside the App starting one (another App's button, another pipeline), does.
+   */
+  async uninstallApp(userId: string, appId: string): Promise<void> {
+    const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
+    if (!app) throw new NotFoundException();
+    const pipelines = (await pipelinesByApp(this.prisma.client, userId)).get(app.name) ?? [];
+    const pipelineIds = pipelines.map((p) => p.pipelineId);
+    const going = await this.prisma.client.run.findFirst({
+      where: { pipelineVersion: { pipelineId: { in: pipelineIds } }, status: { in: ["QUEUED", "RUNNING", "WAITING_FOR_USER"] } },
+      select: { pipelineVersion: { select: { pipeline: { select: { name: true } } } } },
+    });
+    if (going) throw new ConflictException(`A run of "${going.pipelineVersion.pipeline.name}" is still going: stop it or let it finish first`);
+    const outside: string[] = [];
+    for (const pipeline of pipelines) {
+      const referrers = await this.apps.referrersOf(userId, pipeline.pipelineId, { appId, pipelineIds });
+      if (referrers.length > 0) outside.push(`${referrers.join(", ")} ${referrers.length === 1 ? "starts" : "start"} "${pipeline.name}"`);
+    }
+    if (outside.length > 0) throw new ConflictException(`${outside.join("; ")}: change ${outside.length === 1 ? "it" : "them"} first`);
+    await this.removeAll(userId, pipelineIds, pipelines.some((p) => p.enabled));
+    await this.apps.remove(userId, appId);
+  }
+
+  /** The pipelines with their versions, runs (their steps, proposals and costs), schedules, webhooks, rules and examples. */
+  private async removeAll(userId: string, pipelineIds: string[], wereOn: boolean): Promise<void> {
+    if (pipelineIds.length === 0) return;
+    const pipelineId = { in: pipelineIds };
     await this.prisma.client.$transaction([
       this.prisma.client.run.deleteMany({ where: { pipelineVersion: { pipelineId } } }),
       this.prisma.client.rule.deleteMany({ where: { userId, pipelineId } }),
       this.prisma.client.example.deleteMany({ where: { userId, pipelineId } }),
-      this.prisma.client.pipeline.delete({ where: { pipelineId } }),
+      this.prisma.client.pipeline.deleteMany({ where: { userId, pipelineId } }),
     ]);
-    if (pipeline.enabled) await this.queue.requestScheduleSync();
-    if (pipeline.enabled) await this.commands.sync(userId);
+    if (wereOn) await this.queue.requestScheduleSync();
+    if (wereOn) await this.commands.sync(userId);
   }
 
   /** Enabling puts the pipeline on its schedule (the worker syncs pg-boss schedules); disabling takes it off. */

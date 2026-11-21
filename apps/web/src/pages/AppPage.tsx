@@ -33,6 +33,8 @@ export function AppPage() {
   const { data } = app;
   const Icon = VIEW_ICON[data.icon] ?? VIEW_ICON.list;
   const shown = type && type in data.definition.types ? type : Object.keys(data.definition.types)[0];
+  const entities = data.types.reduce((n, t) => n + t.entities, 0);
+  const pipelines = data.pipelines.length === 1 ? "pipeline" : `${data.pipelines.length} pipelines`;
 
   return (
     <>
@@ -73,10 +75,11 @@ export function AppPage() {
               name={data.name}
               consequences={
                 data.pipelines.length > 0
-                  ? `Its pipelines (${data.pipelines.map((p) => p.name).join(", ")}) belong to it: delete them, or move them to another App, first.`
-                  : `Its versions and the ${data.types.reduce((n, t) => n + t.entities, 0)} entities it keeps go with it.`
+                  ? `Its pipelines (${data.pipelines.map((p) => p.name).join(", ")}) go with it, with every run of them, and its versions and the ${entities} entities it keeps. To keep a pipeline, move it to another App first.`
+                  : `Its versions and the ${entities} entities it keeps go with it.`
               }
-              onDelete={() => api.apps.removeApp(appId)}
+              confirm={data.pipelines.length > 0 ? `Delete the App and its ${pipelines}` : undefined}
+              onDelete={() => api.apps.uninstall(appId)}
               then="/apps"
             />
           </>

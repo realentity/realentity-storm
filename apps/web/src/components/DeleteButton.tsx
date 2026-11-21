@@ -6,13 +6,14 @@ import { useAction } from "../lib/use-load";
 import { ErrorAlert, Modal } from "./ui";
 
 /**
- * Delete an App or a pipeline, after saying what goes with it. A refusal (a run still going, pipelines that still
- * belong to the App) is shown in the dialog, as the API says it.
+ * Delete an App or a pipeline, after saying what goes with it. A refusal (a run still going, something else that
+ * starts it) is shown in the dialog, as the API says it.
  */
 export function DeleteButton({
   what,
   name,
   consequences,
+  confirm,
   onDelete,
   then,
 }: Readonly<{
@@ -20,6 +21,8 @@ export function DeleteButton({
   name: string;
   /** What goes with it, in a sentence or two. */
   consequences: ReactNode;
+  /** The confirming button, when more than the App or pipeline goes. */
+  confirm?: string;
   onDelete: () => Promise<void>;
   /** Where to go after. */
   then: string;
@@ -59,7 +62,7 @@ export function DeleteButton({
                 data-testid="confirm-delete"
               >
                 <IconTrash size={18} className="me-1" />
-                Delete the {what}
+                {confirm ?? `Delete the ${what}`}
               </button>
             </>
           }
