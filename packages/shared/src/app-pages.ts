@@ -350,16 +350,26 @@ export function actionApplies(
 
 // --- the api (M31) ---
 
-/** An App's list or report page in the menu. */
-export interface AppMenuItem {
-  appId: string;
-  appName: string;
+/** One of an App's list or report pages: a tab in its header. */
+export interface AppMenuPage {
   kind: "list" | "report";
   type: string;
   label: string;
   icon: ViewIcon;
-  /** None of the App's pipelines that run on their own is on: the menu marks it. */
+}
+
+/** An installed App on the launcher: its tile, and its pages as tabs once it is open. */
+export interface AppMenuItem {
+  appId: string;
+  name: string;
+  icon: ViewIcon;
+  description: string | null;
+  /** Its lists in the menu (those hidden from it left out), then its reports; maybe none. */
+  pages: AppMenuPage[];
+  /** None of the App's pipelines that run on their own is on: the tile marks it. */
   nothingOn: boolean;
+  /** Proposals of its pipelines waiting for the user's decision. */
+  pending: number;
 }
 
 export const AppListQuerySchema = z

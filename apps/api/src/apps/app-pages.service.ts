@@ -24,6 +24,7 @@ import {
   type AppListQueryParsed,
   type AppListView,
   type AppMenuItem,
+  type AppMenuPage,
   type AppPageHeader,
   type AppPreviewRequest,
   type AppPreviewView,
@@ -49,33 +50,48 @@ const MAX_ROWS = 5000;
 export class AppPagesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Every App's lists that go in the menu, by App, each App's types in the order they are written. */
+  /**
+   * Every App for the launcher, by name: its lists that go in the menu (its types in the order they are written), then
+   * its reports, whether anything of it runs by itself, and how many of its pipelines' proposals wait for a decision.
+   */
   async menu(userId: string): Promise<AppMenuItem[]> {
     const apps = await this.prisma.client.app.findMany({ where: { userId, currentVersionId: { not: null } }, orderBy: { name: "asc" } });
     const versions = await this.prisma.client.appVersion.findMany({
       where: { appVersionId: { in: apps.map((a) => a.currentVersionId!) } },
     });
     const pipelines = await pipelinesByApp(this.prisma.client, userId);
+    const waiting = await this.prisma.client.proposal.findMany({
+      where: { userId, status: "PENDING_REVIEW" },
+      select: { run: { select: { pipelineVersion: { select: { pipelineId: true } } } } },
+    });
     return apps.flatMap((app) => {
       const version = versions.find((v) => v.appVersionId === app.currentVersionId);
       if (!version) return [];
       const definition = readAppSource(version.source);
-      const off = nothingOn(pipelines.get(app.name) ?? []);
-      const item = (kind: AppMenuItem["kind"], page: { type: string; label: string; icon: AppMenuItem["icon"] }): AppMenuItem => ({
-        appId: app.appId,
-        appName: definition.name,
+      const own = pipelines.get(app.name) ?? [];
+      const ids = new Set(own.map((p) => p.pipelineId));
+      const page = (kind: AppMenuPage["kind"], p: { type: string; label: string; icon: AppMenuPage["icon"] }): AppMenuPage => ({
         kind,
-        type: page.type,
-        label: page.label,
-        icon: page.icon,
-        nothingOn: off,
+        type: p.type,
+        label: p.label,
+        icon: p.icon,
       });
       return [
-        ...Object.keys(definition.types)
-          .map((type) => listPageOf(definition, type))
-          .filter((page) => page.menu)
-          .map((page) => item("list", page)),
-        ...reportPagesOf(definition).map((page) => item("report", page)),
+        {
+          appId: app.appId,
+          name: definition.name,
+          icon: definition.icon,
+          description: definition.description ?? null,
+          pages: [
+            ...Object.keys(definition.types)
+              .map((type) => listPageOf(definition, type))
+              .filter((p) => p.menu)
+              .map((p) => page("list", p)),
+            ...reportPagesOf(definition).map((p) => page("report", p)),
+          ],
+          nothingOn: nothingOn(own),
+          pending: waiting.filter((w) => ids.has(w.run.pipelineVersion.pipelineId)).length,
+        },
       ];
     });
   }

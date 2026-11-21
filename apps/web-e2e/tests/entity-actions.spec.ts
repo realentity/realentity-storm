@@ -1,6 +1,6 @@
 import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { createPipeline, startRun, unique } from "./support";
+import { createPipeline, startRun, unique, openAppPage } from "./support";
 
 // M32-E1: a comment on a job, a move to Favorite, then Apply starts its pipeline; a type of mine added by hand
 test("an entity's form, stage and button; a type of mine added from its list", async ({ page }) => {
@@ -64,8 +64,7 @@ steps:
   );
   await startRun(page, collect.pipelineId);
 
-  await page.goto("/inbox");
-  await page.getByTestId("app-menu-item").filter({ hasText: label }).click();
+  await openAppPage(page, label);
   await expect(page.getByTestId("entity-row")).toHaveCount(1, { timeout: 20_000 });
   await page.getByRole("link", { name: "Staff engineer" }).click();
 

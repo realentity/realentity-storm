@@ -1,7 +1,8 @@
 import { type AppReportView, type ReportCell, type ReportSums } from "@realentity/storm-shared";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Empty, ErrorAlert, Loading, PageHeader } from "../components/ui";
+import { useParams } from "react-router-dom";
+import { AppHeader } from "../components/AppHeader";
+import { Empty, ErrorAlert, Loading } from "../components/ui";
 import { SeriesChart } from "../components/SeriesChart";
 import { api } from "../lib/endpoints";
 import { useLoad } from "../lib/use-load";
@@ -30,9 +31,11 @@ export function AppReportPage() {
 
   return (
     <>
-      <PageHeader
-        pretitle={<Link to={`/apps/${appId}`}>{data.app}</Link>}
-        title={data.page.label}
+      <AppHeader
+        appId={appId}
+        appName={data.app}
+        current={{ kind: "report", type }}
+        trail={[{ label: data.page.label }]}
         actions={
           <div className="btn-group" role="group" aria-label="Period">
             {periods.map((period) => (

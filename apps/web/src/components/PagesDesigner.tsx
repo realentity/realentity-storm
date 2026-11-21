@@ -31,7 +31,7 @@ import { PagePreview } from "./PagePreview";
 import { CommitInput, type DesignerEdit } from "./TypesDesigner";
 
 /**
- * M37-T1: the App's pages, a type at a time: its list (in the menu), its own page, and its form when it has fields of
+ * M37-T1: the App's pages, a type at a time: its list (a tab of the App), its own page, and its form when it has fields of
  * mine. A page not written yet is shown as its default from the type's fields; the first change writes it out.
  */
 export function PagesDesigner({
@@ -57,7 +57,7 @@ export function PagesDesigner({
 }>) {
   const listOrder = app.pages.flatMap((p) => (typeof p.list === "string" ? [p.list] : []));
   const types = definition ? Object.keys(definition.types) : [];
-  // The list pages in the menu's order: the written ones first, as they are; then the defaults.
+  // The list pages in the tabs' order: the written ones first, as they are; then the defaults.
   const ordered = [...listOrder.filter((t) => types.includes(t)), ...types.filter((t) => !listOrder.includes(t))];
   // A report is written in the YAML only: its problems here, with the App's others; a type's pages show their own.
   const reports = new Set(app.pages.flatMap((p, i) => (typeof p.report === "string" ? [String(i)] : [])));
@@ -73,7 +73,7 @@ export function PagesDesigner({
       )}
       {definition && (
         <div className="text-secondary">
-          Each type has a list page in the menu and a page of its own. Until you change one it shows its type&apos;s fields as they are; a
+          Each type has a list page as a tab of the App and a page of its own. Until you change one it shows its type&apos;s fields as they are; a
           change writes it into the YAML. A report (counts and sums over time) is written in the YAML, as a <code>report:</code> page.
         </div>
       )}
@@ -232,8 +232,8 @@ function TypePages({
             className="btn btn-sm btn-icon"
             disabled={!editable || !move.up}
             onClick={move.up}
-            title="Up in the menu"
-            aria-label={`${type} up in the menu`}
+            title="Earlier in the tabs"
+            aria-label={`${type} earlier in the tabs`}
           >
             <IconArrowUp size={16} />
           </button>
@@ -242,8 +242,8 @@ function TypePages({
             className="btn btn-sm btn-icon"
             disabled={!editable || !move.down}
             onClick={move.down}
-            title="Down in the menu"
-            aria-label={`${type} down in the menu`}
+            title="Later in the tabs"
+            aria-label={`${type} later in the tabs`}
           >
             <IconArrowDown size={16} />
           </button>
@@ -258,7 +258,7 @@ function TypePages({
             editable={editable}
           />
           <Issues issues={pageIssues(listPage)} onLine={onLine} />
-          <Row label="In the menu" help={HELP.pageMenu}>
+          <Row label="A tab" help={HELP.pageMenu}>
             <div className="d-flex gap-2 align-items-center flex-wrap">
               <label className="form-check form-switch mb-0">
                 <input
@@ -277,7 +277,7 @@ function TypePages({
                     className="form-control form-control-sm w-auto"
                     disabled={!editable}
                     onCommit={(label) => set("list", "menu", menuWith({ label }))}
-                    ariaLabel={`${type}'s name in the menu`}
+                    ariaLabel={`${type}'s name on its tab`}
                     testId="page-menu-label"
                   />
                   <select
@@ -285,7 +285,7 @@ function TypePages({
                     value={text(asObject(rawList.menu).icon)}
                     disabled={!editable}
                     onChange={(e) => set("list", "menu", menuWith({ icon: e.target.value }))}
-                    aria-label={`${type}'s icon in the menu`}
+                    aria-label={`${type}'s icon on its tab`}
                   >
                     <option value="">the App&apos;s icon</option>
                     {VIEW_ICONS.map((i) => (

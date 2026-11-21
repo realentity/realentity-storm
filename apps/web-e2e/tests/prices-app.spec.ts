@@ -1,8 +1,8 @@
 import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { expect, test } from "@playwright/test";
-import { unique } from "./support";
+import { unique, openAppPage } from "./support";
 
-// M33-E1 (Prices): a product of mine added on its list, its shops a line each; its offers' list in the menu
+// M33-E1 (Prices): a product of mine added on its list, its shops a line each; its offers' list a tab of the App
 test("the Prices App: a watched product added with its shops, and the Prices list", async ({ page }) => {
   const name = unique("Prices");
   const tag = name.split(" ")[1];
@@ -13,11 +13,7 @@ test("the Prices App: a watched product added with its shops, and the Prices lis
   const created = await page.request.post("/api/apps", { data: { source } });
   expect(created.status(), await created.text()).toBe(201);
 
-  await page.goto("/inbox");
-  await page
-    .getByTestId("app-menu-item")
-    .filter({ hasText: `Watched ${tag}` })
-    .click();
+  await openAppPage(page, `Watched ${tag}`);
   await page.getByTestId("add-entity").click();
   const form = page.getByTestId("add-form");
   await form.getByLabel("Name").fill("Jacket");
@@ -37,10 +33,8 @@ test("the Prices App: a watched product added with its shops, and the Prices lis
   await page.getByTestId("entity-form").getByRole("button", { name: "Save" }).click();
   await expect(fields).not.toContainText("one.example.org");
 
-  await page
-    .getByTestId("app-menu-item")
-    .filter({ hasText: `Prices ${tag}` })
-    .click();
-  await expect(page.getByRole("heading", { name: `Prices ${tag}` })).toBeVisible();
+  // The App's other page: its tab.
+  await page.getByTestId("app-tab").filter({ hasText: `Prices ${tag}` }).click();
+  await expect(page.getByTestId("app-tab").filter({ hasText: `Prices ${tag}` })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("No prices")).toBeVisible();
 });

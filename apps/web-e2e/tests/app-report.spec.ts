@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { unique } from "./support";
+import { unique, openAppPage } from "./support";
 
-// An App's report page: in the menu, its tiles with a share, a table by a field, the period picked
+// An App's report page: a tab of the App, its tiles with a share, a table by a field, the period picked
 test("an App's report: tiles, a share and a table, opened from the menu", async ({ page }) => {
   const name = unique("Spending");
   const tag = name.split(" ")[1];
@@ -37,12 +37,7 @@ pages:
     expect(added.status(), await added.text()).toBe(201);
   }
 
-  await page.goto("/inbox");
-  await page
-    .getByTestId("app-menu-item")
-    .filter({ hasText: `Spent ${tag}` })
-    .click();
-  await expect(page.getByRole("heading", { name: `Spent ${tag}` })).toBeVisible();
+  await openAppPage(page, `Spent ${tag}`);
   await expect(page.getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "true");
 
   const tiles = page.getByTestId("report-tile");

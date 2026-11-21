@@ -104,10 +104,20 @@ describe("app pages", () => {
   const list = async (query = "") => (await agent.get(`/api/apps/${appId}/pages/Bill${query}`).expect(200)).body as AppListView;
   const keys = (view: AppListView) => view.rows.map((r) => r.key);
 
-  it("puts the lists in the menu, those hidden from it left out, then the reports", async () => {
+  it("puts each App on the launcher: its lists in the menu, those hidden from it left out, then the reports", async () => {
     expect((await agent.get("/api/apps/menu").expect(200)).body as AppMenuItem[]).toEqual([
-      { appId, appName: "Bills", kind: "list", type: "Bill", label: "My bills", icon: "receipt", nothingOn: false },
-      { appId, appName: "Bills", kind: "report", type: "Bill", label: "Bill report", icon: "chart", nothingOn: false },
+      {
+        appId,
+        name: "Bills",
+        icon: "receipt",
+        description: null,
+        pages: [
+          { kind: "list", type: "Bill", label: "My bills", icon: "receipt" },
+          { kind: "report", type: "Bill", label: "Bill report", icon: "chart" },
+        ],
+        nothingOn: false,
+        pending: 0,
+      },
     ]);
   });
 

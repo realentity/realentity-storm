@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Link, Route, Routes } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import { Loading } from "./components/ui";
 import { useSession } from "./context/use-session";
@@ -11,6 +11,7 @@ import { HealthPage } from "./pages/HealthPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { InboxPage } from "./pages/InboxPage";
 import { JobsPage } from "./pages/JobsPage";
+import { AppHome, LauncherPage } from "./pages/LauncherPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PipelineEditorPage } from "./pages/PipelineEditorPage";
 import { PipelinePage } from "./pages/PipelinePage";
@@ -48,7 +49,7 @@ export function App() {
       ) : (
         <Routes>
           <Route element={<AppLayout />}>
-            <Route index element={<Navigate to="/inbox" replace />} />
+            <Route index element={<LauncherPage />} />
             <Route path="inbox" element={<InboxPage />} />
             <Route path="proposals/:proposalId" element={<ProposalPage />} />
             <Route path="pipelines" element={<PipelinesPage />} />
@@ -76,6 +77,7 @@ export function App() {
             <Route path="apps/new" element={<AppEditorPage />} />
             <Route path="apps/:appId" element={<AppPage />} />
             <Route path="apps/:appId/edit" element={<AppEditorPage />} />
+            <Route path="a/:appId" element={<AppHome />} />
             <Route path="a/:appId/:type" element={<AppListPage />} />
             <Route path="a/:appId/:type/:key" element={<AppEntityPage />} />
             <Route path="r/:appId/:type" element={<AppReportPage />} />
@@ -86,7 +88,7 @@ export function App() {
               element={
                 <div className="empty">
                   <p className="empty-title">Not found</p>
-                  <Link to="/inbox">Back to the inbox</Link>
+                  <Link to="/">Back home</Link>
                 </div>
               }
             />

@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { createPipeline, startRun, unique } from "./support";
+import { createPipeline, startRun, unique, openAppPage } from "./support";
 
-// M31-E1, S1: an App's list in the menu, filtered and grouped with totals, an entity's page; values only as text
-test("an App's list is in the menu, filters and groups its entities, and opens an entity's page", async ({ page }) => {
+// M31-E1, S1: an App's list opened from its tile on Home, filtered and grouped with totals, an entity's page; values only as text
+test("an App opens from Home on its list, which filters and groups its entities and opens an entity's page", async ({ page }) => {
   const name = unique("Bills");
   const label = `Bills ${name.split(" ")[1]}`;
   const created = await page.request.post("/api/apps", {
@@ -54,9 +54,11 @@ steps:
   );
   await startRun(page, pipeline.pipelineId);
 
-  await page.goto("/inbox");
-  await page.getByTestId("app-menu-item").filter({ hasText: label }).click();
-  await expect(page.getByRole("heading", { name: label })).toBeVisible();
+  await openAppPage(page, label);
+  // Inside the App: where you are, its name, its pages as tabs, and the way to manage it.
+  await expect(page.getByTestId("breadcrumb")).toHaveText(new RegExp(`Home.*${name}.*${label}`));
+  await expect(page.getByTestId("app-name")).toHaveText(name);
+  await expect(page.getByTestId("app-manage")).toHaveAttribute("href", /^\/apps\/[0-9a-f-]{36}$/);
   const rows = page.getByTestId("entity-row");
   await expect(rows).toHaveCount(3, { timeout: 20_000 });
   const groups = page.getByTestId("entity-group");
@@ -80,7 +82,14 @@ steps:
   await rows.nth(0).getByRole("link", { name: "Electricity" }).click();
   await expect(page.getByRole("heading", { name: "Electricity" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Payment" })).toBeVisible();
+  // The entity's page: its list's tab stays the current one, and the breadcrumb goes back to the list.
+  await expect(page.getByTestId("app-tab").filter({ hasText: label })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("breadcrumb")).toHaveText(new RegExp(`${label}.*Electricity`));
   await expect(page.getByTestId("entity-fields").nth(1)).toContainText("javascript:alert(1)");
   await expect(page.getByTestId("entity-link")).toHaveAttribute("href", "https://power.example.org/bill");
   await expect(page.getByTestId("entity-link")).toHaveAttribute("rel", "noopener noreferrer");
+  // Back to the list: the breadcrumb's last link.
+  await page.getByTestId("breadcrumb").getByRole("link").last().click();
+  await expect(page).toHaveURL(/\/a\/[0-9a-f-]{36}\/Bill$/);
+  await expect(page.getByTestId("entity-row").first()).toBeVisible();
 });

@@ -222,7 +222,7 @@ test("the Bills App made in the designer, as examples/apps/bills.yaml has it", a
   await expect(list.getByTestId("page-is-default")).toBeVisible();
   await commit(page, "page-menu-label", "Bills");
   await expect(list.getByTestId("page-default")).toBeVisible();
-  await list.getByLabel("Bill's icon in the menu").selectOption("receipt");
+  await list.getByLabel("Bill's icon on its tab").selectOption("receipt");
   const columns = list.getByTestId("page-columns");
   await keepOnly(columns, ["issuer", "amount", "dueDate"]);
   for (const field of ["reference", "status"]) await columns.getByTestId("page-columns-add").selectOption(field);
