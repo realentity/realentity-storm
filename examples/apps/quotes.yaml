@@ -1,0 +1,265 @@
+# The Quotes App (M58-T5): what you need quotes for (a Request: what, by when, and which of your Suppliers to ask),
+# sent to each of them after you approve the batch; their answers read into Quotes (price, delivery, terms), side by
+# side on the request's page. Accept the best one: the acceptance to its supplier and a thank-you to the others wait
+# for your approval too. Emails go only to the addresses you wrote on your Suppliers.
+app:
+  name: Quotes
+  description: Quotes asked from your suppliers, compared side by side, one accepted
+  icon: tag
+  summary: >-
+    A request sent to the suppliers you pick; their answers read into quotes (price, delivery, terms), side
+    by side; the one you accept told, the others thanked. Every email waits for your approval and goes only to
+    your suppliers' addresses.
+  setup:
+    - { kind: email, label: "An email account, to ask for quotes and read the answers" }
+    - { kind: entities, type: Supplier, label: "Your suppliers, with their email addresses (Suppliers)" }
+types:
+  # Who you ask: written by you, so its address is one an email may go to.
+  Supplier:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true }
+      email: { type: email, required: true }
+      what: { type: text, label: Supplies, help: "What you buy from them, e.g. printing, office furniture" }
+      notes: { type: longtext }
+  # What you need quotes for, and from whom.
+  Request:
+    mine: true
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true, label: What, help: "e.g. 500 business cards, two-sided" }
+      details: { type: longtext, help: "Sizes, quantities, quality: what a supplier needs to price it" }
+      needBy: { type: date, label: Needed by }
+      suppliers: { type: list, of: ref, to: Supplier, required: true, label: Ask, help: "Who to ask: each gets the request" }
+  # A supplier's answer to a request: written by quote-ask (asked) and quote-read (quoted), moved by Accept.
+  Quote:
+    key: id
+    title: supplier
+    stages:
+      field: status
+      initial: asked
+      states: [asked, quoted, accepted, declined]
+      moves:
+        - { from: asked, to: [quoted], by: [pipeline] }
+        - { from: [asked, quoted], to: [accepted, declined], by: [pipeline] }
+        - { from: [accepted, declined], to: [quoted], by: [me] }
+    fields:
+      id: { type: text, required: true }
+      request: { type: ref, to: Request }
+      requestTitle: { type: text, label: Request }
+      supplier: { type: ref, to: Supplier }
+      price: { type: number }
+      currency: { type: text }
+      deliveryDate: { type: date, label: Delivery }
+      terms: { type: longtext }
+      askedAt: { type: datetime, label: Asked }
+      answeredAt: { type: datetime, label: Answered }
+      messageId: { type: text }
+pages:
+  - list: Request
+    menu: { label: Requests, icon: tag }
+    add: true
+    columns: [title, needBy, suppliers]
+    sort: -needBy
+  # The quotes side by side.
+  - view: Request
+    fields: [details, needBy, suppliers]
+    related:
+      - { type: Quote, by: request, label: Quotes, columns: [supplier, price, currency, deliveryDate, terms, status] }
+    actions:
+      - { label: Ask for quotes, run: quote-ask, confirm: "Send this request to its suppliers? You approve the emails first." }
+  - form: Request
+    fields: [title, details, needBy, suppliers]
+  - list: Quote
+    menu: { label: Quotes, icon: tag }
+    columns: [requestTitle, supplier, price, currency, deliveryDate, answeredAt, status]
+    filters: [request, status]
+    sort: -answeredAt
+  - view: Quote
+    fields: [request, supplier, price, currency, deliveryDate, terms, askedAt, answeredAt]
+    actions:
+      - { label: Accept, run: quote-accept, when: { status: quoted }, confirm: "Accept this quote? The supplier is told, and the others thanked, after you approve the emails." }
+  - list: Supplier
+    menu: { label: Suppliers, icon: tag }
+    add: true
+    columns: [name, email, what]
+    search: [name, what]
+
+pipelines:
+  quote-ask:
+    # From a Request's button (Ask for quotes) in the Quotes App: the request emailed to each of its Suppliers, all
+    # waiting at the gate as one batch; each one sent is a Quote waiting for their answer (asked).
+    name: Ask for quotes
+    description: A request emailed to its suppliers, approved as one batch.
+    trigger: { on: entity.action, type: Request }
+    limits:
+      email.send: 30/day
+    steps:
+      - id: suppliers
+        type: data.read
+        with: { type: Supplier, where: [{ field: name, op: in, value: "{{trigger.item.suppliers}}" }], sort: name, limit: 50 }
+      - id: text
+        type: data.map
+        with:
+          from: "{{trigger.item}}"
+          expression: |-
+            "Could you send me your quote for the following?\n\n" & title & (details ? "\n\n" & details : "")
+              & (needBy ? "\n\nI need it by " & needBy & "." : "")
+              & "\n\nPlease include the price, when you could deliver, and your terms.\n\nThank you."
+      - id: send
+        type: email.send
+        forEach: "{{suppliers.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Request for a quote: {{trigger.item.title}}"
+          body: "Hello {{item.name}},\n\n{{text.value}}"
+      - id: asked
+        type: data.map
+        with:
+          from: { suppliers: "{{suppliers.items}}", sent: "{{send}}", request: "{{trigger.item}}" }
+          expression: |-
+            (
+              $at := $now();
+              [$map(suppliers, function($s, $i) {
+                $exists(sent[$i].messageId) ? {
+                  "id": request.id & ":" & $s.name, "request": request.id, "requestTitle": request.title,
+                  "supplier": $s.name, "askedAt": $at, "messageId": sent[$i].messageId
+                }
+              })]
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{asked.items}}", type: Quote }
+
+  quote-read:
+    # Every 30 minutes, the Quotes App's new emails: an answer in a request's thread is read into its Quote (price,
+    # currency, delivery date, terms), which is quoted; you're told on Telegram. Nothing is sent.
+    name: Read quotes
+    description: Suppliers' answers read into their quotes.
+    trigger: { schedule: "*/30 * * * *" }
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { limit: 50, sinceDays: 2 }
+      - id: open
+        type: data.read
+        with: { type: Quote, where: [{ field: status, op: eq, value: asked }], limit: 1000 }
+      # Each answer with the Quote it answers (by the request email's Message-ID).
+      - id: answers
+        type: data.map
+        with:
+          from: { messages: "{{fetch.messages}}", open: "{{open.items}}" }
+          expression: |-
+            [$map(messages, function($m) {(
+              $q := open[messageId = $m.threadId or messageId = $m.inReplyTo][0];
+              $q ? { "quote": $q, "message": $m }
+            )})]
+      - id: read
+        type: llm.extract
+        forEach: "{{answers.items}}"
+        with:
+          content: "{{item.message}}"
+          instruction: A supplier answers my request for a quote.
+          fields:
+            price: the total price, as a number only (e.g. 1250.50)
+            currency: the currency, as its code (EUR, USD, GBP)
+            deliveryDate: when they can deliver, a date
+            terms: their payment and other terms in one or two sentences, and anything they can't do
+      - id: quoted
+        type: data.map
+        with:
+          from: { answers: "{{answers.items}}", read: "{{read}}" }
+          expression: |-
+            (
+              $at := $now();
+              [$map(answers, function($a, $i) {(
+                $v := read[$i].values;
+                $p := $replace($v.price, /[^0-9.]/, "");
+                $merge([$sift($a.quote, function($x, $k) { $k != "status" }), {
+                  "price": $p ? $number($p),
+                  "currency": $v.currency ? $uppercase($v.currency),
+                  "deliveryDate": $v.deliveryDate ? $v.deliveryDate,
+                  "terms": $v.terms ? $v.terms,
+                  "answeredAt": $at
+                }])
+              )})]
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{quoted.items}}", type: Quote, stage: quoted }
+      - id: tell
+        type: notify.telegram
+        forEach: "{{quoted.items}}"
+        with: { text: "A quote for {{item.requestTitle}} from {{item.supplier}}: {{item.price}} {{item.currency}}. Compare them on the request's page." }
+
+  quote-accept:
+    # From a quoted Quote's button (Accept) in the Quotes App: its supplier told the quote is accepted, and the other
+    # suppliers of the request thanked, each email after you approve it; then the Quote is accepted and the others
+    # declined.
+    name: Accept quote
+    description: The accepted supplier told, the others thanked, after you approve.
+    trigger: { on: entity.action, type: Quote }
+    limits:
+      email.send: 30/day
+    steps:
+      - id: winner
+        type: data.read
+        with: { type: Supplier, where: [{ field: name, op: eq, value: "{{trigger.item.supplier}}" }], limit: 1 }
+      - id: rest
+        type: data.read
+        with:
+          type: Quote
+          where:
+            - { field: request, op: eq, value: "{{trigger.item.request}}" }
+            - { field: status, op: in, value: [asked, quoted] }
+          limit: 100
+      - id: others
+        type: data.map
+        with:
+          from: { rest: "{{rest.items}}", chosen: "{{trigger.item}}" }
+          expression: '[rest[id != $$.chosen.id]]'
+      - id: names
+        type: data.map
+        with:
+          from: "{{others.items}}"
+          expression: '[$.supplier]'
+      - id: losers
+        type: data.read
+        with: { type: Supplier, where: [{ field: name, op: in, value: "{{names.value}}" }], sort: name, limit: 100 }
+      - id: accept
+        type: email.send
+        forEach: "{{winner.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Your quote for {{trigger.item.requestTitle}}: accepted"
+          body: "Hello {{item.name}},\n\nThank you for your quote for {{trigger.item.requestTitle}}: I accept it. Please confirm, and let me know what you need from me to go ahead.\n\nThank you."
+      - id: decline
+        type: email.send
+        forEach: "{{losers.items}}"
+        with:
+          to: "{{item.email}}"
+          subject: "Your quote for {{trigger.item.requestTitle}}"
+          body: "Hello {{item.name}},\n\nThank you for your answer about {{trigger.item.requestTitle}}. This time I chose another offer; I hope to work with you another time.\n\nThank you."
+      - id: accepted
+        type: data.map
+        with:
+          from: { chosen: "{{trigger.item}}", sent: "{{accept}}" }
+          expression: '$exists(sent[0].messageId) ? [$sift(chosen, function($v, $k) { $k != "status" })] : []'
+      - id: saveAccepted
+        type: data.save
+        with: { items: "{{accepted.items}}", type: Quote, stage: accepted }
+      - id: declined
+        type: data.map
+        with:
+          from: { others: "{{others.items}}", losers: "{{losers.items}}", sent: "{{decline}}" }
+          expression: |-
+            [$filter(others, function($q) {(
+              $i := $filter([0..$count(losers) - 1], function($n) { losers[$n].name = $q.supplier });
+              $exists(sent[$i[0]].messageId)
+            )}).$sift($, function($v, $k) { $k != "status" })]
+      - id: saveDeclined
+        type: data.save
+        with: { items: "{{declined.items}}", type: Quote, stage: declined }
