@@ -389,7 +389,7 @@ const DrewOn = z.array(z.string()).describe("the topic facts the text relies on,
 
 const FilterCondition = z.object({
   field: z.string().min(1),
-  op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"]),
+  op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in", "nin"]),
   value: z.unknown(),
 });
 

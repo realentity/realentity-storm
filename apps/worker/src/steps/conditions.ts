@@ -14,7 +14,7 @@ export function valueAt(item: Item, path: string): unknown {
 
 export interface Condition {
   field: string;
-  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in";
+  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in" | "nin";
   value: unknown;
 }
 
@@ -42,6 +42,9 @@ export function matches(actual: unknown, { op, value }: Condition): boolean {
       return Array.isArray(actual) && actual.some((entry) => same(entry, value));
     case "in":
       return Array.isArray(value) && value.some((entry) => same(actual, entry));
+    case "nin":
+      // M58-T9: not one of the list's values; a value that isn't a list (an empty step's) leaves out nothing.
+      return !(Array.isArray(value) && value.some((entry) => same(actual, entry)));
   }
 }
 

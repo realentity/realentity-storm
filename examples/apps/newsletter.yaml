@@ -1,0 +1,251 @@
+# The Newsletter App (M58-T9): links collected over the week (emails you forward to yourself with #link in the subject,
+# and a few feeds), the ones you pick on Friday written up as the week's issue, and one email to each of your
+# Subscribers, approved as one batch. Each email says how to stop: a reply with "unsubscribe" keeps that address out
+# of every later issue.
+app:
+  name: Newsletter
+  description: The week's links you pick, written up and emailed to your subscribers
+  icon: news
+  summary: >-
+    Links you forward to yourself and a few feeds, collected over the week; on Friday you pick the ones for
+    the issue, it's written for you, and one email per subscriber waits for your approval as a batch.
+    A reply with "unsubscribe" stops the next ones.
+  setup:
+    - { kind: email, label: "An email account, to read the links you forward and send the issue" }
+    - { kind: llm, label: "The LLM, to write the issue" }
+    - { kind: entities, type: Subscriber, label: "Who gets it (Subscribers)" }
+types:
+  # Who gets the newsletter: written by you. Only these addresses are ever sent to.
+  Subscriber:
+    mine: true
+    key: email
+    fields:
+      email: { type: email, required: true }
+      name: { type: text, required: true, help: "How the email greets them" }
+      since: { type: date, label: Subscribed }
+  # A link seen this week, and whether an issue used it: written by collect-links and newsletter-issue.
+  Link:
+    key: url
+    title: title
+    stages:
+      field: status
+      initial: new
+      states: [new, used, skipped]
+      moves:
+        - { from: new, to: [used, skipped], by: [me, pipeline] }
+        - { from: [used, skipped], to: [new], by: [me] }
+    fields:
+      url: { type: url, required: true }
+      title: { type: text, required: true }
+      source: { type: text, help: "email, or the feed's site" }
+      found: { type: datetime }
+      summary: { type: longtext }
+      issue: { type: text, label: In the issue of }
+      note: { type: longtext, mine: true, label: Your note, help: "What you want to say about it: the issue uses it" }
+  # An issue written, and who got it: written by newsletter-issue.
+  Issue:
+    key: id
+    title: title
+    stages:
+      field: status
+      initial: drafted
+      states: [drafted, sent]
+      moves:
+        - { from: drafted, to: [sent], by: [pipeline] }
+    fields:
+      id: { type: text, required: true, label: Date }
+      title: { type: text, required: true }
+      links: { type: number }
+      recipients: { type: number }
+      sentAt: { type: datetime, label: Sent }
+      body: { type: longtext }
+  # An address that replied "unsubscribe": written by collect-links. Left out of every later issue; remove it here (and keep
+  # the Subscriber) when they ask to come back.
+  Unsubscribed:
+    key: email
+    fields:
+      email: { type: email, required: true }
+      at: { type: datetime, label: Asked }
+pages:
+  - list: Link
+    menu: { label: Links, icon: news }
+    columns: [title, source, found, issue, status]
+    filters: [status]
+    sort: -found
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Collect now, run: collect-links }
+      - { label: Write the issue now, run: newsletter-issue }
+  - view: Link
+    fields: [url, source, found, summary, issue, note]
+  - list: Issue
+    menu: { label: Issues, icon: news }
+    columns: [title, links, recipients, sentAt, status]
+    sort: -id
+  - view: Issue
+    fields: [sentAt, links, recipients, body]
+  - list: Subscriber
+    menu: { label: Subscribers, icon: news }
+    add: true
+    columns: [name, email, since]
+    sort: name
+  - list: Unsubscribed
+    menu: { label: Unsubscribed, icon: news }
+    columns: [email, at]
+    sort: -at
+
+pipelines:
+  collect-links:
+    # Every three hours, the Newsletter App's new emails and its feeds: an email with #link in its subject (one you
+    # forward or send to yourself) gives its first link, a feed its items of the last week; the ones not seen before
+    # are new Links. A reply whose first line says "unsubscribe" keeps its sender out of later issues (Unsubscribed).
+    # Nothing is sent. Your feeds go in `urls`, and their sites in allowedDomains.
+    name: Collect links
+    description: Links from the emails you forward with #link and from your feeds, kept for Friday's issue.
+    trigger: { schedule: "0 */3 * * *" }
+    policy:
+      allowedDomains: [github.blog, blog.rust-lang.org]
+    steps:
+      - id: fetch
+        type: email.fetch
+        with: { limit: 100, sinceDays: 7 }
+      - id: feeds
+        type: http.fetch
+        with:
+          urls:
+            - https://github.blog/feed/
+            - https://blog.rust-lang.org/feed.xml
+          maxItems: 50
+      # The forwarded emails' links and the feeds' items of the last week, as Links.
+      - id: candidates
+        type: data.map
+        with:
+          from: { messages: "{{fetch.messages}}", feeds: "{{feeds.items}}" }
+          expression: |-
+            (
+              $since := $toMillis($now()) - 7 * 24 * 60 * 60 * 1000;
+              $forwarded := messages[$contains($lowercase(subject), "#link")].(
+                $url := $match(text, /https?:\/\/[^\s<>"'()\[\]]+/)[0].match;
+                $title := $trim($replace($replace(subject, /#link/i, ""), /^\s*(fwd?|fw)\s*:\s*/i, ""));
+                $url ? { "url": $url, "title": $title != "" ? $title : $url, "source": "email", "found": date,
+                         "summary": $substring($trim(text), 0, 600) }
+              );
+              $read := feeds[$exists(url) and $exists(published) and $toMillis(published) > $since].{
+                "url": url, "title": title, "source": source, "found": published, "summary": $substring(summary, 0, 600)
+              };
+              [$forwarded, $read]
+            )
+      - id: fresh
+        type: data.dedupe
+        with: { from: "{{candidates.items}}", key: url, againstType: Link }
+      - id: save
+        type: data.save
+        with: { items: "{{fresh.items}}", type: Link }
+      # Replies asking to stop: the first line that isn't empty says "unsubscribe".
+      - id: stops
+        type: data.map
+        with:
+          from: "{{fetch.messages}}"
+          expression: |-
+            [$[inReplyTo and $contains($lowercase($trim($split(text, "\n")[$trim($) != ""][0])), "unsubscribe")].{
+              "email": $lowercase(from), "at": date
+            }]
+      - id: unsubscribed
+        type: data.save
+        with: { items: "{{stops.items}}", type: Unsubscribed }
+
+  newsletter-issue:
+    # On Friday at 9:00, and from the Links list's button: this week's new Links come to you to pick (gate.review);
+    # the issue is written from the ones you pick, with your note on each, and kept as an Issue; then one email per
+    # Subscriber (not the Unsubscribed) waits for your approval as one batch, each saying how to stop getting it.
+    # Sent, the Issue is sent and the picked Links used; the others are skipped.
+    name: Write the issue
+    description: The week's links you pick, written up and emailed to your subscribers after you approve them.
+    trigger: { schedule: "0 9 * * 5" }
+    needs:
+      title: { kind: text, label: "Your newsletter's name", example: Weekly links }
+    limits:
+      email.send: 200/day
+    steps:
+      - id: links
+        type: data.read
+        with: { type: Link, where: [{ field: status, op: eq, value: new }], sort: -found, limit: 60 }
+      - id: pick
+        type: gate.review
+        when: "{{links.items}}"
+        with: { items: "{{links.items}}", title: "This week's links: pick the ones for the issue" }
+      - id: write
+        type: llm.generate
+        when: "{{pick.selected}}"
+        with:
+          instruction: >-
+            This week's issue of my newsletter, as plain text for an email: a line or two to open, then each link as
+            its title, two or three sentences on why it's worth reading (from my note when there is one, else from
+            its summary), and its address on a line of its own; a short line to close. Friendly and plain, no hype,
+            no greeting (it's added), no subject line, no other text.
+          context: { newsletter: "{{setting.title}}", links: "{{pick.selected}}" }
+      - id: issued
+        type: data.map
+        when: "{{write.text}}"
+        with:
+          from: { title: "{{setting.title}}", links: "{{pick.selected}}", body: "{{write.text}}" }
+          expression: |-
+            (
+              $day := $substring($now(), 0, 10);
+              { "id": $day, "title": title & " · " & $day, "links": $count(links), "body": body }
+            )
+      - id: draft
+        type: data.save
+        when: "{{issued.items}}"
+        with: { items: "{{issued.items}}", type: Issue }
+      - id: gone
+        type: data.read
+        with: { type: Unsubscribed, limit: 1000 }
+      - id: goneEmails
+        type: data.map
+        with:
+          from: "{{gone.items}}"
+          expression: '[$.email]'
+      - id: subscribers
+        type: data.read
+        with: { type: Subscriber, where: [{ field: email, op: nin, value: "{{goneEmails.value}}" }], sort: name, limit: 200 }
+      - id: send
+        type: email.send
+        forEach: "{{subscribers.items}}"
+        when: "{{write.text}}"
+        with:
+          to: "{{item.email}}"
+          subject: "{{issued.value.title}}"
+          body: |-
+            Hello {{item.name}},
+
+            {{write.text}}
+
+            --
+            You get {{setting.title}} because you asked for it. To stop, reply to this email with the word unsubscribe.
+      - id: done
+        type: data.map
+        with:
+          from: { issue: "{{issued.items}}", sent: "{{send}}", links: "{{links.items}}", picked: "{{pick.selected}}" }
+          expression: |-
+            (
+              $issue := issue[0];
+              $n := $count(sent[$exists(messageId)]);
+              $urls := picked.url;
+              $row := function($l) { $sift($l, function($v, $k) { $k in ["url", "title", "source", "found", "summary"] }) };
+              {
+                "issue": $n > 0 ? [$merge([$issue, { "recipients": $n, "sentAt": $now() }])] : [],
+                "used": $n > 0 ? [links[url in $urls].$merge([$row($), { "issue": $issue.id }])] : [],
+                "skipped": $n > 0 or $not($exists($issue)) ? [links[$not(url in $urls)].$row($)] : []
+              }
+            )
+      - id: sent
+        type: data.save
+        with: { items: "{{done.value.issue}}", type: Issue, stage: sent }
+      - id: used
+        type: data.save
+        with: { items: "{{done.value.used}}", type: Link, stage: used }
+      - id: skipped
+        type: data.save
+        with: { items: "{{done.value.skipped}}", type: Link, stage: skipped }
