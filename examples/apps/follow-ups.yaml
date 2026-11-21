@@ -1,0 +1,172 @@
+# The Follow-ups App (M58-T3): your sent emails that got no answer, kept as a list, and every Monday a short nudge
+# drafted for each, all waiting at the gate as one batch: untick the ones you don't want, then Approve (or Approve all
+# on Telegram). One you untick is snoozed for two weeks; Snooze a row yourself, or Drop it for good. At most two
+# nudges a thread; an answer ends it.
+app:
+  name: Follow-ups
+  description: Emails waiting on an answer, a nudge for each, approved together
+  icon: bell
+  summary: >-
+    Your sent emails nobody answered in 5 days, listed; every Monday a short nudge in the same thread is
+    drafted for each, approved as one batch before anything is sent. Snooze a thread for two weeks, or Drop it.
+  setup:
+    - { kind: email, label: "An email account, to find the unanswered emails and send the nudges" }
+types:
+  # A thread whose last message is yours: written by follow-ups, moved by you (Snooze, Drop) or by it (nudged; snoozed
+  # when you untick its nudge; waiting again after two weeks).
+  FollowUp:
+    key: threadId
+    title: subject
+    stages:
+      field: status
+      initial: waiting
+      states: [waiting, nudged, snoozed, dropped]
+      moves:
+        - { from: [waiting, nudged], to: [snoozed], by: [me, pipeline] }
+        - { from: [waiting, nudged], to: [dropped], by: [me] }
+        - { from: snoozed, to: [waiting], by: [me, pipeline] }
+        - { from: snoozed, to: [dropped], by: [me] }
+        - { from: dropped, to: [waiting], by: [me] }
+        - { from: waiting, to: [nudged], by: [pipeline] }
+        - { from: nudged, to: [waiting], by: [me] }
+    fields:
+      threadId: { type: text, required: true }
+      subject: { type: text }
+      to: { type: text, label: To }
+      sentAt: { type: datetime, label: Sent }
+      daysWaiting: { type: number, label: Days waiting }
+      followUps: { type: number, label: Nudges }
+      nudgedAt: { type: datetime, label: Last nudge }
+      notes: { type: longtext, mine: true }
+pages:
+  - list: FollowUp
+    menu: { label: Waiting, icon: bell }
+    columns: [subject, to, sentAt, daysWaiting, followUps, nudgedAt, status]
+    filters: [status]
+    search: [subject, to]
+    sort: -sentAt
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Nudge now, run: follow-ups, confirm: "Draft a nudge for each waiting email now? You approve them before any is sent." }
+  - view: FollowUp
+    fields: [to, sentAt, daysWaiting, followUps, nudgedAt, notes]
+  - form: FollowUp
+    fields: [notes]
+
+pipelines:
+  follow-ups:
+    # Every Monday at 09:00, the Follow-ups App's unanswered emails (older than 5 days, at most two nudges each): kept on
+    # its list, and a nudge drafted for each one you haven't snoozed or dropped, in its thread and language. They wait at
+    # the gate together; each one you approve is sent from the account the email went from, and its row is nudged; one
+    # you untick is snoozed. email.awaiting remembers nothing here (remember: false): the rows do.
+    name: Follow-ups
+    description: Every Monday, a nudge for each email still waiting on an answer, approved together.
+    trigger: { schedule: "0 9 * * 1" }
+    limits:
+      email.send: 20/day
+    steps:
+      - id: waiting
+        type: email.awaiting
+        with: { afterDays: 5, lookbackDays: 45, maxFollowUps: 2, limit: 20, remember: false }
+      - id: held
+        type: data.read
+        with: { type: FollowUp, where: [{ field: status, op: in, value: [snoozed, dropped] }], limit: 1000 }
+      # The threads not snoozed or dropped.
+      - id: due
+        type: data.map
+        with:
+          from: { threads: "{{waiting.threads}}", held: "{{held.items}}" }
+          expression: '[threads[$not(threadId in $$.held.threadId)]]'
+      - id: rows
+        type: data.map
+        with:
+          from: "{{due.items}}"
+          expression: |-
+            [$.{
+              "threadId": threadId,
+              "subject": subject,
+              "to": to,
+              "sentAt": sentAt,
+              "daysWaiting": daysWaiting,
+              "followUps": followUps
+            }]
+      - id: listed
+        type: data.save
+        with: { items: "{{rows.items}}", type: FollowUp }
+      - id: draft
+        type: email.draftFollowUp
+        forEach: "{{due.items}}"
+        with:
+          message: "{{item.message}}"
+          daysWaiting: "{{item.daysWaiting}}"
+          instruction: A short, friendly nudge in two or three sentences.
+      - id: send                 # one batch at the gate: untick the ones you don't want, then Approve
+        type: email.send
+        forEach: "{{due.items}}"
+        with:
+          to: "{{item.to}}"
+          subject: "{{draft.subject}}"
+          body: "{{draft.body}}"
+          inReplyTo: "{{item.message.messageId}}"
+          references: "{{item.references}}"
+          account: "{{item.message.account}}"
+      # The rows whose nudge went, and the ones you unticked (snoozed: asked again in two weeks).
+      - id: sent
+        type: data.map
+        with:
+          from: { rows: "{{rows.items}}", sent: "{{send}}" }
+          expression: |-
+            (
+              $at := $now();
+              [$filter(rows, function($r, $i) { $exists(sent[$i].messageId) }).$merge([$, { "nudgedAt": $at, "followUps": followUps + 1 }])]
+            )
+      - id: nudged
+        type: data.save
+        with: { items: "{{sent.items}}", type: FollowUp, stage: nudged }
+      - id: unticked
+        type: data.map
+        with:
+          from: { rows: "{{rows.items}}", sent: "{{send}}" }
+          expression: '[$filter(rows, function($r, $i) { $not($exists(sent[$i].messageId)) })]'
+      - id: snoozed
+        type: data.save
+        with: { items: "{{unticked.items}}", type: FollowUp, stage: snoozed }
+
+  snooze:
+    # When a row of the Follow-ups App is snoozed (by you, or its nudge unticked): it waits again in two weeks, by wake.
+    # Snoozed again, the two weeks start over. Save wake first: this one names it.
+    name: Snooze
+    description: A snoozed email waits again in two weeks.
+    trigger: { on: entity.changed, type: FollowUp, stage: snoozed }
+    steps:
+      - id: later
+        type: flow.later
+        with:
+          pipeline: wake
+          after: 14d
+          key: "snooze:{{trigger.key}}"
+          data: { threadId: "{{trigger.key}}" }
+
+  wake:
+    # Two weeks after Snooze: the Follow-ups row waits again, unless you moved it in the meantime.
+    name: Wake
+    description: A snoozed email waits again.
+    trigger: { on: flow.later }
+    steps:
+      - id: row
+        type: data.read
+        with:
+          type: FollowUp
+          where:
+            - { field: threadId, op: eq, value: "{{trigger.data.threadId}}" }
+            - { field: status, op: eq, value: snoozed }
+          limit: 1
+      - id: awake
+        type: data.map
+        with:
+          from: "{{row.items}}"
+          expression: '[$.$sift($, function($v, $k) { $not($k in ["status", "notes"]) })]'
+      - id: save
+        type: data.save
+        with: { items: "{{awake.items}}", type: FollowUp, stage: waiting }
