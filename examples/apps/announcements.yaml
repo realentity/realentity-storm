@@ -1,0 +1,167 @@
+# The Announcements App (M58-T8): your own GitHub repositories' releases (their public release feeds), a short post
+# drafted for each new one, and posted to your Mastodon account after you approve it at the gate, where you edit the
+# text. Not the Releases App: that one watches what you use; this one tells others about what you make.
+app:
+  name: Announcements
+  description: Your releases announced on Mastodon, each post approved first
+  icon: rss
+  summary: >-
+    Your repositories' new releases, a short post drafted for each and posted to your Mastodon account after
+    you edit and approve it.
+  setup:
+    - { kind: llm, label: "The LLM, to draft the posts" }
+    - { kind: entities, type: Project, label: "Your repositories, owner/name (Projects)" }
+    - { kind: entities, type: Account, label: "Your Mastodon account and its token (Accounts)" }
+types:
+  # A repository of yours whose releases are announced: written by you.
+  Project:
+    mine: true
+    key: repository
+    fields:
+      repository: { type: text, required: true, help: "owner/name, as in github.com/acme/tool → acme/tool" }
+      hashtags: { type: text, help: "Added to its posts, e.g. #opensource #typescript" }
+      about: { type: longtext, help: "What it is, in a sentence: for posts that need it" }
+  # Where the posts go: your Mastodon account. Its address and token are yours (mine): a post goes only there.
+  Account:
+    mine: true
+    key: name
+    fields:
+      name: { type: text, required: true, help: "e.g. @me@mastodon.example" }
+      postUrl: { type: url, required: true, label: Post to, help: "Your server's address for posts: https://<your server>/api/v1/statuses" }
+      token:
+        type: text
+        encrypted: true
+        required: true
+        label: Access token
+        help: |-
+          On your Mastodon server: Preferences → Development → New application, with the scope write:statuses only; copy "Your access token". Encrypted when saved, never shown again.
+  # A release seen, and what came of it: written by announce.
+  Release:
+    key: url
+    title: title
+    stages:
+      field: status
+      initial: drafted
+      states: [drafted, posted, skipped]
+      moves:
+        - { from: drafted, to: [posted], by: [me, pipeline] }
+        - { from: drafted, to: [skipped], by: [me] }
+        - { from: skipped, to: [drafted], by: [me] }
+    fields:
+      url: { type: url, required: true }
+      title: { type: text, required: true }
+      repository: { type: ref, to: Project }
+      published: { type: datetime }
+      post: { type: longtext, label: Post as drafted }
+      postedAt: { type: datetime, label: Posted }
+      link: { type: url, label: The post }
+pages:
+  - list: Release
+    menu: { label: Releases, icon: rss }
+    columns: [title, repository, published, postedAt, status]
+    filters: [repository, status]
+    sort: -published
+    group: { by: status }
+    moves: true
+    actions:
+      - { label: Check now, run: announce }
+  - view: Release
+    fields: [repository, published, url, post, postedAt, link]
+  - list: Project
+    menu: { label: Projects, icon: rss }
+    add: true
+    columns: [repository, hashtags]
+  - list: Account
+    menu: { label: Accounts, icon: rss }
+    add: true
+    columns: [name, postUrl]
+
+pipelines:
+  announce:
+    # Every hour, the Announcements App's Projects' release feeds (github.com/<owner>/<name>/releases.atom): a release
+    # published in the last three days and not seen before gets a short post drafted, kept as a Release, and waits at the
+    # gate as a request to your Mastodon account (the first Account), where you edit the text; approved, it is posted
+    # and the Release is posted. The server's address is approved at the gate the first time. Without an Account,
+    # nothing is drafted.
+    name: Announce
+    description: A post for each new release of your projects, posted to Mastodon after you approve it.
+    trigger: { schedule: "0 * * * *" }
+    policy:
+      allowedDomains: [github.com]
+    limits:
+      http.request: 10/day
+    steps:
+      - id: projects
+        type: data.read
+        with: { type: Project, sort: repository, limit: 50 }
+      - id: feeds
+        type: http.fetch
+        forEach: "{{projects.items}}"
+        with: { url: "https://github.com/{{item.repository}}/releases.atom", maxItems: 5 }
+      # Each project's releases of the last three days, with what its post needs.
+      - id: releases
+        type: data.map
+        with:
+          from: { projects: "{{projects.items}}", feeds: "{{feeds}}" }
+          expression: |-
+            (
+              $since := $toMillis($now()) - 3 * 24 * 60 * 60 * 1000;
+              [$map(projects, function($p, $i) {
+                feeds[$i].items[$exists(published) and $toMillis(published) > $since].{
+                  "url": url, "title": $p.repository & " " & title, "repository": $p.repository, "published": published,
+                  "notes": summary, "hashtags": $p.hashtags, "about": $p.about
+                }
+              })]
+            )
+      - id: fresh
+        type: data.dedupe
+        with: { from: "{{releases.items}}", key: url, againstType: Release }
+      - id: accounts
+        type: data.read
+        with: { type: Account, sort: name, limit: 1 }
+      - id: account
+        type: data.map
+        with:
+          from: "{{accounts.items}}"
+          expression: '$[0]'
+      - id: draft
+        type: llm.generate
+        forEach: "{{fresh.items}}"
+        when: "{{account.value.postUrl}}"
+        with:
+          instruction: >-
+            A short Mastodon post announcing this release, at most 450 characters: the project and version, what's
+            new in one or two sentences from the release notes, the link, then the hashtags. Plain and friendly, no
+            hype, no emoji unless the notes use them. Only the post's text.
+          context: "{{item}}"
+      - id: kept
+        type: data.map
+        with:
+          from: { fresh: "{{fresh.items}}", drafts: "{{draft}}" }
+          expression: '[$map(fresh, function($r, $i) { { "url": $r.url, "title": $r.title, "repository": $r.repository, "published": $r.published, "post": drafts[$i].text } })]'
+      - id: save
+        type: data.save
+        with: { items: "{{kept.items}}", type: Release }
+      - id: post
+        type: http.request
+        forEach: "{{fresh.items}}"
+        when: "{{draft.text}}"
+        with:
+          method: POST
+          url: "{{account.value.postUrl}}"
+          headers: { Authorization: "Bearer {{account.value.token}}" }
+          body: { status: "{{draft.text}}", visibility: public }
+      - id: posted
+        type: data.map
+        with:
+          from: { kept: "{{kept.items}}", sent: "{{post}}" }
+          expression: |-
+            (
+              $at := $now();
+              [$map(kept, function($r, $i) {
+                sent[$i].status >= 200 and sent[$i].status < 300 ? $merge([$r, { "postedAt": $at, "link": sent[$i].json.url }])
+              })]
+            )
+      - id: saved
+        type: data.save
+        with: { items: "{{posted.items}}", type: Release, stage: posted }
