@@ -1,6 +1,6 @@
 {
   "name": "@realentity/storm-queue",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Job queue on pg-boss (runs, triggers, schedule sync) and cron schedule helpers",
   "main": "dist/index.js",
