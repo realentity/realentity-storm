@@ -24,6 +24,8 @@ describe("recipes", () => {
       ["jobs.example.com/search", readFileSync(join(ROOT, "recipes/example-jobs.yaml"), "utf8")],
       ["listings.example/rent", readFileSync(join(ROOT, "recipes/example-listings.yaml"), "utf8")],
       ["tenders.example/search", readFileSync(join(ROOT, "recipes/example-tenders.yaml"), "utf8")],
+      ["simpler.grants.gov/search", readFileSync(join(ROOT, "recipes/grants-gov-search.yaml"), "utf8")],
+      ["ec.europa.eu/calls-for-proposals", readFileSync(join(ROOT, "recipes/eu-funding-calls.yaml"), "utf8")],
       ["jobs.example.com/search", walkthrough[0]],
     ];
     for (const [name, text] of examples) expect(recipeProblems(name, RecipeSchema.parse(parseYaml(text)))).toEqual([]);

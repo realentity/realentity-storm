@@ -89,7 +89,10 @@ pages are added by editing the recipe afterwards.
 
 Press **Import**, give the name and paste the YAML. It's checked before it's saved; the errors say what to fix.
 Starting points: [example-jobs.yaml](../recipes/example-jobs.yaml), [example-listings.yaml](../recipes/example-listings.yaml),
-[example-tenders.yaml](../recipes/example-tenders.yaml).
+[example-tenders.yaml](../recipes/example-tenders.yaml). Two for real sites, for the Tenders App:
+[grants-gov-search.yaml](../recipes/grants-gov-search.yaml) (US federal grants on Simpler.Grants.gov) and
+[eu-funding-calls.yaml](../recipes/eu-funding-calls.yaml) (EU calls for proposals on the Funding & Tenders portal); both
+take a `query`, so one `params: { query: [...] }` searches both.
 
 To find selectors, open the list in your browser, right-click an item → **Inspect**, and look for a class that every
 item has and nothing else has (`.job-card`, `article.listing`). Fields are looked for inside the item. Prefer stable

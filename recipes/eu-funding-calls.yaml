@@ -1,0 +1,21 @@
+# A list recipe for browser.extract (docs/design.md §2.4): EU calls for proposals (Horizon Europe, Digital Europe and
+# the other EU programmes) on the Funding & Tenders portal, the open and forthcoming ones matching a search. For the
+# Tenders example (examples/apps/tenders.yaml): import it on the Recipes page as "ec.europa.eu/calls-for-proposals".
+# The portal is an app that draws its list after loading; keep a person's pace: one page every 2 s, at most 3 pages
+# (50 a page) per search. Each call's link carries the search in its address: cut it off in the pipeline
+# (data.map: $substringBefore(url, "?")), so the same call found by two searches is one Tender.
+url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?keywords={query}&status=31094501,31094502&pageSize=50&pageNumber=1
+params:
+  query: { description: "words to search for, e.g. software" }
+item: sedia-result-card
+fields:
+  url: { selector: "eui-card-header-title a", attr: href, required: true }
+  title: { selector: "eui-card-header-title a", required: true }
+  call: { selector: "sedia-result-card-type span" }                                  # the topic's id: "DIGITAL-ECCC-2027-DEPLOY-CYBER-11-EULEG"
+  dates: { selector: "sedia-result-card-type + sedia-result-card-type" }             # "Opening date: 01 September 2026 | Deadline date: 14 January 2027 | Single-stage"
+  programme: { selector: "eui-card-content" }                                        # "Programme: Digital Europe Programme (DIGITAL) | Type of action: …"
+key: url
+empty: "sedia-common-templates[templatename='corporateSearchNoResults']"
+next: { kind: page, url: "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?keywords={query}&status=31094501,31094502&pageSize=50&pageNumber={page}", start: 2 }
+maxPages: 3
+delayMs: 2000
