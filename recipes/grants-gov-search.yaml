@@ -1,0 +1,21 @@
+# A list recipe for browser.extract (docs/design.md §2.4): US federal grant opportunities on Simpler.Grants.gov, the
+# open and forecasted ones matching a search, newest first. For the Tenders example (examples/apps/tenders.yaml):
+# import it on the Recipes page as "simpler.grants.gov/search". The site's robots.txt allows the search pages; keep a
+# person's pace: one page every 2 s, at most 3 pages (25 a page) per search.
+url: https://simpler.grants.gov/search?query={query}&status=forecasted,posted&sortby=postedDateDesc
+params:
+  query: { description: "words to search for, e.g. software" }
+item: "tbody tr:has(a[href^='/opportunity/'])"
+fields:
+  url: { selector: "a[href^='/opportunity/']", attr: href, required: true }
+  title: { selector: "a[href^='/opportunity/']", required: true }
+  number: { selector: "div:has(> a[href^='/opportunity/']) + div" }                            # "Number: RFA-OD-26-034"
+  buyer: { selector: "[data-testid^='responsive-data-'][data-testid$='-3'] > div:first-child" }  # the agency
+  posted: { selector: "[data-testid^='responsive-data-'][data-testid$='-3'] > div:nth-child(2)" }
+  deadline: { selector: "[data-testid^='responsive-data-'][data-testid$='-0']" }                 # "Feb 26, 2027" or "TBD"
+  award: { selector: "[data-testid^='responsive-data-'][data-testid$='-5']" }                    # the award maximum: "$7,000,000"
+key: url
+empty: "[data-testid='no-search-results']"
+next: { kind: page, url: "https://simpler.grants.gov/search?query={query}&status=forecasted,posted&sortby=postedDateDesc&page={page}", start: 2 }
+maxPages: 3
+delayMs: 2000
