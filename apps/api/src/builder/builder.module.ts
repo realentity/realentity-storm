@@ -1,4 +1,4 @@
-import { ClaudeChat, ModelRouter, type LlmChat } from "@realentity/storm-llm";
+import { llmFromConfig, ModelRouter, type LlmChat } from "@realentity/storm-llm";
 import { AppsModule } from "../apps/apps.module";
 import { type ServerEnv } from "@realentity/storm-shared";
 import { PipelineCompiler, StepCatalog } from "@realentity/storm-steps";
@@ -18,7 +18,10 @@ import { BUILDER_LLM, BuilderService } from "./builder.service";
     {
       provide: BUILDER_LLM,
       inject: [SERVER_ENV],
-      useFactory: (env: ServerEnv): LlmChat | null => (env.ANTHROPIC_API_KEY ? ClaudeChat.fromApiKey(env.ANTHROPIC_API_KEY) : null),
+      useFactory: (env: ServerEnv): LlmChat | null => {
+        const llm = llmFromConfig({ anthropicApiKey: env.ANTHROPIC_API_KEY, openaiBaseUrl: env.OPENAI_BASE_URL, openaiApiKey: env.OPENAI_API_KEY });
+        return llm.configured ? llm.chat : null;
+      },
     },
     {
       provide: ModelRouter,
@@ -26,6 +29,7 @@ import { BUILDER_LLM, BuilderService } from "./builder.service";
       useFactory: (db: PrismaService, env: ServerEnv) =>
         new ModelRouter((userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }), {
           LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER,
+          LLM_MODEL: env.LLM_MODEL,
         }),
     },
     {
@@ -33,7 +37,7 @@ import { BUILDER_LLM, BuilderService } from "./builder.service";
       inject: [BUILDER_LLM, PipelineCompiler, StepCatalog],
       // Without a key the service refuses before the builder is used.
       useFactory: (llm: LlmChat | null, compiler: PipelineCompiler, catalog: StepCatalog) =>
-        new Builder(llm ?? { send: () => Promise.reject(new Error("ANTHROPIC_API_KEY is not set")) }, compiler, catalog),
+        new Builder(llm ?? { send: () => Promise.reject(new Error("No LLM is set up (ANTHROPIC_API_KEY or OPENAI_BASE_URL)")) }, compiler, catalog),
     },
     BuilderService,
   ],

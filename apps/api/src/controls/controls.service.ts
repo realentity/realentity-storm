@@ -1,5 +1,5 @@
 import { llmCostSince, llmSpendSince } from "@realentity/storm-db";
-import { ModelRouter } from "@realentity/storm-llm";
+import { ModelRouter, OPENAI_PREFIX, openAiApi } from "@realentity/storm-llm";
 import {
   EFFORTS,
   LLM_TASKS,
@@ -92,6 +92,7 @@ export class ControlsService {
       LLM_MODEL_WRITING: this.env.LLM_MODEL_WRITING,
       LLM_MODEL_REFLECTION: this.env.LLM_MODEL_REFLECTION,
       LLM_MODEL_BUILDER: this.env.LLM_MODEL_BUILDER,
+      LLM_MODEL: this.env.LLM_MODEL,
     });
     const models = Object.fromEntries(
       LLM_TASKS.map((task): [LlmTask, ModelChoiceView] => {
@@ -106,6 +107,8 @@ export class ControlsService {
     const fromEnv = this.env.LLM_MONTHLY_BUDGET_USD ?? null;
     return {
       models,
+      serverModels: await this.serverModels(),
+      claude: Boolean(this.env.ANTHROPIC_API_KEY),
       rateLimits: (settings?.rateLimits as Record<string, string> | null) ?? {},
       monthlyBudgetUsd: own ?? fromEnv,
       budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
@@ -114,6 +117,17 @@ export class ControlsService {
       weeklyReview: settings?.weeklyReview ?? true,
       morningBrief: settings?.morningBrief ?? true,
     };
+  }
+
+  /** M60: what the OpenAI-compatible server offers, for the model lists; its failure is shown, not thrown. */
+  private async serverModels(): Promise<SettingsView["serverModels"]> {
+    const api = openAiApi({ openaiBaseUrl: this.env.OPENAI_BASE_URL, openaiApiKey: this.env.OPENAI_API_KEY });
+    if (!api || !this.env.OPENAI_BASE_URL) return null;
+    try {
+      return { host: api.host, models: (await api.models()).map((m) => `${OPENAI_PREFIX}${m}`), error: null };
+    } catch (error) {
+      return { host: api.host, models: [], error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   /** This month's LLM cost against the budget, and the last 30 days by step type and model (M19-T3). */

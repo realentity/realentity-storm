@@ -400,7 +400,12 @@ export const CLAUDE_MODELS = [
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type EffortName = (typeof EFFORTS)[number];
 
-const ModelChoiceSchema = z.object({ model: z.enum(CLAUDE_MODELS), effort: z.enum(EFFORTS) }).strict();
+/** M60: a model on the OpenAI-compatible server (OPENAI_BASE_URL), by its name there. */
+export const OPENAI_MODEL = /^openai:\S{1,200}$/;
+
+const ModelChoiceSchema = z
+  .object({ model: z.union([z.enum(CLAUDE_MODELS), z.string().regex(OPENAI_MODEL, "a Claude model or openai:<model>")]), effort: z.enum(EFFORTS) })
+  .strict();
 
 export const SettingsSchema = z
   .object({
@@ -431,6 +436,13 @@ export interface ModelChoiceView {
 
 export interface SettingsView {
   models: Record<LlmTask, ModelChoiceView>;
+  /**
+   * M60: the OpenAI-compatible server's models, as they are chosen (`openai:<name>`); empty without a server. `error`:
+   * the server is set up but didn't list them.
+   */
+  serverModels: { host: string; models: string[]; error: string | null } | null;
+  /** ANTHROPIC_API_KEY is set: the Claude models can be used. */
+  claude: boolean;
   rateLimits: Record<string, string>;
   /** The budget in effect: the setting, else LLM_MONTHLY_BUDGET_USD, else none. */
   monthlyBudgetUsd: number | null;

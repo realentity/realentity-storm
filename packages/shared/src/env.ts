@@ -7,6 +7,10 @@ const optional = <T extends z.ZodType>(schema: T) => z.preprocess((value) => (va
 /** 32 bytes: 64 hex characters, or base64 (43 characters plus one "="). Checked without Buffer so the schema also builds for the browser. */
 const KEY_32_BYTES = /^(?:[0-9a-fA-F]{64}|[A-Za-z0-9+/]{43}=)$/;
 
+/** A Claude model id, or a model on the OpenAI-compatible server (M60): `openai:<its name there>`. */
+const modelId = (example: string) =>
+  z.string().regex(/^(?:claude-[a-z0-9-]+|openai:\S{1,200})$/, `a Claude model id or openai:<model>, e.g. ${example}`);
+
 /** Environment of the api and the worker (one .env in the repository root). Later milestones add their keys here. */
 export const ServerEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -34,11 +38,18 @@ export const ServerEnvSchema = z.object({
   APP_ORIGIN: optional(z.url({ protocol: /^https?$/ }).transform((url) => new URL(url).origin)),
 
   ANTHROPIC_API_KEY: optional(z.string()),
+  /**
+   * M60: an OpenAI-compatible server for models chosen as `openai:<name>` (Ollama: http://localhost:11434/v1). Unset
+   * with OPENAI_API_KEY set, OpenAI itself. The key is sent to this server.
+   */
+  OPENAI_BASE_URL: optional(z.url({ protocol: /^https?$/ })),
   /** Default models per task group; Settings (ModelSetting) override them per task. */
-  LLM_MODEL_CLASSIFY: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-haiku-5-5")),
-  LLM_MODEL_WRITING: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-sonnet-5-5")),
-  LLM_MODEL_REFLECTION: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
-  LLM_MODEL_BUILDER: optional(z.string().regex(/^claude-[a-z0-9-]+$/, "a Claude model id, e.g. claude-opus-5-5")),
+  LLM_MODEL_CLASSIFY: optional(modelId("claude-haiku-5-5")),
+  LLM_MODEL_WRITING: optional(modelId("claude-sonnet-5-5")),
+  LLM_MODEL_REFLECTION: optional(modelId("claude-opus-5-5")),
+  LLM_MODEL_BUILDER: optional(modelId("claude-opus-5-5")),
+  /** M60: the model of every group not set above, e.g. openai:qwen3:14b for local models only. */
+  LLM_MODEL: optional(modelId("openai:qwen3:14b")),
   /** Builder chat (docs/design.md §2.1): a chat stops answering once its calls used this many tokens; a new chat starts over. */
   BUILDER_CHAT_MAX_TOKENS: z.coerce.number().int().positive().default(2_000_000),
   /** Non-essential pipelines pause when this month's LLM cost reaches it. Settings override it; unset = no limit. */

@@ -31,7 +31,7 @@ import { RunsService } from "../runs/runs.service";
 import { Builder, tokensOf, type BuilderRuns } from "./builder";
 import { runData, runList } from "./run-data";
 
-/** The builder's LLM; null without ANTHROPIC_API_KEY. */
+/** The builder's LLM; null without ANTHROPIC_API_KEY or OPENAI_BASE_URL. */
 export const BUILDER_LLM = Symbol("BUILDER_LLM");
 
 const RECENT_CHATS = 20;
@@ -147,7 +147,7 @@ export class BuilderService {
 
   /** One builder turn: the user's message, the builder's answer (and proposal, if it made one). */
   async send(userId: string, chatId: string, body: BuilderMessageRequest): Promise<BuilderChatView> {
-    if (!this.llm) throw new ServiceUnavailableException("The builder needs ANTHROPIC_API_KEY");
+    if (!this.llm) throw new ServiceUnavailableException("The builder needs ANTHROPIC_API_KEY or OPENAI_BASE_URL");
     const chat = await this.findChat(userId, chatId);
     if (chat.tokensUsed >= this.env.BUILDER_CHAT_MAX_TOKENS) {
       throw new ConflictException("This chat reached its token limit. Start a new chat to continue.");

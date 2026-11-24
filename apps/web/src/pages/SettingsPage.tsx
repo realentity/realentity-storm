@@ -183,12 +183,23 @@ function money(usd: number): string {
 
 function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
   const action = useSave(onSaved);
+  const serverModels: string[] = settings.serverModels?.models ?? [];
   return (
     <div className="card">
       <div className="card-header">
         <h3 className="card-title">Model per task</h3>
       </div>
       <ErrorAlert error={action.error} />
+      {settings.serverModels?.error && (
+        <div className="alert alert-warning m-3" data-testid="server-models-error">
+          The models on {settings.serverModels.host} couldn't be listed: {settings.serverModels.error}
+        </div>
+      )}
+      {serverModels.length > 0 && (
+        <div className="card-body small text-secondary py-2">
+          Models on {settings.serverModels?.host} cost nothing in the budget, and the effort isn't sent to them.
+        </div>
+      )}
       <div className="table-responsive">
         <table className="table table-vcenter card-table" data-testid="models">
           <thead>
@@ -218,12 +229,23 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
                       onChange={(e) => set(e.target.value, choice.effort)}
                       aria-label={`${task} model`}
                     >
-                      {!(CLAUDE_MODELS as readonly string[]).includes(choice.model) && <option value={choice.model}>{choice.model}</option>}
-                      {CLAUDE_MODELS.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
+                      {![...CLAUDE_MODELS, ...serverModels].includes(choice.model) && <option value={choice.model}>{choice.model}</option>}
+                      <optgroup label={settings.claude ? "Claude" : "Claude (ANTHROPIC_API_KEY isn't set)"}>
+                        {CLAUDE_MODELS.map((m) => (
+                          <option key={m} value={m} disabled={!settings.claude}>
+                            {m}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {settings.serverModels && serverModels.length > 0 && (
+                        <optgroup label={`On ${settings.serverModels.host}`}>
+                          {serverModels.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   </td>
                   <td>

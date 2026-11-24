@@ -54,7 +54,8 @@ export type ModelSettingLookup = (userId: string, taskKey: string) => Promise<{ 
 
 /**
  * Which model and effort a task uses: the user's setting for that task (ModelSetting), else the group's model from the
- * environment (LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING, LLM_MODEL_REFLECTION, LLM_MODEL_BUILDER), else the group default.
+ * environment (LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING, LLM_MODEL_REFLECTION, LLM_MODEL_BUILDER, else LLM_MODEL), else the
+ * group default.
  */
 export class ModelRouter {
   constructor(
@@ -75,7 +76,8 @@ export class ModelRouter {
   /** What a task uses without a setting, and where that comes from (Settings shows it). */
   fallback(taskKey: string): ModelChoice & { source: "env" | "default" } {
     const group = GROUPS[GROUP_OF_TASK[taskKey] ?? "writing"];
-    const fromEnv = this.env[group.env];
+    // LLM_MODEL (M60): one model for every group without its own, e.g. a local one.
+    const fromEnv = this.env[group.env] ?? this.env.LLM_MODEL;
     return fromEnv
       ? { model: fromEnv, effort: group.default.effort, source: "env" }
       : { model: group.default.model, effort: group.default.effort, source: "default" };

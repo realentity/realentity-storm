@@ -1,14 +1,4 @@
-import {
-  ClaudeBatches,
-  ClaudeChat,
-  ClaudeClient,
-  LlmError,
-  ModelRouter,
-  OpenAiEmbeddings,
-  emptyUsage,
-  type LlmChat,
-  type LlmClient,
-} from "@realentity/storm-llm";
+import { llmFromConfig, ModelRouter, OpenAiEmbeddings, type LlmBatches, type LlmChat, type LlmClient } from "@realentity/storm-llm";
 import { TopicBackfills } from "../sources/backfill";
 import { JobQueue, publishEvent } from "@realentity/storm-queue";
 import { KeyRing } from "@realentity/storm-crypto";
@@ -70,14 +60,14 @@ function calendarEvents(db: PrismaService, google: GoogleConnection): TodaysEven
 export const STEP_EXECUTORS = Symbol("STEP_EXECUTORS");
 const EVENT_SINK = Symbol("EVENT_SINK");
 
-/** Without ANTHROPIC_API_KEY, LLM steps fail with a clear error instead of the worker refusing to start. */
-const NO_LLM: LlmClient = {
-  structured: () => Promise.reject(new LlmError("ANTHROPIC_API_KEY is not set", emptyUsage())),
-};
-
-const NO_CHAT: LlmChat = {
-  send: () => Promise.reject(new Error("ANTHROPIC_API_KEY is not set")),
-};
+/**
+ * The models (M60: Claude and/or an OpenAI-compatible server). Without them, LLM steps fail with a clear error instead
+ * of the worker refusing to start; reflection and topic backfill (batches) are off.
+ */
+function llmOf(env: ServerEnv): { client: LlmClient; chat: LlmChat; batches: LlmBatches | null } {
+  const llm = llmFromConfig({ anthropicApiKey: env.ANTHROPIC_API_KEY, openaiBaseUrl: env.OPENAI_BASE_URL, openaiApiKey: env.OPENAI_API_KEY });
+  return { client: llm.client, chat: llm.chat, batches: llm.configured ? llm.batches : null };
+}
 
 /** Recovers interrupted runs and syncs schedules before consuming jobs; stops the queue on shutdown. */
 @Injectable()
@@ -125,6 +115,9 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           LLM_MODEL_CLASSIFY: env.LLM_MODEL_CLASSIFY,
           LLM_MODEL_WRITING: env.LLM_MODEL_WRITING,
           LLM_MODEL_REFLECTION: env.LLM_MODEL_REFLECTION,
+          // browser.agent.escalation is in the builder group.
+          LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER,
+          LLM_MODEL: env.LLM_MODEL,
         }),
     },
     {
@@ -195,8 +188,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             notify: notifier(env),
             appOrigin: env.APP_ORIGIN,
           },
-          llm: env.ANTHROPIC_API_KEY ? ClaudeClient.fromApiKey(env.ANTHROPIC_API_KEY) : NO_LLM,
-          chat: env.ANTHROPIC_API_KEY ? ClaudeChat.fromApiKey(env.ANTHROPIC_API_KEY) : NO_CHAT,
+          llm: llmOf(env).client,
+          chat: llmOf(env).chat,
           downloadMaxMb: env.DOWNLOAD_MAX_MB,
           appFiles: new AppFileStore(env.DOCUMENTS_DIR),
           router,
@@ -265,7 +258,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         new Reflector(
           db.client,
           catalog,
-          env.ANTHROPIC_API_KEY ? ClaudeBatches.fromApiKey(env.ANTHROPIC_API_KEY) : null,
+          llmOf(env).batches,
           router,
           controls,
           (reflectionId, startAfter) => queue.pollReflection(reflectionId, startAfter),
@@ -322,7 +315,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             backfills: new TopicBackfills(
               db.client,
               new ImapSmtpConnector(db.client, keys),
-              env.ANTHROPIC_API_KEY ? ClaudeBatches.fromApiKey(env.ANTHROPIC_API_KEY) : null,
+              llmOf(env).batches,
               router,
               controls,
               (topicBackfillId, startAfter) => queue.enqueueBackfill(topicBackfillId, startAfter),

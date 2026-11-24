@@ -21,6 +21,14 @@ describe("parseServerEnv", () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
+  // M60
+  it("takes a model on an OpenAI-compatible server and its address", () => {
+    const env = parseServerEnv({ ...valid(), OPENAI_BASE_URL: "http://localhost:11434/v1", LLM_MODEL: "openai:qwen3:14b", LLM_MODEL_BUILDER: "claude-opus-5-5" });
+    expect(env).toMatchObject({ OPENAI_BASE_URL: "http://localhost:11434/v1", LLM_MODEL: "openai:qwen3:14b", LLM_MODEL_BUILDER: "claude-opus-5-5" });
+    expect(() => parseServerEnv({ ...valid(), LLM_MODEL_WRITING: "qwen3:14b" })).toThrow(/LLM_MODEL_WRITING: a Claude model id or openai:<model>/);
+    expect(() => parseServerEnv({ ...valid(), OPENAI_BASE_URL: "localhost:11434" })).toThrow(/OPENAI_BASE_URL/);
+  });
+
   it("accepts a hex ENCRYPTION_KEY", () => {
     expect(() => parseServerEnv({ ...valid(), ENCRYPTION_KEY: randomBytes(32).toString("hex") })).not.toThrow();
   });
