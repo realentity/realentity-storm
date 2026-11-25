@@ -156,7 +156,7 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
   whether you approved, edited or rejected it.
 - **Your approved texts become examples.** A reply or text you approve is kept with what it answered. The next draft
   of the same kind gets your three most similar approved texts as examples, for tone, length and structure, never for
-  facts. This needs `OPENAI_API_KEY` for the embeddings.
+  facts. This needs embeddings (Settings → AI: OpenAI's, or a model on your own server).
 - **Your edits become rules.** Every night, a review of your edits and rejections suggests rules, such as "shorten
   recruiter replies" or "drop the opening pleasantries". A suggestion does nothing until you approve or edit it on the
   **Rules** page. From then on it goes into every LLM step it applies to.
@@ -197,7 +197,7 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 | What | For | |
 |---|---|---|
 | **Docker** with Compose v2, about 4 GB of free memory and 5 GB of disk | Running Storm (Linux, macOS, or Windows with WSL) | Required |
-| **A Claude API key** ([platform.claude.com](https://platform.claude.com/settings/keys)) | The builder and every LLM step: triage, scoring, drafts, summaries. Paid per use; set a monthly budget in Settings or `.env` | Required, unless local models do it all |
+| **A Claude API key** ([platform.claude.com](https://platform.claude.com/settings/keys)), entered in **Settings → AI** | The builder and every LLM step: triage, scoring, drafts, summaries. Paid per use; set a monthly budget in Settings | Required, unless local models do it all |
 | **A local model server**: [Ollama](https://ollama.com), llama.cpp, vLLM, LM Studio | Running the LLM steps on your own hardware instead of Claude, for every task or only some. Off until you switch it on in Settings ([docs/local-models.md](docs/local-models.md)) | Optional |
 | **PostgreSQL 17** with the `vector` (pgvector) and `citext` extensions | Storm's data. A bundled container works for trying it out | Required (bundled) |
 | **An authenticator app** | The login: a password and a one-time code | Required |
@@ -205,7 +205,7 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 | **A mailbox** with IMAP and SMTP (for Gmail, an app password), added in Settings | The email steps | Optional |
 | **A Telegram bot** of your own, from @BotFather | Approvals and notifications on your phone. Commands and buttons also need a public address for webhooks | Optional |
 | **A Google Cloud OAuth client** | Google Calendar steps and topics' Drive folders (several accounts, connected in Settings) | Optional |
-| **An OpenAI API key** | Past replies as examples in new drafts (embeddings). The email text then also goes to OpenAI | Optional |
+| **Embeddings**: an OpenAI API key, or a model on your own server, in **Settings → AI** | Past replies as examples in new drafts, topics by meaning. That text then also goes to that server | Optional |
 
 ## Setup
 
@@ -226,7 +226,6 @@ Set these in `.env` (no spaces around `=`):
 
 ```
 ENCRYPTION_KEY=<the 64 characters from openssl>
-ANTHROPIC_API_KEY=<your Claude API key>
 APP_ORIGIN=http://localhost:7100
 TZ=Europe/London
 ```
@@ -234,6 +233,9 @@ TZ=Europe/London
 The keys are already in the file: change their values, don't add second lines. `APP_ORIGIN` is the address you open
 (7100 is `STORM_PORT`'s default). `DATABASE_URL` already points at the PostgreSQL container (`postgres` is its name on
 the Docker network): leave it as it is.
+
+**`.env` holds only the database, the encryption key and your login.** Claude, OpenAI and models on your own hardware
+are set up in the app, in **Settings → AI**, after the first sign-in (step 7).
 
 **The login, before the first start.** Storm has one user, who signs in with a password and a 6-digit code from an
 authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, …). Both live in `.env`, so they have to
@@ -272,6 +274,10 @@ be there before Storm starts.
 
 6. Open `http://localhost:7100` and sign in with the password and the current code from the app.
 
+7. **Settings → AI → Model servers → Add**: Claude with its API key, or a server of your own (Ollama:
+   [docs/local-models.md](docs/local-models.md)), or both. Saving a key asks for the code from the app again. Each
+   server has an on/off switch, and **Model per task** chooses which model does what.
+
 **Apps → Examples** installs ready-made Apps and pipelines, each with a checklist of what it still needs. The
 **Builder** makes new ones from a description.
 
@@ -288,8 +294,8 @@ Calendar, updates, backups and the restore test.
 ```bash
 # Node 22.12+ or 24, pnpm 10, Docker
 pnpm install
-cp .env.example .env                                   # then set ENCRYPTION_KEY, ANTHROPIC_API_KEY and
-                                                       # DATABASE_URL to the localhost line above it
+cp .env.example .env                                   # then set ENCRYPTION_KEY and DATABASE_URL to the
+                                                       # localhost line above it; Claude goes in Settings → AI
 docker compose -f docker/docker-compose.yml up -d postgres
 pnpm db:migrate
 pnpm auth:setup                                        # the login: password + authenticator code, into .env
@@ -310,19 +316,16 @@ to start with an invalid value and names the key, never the value.
 | `DATABASE_URL` | The PostgreSQL connection | Always |
 | `ENCRYPTION_KEY` | Encrypts every stored credential. **Keep a copy outside the server**: without it no credential opens, not even from a backup | Always |
 | `APP_ADMIN_PASSWORD_HASH`, `APP_TOTP_SECRET` | The login, from `auth-setup` (until they're set, nobody can sign in) | Always |
-| `ANTHROPIC_API_KEY` | The Claude API | Always, in practice |
-| `OPENAI_BASE_URL` | Local models: the server (Ollama: `http://host.docker.internal:11434/v1`). It makes them available; you switch them on and off in Settings, off by default ([docs/local-models.md](docs/local-models.md)) | Local models |
 | `APP_ORIGIN` | Exactly the address you open in the browser, without a trailing `/`. Live updates accept only this origin | Always, except in development |
 | `TZ` | Your time zone, for schedules, the morning brief and the weekly review. Empty: UTC in the containers | Recommended |
-| `LLM_MONTHLY_BUDGET_USD` | Pauses non-essential pipelines when the month's LLM cost reaches it (also in Settings) | Recommended |
 | `VNC_PASSWORD`, `VNC_VIEW_PASSWORD` | Watching and taking over browser runs live. Empty: browser runs still work, unwatched | Browser steps |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `HOOKS_PUBLIC_URL` | The bot, your Telegram user id, and the webhook address ([docs/telegram.md](docs/telegram.md)) | Telegram, webhooks |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-setup.md](docs/google-setup.md) | Calendar steps, Drive folders |
-| `OPENAI_API_KEY` | Embeddings: your most similar replies as examples in drafts, and the passages and facts of your topics closest to an email (without it, by their words) | Optional |
 | `HEALTH_REPORT_TOKEN` | Lets the server's own jobs (backups, disk checks) report to the Health page | Optional |
 
-The rest can stay as it is: the models have defaults (changeable per step type in Settings), and the containers set
-the ports and folders themselves.
+The rest can stay as it is: the containers set the ports and folders themselves. **Not in `.env`:** Claude, OpenAI,
+models on your own servers, the model per task, the embeddings and the monthly budget. They are settings, in
+**Settings → AI**, changed without a restart.
 
 ## Documentation
 

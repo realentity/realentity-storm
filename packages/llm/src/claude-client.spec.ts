@@ -163,26 +163,30 @@ describe("usage and cost", () => {
 });
 
 describe("ModelRouter", () => {
-  it("uses the user's setting for the task, else the environment's model for its group, else the default", async () => {
+  it("uses the user's setting for the task, else the default model, else the group's built-in one", async () => {
     const settings: Record<string, { model: string; effort: string | null }> = {
       "llm.generate": { model: "claude-opus-5-5", effort: "high" },
       "llm.summarize": { model: "claude-haiku-5-5", effort: "lots" },
     };
-    const router = new ModelRouter(async (_userId, task) => settings[task] ?? null, { LLM_MODEL_CLASSIFY: "claude-sonnet-5-5" });
+    const router = new ModelRouter(
+      async (_userId, task) => settings[task] ?? null,
+      async () => ({ defaultModel: "claude-sonnet-5-5", usable: () => true }),
+    );
 
-    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
-    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-haiku-5-5", effort: "medium" });
-    await expect(router.choose("u", "llm.score")).resolves.toEqual({ model: "claude-sonnet-5-5", effort: "low" });
+    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high", owner: "u" });
+    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-haiku-5-5", effort: "medium", owner: "u" });
+    await expect(router.choose("u", "llm.score")).resolves.toEqual({ model: "claude-sonnet-5-5", effort: "low", owner: "u" });
     await expect(new ModelRouter(async () => null).choose("u", "llm.classify")).resolves.toEqual({
       model: "claude-haiku-5-5",
       effort: "low",
+      owner: "u",
     });
   });
 
   it("tells where a task's model comes from without a setting", () => {
-    const router = new ModelRouter(async () => null, { LLM_MODEL_CLASSIFY: "claude-sonnet-5-5" });
-    expect(router.fallback("llm.score")).toEqual({ model: "claude-sonnet-5-5", effort: "low", source: "env" });
-    expect(router.fallback("llm.generate")).toEqual({ model: "claude-sonnet-5-5", effort: "medium", source: "default" });
+    const router = new ModelRouter(async () => null);
+    expect(router.fallback("llm.score", { defaultModel: "claude-sonnet-5-5", usable: () => true })).toEqual({ model: "claude-sonnet-5-5", effort: "low", source: "default" });
+    expect(router.fallback("llm.generate")).toEqual({ model: "claude-sonnet-5-5", effort: "medium", source: "built-in" });
   });
 
   it("has a price for every model Settings offers", () => {

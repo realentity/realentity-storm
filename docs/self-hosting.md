@@ -26,10 +26,11 @@ repository's `.env`. For development without Docker, see [design.md](design.md) 
   or the container in [`docker/compose.local.yml`](../docker/compose.local.yml) (`STORM_LOCAL=1`).
 - A way to reach the app over HTTPS: [Tailscale](https://tailscale.com/) (`tailscale serve`), a reverse proxy with a
   certificate, or a VPN. The live updates and the session cookie need HTTPS outside `localhost`.
-- A **Claude API key** (<https://platform.claude.com/settings/keys>) for the LLM steps and the builder, or **local
-  models** on your own hardware instead (Ollama or another OpenAI-compatible server), for every task or only some.
-  They are off until you switch them on: [local-models.md](local-models.md).
-- Optional: a Telegram bot, an IMAP/SMTP mailbox, Google Calendar and Drive, an OpenAI key (embeddings for drafts and topics).
+- A **Claude API key** (<https://platform.claude.com/settings/keys>) for the LLM steps and the builder, or **models on
+  your own hardware** instead (Ollama or another OpenAI-compatible server), for every task or only some. Both are set
+  up in **Settings → AI**, not in `.env`: [local-models.md](local-models.md).
+- Optional: a Telegram bot, an IMAP/SMTP mailbox, Google Calendar and Drive, embeddings for drafts and topics (OpenAI,
+  or a model on your own server, also in Settings → AI).
 
 ## 1. Database
 
@@ -66,7 +67,6 @@ DATABASE_URL=postgresql://storm:THE_PASSWORD@host.docker.internal:5432/storm
 ENCRYPTION_KEY=the 64 characters from openssl
 APP_ORIGIN=https://storm.example.com
 APP_ADMIN_EMAIL=you@example.com
-ANTHROPIC_API_KEY=sk-ant-…
 TZ=Europe/London
 ```
 
@@ -77,9 +77,11 @@ TZ=Europe/London
 - `TZ`: your time zone (empty: UTC). Schedules without a `tz` of their own, the morning brief, the weekly review and
   the system jobs follow it.
 - The rest of `.env.example` can stay as it is: the containers set `API_HOST`, `API_PORT` and the file folders
-  themselves, and the models have defaults (changeable in Settings).
-- **Local models** instead of Claude, or next to it: `OPENAI_BASE_URL` makes a model server available, and Settings
-  switches them on and off (off by default). How to let the containers reach the server: [local-models.md](local-models.md).
+  themselves.
+- **No AI keys here.** Claude, OpenAI and models on your own hardware are set up after the first sign-in, in
+  **Settings → AI → Model servers** (an API key, or a server's address), with the model per task, the embeddings and the
+  monthly budget. Keys there are sealed with `ENCRYPTION_KEY`, and saving one asks for your authenticator code again.
+  Ollama and how the containers reach it: [local-models.md](local-models.md).
 
 **Files.** Run artifacts (screenshots, traces, downloads) and your documents (CVs, letters that forms attach; the files
 and images on your Apps' entities, under `documents/app-files`) live in
@@ -173,7 +175,7 @@ buttons don't. Everything the bot does: [telegram.md](telegram.md).
 | **Mail** (`email.*` steps) | **Settings → Email → Add**: the address and its password (for Gmail an [app password](https://myaccount.google.com/apppasswords)), Gmail's servers or your own (IMAP and SMTP over TLS). Several are fine; one is the default. Then `./docker/storm check` says its password opens with this key |
 | **Live browser** (watch and take over browser steps) | `printf 'VNC_PASSWORD=%s\nVNC_VIEW_PASSWORD=%s\n' "$(openssl rand -base64 6)" "$(openssl rand -base64 6)" >> .env`, then `./docker/storm up --force-recreate`. The view goes through the app's `/vnc` (signed in), never a port of its own. [examples/pipelines/live-view-check.yaml](../examples/pipelines/live-view-check.yaml) tests it |
 | **Google Calendar and Drive** (`calendar.*` steps, topics' Drive folders) | [google-setup.md](google-setup.md): an OAuth client, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then **Settings → Google → Connect Google** (several are fine; one is the default) |
-| **Drafts with examples**, topics by meaning | `OPENAI_API_KEY`: embeds the emails you replied to, so new drafts get your most similar approved replies as examples; and your topics' document passages and facts, so a draft gets the ones closest to the email in meaning, in any language ([topics.md](topics.md)). That text then also goes to OpenAI. Without it, examples are left out and topics match by words |
+| **Drafts with examples**, topics by meaning | **Settings → AI → Embeddings**: a model server (OpenAI with its key, or `bge-m3` on Ollama) and its model. It embeds the emails you replied to, so new drafts get your most similar approved replies as examples; and your topics' document passages and facts, so a draft gets the ones closest to the email in meaning, in any language ([topics.md](topics.md)). That text then also goes to that server. Off, examples are left out and topics match by words |
 | **Documents** (forms attach a CV) | **Profile → Documents**; they live in `STORM_DATA_DIR/documents` |
 | **Health reports** | below |
 

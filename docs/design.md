@@ -196,7 +196,7 @@ Each pipeline page has a chat panel bound to that pipeline:
 | `propose_pipeline` | The whole definition, compiled at once by the same compiler as hand-written YAML. Compile errors go back to the builder to fix; what compiles (gates inserted, policy derived) is shown as a proposal with its plan, step graph and diff against the current version. |
 | `list_runs`, `read_run` | The pipeline's runs: each step's status, input and output, long texts shortened and marked as data. |
 
-The builder also proposes a whole App with its pipelines (M34), as one proposal saved together, and changes one from *Describe a change* on its page. Nothing the builder does is saved or run: a proposal becomes the next version (or v1 of a new pipeline) only when you press **Save**, a **Dry run** stores it as the draft first, and **Open in the editor** hands it to the YAML editor. It asks back when something essential is open, and says plainly when the catalog has no step for a request (a website before M8) instead of imitating it. A new pipeline is described on the **Describe a pipeline** page. Each chat keeps its conversation exactly as the API saw it (thinking blocks included, append-only) and stops at `BUILDER_CHAT_MAX_TOKENS`. Run data and emails could try to steer the builder; that can only produce a proposal, which you review as a diff, and gates are still inserted by the compiler.
+The builder also proposes a whole App with its pipelines (M34), as one proposal saved together, and changes one from *Describe a change* on its page. Nothing the builder does is saved or run: a proposal becomes the next version (or v1 of a new pipeline) only when you press **Save**, a **Dry run** stores it as the draft first, and **Open in the editor** hands it to the YAML editor. It asks back when something essential is open, and says plainly when the catalog has no step for a request (a website before M8) instead of imitating it. A new pipeline is described on the **Describe a pipeline** page. Each chat keeps its conversation exactly as the API saw it (thinking blocks included, append-only) and stops at the builder's token limit (Settings → AI, 2 million by default). Run data and emails could try to steer the builder; that can only produce a proposal, which you review as a diff, and gates are still inserted by the compiler.
 
 ### 2.6 Execution
 
@@ -207,7 +207,7 @@ The worker interprets a `PipelineVersion` step by step:
 - Runs are resumable: after a restart, the worker continues from the last completed step.
 - Retries are per step and configurable. Side-effect steps are never retried automatically.
 - **Kill switch:** one button in the UI (`PUT /api/kill-switch`) pauses all pipelines (schedules fire but start nothing), stops queued and waiting runs and expires their open proposals, so no queued side effect can execute. Runs already in progress stop at their next step boundary. Releasing it doesn't restart stopped runs.
-- **Budget:** when this month's LLM cost (`Step.llmUsage`) reaches the budget (Settings, else `LLM_MONTHLY_BUDGET_USD`), runs of non-essential pipelines stop before their next step that calls the LLM (the catalog marks them: the `llm.*` and email steps, `shop.product`, `application.outcome`, `browser.mapForm`, `browser.agent`, `browser.teach`), and `browser.extract` fails instead of trying its fallback. Pipelines marked essential keep running. The Storm bot says so at 80% of the budget and when it is reached, once a month each. Settings shows this month against the budget and the last 30 days' cost by step type and model.
+- **Budget:** when this month's LLM cost (`Step.llmUsage`) reaches the budget (Settings → AI), runs of non-essential pipelines stop before their next step that calls the LLM (the catalog marks them: the `llm.*` and email steps, `shop.product`, `application.outcome`, `browser.mapForm`, `browser.agent`, `browser.teach`), and `browser.extract` fails instead of trying its fallback. Pipelines marked essential keep running. The Storm bot says so at 80% of the budget and when it is reached, once a month each. Settings shows this month against the budget and the last 30 days' cost by step type and model.
 - **Queue:** pg-boss in PostgreSQL. `runs` advances runs in parallel; `runs-headed` is a singleton queue, so one headed run at a time across all workers; `pipeline-trigger` fires cron schedules in the pipeline's time zone (keyed by pipeline); the worker reconciles schedules with the enabled pipelines at startup and whenever the api asks. A decision queues its run again. The runner claims a run before advancing it, so a duplicate or retried job is harmless.
 
 ### 2.7 Triggers, webhooks and the Storm bot
@@ -352,9 +352,9 @@ Reflection leaves auto-approvals out: they aren't decisions.
 
 ## 5. LLM: Claude API, or local models
 
-LLM work uses the Claude API (`@anthropic-ai/sdk`) by default. The model is chosen **per task type**, configurable in Settings (stored in DB, defaults from `.env`).
+LLM work uses the Claude API (`@anthropic-ai/sdk`), or models on servers of your own. The model is chosen **per task type** in Settings → AI (stored in DB, `ModelSetting`), else the **default model** there (`UserSetting.defaultModel`), else the task group's built-in default below. Nothing about models is in `.env` (M62).
 
-**Local models (M60)**, off by default: `OPENAI_BASE_URL` makes an OpenAI-compatible server available (Ollama, llama.cpp, vLLM, LM Studio), and Settings switches them on and off (`UserSetting.localModels`), with a model for all tasks (`localModel`, else `LLM_MODEL`). A model named `openai:<name>` goes to that server, the rest to Claude. While they are off, the router passes over every `openai:` model (a task's choice, `.env`) and the task uses Claude; the choices are kept for the next time ([local-models.md](local-models.md)). [packages/llm](../packages/llm) routes by the name (`RoutedClient`, `RoutedChat`, `RoutedBatches`): structured output as `response_format: json_schema`, validated with zod and retried once with the problem; tool calls as OpenAI functions, translated to and from the conversation's Claude blocks; images as data URLs, PDFs refused; batches run in the worker two at a time (`SequentialBatches`). Local models cost $0, get no effort and no caching. `pnpm llm:check` measures a model on the real steps.
+**Model servers (M60, M62):** Claude (its API key) and any number of OpenAI-compatible servers (Ollama, llama.cpp, vLLM, LM Studio, OpenAI: an address up to `/v1`, an optional key) are `Integration` rows, set up in **Settings → AI → Model servers** without a restart, each switched on and off. Their keys are sealed with the integration key (§7). A model on a server is `openai:<integrationId>:<its name there>`, so a renamed server keeps its choices; a Claude model is its id. The router passes over a model whose server is off or gone, and the task uses the default model, else the built-in one; the choice is kept for when it is back ([local-models.md](local-models.md)). The api's and the worker's clients find the key and the address at each call, for the user the model was chosen for (`ModelChoice.owner`, `Integrations`, a few seconds' cache). [packages/llm](../packages/llm) routes by the name (`RoutedClient`, `RoutedChat`, `RoutedBatches`): structured output as `response_format: json_schema`, validated with zod and retried once with the problem; tool calls as OpenAI functions, translated to and from the conversation's Claude blocks; images as data URLs, PDFs refused; batches run in the worker two at a time (`SequentialBatches`). Local models cost $0, get no effort and no caching. `pnpm llm:check` measures a model on the real steps.
 
 | Task | Default model | Why |
 | --- | --- | --- |
@@ -369,7 +369,7 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 **Usage patterns:**
 
 - **Structured output:** every LLM call sets `output_config.format` to a JSON schema generated from a zod schema (`@anthropic-ai/sdk` zod helper), and the answer is validated again with zod: an answer that doesn't match fails the step with a clear error, and nothing partial is saved. Per-item steps (`llm.classify`, `llm.score`) send items in chunks of 20 and require exactly one answer per item. Sonnet and Opus calls use the server-side refusal fallback (`fallbacks: "default"`).
-- **Model routing** ([packages/llm](../packages/llm)): your setting for the step type (`ModelSetting`), else (local models on) the local model for all tasks, else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING` / `LLM_MODEL_REFLECTION` / `LLM_MODEL_BUILDER`, else `LLM_MODEL`, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection and the builder). A builder chat keeps the model it started with: Claude's thinking blocks in its history are bound to that model.
+- **Model routing** ([packages/llm](../packages/llm)): your setting for the step type (`ModelSetting`), else the default model, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection and the builder). A builder chat keeps the model it started with: Claude's thinking blocks in its history are bound to that model.
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
 - **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices) and builder turn (`BuilderMessage.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
@@ -377,7 +377,7 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 - **Morning brief (M25):** every day at 07:30 (your `TZ`), on the Storm bot: today's calendar (when Google is connected), what waits for you (proposals to approve per pipeline, runs paused in the live view), the runs that failed or ended with failed items in the last day, and unpaid bills due within three days or overdue. A day with none of it is one line. Off in Settings.
 - **Weekly review:** Sunday 19:00 (your `TZ`), on the Storm bot: the week's digest (runs, failures, what waits for you, reflection's suggestions, broken recipes, LLM cost), the budget so far, the three most expensive step types and models, application outcomes and quiet recipes. Off in Settings.
 
-**Embeddings:** Anthropic doesn't provide an embeddings model. Storm uses **OpenAI** `text-embedding-3-large` (multilingual) with `dimensions: 1024`, behind one `Embeddings` interface ([packages/llm](../packages/llm)): nothing to run on the server, and the email text already goes to Claude. Without `OPENAI_API_KEY`, drafts are written without examples and approved outputs are kept unembedded until a key is set. A local model (`bge-m3` in `py-worker`) or Voyage can replace it later; each example records the model that embedded it, and examples of another model are re-embedded at startup.
+**Embeddings:** Anthropic doesn't provide an embeddings model. Settings → AI → Embeddings picks a model server and its model, of 1024 dimensions: **OpenAI** `text-embedding-3-large` (multilingual, `dimensions: 1024`), or `bge-m3` on Ollama, where the text stays home (M62). One `Embeddings` interface ([packages/llm](../packages/llm)), looked up where the work starts (`EmbeddingsSource`). Off, drafts are written without examples and approved outputs are kept unembedded until embeddings are on; each example records the model that embedded it, and examples of another model are re-embedded.
 
 ---
 
@@ -440,7 +440,8 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 ### Rules
 
-- **Only the worker decrypts,** at the moment of `fill()`. The API only encrypts on create/update.
+- **Only the worker decrypts** your secrets, at the moment of `fill()`. The API only encrypts on create/update.
+- **The connections Storm itself uses (M62)** are kept apart: `Integration` rows (Claude, the model servers) are sealed with a key derived from the root for this purpose only (HKDF-SHA256, info `storm:integration`) and AAD `integration:` + the row id. The api opens them too (the builder chat needs the Claude key); a credential's ciphertext doesn't open with that key, nor the reverse. The api's ESLint rule allows `openIntegration` and still forbids `open`, `openField` and the re-wraps. Their keys are never returned (only a hint, `…a1b2`), and saving an address or a key needs the authenticator code again: it decides where your email text goes. `pnpm keys:rotate` re-wraps them too.
 - **Credentials are write-only in the UI.** Values are never returned by the API. There's a "Replace" button, and optionally "Reveal" protected by TOTP.
 - **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<slot>}}`: a slot, filled by a credential chosen by id, never by name (capabilities.md §2.6), or a credential field's sealed handle (below). Password fields are filled last and masked in traces where possible.
 - **Masked for the LLM:** before an accessibility snapshot or screenshot is sent to the LLM (e.g. by `browser.agent`), the worker strips `input[type=password]` values and every field it filled from a `{{cred:*}}`, and blurs those fields in screenshots.
@@ -535,7 +536,7 @@ concern. The email's text is read from the mailbox when it is needed, never stor
 | Email | the topic's links | new mail, sorted by `topic.match` |
 
 To find the passage a draft needs, Storm keeps an **index** (`topic.index`): text files only, split at their headings
-into passages, each with its path and commit. With `OPENAI_API_KEY` each passage is embedded (`vector(1024)`, pgvector);
+into passages, each with its path and commit. With embeddings on (Settings → AI) each passage is embedded (`vector(1024)`, pgvector);
 without it, passages are found by PostgreSQL full-text search over their words (the `simple` configuration: any
 language, no stemming). The index is a cache: refreshed when its source changes, cleared by Rebuild, and deleted without
 losing anything. A source's first read is indexed but not read for facts: that is the backfill's job. A cited passage
@@ -665,7 +666,7 @@ it, and a dismissed suggestion isn't made again):
 **Safety.** Email and document text is data: it can lead to a proposed fact or a suggested topic, never write either,
 and a passage reaches a prompt delimited like any untrusted text. Directions come only from you. Source credentials are
 credentials like any other (§7): the GitHub client reaches only `api.github.com`, with the token revealed for that host. A Drive folder is read through one of the user's Google accounts (M50-T8: the one chosen for the source, else the default; its refresh token sealed like a credential, AAD the account's id), with the read-only Drive scope; Storm never writes to Drive.
-With `OPENAI_API_KEY`, passages, facts and the start of an email being answered go to OpenAI for their embeddings.
+With embeddings on (Settings → AI), passages, facts and the start of an email being answered go to the embeddings server (OpenAI, or a model of your own) for their embeddings.
 
 **Not built yet.**
 
@@ -819,12 +820,12 @@ services:
 
   api:
     build: ../apps/api
-    env_file: ../.env            # needs ENCRYPTION_KEY (encrypt only), ANTHROPIC_API_KEY (builder)
+    env_file: ../.env            # needs ENCRYPTION_KEY (seals credentials, opens integrations: Claude for the builder)
     depends_on: [postgres]
 
   worker:
     build: ./worker              # Playwright + Xvfb + fluxbox + x11vnc + noVNC
-    env_file: ../.env            # needs ENCRYPTION_KEY (decrypt), ANTHROPIC_API_KEY
+    env_file: ../.env            # needs ENCRYPTION_KEY (decrypt)
     environment:
       DISPLAY: ":99"
     depends_on: [postgres]
@@ -861,26 +862,8 @@ POSTGRES_PASSWORD=aime
 ENCRYPTION_KEY=
 ENCRYPTION_KEY_VERSION=1
 
-# LLM (Claude API) — defaults; overridable per task in Settings
-ANTHROPIC_API_KEY=
-LLM_MODEL_BUILDER=claude-opus-5-5
-# A builder chat stops once its calls used this many tokens (cache reads included); a new chat starts over
-BUILDER_CHAT_MAX_TOKENS=2000000
-LLM_MODEL_REFLECTION=claude-opus-5-5
-LLM_MODEL_WRITING=claude-sonnet-5-5
-LLM_MODEL_BROWSER=claude-sonnet-5-5
-LLM_MODEL_CLASSIFY=claude-haiku-5-5
-# Non-essential pipelines pause when this month's LLM cost reaches it; Settings override it; empty = no limit
-LLM_MONTHLY_BUDGET_USD=
-
-# Local models (M60): an OpenAI-compatible server; its models are openai:<name>, used while Settings switches them on
-OPENAI_BASE_URL=
-# The local model of every group without its own, e.g. openai:qwen3:14b, unless Settings chooses one
-LLM_MODEL=
-
-# Embeddings for few-shot examples (OpenAI, 1024 dimensions); empty key = drafts without examples
-OPENAI_API_KEY=
-EMBEDDINGS_MODEL=text-embedding-3-large
+# AI: nothing here (M62). Claude, the model servers, the models per task, the embeddings, the monthly budget and the
+# builder's token limit are set up in Settings -> AI; their keys sealed with the integration key (section 7).
 
 # Mail: nothing here (M50-T7). Email accounts are added in Settings: their servers, and the app password stored
 # encrypted in the DB (an EmailAccount, sealed like a credential; TLS off only for a local test server).

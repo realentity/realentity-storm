@@ -131,8 +131,8 @@ export class Reflector {
 
   /** Submits a reflection on the decisions since the last one; null when there is nothing to learn from. */
   async submit(userId: string, now = new Date()): Promise<string | null> {
-    if (!this.batches) {
-      this.logger.warn("Reflection skipped: no LLM is set up (ANTHROPIC_API_KEY or OPENAI_BASE_URL)");
+    if (!this.batches || !(await this.router.usable(userId, (await this.router.choose(userId, "reflection")).model))) {
+      this.logger.warn("Reflection skipped: no model is set up for it (Claude or a model server in Settings → AI)");
       return null;
     }
     if (await this.prisma.reflection.findFirst({ where: { userId, status: "SUBMITTED" } })) return null;

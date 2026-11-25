@@ -1,4 +1,4 @@
-import { type Prisma } from "@realentity/storm-db";
+import { Integrations, type Prisma } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
   type CreateRuleRequest,
@@ -6,12 +6,10 @@ import {
   type PipelineSuggestionView,
   type ReflectionView,
   type RuleView,
-  type ServerEnv,
   type SuggestionStatusName,
   type UpdateRuleRequest,
 } from "@realentity/storm-shared";
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 
@@ -30,7 +28,7 @@ export class LearningService {
     private readonly prisma: PrismaService,
     private readonly queue: JobQueue,
     private readonly events: EventsService,
-    @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly integrations: Integrations,
   ) {}
 
   async view(userId: string): Promise<LearningView> {
@@ -71,7 +69,7 @@ export class LearningService {
         finishedAt: r.finishedAt?.toISOString() ?? null,
       })),
       examples: examples.map((e) => ({ stepType: e.stepType, count: e._count._all })),
-      embeddings: Boolean(this.env.OPENAI_API_KEY),
+      embeddings: (await this.integrations.embeddings(userId)) !== null,
     };
   }
 

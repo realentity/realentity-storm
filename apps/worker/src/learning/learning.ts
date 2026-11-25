@@ -1,5 +1,5 @@
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
-import { type Embeddings, type LlmUsage } from "@realentity/storm-llm";
+import { embeddingsSource, type Embeddings, type EmbeddingsSource, type LlmUsage } from "@realentity/storm-llm";
 import { maskSealed, WHOLE_REFERENCE, type CompiledDefinition } from "@realentity/storm-shared";
 import { type EmailMessage, type StepCatalog } from "@realentity/storm-steps";
 import { Logger } from "@nestjs/common";
@@ -102,8 +102,8 @@ export async function learnedFields(prisma: PrismaClient, catalog: StepCatalog, 
 
 /**
  * Examples (docs/design.md §8 "Few-shot retrieval"): what the user approved becomes an example of its step type, matched by
- * embedding the step's input. Without embeddings (no OPENAI_API_KEY, or OpenAI down) examples are kept without a
- * vector and embedded later (`backfill`).
+ * embedding the step's input. Without embeddings (none chosen in Settings → AI, or its server down) examples are kept
+ * without a vector and embedded later (`backfill`).
  */
 export class Learning implements StepLearning {
   private readonly logger = new Logger(Learning.name);
@@ -111,8 +111,13 @@ export class Learning implements StepLearning {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly catalog: StepCatalog,
-    private readonly embeddings: Embeddings | null,
-  ) {}
+    embeddings: Embeddings | EmbeddingsSource | null,
+  ) {
+    this.embeddings = embeddingsSource(embeddings);
+  }
+
+  /** M62: the embeddings of the moment (Settings → AI), looked up for each piece of work. */
+  private readonly embeddings: EmbeddingsSource | null;
 
   async rules(userId: string, stepType: string, pipelineId: string): Promise<string[]> {
     const rules = await this.prisma.rule.findMany({
@@ -127,13 +132,14 @@ export class Learning implements StepLearning {
   }
 
   async examples(userId: string, stepType: string, context: string, recordUsage: (usage: LlmUsage) => void): Promise<ExampleText[]> {
-    if (!this.embeddings) return [];
-    const model = this.embeddings.model;
+    const embeddings = await this.embeddings?.current(userId);
+    if (!embeddings) return [];
+    const model = embeddings.model;
     const stored = await this.prisma.example.count({ where: { userId, stepType, embeddingModel: model } });
     if (stored === 0) return [];
     let vector: number[];
     try {
-      const { vectors, usage } = await this.embeddings.embed([context]);
+      const { vectors, usage } = await embeddings.embed([context]);
       recordUsage(usage);
       vector = vectors[0]!;
     } catch (error) {
@@ -159,13 +165,14 @@ export class Learning implements StepLearning {
     await new Facts(this.prisma).fromProposal(proposal);
 
     let added = 0;
+    const embeddings = await this.embeddings?.current(proposal.userId);
     for (const learned of await learnedFields(this.prisma, this.catalog, proposal)) {
-      const embedded = await this.tryEmbed(learned.context);
+      const embedded = await this.tryEmbed(embeddings ?? null, learned.context);
       const inserted = await this.prisma.$executeRaw`
         INSERT INTO "Examples" ("exampleId", "userId", "stepType", "pipelineId", "context", "output", "embedding", "embeddingModel", "proposalId")
         VALUES (gen_random_uuid(), ${proposal.userId}::uuid, ${learned.stepType}, ${proposal.run.pipelineVersion.pipelineId}::uuid,
                 ${learned.context}, ${learned.approved}, ${embedded ? toVector(embedded) : null}::vector,
-                ${embedded ? this.embeddings!.model : null}, ${proposalId}::uuid)
+                ${embedded ? embeddings!.model : null}, ${proposalId}::uuid)
         ON CONFLICT ("proposalId", "stepType") DO NOTHING`;
       added += inserted;
     }
@@ -174,8 +181,10 @@ export class Learning implements StepLearning {
 
   /** Embeds examples without a vector of the current model (added while OpenAI was unavailable, or a new model). */
   async backfill(batchSize = 50): Promise<number> {
-    if (!this.embeddings) return 0;
-    const model = this.embeddings.model;
+    // Across users: Storm is single-user, so the one user's embeddings (Settings → AI).
+    const embeddings = await this.embeddings?.current();
+    if (!embeddings) return 0;
+    const model = embeddings.model;
     let done = 0;
     for (;;) {
       const pending = await this.prisma.$queryRaw<{ exampleId: string; context: string }[]>`
@@ -183,7 +192,7 @@ export class Learning implements StepLearning {
         WHERE "embedding" IS NULL OR "embeddingModel" IS DISTINCT FROM ${model}
         ORDER BY "dateCreated" LIMIT ${batchSize}`;
       if (pending.length === 0) return done;
-      const { vectors } = await this.embeddings.embed(pending.map((p) => p.context));
+      const { vectors } = await embeddings.embed(pending.map((p) => p.context));
       for (const [i, example] of pending.entries()) {
         await this.prisma.$executeRaw`
           UPDATE "Examples" SET "embedding" = ${toVector(vectors[i])}::vector, "embeddingModel" = ${model}
@@ -193,10 +202,10 @@ export class Learning implements StepLearning {
     }
   }
 
-  private async tryEmbed(text: string): Promise<number[] | null> {
-    if (!this.embeddings) return null;
+  private async tryEmbed(embeddings: Embeddings | null, text: string): Promise<number[] | null> {
+    if (!embeddings) return null;
     try {
-      return (await this.embeddings.embed([text])).vectors[0] ?? null;
+      return (await embeddings.embed([text])).vectors[0] ?? null;
     } catch (error) {
       this.logger.warn(`Example kept without embedding (embedded later): ${(error as Error).message}`);
       return null;

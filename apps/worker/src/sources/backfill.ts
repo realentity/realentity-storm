@@ -139,7 +139,10 @@ export class TopicBackfills {
 
   /** Submits the next batch, or reads the one submitted once it has ended. */
   private async read(backfill: TopicBackfill, now: Date): Promise<void> {
-    if (!this.batches) return this.fail(backfill.topicBackfillId, "The LLM isn't set up (ANTHROPIC_API_KEY or OPENAI_BASE_URL)");
+    const task = backfill.status === "SCREENING" ? "topic.extract.screen" : "topic.extract";
+    if (!this.batches || !(await this.router.usable(backfill.userId, (await this.router.choose(backfill.userId, task)).model))) {
+      return this.fail(backfill.topicBackfillId, "No model is set up for it: Claude or a model server in Settings → AI");
+    }
     if (!backfill.batchId) {
       if (await this.controls.overBudget(backfill.userId)) return this.fail(backfill.topicBackfillId, "The monthly LLM budget is reached");
       return this.submit(backfill, now);

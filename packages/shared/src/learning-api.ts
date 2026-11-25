@@ -84,6 +84,6 @@ export interface LearningView {
   reflections: ReflectionView[];
   /** Approved outputs kept as few-shot examples, per step type. */
   examples: { stepType: string; count: number }[];
-  /** OPENAI_API_KEY is set: drafts retrieve similar examples. */
+  /** Embeddings are on (Settings → AI): drafts retrieve similar examples. */
   embeddings: boolean;
 }

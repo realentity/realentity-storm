@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       approvedFile: () => Promise.resolve({ name: cv.filename, mimeType: "application/pdf", buffer: CV }),
     },
     chat: ClaudeChat.fromApiKey(apiKey),
-    router: new ModelRouter(() => Promise.resolve(null), process.env),
+    router: new ModelRouter(() => Promise.resolve(null)),
   } as unknown as AgentDependencies & ConstructorParameters<typeof BrowserSubmitStep>[0];
   const agent = new BrowserAgentStep(deps);
   const submit = new BrowserSubmitStep(deps);

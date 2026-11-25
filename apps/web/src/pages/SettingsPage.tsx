@@ -1,5 +1,4 @@
 import {
-  CLAUDE_MODELS,
   EFFORTS,
   LLM_TASKS,
   type LlmTask,
@@ -13,6 +12,7 @@ import { useEffect, useState } from "react";
 import { Navigate, NavLink, useLocation, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { EmailAccountsCard } from "../components/EmailAccountsCard";
+import { ModelServersCard } from "../components/ModelServersCard";
 import { GoogleAccountsCard } from "../components/GoogleAccountsCard";
 import { TelegramCommandsCard } from "../components/TelegramCommandsCard";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
@@ -20,7 +20,7 @@ import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
 import { useAction, useLoad } from "../lib/use-load";
 
-const SOURCE_LABEL = { settings: "chosen here", local: "the local model for all tasks", env: "from .env", default: "default" } as const;
+const SOURCE_LABEL = { settings: "chosen here", default: "the default model", "built-in": "built-in default" } as const;
 
 /** M60: a model on the OpenAI-compatible server. */
 const OPENAI_PREFIX = "openai:";
@@ -94,11 +94,14 @@ function WithSettings({ section }: { section: Exclude<Section, "email" | "google
   return (
     <div className="row g-3">
       <div className="col-lg-8 d-flex flex-column gap-3">
+        <ModelServersCard onChanged={settings.reload} />
         <Models settings={settings.data} onSaved={settings.reload} />
         {spending.data && <Spending spending={spending.data} />}
       </div>
-      <div className="col-lg-4">
+      <div className="col-lg-4 d-flex flex-column gap-3">
         <Budget settings={settings.data} spending={spending.data} onSaved={settings.reload} />
+        <EmbeddingsCard settings={settings.data} onSaved={settings.reload} />
+        <BuilderLimit settings={settings.data} onSaved={settings.reload} />
       </div>
     </div>
   );
@@ -234,81 +237,78 @@ function money(usd: number): string {
   return `$${usd.toFixed(usd > 0 && usd < 0.01 ? 4 : 2)}`;
 }
 
-/** M60: local models on or off, and the local model of every task without its own choice. */
-function LocalModels({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
-  const action = useSave(onSaved);
-  const { local, serverModels } = settings;
-  const models: string[] = serverModels?.models ?? [];
-  const host = serverModels?.host;
+/** A model's name to show: "qwen3:14b · Ollama", or a Claude model's id. */
+function modelLabel(settings: SettingsView, id: string): string {
+  for (const server of settings.servers) {
+    const model = server.models.find((m) => m.id === id);
+    if (model) return server.kind === "CLAUDE" ? model.name : `${model.name} · ${server.name}`;
+  }
+  if (!id.startsWith(OPENAI_PREFIX)) return id;
+  const server = settings.servers.find((s) => id.startsWith(`${OPENAI_PREFIX}${s.integrationId}:`));
+  const name = id.split(":").slice(2).join(":");
+  return server ? `${name} · ${server.name}` : `${name} · a removed server`;
+}
+
+/** The models to choose from, by server; an off server's shown but not choosable (M62). */
+function ModelOptions({ settings, current }: { settings: SettingsView; current: string | null }) {
+  const known = settings.servers.flatMap((s) => s.models.map((m) => m.id));
   return (
-    <div className="card-body border-bottom" data-testid="local-models">
-      <ErrorAlert error={action.error} />
-      <label className="form-check form-switch mb-2">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          checked={local.on}
-          disabled={action.busy || !local.available}
-          onChange={(e) => void action.save({ localModels: e.target.checked }, e.target.checked ? "Local models are on" : "Local models are off: every task uses Claude")}
-          data-testid="local-models-switch"
-        />
-        <span className="form-check-label">Local models{host ? ` on ${host}` : ""}</span>
-        <div className="small text-secondary">
-          {local.available
-            ? "On: the tasks below can use the server's models, which cost nothing in the budget and get no effort. Off: every task uses Claude, and the local models chosen below wait for the next time."
-            : "Off. To run tasks on your own hardware (Ollama or another OpenAI-compatible server), set OPENAI_BASE_URL in .env and restart: docs/local-models.md."}
-        </div>
-      </label>
-      {serverModels?.error && (
-        <div className="alert alert-warning mb-2" data-testid="server-models-error">
-          The models on {serverModels.host} couldn't be listed: {serverModels.error}
-        </div>
-      )}
-      {local.on && (
-        <div className="row g-2 align-items-center">
-          <label className="col-auto col-form-label" htmlFor="local-model">
-            Model for all tasks
-          </label>
-          <div className="col-auto">
-            <select
-              id="local-model"
-              className="form-select"
-              value={local.model ?? ""}
-              disabled={action.busy}
-              onChange={(e) =>
-                void action.save(
-                  { localModel: e.target.value || null },
-                  e.target.value ? `Every task without its own model: ${e.target.value}` : "Every task without its own model: its default",
-                )
-              }
-              data-testid="local-model"
-            >
-              <option value="">None: each task's default</option>
-              {local.model && !models.includes(local.model) && <option value={local.model}>{local.model}</option>}
-              {models.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-12 small text-secondary">A model chosen for a task below comes first.</div>
-        </div>
-      )}
-    </div>
+    <>
+      {current && !known.includes(current) && <option value={current}>{modelLabel(settings, current)}</option>}
+      {settings.servers
+        .filter((s) => s.models.length > 0)
+        .map((server) => (
+          <optgroup key={server.integrationId} label={server.enabled ? server.name : `${server.name} (off)`}>
+            {server.models.map((m) => (
+              <option key={m.id} value={m.id} disabled={!server.enabled}>
+                {m.name}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+    </>
   );
 }
 
 function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
   const action = useSave(onSaved);
-  const serverModels: string[] = settings.serverModels?.models ?? [];
+  const unreachable = settings.servers.filter((s) => s.error);
   return (
     <div className="card">
       <div className="card-header">
         <h3 className="card-title">Model per task</h3>
       </div>
-      <LocalModels settings={settings} onSaved={onSaved} />
       <ErrorAlert error={action.error} />
+      {unreachable.map((server) => (
+        <div key={server.integrationId} className="alert alert-warning m-3 mb-0" data-testid="server-models-error">
+          The models on {server.name} couldn't be listed: {server.error}
+        </div>
+      ))}
+      <div className="card-body border-bottom" data-testid="default-model">
+        <div className="row g-2 align-items-center">
+          <label className="col-auto col-form-label" htmlFor="default-model">
+            Default model
+          </label>
+          <div className="col">
+            <select
+              id="default-model"
+              className="form-select"
+              value={settings.defaultModel ?? ""}
+              disabled={action.busy}
+              onChange={(e) =>
+                void action.save(
+                  { defaultModel: e.target.value || null },
+                  e.target.value ? `Default model: ${modelLabel(settings, e.target.value)}` : "Default model: each task group's own",
+                )
+              }
+            >
+              <option value="">Each task group's own: Haiku to label, Sonnet to write, Opus for the builder</option>
+              <ModelOptions settings={settings} current={settings.defaultModel} />
+            </select>
+          </div>
+        </div>
+        <div className="small text-secondary mt-1">Every task without a model of its own below uses it. A model whose server is off is passed over.</div>
+      </div>
       <div className="table-responsive">
         <table className="table table-vcenter card-table" data-testid="models">
           <thead>
@@ -323,7 +323,7 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
             {LLM_TASKS.map((task: LlmTask) => {
               const choice = settings.models[task];
               const set = (model: string, effort: string) =>
-                void action.save({ models: { [task]: { model, effort } } }, `${task}: ${model} (${effort})`);
+                void action.save({ models: { [task]: { model, effort } } }, `${task}: ${modelLabel(settings, model)} (${effort})`);
               return (
                 <tr key={task}>
                   <td>
@@ -331,7 +331,7 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
                     <div className="small text-secondary">{SOURCE_LABEL[choice.source]}</div>
                     {choice.waiting && (
                       <div className="small text-warning" data-testid={`waiting-${task}`}>
-                        {choice.waiting} once local models are on
+                        {modelLabel(settings, choice.waiting)} once its server is on
                       </div>
                     )}
                   </td>
@@ -343,29 +343,13 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
                       onChange={(e) => set(e.target.value, choice.effort)}
                       aria-label={`${task} model`}
                     >
-                      {![...CLAUDE_MODELS, ...serverModels].includes(choice.model) && <option value={choice.model}>{choice.model}</option>}
-                      <optgroup label={settings.claude ? "Claude" : "Claude (ANTHROPIC_API_KEY isn't set)"}>
-                        {CLAUDE_MODELS.map((m) => (
-                          <option key={m} value={m} disabled={!settings.claude}>
-                            {m}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {settings.serverModels && serverModels.length > 0 && (
-                        <optgroup label={settings.local.on ? `On ${settings.serverModels.host}` : `On ${settings.serverModels.host} (local models are off)`}>
-                          {serverModels.map((m) => (
-                            <option key={m} value={m} disabled={!settings.local.on}>
-                              {m}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
+                      <ModelOptions settings={settings} current={choice.model} />
                     </select>
                   </td>
                   <td>
                     {choice.model.startsWith(OPENAI_PREFIX) ? (
-                      // M60: not sent to a local model.
-                      <span className="text-secondary" title="A local model gets no effort" data-testid={`no-effort-${task}`}>
+                      // Not sent to a model on a server of your own.
+                      <span className="text-secondary" title="A model on your own server gets no effort" data-testid={`no-effort-${task}`}>
                         —
                       </span>
                     ) : (
@@ -406,6 +390,105 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
   );
 }
 
+/** M62: embeddings (examples in drafts, topics by meaning) from a model server and its model, or off. */
+function EmbeddingsCard({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  const servers = settings.servers.filter((s) => s.kind === "OPENAI_COMPATIBLE");
+  const [serverId, setServerId] = useState(settings.embeddings?.integrationId ?? "");
+  const [model, setModel] = useState(settings.embeddings?.model ?? "");
+  useEffect(() => {
+    setServerId(settings.embeddings?.integrationId ?? "");
+    setModel(settings.embeddings?.model ?? "");
+  }, [settings.embeddings?.integrationId, settings.embeddings?.model]);
+  const names = servers.find((s) => s.integrationId === serverId)?.models.map((m) => m.name) ?? [];
+  return (
+    <form
+      className="card"
+      data-testid="embeddings"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.save(
+          { embeddings: serverId && model.trim() ? { integrationId: serverId, model: model.trim() } : null },
+          serverId && model.trim() ? `Embeddings: ${model.trim()}` : "Embeddings are off",
+        );
+      }}
+    >
+      <div className="card-header">
+        <h3 className="card-title">Embeddings</h3>
+      </div>
+      <div className="card-body">
+        <ErrorAlert error={action.error} />
+        <select className="form-select mb-2" value={serverId} onChange={(e) => setServerId(e.target.value)} aria-label="Embeddings server" data-testid="embeddings-server">
+          <option value="">Off</option>
+          {servers.map((s) => (
+            <option key={s.integrationId} value={s.integrationId}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        {serverId && (
+          <>
+            <input
+              className="form-control mb-2"
+              list="embedding-models"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="text-embedding-3-large, bge-m3"
+              aria-label="Embeddings model"
+              data-testid="embeddings-model"
+            />
+            <datalist id="embedding-models">
+              {names.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </>
+        )}
+        <button type="submit" className="btn btn-primary" disabled={action.busy || (serverId !== "" && !model.trim())}>
+          Save
+        </button>
+        <div className="form-hint mt-2">
+          Your past replies as examples in new drafts, and the topics' passages closest to an email by meaning. A model of 1024
+          dimensions: OpenAI's text-embedding-3-large, or bge-m3 on Ollama. The text goes to that server. Off: no examples,
+          and topics match by words.
+        </div>
+      </div>
+    </form>
+  );
+}
+
+/** M62: how many tokens a builder chat may use before a new one is needed. */
+function BuilderLimit({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  const [value, setValue] = useState(String(settings.builderChatMaxTokens));
+  useEffect(() => setValue(String(settings.builderChatMaxTokens)), [settings.builderChatMaxTokens]);
+  const tokens = Number(value);
+  return (
+    <form
+      className="card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.save({ builderChatMaxTokens: tokens }, `A builder chat stops at ${tokens.toLocaleString()} tokens`);
+      }}
+    >
+      <div className="card-header">
+        <h3 className="card-title">Builder chat limit</h3>
+      </div>
+      <div className="card-body">
+        <ErrorAlert error={action.error} />
+        <div className="input-group">
+          <input type="number" min="10000" step="10000" className="form-control" value={value} onChange={(e) => setValue(e.target.value)} aria-label="Builder chat tokens" />
+          <span className="input-group-text">tokens</span>
+          <button type="submit" className="btn btn-primary" disabled={action.busy || !(tokens >= 10_000)}>
+            Save
+          </button>
+        </div>
+        <div className="form-hint">A chat stops answering once its calls used this many tokens (cached ones included); a new chat starts over.</div>
+      </div>
+    </form>
+  );
+}
+
 function Budget({ settings, spending, onSaved }: { settings: SettingsView; spending?: SpendingView; onSaved: () => void }) {
   const action = useSave(onSaved);
   const [value, setValue] = useState(settings.monthlyBudgetUsd?.toString() ?? "");
@@ -441,9 +524,8 @@ function Budget({ settings, spending, onSaved }: { settings: SettingsView; spend
           </button>
         </div>
         <div className="form-hint">
-          {settings.budgetSource === "env" && "Currently from LLM_MONTHLY_BUDGET_USD. "}
           When this month's LLM cost reaches it, non-essential pipelines stop before their next LLM step. Telegram tells you at 80% and when
-          it is reached. Empty: back to .env (or no limit).
+          it is reached. Empty: no limit.
         </div>
         {spending && <MonthSpent spending={spending} />}
       </div>

@@ -5,10 +5,10 @@ Storm's LLM steps can run on a model on your own hardware instead of Claude: on
 API. The email text, pages and documents those steps read then stay on your machine, and the model costs nothing per
 call.
 
-**It is off by default.** `OPENAI_BASE_URL` in `.env` only makes a server available; you switch local models on and
-off in **Settings**, whenever you like, without a restart. While they are off, every task uses Claude, as before. On,
-you choose one model for all tasks or a model per task, and you can mix the two: a local model for email triage and
-scoring, Claude for the builder.
+**It is off until you add a server.** Model servers are set up in **Settings → AI → Model servers**, not in `.env`:
+add one, switch it on and off whenever you like, without a restart. While a server is off, the tasks that chose one of
+its models use the default model, else Claude's. You choose one default model for all tasks or a model per task, and
+you can mix: a local model for email triage and scoring, Claude for the builder.
 
 - [Switch them on](#switch-them-on)
 - [Switch them off](#switch-them-off)
@@ -32,37 +32,33 @@ These steps use Ollama; another server works the same way with its own address.
    Docker networks in your firewall, or run Ollama on another machine of your private network. Storm's containers
    reach the host as `host.docker.internal`.
 
-4. **Tell Storm where it is** in `.env`, and apply it with `./docker/storm up` (with `STORM_LOCAL=1` if you use the
-   bundled database):
+4. **Add it in Storm:** **Settings → AI → Model servers → Add → OpenAI-compatible server**:
 
-   ```
-   OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-   ```
+   - **Name**: e.g. Ollama.
+   - **Address**, up to its `/v1`: `http://host.docker.internal:11434/v1` for Ollama on the machine Storm's containers
+     run on, or `http://<that machine>:11434/v1` on your network.
+   - **Key**: none for Ollama. For a server that wants one (OpenAI itself, a proxy), it is sent as its bearer token.
+   - **The code from your authenticator app**: asked again for an address or a key, as they decide where your email
+     text goes.
 
-   This is the server, up to its `/v1`. It makes local models available; it doesn't switch them on.
+   **Test** lists the server's models and has one answer a short question.
 
-5. **Switch them on** in **Settings → AI → Local models**. Then:
+5. **Choose its models** in **Settings → AI → Model per task**:
 
-   - **Model for all tasks**: the local model of every task without its own choice, e.g. `openai:qwen3:14b`.
-   - **Per task**: each step type's menu lists the server's models next to Claude's. A task's own choice comes first.
-   - The models are named `openai:<name>`, by their name on the server (`ollama list`). Names without `openai:` are
-     Claude.
+   - **Default model**: the model of every task without its own choice, e.g. qwen3:14b · Ollama.
+   - **Per task**: each step type's menu lists every server's models, by server. A task's own choice comes first.
 
-   If the server doesn't answer, Settings says why, and the rest of the page still works.
+   If a server doesn't answer, Settings says why, and the rest of the page still works.
 
-**From `.env` instead of Settings**: `LLM_MODEL=openai:qwen3:14b` is the model for all tasks while local models are on
-and Settings doesn't choose one. `LLM_MODEL_CLASSIFY`, `LLM_MODEL_WRITING`, `LLM_MODEL_REFLECTION` and
-`LLM_MODEL_BUILDER` set one group each and take both kinds, e.g. `LLM_MODEL_BUILDER=claude-opus-5-5` keeps the builder
-on Claude while the rest is local. Without `ANTHROPIC_API_KEY`, Storm runs on local models alone.
+Several servers are fine: Ollama on this machine, another on a stronger one, OpenAI for embeddings. Without Claude set
+up, Storm runs on your own servers alone.
 
 ## Switch them off
 
-**Settings → AI → Local models** off. From the next step on, every task uses Claude: its Claude choice in Settings, else
-`.env`, else the defaults. The local models you chose stay where they are, marked "… once local models are on", and
-are used again when you switch back on.
-
-Local models are off too while `OPENAI_BASE_URL` is empty: then Settings can't switch them on, and no model call goes
-to any OpenAI-compatible server. An `OPENAI_API_KEY` alone (for embeddings) never sends a model's calls to OpenAI.
+The server's switch in **Settings → AI → Model servers**. From the next step on, the tasks that chose one of its
+models use the default model, else Claude's built-in defaults. Their choices stay, marked "… once its server is on",
+and are used again when you switch it back on. **Remove** deletes its key; the tasks that chose its models go back to
+the default model.
 
 ## Which model
 
@@ -127,11 +123,11 @@ A CPU with fewer cores is slower in proportion: half the threads, about twice th
 - **PDFs** aren't sent to local models: a step that would give the model a PDF fails and says so. Choose a Claude
   model for that step type, or a pipeline that reads the PDF's text first (`file.read`, `bill.read` already do).
 - **Tool calls** are what the builder and `browser.agent` work with. A model without them (gemma3) can't do those.
-- **Embeddings** (examples in drafts, topics by meaning) still come from OpenAI itself when `OPENAI_API_KEY` is set:
-  that text goes to OpenAI even with every model local. Leave the key empty to keep it home; drafts are then written
-  without examples, and topics match by words.
-- **`OPENAI_API_KEY` is sent to `OPENAI_BASE_URL`** as its key. Ollama ignores it; point `OPENAI_BASE_URL` only at
-  servers you trust with that key.
+- **Embeddings** (examples in drafts, topics by meaning) come from the server chosen in **Settings → AI → Embeddings**:
+  `bge-m3` on Ollama (`ollama pull bge-m3`, 1024 dimensions) keeps that text home too; OpenAI's
+  `text-embedding-3-large` sends it to OpenAI. Off, drafts are written without examples, and topics match by words.
+- **A server's key is sent to that server** as its bearer token, and only to it. It is sealed in the database and never
+  shown again (only its last four characters).
 
 ## Measure your own
 
@@ -141,7 +137,7 @@ checkout of the repository with `pnpm install`, not the containers.
 ```bash
 pnpm --filter @realentity/storm-worker llm:check --model openai:qwen3:14b --base-url http://localhost:11434/v1
 pnpm --filter @realentity/storm-worker llm:check --model openai:gemma3:12b --runs 1 --only llm.extract,tools
-pnpm --filter @realentity/storm-worker llm:check --model claude-haiku-5-5        # needs ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY=sk-ant-… pnpm --filter @realentity/storm-worker llm:check --model claude-haiku-5-5
 ```
 
 - `--runs` (default 3): how often each check runs; the table says how many passed and the median time.
@@ -154,8 +150,10 @@ pnpm --filter @realentity/storm-worker llm:check --model claude-haiku-5-5       
 
 | What you see | Why, and what to do |
 |---|---|
-| Settings: "The models on host.docker.internal:11434 couldn't be listed: The model server (…) could not be reached" | The containers can't reach the server: see step 3 above (`OLLAMA_HOST`, the firewall) |
-| "… refused the request (404: model … not found)" | The name after `openai:` isn't on the server: `ollama list`, or `ollama pull` it |
+| Settings: "The models on Ollama couldn't be listed: The model server (…) could not be reached" | The containers can't reach the server: see step 3 above (`OLLAMA_HOST`, the firewall) |
+| "… refused the request (404: model … not found)" | The model is no longer on the server: `ollama list`, `ollama pull` it, or choose another |
+| "This model's server isn't set up or is off" | Its server was switched off or removed meanwhile: switch it on, or choose another model |
+| "Claude isn't set up or is off" | A task uses a Claude model (perhaps a built-in default) without Claude set up: add it, or choose a default model on your server |
 | "… does not support tools" | That model has no tool calls: choose another one for the builder and `browser.agent` |
 | "Multimodal data provided, but model does not support multimodal requests" | A step sent an image to a text-only model: choose a model that sees images for that step type |
 | Answers that ignore half of a long email | The context is cut: raise `OLLAMA_CONTEXT_LENGTH` (step 2) |

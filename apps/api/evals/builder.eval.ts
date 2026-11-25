@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   const catalog = defaultCatalog();
   const compiler = new PipelineCompiler(catalog);
   const builder = new Builder(ClaudeChat.fromApiKey(apiKey), compiler, catalog);
-  const choice = await new ModelRouter(() => Promise.resolve(null), process.env).choose("eval", "builder");
+  const choice = await new ModelRouter(() => Promise.resolve(null)).choose("eval", "builder");
   const load = (file: string): CompiledDefinition => {
     const text = exampleYaml(file);
     // M33: a pipeline of an App compiles against its definition in its file.

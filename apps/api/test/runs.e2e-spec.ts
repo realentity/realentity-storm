@@ -1,5 +1,5 @@
 import { payloadHash } from "@realentity/storm-crypto";
-import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { createPrismaConnection, Integrations, type PrismaConnection } from "@realentity/storm-db";
 import { QUEUES } from "@realentity/storm-queue";
 import {
   type KillSwitchView,
@@ -16,7 +16,7 @@ import { TestEnvironment } from "@realentity/storm-testing";
 import request from "supertest";
 import { z } from "zod";
 import { freeName } from "./support/names";
-import { createTestApp, type TestApp } from "./support/test-app";
+import { createTestApp, withClaude, type TestApp } from "./support/test-app";
 
 /** Stand-ins for later milestones' steps. */
 const TEST_STEPS: StepDefinition[] = [
@@ -508,7 +508,6 @@ describe("runs, proposals and controls", () => {
       expect((await agent.get("/api/settings").expect(200)).body).toMatchObject({
         rateLimits: {},
         monthlyBudgetUsd: null,
-        budgetSource: null,
       });
 
       const saved = (
@@ -517,33 +516,35 @@ describe("runs, proposals and controls", () => {
           .send({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: 25.5 })
           .expect(200)
       ).body as SettingsView;
-      expect(saved).toMatchObject({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: 25.5, budgetSource: "settings" });
+      expect(saved).toMatchObject({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: 25.5 });
 
       const cleared = (await agent.put("/api/settings").send({ monthlyBudgetUsd: null }).expect(200)).body as SettingsView;
-      expect(cleared).toMatchObject({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: null, budgetSource: null });
+      expect(cleared).toMatchObject({ rateLimits: { "test.send": "20/day" }, monthlyBudgetUsd: null });
     });
 
-    // M3-T9
+    // M3-T9; M62: a Claude model can be chosen once Claude is among the model servers
     it("a model per LLM task: the user's choice, or the default and where it comes from", async () => {
+      await withClaude();
+      api.app.get(Integrations).forget();
       const initial = (await agent.get("/api/settings").expect(200)).body as SettingsView;
       expect(initial.models).toEqual({
-        "email.classify": { model: "claude-haiku-5-5", effort: "low", source: "default" },
-        "email.draftReply": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "email.draftFollowUp": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "bill.read": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "llm.classify": { model: "claude-haiku-5-5", effort: "low", source: "default" },
-        "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "default" },
-        "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "llm.extract": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "application.outcome": { model: "claude-haiku-5-5", effort: "low", source: "default" },
-        reflection: { model: "claude-opus-5-5", effort: "high", source: "default" },
-        builder: { model: "claude-opus-5-5", effort: "high", source: "default" },
-        "browser.teach": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "shop.product": { model: "claude-haiku-5-5", effort: "low", source: "default" },
-        "browser.mapForm": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "browser.agent": { model: "claude-sonnet-5-5", effort: "medium", source: "default" },
-        "browser.agent.escalation": { model: "claude-opus-5-5", effort: "high", source: "default" },
+        "email.classify": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
+        "email.draftReply": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "email.draftFollowUp": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "bill.read": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "llm.classify": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
+        "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
+        "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "llm.summarize": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "llm.extract": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "application.outcome": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
+        reflection: { model: "claude-opus-5-5", effort: "high", source: "built-in" },
+        builder: { model: "claude-opus-5-5", effort: "high", source: "built-in" },
+        "browser.teach": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "shop.product": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
+        "browser.mapForm": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "browser.agent": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
+        "browser.agent.escalation": { model: "claude-opus-5-5", effort: "high", source: "built-in" },
       });
 
       const chosen = (
@@ -563,7 +564,7 @@ describe("runs, proposals and controls", () => {
           .send({ models: { "llm.generate": null } })
           .expect(200)
       ).body as SettingsView;
-      expect(reset.models["llm.generate"].source).toBe("default");
+      expect(reset.models["llm.generate"].source).toBe("built-in");
       expect(await db.client.modelSetting.count()).toBe(0);
 
       await agent

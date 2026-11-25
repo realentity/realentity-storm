@@ -5,17 +5,33 @@ import { addUsage, costUsd, emptyUsage, type LlmUsage } from "./usage";
 
 /**
  * M60: models on an OpenAI-compatible server (docs/design.md §5): Ollama, LM Studio, llama.cpp, vLLM, OpenRouter, OpenAI.
- * Their model ids carry this prefix (`openai:qwen3:14b`); a model without it is Claude's.
+ * Their model ids carry this prefix; a model without it is Claude's. M62: the id names its server (an Integration):
+ * `openai:<integrationId>:qwen3:14b`, so a renamed server keeps its choices. Without a server id (`openai:qwen3:14b`)
+ * it is the one server of a fixed setup (`pnpm llm:check --base-url`).
  */
 export const OPENAI_PREFIX = "openai:";
+
+const SERVER_ID = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):/i;
 
 export function isOpenAiModel(model: string): boolean {
   return model.startsWith(OPENAI_PREFIX);
 }
 
-/** The model's name on the server: the id without the prefix. */
+/** A model on a server: the server's id (null: the one server of a fixed setup) and the model's name there. */
+export function parseServerModel(model: string): { serverId: string | null; name: string } {
+  const rest = model.slice(OPENAI_PREFIX.length);
+  const id = SERVER_ID.exec(rest);
+  return id ? { serverId: id[1].toLowerCase(), name: rest.slice(id[0].length) } : { serverId: null, name: rest };
+}
+
+/** The id of a model on a server, as it is chosen and stored. */
+export function serverModelId(serverId: string, name: string): string {
+  return `${OPENAI_PREFIX}${serverId}:${name}`;
+}
+
+/** The model's name on the server: the id without the prefix and the server. */
 export function serverModel(model: string): string {
-  return isOpenAiModel(model) ? model.slice(OPENAI_PREFIX.length) : model;
+  return isOpenAiModel(model) ? parseServerModel(model).name : model;
 }
 
 export interface OpenAiServer {

@@ -10,7 +10,7 @@ export const serverEnvProvider: Provider = {
   useFactory: (): ServerEnv => parseServerEnv(process.env),
 };
 
-/** The root keys. The api uses them only to seal (encrypt) credentials. */
+/** The root keys. The api uses them to seal (encrypt) credentials, and to open the integrations' secrets (M62). */
 export const keyRingProvider: Provider = {
   provide: KeyRing,
   useFactory: (): KeyRing => KeyRing.fromEnv(process.env),

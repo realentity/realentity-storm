@@ -1,20 +1,20 @@
-import { llmCostSince, llmSpendSince } from "@realentity/storm-db";
-import { isOpenAiModel, ModelRouter, OPENAI_PREFIX, openAiApi, usable } from "@realentity/storm-llm";
+import { Integrations, llmCostSince, llmSpendSince } from "@realentity/storm-db";
+import { isOpenAiModel, ModelRouter, OpenAiApi, parseServerModel, serverModelId } from "@realentity/storm-llm";
 import {
+  BUILDER_CHAT_MAX_TOKENS,
+  CLAUDE_MODELS,
   EFFORTS,
   LLM_TASKS,
   type EffortName,
   type KillSwitchView,
   type LlmTask,
   type ModelChoiceView,
-  type ServerEnv,
   type SettingsRequest,
   type SettingsView,
   type SpendingView,
 } from "@realentity/storm-shared";
 import { StepCatalog } from "@realentity/storm-steps";
-import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 
@@ -26,8 +26,8 @@ export class ControlsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly catalog: StepCatalog,
-    @Inject(SERVER_ENV) private readonly env: ServerEnv,
     private readonly events: EventsService,
+    private readonly integrations: Integrations,
   ) {}
 
   async isPaused(userId: string): Promise<boolean> {
@@ -83,41 +83,32 @@ export class ControlsService {
   }
 
   async settings(userId: string): Promise<SettingsView> {
-    const [settings, modelSettings] = await Promise.all([
+    const [settings, modelSettings, prefs] = await Promise.all([
       this.prisma.client.userSetting.findUnique({ where: { userId } }),
       this.prisma.client.modelSetting.findMany({ where: { userId, taskKey: { in: [...LLM_TASKS] } } }),
+      this.integrations.prefs(userId),
     ]);
-    const router = new ModelRouter(() => Promise.resolve(null), {
-      LLM_MODEL_CLASSIFY: this.env.LLM_MODEL_CLASSIFY,
-      LLM_MODEL_WRITING: this.env.LLM_MODEL_WRITING,
-      LLM_MODEL_REFLECTION: this.env.LLM_MODEL_REFLECTION,
-      LLM_MODEL_BUILDER: this.env.LLM_MODEL_BUILDER,
-      LLM_MODEL: this.env.LLM_MODEL,
-    });
-    const available = Boolean(this.env.OPENAI_BASE_URL);
-    // M60: what the worker uses (localModelsOf): off unless switched on here with a server set up.
-    const local = { on: available && (settings?.localModels ?? false), model: settings?.localModel ?? null };
+    // What the worker uses (docs/design.md §5): a task's choice, else the default model, else the built-in one.
+    const router = new ModelRouter(() => Promise.resolve(null));
     const models = Object.fromEntries(
       LLM_TASKS.map((task): [LlmTask, ModelChoiceView] => {
-        const fallback = router.fallback(task, local);
+        const fallback = router.fallback(task, prefs);
         const own = modelSettings.find((s) => s.taskKey === task);
         if (!own) return [task, fallback];
-        // Its local model waits while local models are off; the task uses what it would without it.
-        if (!usable(own.model, local)) return [task, { ...fallback, waiting: own.model }];
+        // Its server is off or gone: the task uses what it would without its choice, which waits.
+        if (!prefs.usable(own.model)) return [task, { ...fallback, waiting: own.model }];
         const effort = (EFFORTS as readonly string[]).includes(own.effort ?? "") ? (own.effort as EffortName) : fallback.effort;
         return [task, { model: own.model, effort, source: "settings" }];
       }),
     ) as Record<LlmTask, ModelChoiceView>;
-    const own = settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : null;
-    const fromEnv = this.env.LLM_MONTHLY_BUDGET_USD ?? null;
     return {
       models,
-      local: { available, on: local.on, model: local.model },
-      serverModels: await this.serverModels(),
-      claude: Boolean(this.env.ANTHROPIC_API_KEY),
+      defaultModel: settings?.defaultModel ?? null,
+      servers: await this.servers(userId),
+      embeddings: settings?.embeddingsIntegrationId && settings.embeddingsModel ? { integrationId: settings.embeddingsIntegrationId, model: settings.embeddingsModel } : null,
+      builderChatMaxTokens: settings?.builderChatMaxTokens ?? BUILDER_CHAT_MAX_TOKENS,
       rateLimits: (settings?.rateLimits as Record<string, string> | null) ?? {},
-      monthlyBudgetUsd: own ?? fromEnv,
-      budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
+      monthlyBudgetUsd: settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : null,
       profile: settings?.profile ?? "",
       telegramApprovals: settings?.telegramApprovals ?? true,
       weeklyReview: settings?.weeklyReview ?? true,
@@ -125,15 +116,25 @@ export class ControlsService {
     };
   }
 
-  /** M60: what the OpenAI-compatible server offers, for the model lists; its failure is shown, not thrown. */
-  private async serverModels(): Promise<SettingsView["serverModels"]> {
-    const api = openAiApi({ openaiBaseUrl: this.env.OPENAI_BASE_URL, openaiApiKey: this.env.OPENAI_API_KEY });
-    if (!api) return null;
-    try {
-      return { host: api.host, models: (await api.models()).map((m) => `${OPENAI_PREFIX}${m}`), error: null };
-    } catch (error) {
-      return { host: api.host, models: [], error: error instanceof Error ? error.message : String(error) };
-    }
+  /**
+   * M62: what can be chosen, by server: Claude's models, each model server's as it lists them (asked in parallel, a
+   * few seconds at most); a server that doesn't answer says why, and the page still works.
+   */
+  private async servers(userId: string): Promise<SettingsView["servers"]> {
+    const rows = await this.integrations.of(userId);
+    return Promise.all(
+      rows.map(async (row) => {
+        const base = { integrationId: row.integrationId, kind: row.kind, name: row.name, enabled: row.enabled };
+        if (row.kind === "CLAUDE") return { ...base, models: CLAUDE_MODELS.map((m) => ({ id: m, name: m })), error: null };
+        if (!row.enabled || !row.baseUrl) return { ...base, models: [], error: null };
+        try {
+          const names = await new OpenAiApi({ baseUrl: row.baseUrl, apiKey: row.secret ?? undefined, timeoutMs: 5_000 }).models();
+          return { ...base, models: names.map((name) => ({ id: serverModelId(row.integrationId, name), name })), error: null };
+        } catch (error) {
+          return { ...base, models: [], error: error instanceof Error ? error.message : String(error) };
+        }
+      }),
+    );
   }
 
   /** This month's LLM cost against the budget, and the last 30 days by step type and model (M19-T3). */
@@ -154,7 +155,7 @@ export class ControlsService {
       if (!step) return [{ path: `rateLimits.${type}`, message: `unknown step type "${type}"` }];
       return step.sideEffect ? [] : [{ path: `rateLimits.${type}`, message: "only side-effect steps have rate limits" }];
     });
-    errors.push(...(await this.localErrors(userId, body)));
+    errors.push(...(await this.modelErrors(userId, body)));
     if (errors.length > 0) throw new BadRequestException({ message: "Validation failed", errors });
 
     const data = {
@@ -164,8 +165,11 @@ export class ControlsService {
       ...(body.telegramApprovals !== undefined ? { telegramApprovals: body.telegramApprovals } : {}),
       ...(body.weeklyReview !== undefined ? { weeklyReview: body.weeklyReview } : {}),
       ...(body.morningBrief !== undefined ? { morningBrief: body.morningBrief } : {}),
-      ...(body.localModels !== undefined ? { localModels: body.localModels } : {}),
-      ...(body.localModel !== undefined ? { localModel: body.localModel } : {}),
+      ...(body.defaultModel !== undefined ? { defaultModel: body.defaultModel } : {}),
+      ...(body.embeddings !== undefined
+        ? { embeddingsIntegrationId: body.embeddings?.integrationId ?? null, embeddingsModel: body.embeddings?.model ?? null }
+        : {}),
+      ...(body.builderChatMaxTokens !== undefined ? { builderChatMaxTokens: body.builderChatMaxTokens } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([
@@ -184,20 +188,23 @@ export class ControlsService {
   }
 
   /**
-   * M60: local models go on only with a server set up, and a local model is chosen only while they are on (in this
-   * request or before): a choice never points at a server that isn't there.
+   * M62: a model is chosen only from a server that is set up (Claude's, or one of the model servers), and embeddings
+   * only from a model server: a choice never points at nothing.
    */
-  private async localErrors(userId: string, body: SettingsRequest): Promise<{ path: string; message: string }[]> {
+  private async modelErrors(userId: string, body: SettingsRequest): Promise<{ path: string; message: string }[]> {
+    const rows = await this.integrations.of(userId);
     const chosen = [
-      ...(body.localModel ? [{ path: "localModel", model: body.localModel }] : []),
-      ...Object.entries(body.models ?? {}).flatMap(([task, choice]) => (choice && isOpenAiModel(choice.model) ? [{ path: `models.${task}`, model: choice.model }] : [])),
+      ...(body.defaultModel ? [{ path: "defaultModel", model: body.defaultModel }] : []),
+      ...Object.entries(body.models ?? {}).flatMap(([task, choice]) => (choice ? [{ path: `models.${task}`, model: choice.model }] : [])),
     ];
-    if (!body.localModels && chosen.length === 0) return [];
-    if (!this.env.OPENAI_BASE_URL) {
-      const message = "No OpenAI-compatible server is set up (OPENAI_BASE_URL)";
-      return [...(body.localModels ? [{ path: "localModels", message }] : []), ...chosen.map(({ path }) => ({ path, message }))];
+    const errors = chosen.flatMap(({ path, model }) => {
+      if (!isOpenAiModel(model)) return rows.some((i) => i.kind === "CLAUDE") ? [] : [{ path, message: "Claude isn't set up: add it under Model servers" }];
+      const { serverId } = parseServerModel(model);
+      return rows.some((i) => i.integrationId === serverId && i.kind === "OPENAI_COMPATIBLE") ? [] : [{ path, message: "That model's server isn't set up" }];
+    });
+    if (body.embeddings && !rows.some((i) => i.integrationId === body.embeddings?.integrationId && i.kind === "OPENAI_COMPATIBLE")) {
+      errors.push({ path: "embeddings", message: "Embeddings come from a model server: that one isn't set up" });
     }
-    const on = body.localModels ?? (await this.prisma.client.userSetting.findUnique({ where: { userId }, select: { localModels: true } }))?.localModels ?? false;
-    return on ? [] : chosen.map(({ path }) => ({ path, message: "Local models are off: switch them on first" }));
+    return errors;
   }
 }

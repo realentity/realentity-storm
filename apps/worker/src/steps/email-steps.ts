@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { type Embeddings, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { embeddingsSource, type Embeddings, type EmbeddingsSource, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { isNoReplyAddress, unanswerable, type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
 import { mailWho, NoEmailAccountError, TOPICS_ACCOUNT, type MailConnector } from "../mail/mail-connector";
@@ -139,7 +139,7 @@ export class DraftReplyStep extends LlmStep {
     learning?: StepLearning,
     private readonly mail?: MailConnector,
     private readonly prisma?: PrismaClient,
-    private readonly embeddings?: Embeddings | null,
+    private readonly embeddings?: Embeddings | EmbeddingsSource | null,
   ) {
     super(llm, router, learning);
   }
@@ -159,7 +159,7 @@ export class DraftReplyStep extends LlmStep {
       topic?: string;
     };
     const memory = await topicMemory(this.prisma, context.userId, message, topic, {
-      embeddings: this.embeddings,
+      embeddings: (await embeddingsSource(this.embeddings)?.current(context.userId)) ?? null,
       recordUsage: (usage) => context.recordUsage(usage),
     });
     const system = [
@@ -249,7 +249,7 @@ export interface EmailStepDependencies {
   router: ModelRouter;
   learning?: StepLearning;
   /** Drafts' passages closest to the email (M43-T4); without them, by its words. */
-  embeddings?: Embeddings | null;
+  embeddings?: Embeddings | EmbeddingsSource | null;
 }
 
 export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {

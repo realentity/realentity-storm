@@ -1,4 +1,4 @@
-import { KeyRing, open, seal } from "@realentity/storm-crypto";
+import { KeyRing, open, openIntegration, seal, sealIntegration } from "@realentity/storm-crypto";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { Test } from "@nestjs/testing";
@@ -87,6 +87,26 @@ describe("worker secrets", () => {
 
       const again = await new KeyRotation(db.client, ring(2, { 1: v1, 2: v2 })).run();
       expect(again.rewrapped).toBe(0);
+    });
+
+    // M62: the integrations' secrets (the Claude key, a model server's) under their own derived key
+    it("re-wraps the integrations' secrets too, and they open with the new key only", async () => {
+      const v1 = randomBytes(32);
+      const v2 = randomBytes(32);
+      const integrationId = randomUUID();
+      await db.client.integration.create({
+        data: { integrationId, userId, kind: "CLAUDE", name: "Claude", ...sealIntegration(ring(1, { 1: v1 }), integrationId, "sk-ant-made-up-key") },
+      });
+      try {
+        const result = await new KeyRotation(db.client, ring(2, { 1: v1, 2: v2 })).run();
+        expect(result).toMatchObject({ rewrapped: 1, fromVersions: [1], toVersion: 2 });
+        const row = await db.client.integration.findUniqueOrThrow({ where: { integrationId } });
+        expect(row.keyVersion).toBe(2);
+        const sealed = { ciphertext: row.ciphertext!, iv: row.iv!, authTag: row.authTag!, wrappedDek: row.wrappedDek!, keyVersion: row.keyVersion! };
+        expect(openIntegration(ring(2, { 2: v2 }), integrationId, sealed)).toBe("sk-ant-made-up-key");
+      } finally {
+        await db.client.integration.deleteMany({ where: { integrationId } });
+      }
     });
   });
 

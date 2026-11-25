@@ -301,7 +301,7 @@ describe("learning from the user's decisions (M6)", () => {
 
       const [request] = batches.submitted;
       expect(request?.customId).toBe(id);
-      expect(request?.request.choice).toEqual({ model: "claude-opus-5-5", effort: "high" });
+      expect(request?.request.choice).toEqual({ model: "claude-opus-5-5", effort: "high", owner: userId });
       const prompt = request.request.prompt;
       expect(prompt.match(/<decision kind="EDITED"/g)).toHaveLength(3);
       expect(prompt).toContain('<decision kind="REJECTED"');

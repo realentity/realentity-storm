@@ -105,7 +105,7 @@ export class TelegramBuilder {
     const settings = await this.prisma.client.userSetting.findUnique({ where: { userId }, select: { telegramBuilderChatId: true } });
     const id = settings?.telegramBuilderChatId;
     const chat = id ? await this.prisma.client.builderChat.findFirst({ where: { builderChatId: id, userId } }) : null;
-    if (chat && now.getTime() - chat.dateUpdated.getTime() < TELEGRAM_CHAT_IDLE_MS && chat.tokensUsed < this.env.BUILDER_CHAT_MAX_TOKENS) {
+    if (chat && now.getTime() - chat.dateUpdated.getTime() < TELEGRAM_CHAT_IDLE_MS && chat.tokensUsed < (await this.builder.tokenCap(userId))) {
       return chat.builderChatId;
     }
     const created = await this.builder.create(userId);

@@ -1,19 +1,23 @@
 import { EFFORTS, type EffortName } from "@realentity/storm-shared";
-import { isOpenAiModel } from "./openai";
 
 export type Effort = EffortName;
 
 export interface ModelChoice {
   model: string;
   effort: Effort;
+  /**
+   * M62: whose settings it was chosen from: the clients find the Claude key and the model servers there (Integration).
+   * Absent in tests and evals, whose clients have a fixed setup.
+   */
+  owner?: string;
 }
 
 /** Task groups and their defaults (docs/design.md §5): cheap and fast for labelling, stronger for writing. */
-const GROUPS: Record<string, { env: string; default: ModelChoice }> = {
-  classify: { env: "LLM_MODEL_CLASSIFY", default: { model: "claude-haiku-5-5", effort: "low" } },
-  writing: { env: "LLM_MODEL_WRITING", default: { model: "claude-sonnet-5-5", effort: "medium" } },
-  reflection: { env: "LLM_MODEL_REFLECTION", default: { model: "claude-opus-5-5", effort: "high" } },
-  builder: { env: "LLM_MODEL_BUILDER", default: { model: "claude-opus-5-5", effort: "high" } },
+const GROUPS: Record<string, ModelChoice> = {
+  classify: { model: "claude-haiku-5-5", effort: "low" },
+  writing: { model: "claude-sonnet-5-5", effort: "medium" },
+  reflection: { model: "claude-opus-5-5", effort: "high" },
+  builder: { model: "claude-opus-5-5", effort: "high" },
 };
 
 const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
@@ -54,58 +58,51 @@ const GROUP_OF_TASK: Record<string, keyof typeof GROUPS> = {
 export type ModelSettingLookup = (userId: string, taskKey: string) => Promise<{ model: string; effort: string | null } | null>;
 
 /**
- * M60: whether the user's local models are on (Settings, and OPENAI_BASE_URL set), and their model for every task
- * without its own choice.
+ * M62: the user's model settings beyond a task's own: the default model (Settings → AI), and which models can be used
+ * now (Claude set up and on; a model's server there and on).
  */
-export interface LocalModels {
-  on: boolean;
-  model: string | null;
+export interface ModelPrefs {
+  defaultModel: string | null;
+  usable(model: string): boolean;
 }
 
-export type LocalModelsLookup = (userId: string) => Promise<LocalModels>;
+export type ModelPrefsLookup = (userId: string) => Promise<ModelPrefs>;
 
-/** Where a task's model comes from: its own setting, the local model for all tasks, `.env`, or the defaults. */
-export type ModelSource = "settings" | "local" | "env" | "default";
+/** Where a task's model comes from: its own setting, the default model in Settings, or the built-in default. */
+export type ModelSource = "settings" | "default" | "built-in";
 
 /**
- * Which model and effort a task uses: the user's setting for that task (ModelSetting), else (M60, local models on) the
- * local model for all tasks, else the group's model from the environment (LLM_MODEL_CLASSIFY, LLM_MODEL_WRITING,
- * LLM_MODEL_REFLECTION, LLM_MODEL_BUILDER, else LLM_MODEL), else the group default.
- *
- * With `local` given and the user's local models off, every `openai:` model on the way is passed over: the task uses
- * Claude, and its local choice is kept for when they are on again. Without `local` (tests, evals), nothing is passed
- * over.
+ * Which model and effort a task uses (docs/design.md §5): the user's setting for that task (ModelSetting), else the
+ * default model (Settings → AI), else the task group's built-in default. A choice whose model can't be used now (its
+ * server is off or gone) is passed over, and kept for when it can again. Without `prefs` (tests, evals): a task's
+ * setting, else the built-in default.
  */
 export class ModelRouter {
   constructor(
     private readonly lookup: ModelSettingLookup,
-    private readonly env: Record<string, string | undefined> = {},
-    private readonly local?: LocalModelsLookup,
+    private readonly prefs?: ModelPrefsLookup,
   ) {}
 
   async choose(userId: string, taskKey: string): Promise<ModelChoice> {
-    const [setting, local] = await Promise.all([this.lookup(userId, taskKey), this.local?.(userId)]);
-    const fallback = this.fallback(taskKey, local);
-    if (!setting || !usable(setting.model, local)) return { model: fallback.model, effort: fallback.effort };
+    const [setting, prefs] = await Promise.all([this.lookup(userId, taskKey), this.prefs?.(userId)]);
+    const fallback = this.fallback(taskKey, prefs);
+    if (!setting || (prefs && !prefs.usable(setting.model))) return { model: fallback.model, effort: fallback.effort, owner: userId };
     return {
       model: setting.model,
       effort: setting.effort && (EFFORTS as readonly string[]).includes(setting.effort) ? (setting.effort as Effort) : fallback.effort,
+      owner: userId,
     };
   }
 
-  /** What a task uses without a setting of its own, and where that comes from (Settings shows it). */
-  fallback(taskKey: string, local?: LocalModels): ModelChoice & { source: Exclude<ModelSource, "settings"> } {
-    const group = GROUPS[GROUP_OF_TASK[taskKey] ?? "writing"];
-    if (local?.on && local.model) return { model: local.model, effort: group.default.effort, source: "local" };
-    // LLM_MODEL (M60): one model for every group without its own, e.g. a local one.
-    const fromEnv = [this.env[group.env], this.env.LLM_MODEL].find((model) => model && usable(model, local));
-    return fromEnv
-      ? { model: fromEnv, effort: group.default.effort, source: "env" }
-      : { model: group.default.model, effort: group.default.effort, source: "default" };
+  /** Whether a model can be used now for the user (its server set up and on); always without `prefs`. */
+  async usable(userId: string, model: string): Promise<boolean> {
+    return !this.prefs || (await this.prefs(userId)).usable(model);
   }
-}
 
-/** A local model only while local models are on; Claude's always. */
-export function usable(model: string, local: LocalModels | undefined): boolean {
-  return !local || local.on || !isOpenAiModel(model);
+  /** What a task uses without a setting of its own, and where that comes from (Settings shows it). */
+  fallback(taskKey: string, prefs?: ModelPrefs): ModelChoice & { source: Exclude<ModelSource, "settings"> } {
+    const group = GROUPS[GROUP_OF_TASK[taskKey] ?? "writing"];
+    if (prefs?.defaultModel && prefs.usable(prefs.defaultModel)) return { model: prefs.defaultModel, effort: group.effort, source: "default" };
+    return { model: group.model, effort: group.effort, source: "built-in" };
+  }
 }

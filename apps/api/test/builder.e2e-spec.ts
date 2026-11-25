@@ -414,7 +414,7 @@ describe("builder chat", () => {
   });
 });
 
-describe("builder chat without ANTHROPIC_API_KEY", () => {
+describe("builder chat without a model set up", () => {
   it("says the builder is unavailable instead of failing", async () => {
     const api = await createTestApp({ builderLlm: null });
     try {

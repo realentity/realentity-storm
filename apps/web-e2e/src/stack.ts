@@ -1,4 +1,6 @@
 import "reflect-metadata";
+import { KeyRing, sealIntegration } from "@realentity/storm-crypto";
+import { createPrismaConnection } from "@realentity/storm-db";
 import { defaultCatalog, StepCatalog } from "@realentity/storm-steps";
 import { DatabasePreparer, TEST_TIME_ZONE, TestEnvironment, TestInfrastructure } from "@realentity/storm-testing";
 import { type INestApplication, type INestApplicationContext, type Type } from "@nestjs/common";
@@ -51,6 +53,7 @@ export async function startStack(): Promise<Stack> {
     process.env.APP_TOTP_SECRET = authenticator.generateSecret();
     process.env[STACK_ENV.totpSecret] = process.env.APP_TOTP_SECRET;
     await new DatabasePreparer().prepare(databaseUrl);
+    await withClaude();
 
     const catalog = defaultCatalog().with(...TEST_STEPS);
     const { AppModule } = await dist<{ AppModule: Type }>("api/dist/app.module.js");
@@ -125,4 +128,18 @@ async function saveSession(api: INestApplication): Promise<void> {
   };
   await mkdir(dirname(STORAGE_STATE), { recursive: true });
   await writeFile(STORAGE_STATE, JSON.stringify(state, null, 2));
+}
+
+/** M62: Claude set up in Settings → AI for the scripted builder (a made-up key it never sends anywhere). */
+async function withClaude(): Promise<void> {
+  const db = createPrismaConnection();
+  try {
+    const user = await db.client.user.findFirstOrThrow({ orderBy: { dateCreated: "asc" } });
+    const integrationId = "00000000-0000-4000-8000-00000000c1a0";
+    await db.client.integration.create({
+      data: { integrationId, userId: user.userId, kind: "CLAUDE", name: "Claude", secretHint: "…-key", ...sealIntegration(KeyRing.fromEnv(process.env), integrationId, "sk-ant-test-not-a-real-key") },
+    });
+  } finally {
+    await db.close();
+  }
 }
