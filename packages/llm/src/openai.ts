@@ -36,7 +36,10 @@ export class OpenAiApi {
   private readonly send: typeof fetch;
 
   constructor(private readonly server: OpenAiServer) {
-    this.baseUrl = server.baseUrl.replace(/\/+$/, "");
+    // The trailing slashes off, without a regex (CodeQL: polynomial on many '/').
+    let end = server.baseUrl.length;
+    while (end > 0 && server.baseUrl[end - 1] === "/") end--;
+    this.baseUrl = server.baseUrl.slice(0, end);
     this.send = server.send ?? fetch;
   }
 
