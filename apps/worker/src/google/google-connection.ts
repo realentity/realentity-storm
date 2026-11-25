@@ -3,8 +3,11 @@ import { type PrismaClient } from "@realentity/storm-db";
 import { CALENDAR_SCOPE, DRIVE_SCOPE, GOOGLE_CALENDAR_API, GOOGLE_DRIVE_API, refreshGoogleToken } from "@realentity/storm-shared";
 
 export interface GoogleOptions {
+  /** Fixed (tests); else `client`. */
   clientId?: string;
   clientSecret?: string;
+  /** M63: the OAuth client of Settings → Google, looked up when an access token is needed. */
+  client?: () => Promise<{ clientId: string; clientSecret: string } | null>;
   /** Tests answer for Google (token endpoint, Calendar and Drive APIs). */
   fetch?: typeof fetch;
   /** The Calendar API's base address; tests point it at their server. */
@@ -129,8 +132,8 @@ export class GoogleConnection {
 
   /** The account asked for (the user's), else the default; a fresh access token for it, cached until shortly before it expires. */
   private async accessToken(who: GoogleWho): Promise<{ token: string; scopes: string[]; accountId: string; email: string }> {
-    const { clientId, clientSecret } = this.options;
-    if (!clientId || !clientSecret) throw new Error("Google isn't set up: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are empty (.env)");
+    const { clientId, clientSecret } = (await this.options.client?.()) ?? this.options;
+    if (!clientId || !clientSecret) throw new Error("Google isn't set up: add its OAuth client in Settings → Google");
     const row = who.account
       ? await this.prisma.googleAccount.findFirst({ where: { googleAccountId: who.account, userId: who.userId } })
       : await this.prisma.googleAccount.findFirst({

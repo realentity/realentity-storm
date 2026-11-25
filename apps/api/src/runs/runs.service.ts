@@ -1,4 +1,4 @@
-import { type Prisma, type Takeover } from "@realentity/storm-db";
+import { Integrations, type Prisma, type Takeover } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
   type CompiledDefinition,
@@ -8,13 +8,11 @@ import {
   type RetryView,
   type RunFilter,
   type RunSummaryView,
-  type ServerEnv,
   type StepUsageView,
   type TakeoverView,
 } from "@realentity/storm-shared";
 import { exampleTriggerData, StepCatalog } from "@realentity/storm-steps";
-import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ControlsService } from "../controls/controls.service";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
@@ -46,7 +44,7 @@ export class RunsService {
     private readonly controls: ControlsService,
     private readonly queue: JobQueue,
     private readonly events: EventsService,
-    @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly integrations: Integrations,
   ) {}
 
   /** A run of the pipeline's current version. A dry run proposes but never executes a side effect. */
@@ -235,7 +233,7 @@ export class RunsService {
       triggerData: run.triggerData ?? null,
       stopAfter: run.stopAfter,
       question: run.questions[0] ? questionView(run.questions[0]) : null,
-      takeover: takeover ? takeoverView(takeover, this.env.TAKEOVER_TIMEOUT_MINUTES) : null,
+      takeover: takeover ? takeoverView(takeover, (await this.integrations.runLimits(userId)).takeoverTimeoutMinutes) : null,
       artifacts: run.artifacts.map((a) => ({
         artifactId: a.artifactId,
         kind: a.kind,

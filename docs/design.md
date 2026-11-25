@@ -179,7 +179,7 @@ A list recipe ([packages/steps/src/recipe.ts](../packages/steps/src/recipe.ts)) 
 
 **Outcomes** (M16): an application's outcome is set by an email (`application.outcome`, see `examples/apps/job-search.yaml`) or by hand on the Jobs page; each outcome's date stays when the status moves on, so an interview that ended in a rejection still counts as an interview, and either way `application.status` is emitted (it cancels a pending follow-up).
 
-**Facts about you** (M15): what forms ask that only you can say (a salary expectation, a start date, relocation) and your answers, on the Profile page. A fact comes only from you: a form answer you filled in or changed at the gate (short fields, not free text, files or checkboxes), your answer to a question a run asked, or one you write on the Profile page; a page's text or the LLM alone never writes or changes one. `browser.mapForm` and `browser.agent` get your facts with your profile and use one when a field asks the same thing, even worded differently, word for word (the gate shows "from your facts", and which one); a fact the LLM names must be one of yours with your answer, or the field stays empty. A required field neither answers is asked: on Telegram (a reply to the message is the answer) and on the run page; the run waits (up to TAKEOVER_TIMEOUT_MINUTES, then the field stays empty for the gate), and the answer becomes a fact, so the next form doesn't ask again. `browser.agent` asks the same way (M18), with an `ask` tool: at most 3 questions a run, never one about a password, a code, a login or a card (those are yours, in the live view), and it types your answer with source `asked`; the recipe fallback's agent, which only reads, can't ask.
+**Facts about you** (M15): what forms ask that only you can say (a salary expectation, a start date, relocation) and your answers, on the Profile page. A fact comes only from you: a form answer you filled in or changed at the gate (short fields, not free text, files or checkboxes), your answer to a question a run asked, or one you write on the Profile page; a page's text or the LLM alone never writes or changes one. `browser.mapForm` and `browser.agent` get your facts with your profile and use one when a field asks the same thing, even worded differently, word for word (the gate shows "from your facts", and which one); a fact the LLM names must be one of yours with your answer, or the field stays empty. A required field neither answers is asked: on Telegram (a reply to the message is the answer) and on the run page; the run waits (up to the takeover timeout, Settings → Runs & browser, then the field stays empty for the gate), and the answer becomes a fact, so the next form doesn't ask again. `browser.agent` asks the same way (M18), with an `ask` tool: at most 3 questions a run, never one about a password, a code, a login or a card (those are yours, in the live view), and it types your answer with source `asked`; the recipe fallback's agent, which only reads, can't ask.
 
 ### 2.5 Editing via chat
 
@@ -229,13 +229,13 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 
 - **Only enabled pipelines** start on a trigger, never with the kill switch on, never on their own event, and a chain of triggered runs stops at depth 3. Dry runs trigger nothing.
 - `{{trigger.*}}` is type-checked by the compiler against the event, and available only in a pipeline with that trigger. As a side effect's **target**, only an email's own addresses (`trigger.message.*`) or a posting's URL (`trigger.job.url`) may be used: a webhook body is written by whoever calls it, and a finished run's outputs may be LLM text.
-- **Webhooks:** the pipeline page creates the address (`HOOKS_PUBLIC_URL/<id>`, e.g. `https://hooks.example.com/hooks/<id>`, 32 random bytes) and a secret, shown once and rotatable. `hmac-sha256` checks a GitHub-style `X-Hub-Signature-256` over the body as sent; `token` an `Authorization: Bearer` header. The api checks the address, the size (64 KB) and a token (against its SHA-256) and queues the call; the **worker** checks a signature, since only the worker decrypts (§7). The body is data, like an email's text.
+- **Webhooks:** the pipeline page creates the address (the hooks address of Settings → Telegram + `/<id>`, e.g. `https://hooks.example.com/hooks/<id>`, 32 random bytes) and a secret, shown once and rotatable. `hmac-sha256` checks a GitHub-style `X-Hub-Signature-256` over the body as sent; `token` an `Authorization: Bearer` header. The api checks the address, the size (64 KB) and a token (against its SHA-256) and queues the call; the **worker** checks a signature, since only the worker decrypts (§7). The body is data, like an email's text.
 
-**The Storm bot** (its own Telegram bot, not n8n's):
+**The Storm bot** (its own Telegram bot, not n8n's), set up in **Settings → Telegram** (M63): its token (sealed, §7), your user id as the chat, and the webhook secret Telegram sends with each update, pasted (a gateway's) or generated and shown once, kept as its SHA-256 only and compared as one; Storm can register the webhook (`setWebhook`) with it. Every sender looks the bot up at each message (a few seconds' cache), so a change needs no restart; switched off, nothing is sent and `/hooks/telegram` answers 404.
 
 - **Tells you** what a run waits for: each new proposal with **Approve / Reject / Open** (one message for a gate with more than 5), "needs you" with **Open the live view**, a broken recipe with **Open the recipe**. When you decide anywhere, the message says so and loses its buttons.
 - **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens Storm. **Settings → Telegram → Approve on Telegram** turns the buttons off.
-- **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`, and each enabled pipeline's own command (`telegram.command`), kept in the bot's menu. Only from your private chat (`TELEGRAM_CHAT_ID` is your user id); commands older than 5 minutes are dropped.
+- **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`, and each enabled pipeline's own command (`telegram.command`), kept in the bot's menu. Only from your private chat (the chat id in Settings → Telegram is your user id); commands older than 5 minutes are dropped.
 - **The builder (M21):** any other message goes to the pipeline builder, and its answer comes back with the proposal (what it does, when, its steps, the warnings) and Save, Dry run and Open in Storm. The chat goes on while you're on it (two hours); `/new` starts over, `/edit <pipeline>` talks about one pipeline. A saved pipeline is off until you press Turn on. The answer comes in the background ("typing…" meanwhile), since a turn can take longer than Telegram waits.
 
 **How it reaches Storm,** which stays off the Internet: Telegram and webhook callers → your public hooks address (a tunnel, a proxy, or a gateway of your own that checks paths and secrets first; e.g. `hooks.example.com`) → the **hooks-only site** on `127.0.0.1:7101`, a second Caddy site that serves only `POST /hooks/*` → the api's `/api/hooks/*`. The api checks Telegram's secret header and your user id. The public address reaches nothing else of Storm ([self-hosting.md](self-hosting.md) §5).
@@ -415,11 +415,11 @@ During local development the worker simply runs with `headless: false`, so the b
 
 - **Browsers:** one shared headless Chromium (a few contexts at once) and one headed slot, launched for the step and closed after. Every step gets a fresh context: the only login it has is the site's sealed storageState, loaded into memory and saved back after the step (credential `session.<host>`, kind `STORAGE_STATE`, bound to that host).
 - **`browser.open`** (the first browser step; M9–M11 add the recipe and agent steps on the same layer): opens a page, signs in when it shows a password field (username and password on one page, or one after the other as SSO providers do), waits for a selector, returns the page text. `headed: true` puts it in the live view.
-- **Blocking states:** a CAPTCHA (reCAPTCHA, hCaptcha, Turnstile frames and markers), a 2FA prompt, a sign-in that didn't go through, a selector that doesn't appear. The step then waits **with the page open**: a `Takeover` row (`OPEN`, or `TAKEN_OVER` when you pressed Take over, picked up at the step's next safe point), the run shows `WAITING_FOR_USER` (no other job can claim it meanwhile), the inbox lists it and Telegram says "Storm needs you". Continue goes on from the page as you left it; Abort stops the run; nobody within `TAKEOVER_TIMEOUT_MINUTES` fails the step; the kill switch stops it. After a restart the page is gone: the takeover expires and the step runs again. A headless step can't be taken over: it fails with the reason.
+- **Blocking states:** a CAPTCHA (reCAPTCHA, hCaptcha, Turnstile frames and markers), a 2FA prompt, a sign-in that didn't go through, a selector that doesn't appear. The step then waits **with the page open**: a `Takeover` row (`OPEN`, or `TAKEN_OVER` when you pressed Take over, picked up at the step's next safe point), the run shows `WAITING_FOR_USER` (no other job can claim it meanwhile), the inbox lists it and Telegram says "Storm needs you". Continue goes on from the page as you left it; Abort stops the run; nobody within the takeover timeout (Settings → Runs & browser) fails the step; the kill switch stops it. After a restart the page is gone: the takeover expires and the step runs again. A headless step can't be taken over: it fails with the reason.
 - **Live view security:** Caddy lets `/vnc` through only for a signed-in session (`forward_auth` to the api), and x11vnc (on localhost inside the container, reached through websockify) asks for its own password. The api hands out the **view-only** one (x11vnc ignores input on it) while the worker acts, and the full one only while a takeover is open. Checked in the real container: typing with the view-only password changes nothing.
 - **Nothing secret in what it keeps:** the page text and any snapshot for the LLM have every filled value masked (also URL-, form- and JSON-encoded); screenshots cover password fields and the fields it filled; the Playwright trace is rewritten with credential values, cookie values and stored tokens masked, and dropped if anything is still found. storageState is never written to a file.
 - **Downloads and uploads** (M11): `browser.download` takes the address itself, or what a click on that page downloads, through the quarantine below; `browser.upload` (side effect, behind its gate) puts one stored document, bound by id and SHA-256 (from `file.read`), into a file field on the allowed sites.
-- **Files:** screenshots, traces and accepted downloads are `Artifact`s under `ARTIFACTS_DIR` by run, served to you by the api (images inline, everything else as a download, with `Content-Security-Policy: sandbox`). Downloads go to a quarantine folder first: kept only within `DOWNLOAD_MAX_MB` and when their content (magic bytes) matches an allowed type for their extension (PDF, images, Office documents, text); anything else is deleted.
+- **Files:** screenshots, traces and accepted downloads are `Artifact`s under `ARTIFACTS_DIR` by run, served to you by the api (images inline, everything else as a download, with `Content-Security-Policy: sandbox`). Downloads go to a quarantine folder first: kept only within the download limit (Settings → Runs & browser) and when their content (magic bytes) matches an allowed type for their extension (PDF, images, Office documents, text); anything else is deleted.
 
 ---
 
@@ -441,7 +441,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 ### Rules
 
 - **Only the worker decrypts** your secrets, at the moment of `fill()`. The API only encrypts on create/update.
-- **The connections Storm itself uses (M62)** are kept apart: `Integration` rows (Claude, the model servers) are sealed with a key derived from the root for this purpose only (HKDF-SHA256, info `storm:integration`) and AAD `integration:` + the row id. The api opens them too (the builder chat needs the Claude key); a credential's ciphertext doesn't open with that key, nor the reverse. The api's ESLint rule allows `openIntegration` and still forbids `open`, `openField` and the re-wraps. Their keys are never returned (only a hint, `…a1b2`), and saving an address or a key needs the authenticator code again: it decides where your email text goes. `pnpm keys:rotate` re-wraps them too.
+- **The connections Storm itself uses (M62, M63)** are kept apart: `Integration` rows (Claude, the model servers, the Storm bot's token, Google's OAuth client secret) are sealed with a key derived from the root for this purpose only (HKDF-SHA256, info `storm:integration`) and AAD `integration:` + the row id. The api opens them too (the builder chat needs the Claude key); a credential's ciphertext doesn't open with that key, nor the reverse. The api's ESLint rule allows `openIntegration` and still forbids `open`, `openField` and the re-wraps. Their keys are never returned (only a hint, `…a1b2`), and saving an address, a key, the bot's token, chat or webhook secret, or Google's client needs the authenticator code again: they decide where your data goes and whose commands are taken. The Telegram webhook secret isn't sealed but hashed (`secretHash`): it is only ever compared. `pnpm keys:rotate` re-wraps them too.
 - **Credentials are write-only in the UI.** Values are never returned by the API. There's a "Replace" button, and optionally "Reveal" protected by TOTP.
 - **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<slot>}}`: a slot, filled by a credential chosen by id, never by name (capabilities.md §2.6), or a credential field's sealed handle (below). Password fields are filled last and masked in traces where possible.
 - **Masked for the LLM:** before an accessibility snapshot or screenshot is sent to the LLM (e.g. by `browser.agent`), the worker strips `input[type=password]` values and every field it filled from a `{{cred:*}}`, and blurs those fields in screenshots.
@@ -867,9 +867,9 @@ ENCRYPTION_KEY_VERSION=1
 
 # Mail: nothing here (M50-T7). Email accounts are added in Settings: their servers, and the app password stored
 # encrypted in the DB (an EmailAccount, sealed like a credential; TLS off only for a local test server).
-# Google Calendar and Drive (topics): an OAuth client; accounts are connected in Settings (docs/google-setup.md)
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+# Google, Telegram, the hooks address, the run limits: nothing here (M63). Google's OAuth client (Settings -> Google),
+# the Storm bot and the hooks address (Settings -> Telegram), the run files' retention, the takeover timeout and the
+# download limit (Settings -> Runs & browser); the secrets sealed with the integration key (section 7).
 
 # API
 API_HOST=127.0.0.1
@@ -886,23 +886,12 @@ SESSION_TTL_HOURS=168
 # Browser / live view (the worker image sets DISPLAY=:99 and ARTIFACTS_DIR=/data/artifacts)
 # Your documents (CV, cover letters) that application forms attach: the api writes, the worker only reads (except documents/app-files, which file.keep writes)
 DOCUMENTS_DIR=data/documents
-# Run files (screenshots, traces) older than this are deleted nightly; 0 keeps them. STORM_DATA_DIR can put both
-# folders on another disk (docker/compose.yml)
-ARTIFACTS_RETENTION_DAYS=90
+# STORM_DATA_DIR can put the run files and the documents on another disk (docker/compose.yml)
 # x11vnc's passwords: full control, and view-only (input ignored); VNC uses the first 8 characters. Empty: no live view
 VNC_PASSWORD=
 VNC_VIEW_PASSWORD=
-# A run waiting for you in the live view gives up after this long; downloads over this size are rejected
-TAKEOVER_TIMEOUT_MINUTES=30
-DOWNLOAD_MAX_MB=25
 # Headed runs are always one at a time (one display): the runs-headed queue is a pg-boss singleton queue
 
-# The Storm bot (§2.7): token, your Telegram user id, the secret Telegram sends with each update
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-TELEGRAM_WEBHOOK_SECRET=
-# Public address of the webhooks (shown on the pipeline page)
-HOOKS_PUBLIC_URL=https://hooks.example.com/hooks
 # The host's own jobs reporting to the Health page (M26)
 HEALTH_REPORT_TOKEN=
 ```

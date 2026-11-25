@@ -75,7 +75,7 @@ services:
       ARTIFACTS_DIR: /data/artifacts
       DOCUMENTS_DIR: /data/documents
     volumes:
-      # Files the pipelines produce (screenshots, traces, downloads), deleted after ARTIFACTS_RETENTION_DAYS; working
+      # Files the pipelines produce (screenshots, traces, downloads), deleted after the days set in Settings; working
       # files, not backed up (the runs themselves are in the database).
       - type: bind
         source: ${STORM_DATA_DIR:-../data}/artifacts

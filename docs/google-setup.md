@@ -8,11 +8,12 @@ Connects your Google account to Storm, once, in about 15 minutes, for two things
   ([topics.md](topics.md)). Storm never changes anything in Drive.
 
 One sign-in covers both, and you can allow only one of them. You can connect several Google accounts (a personal and a
-work one); one is the default, and a pipeline or a Drive folder can use another. You need access to Storm's `.env` on
-your server ([self-hosting.md](self-hosting.md)).
+work one); one is the default, and a pipeline or a Drive folder can use another. Nothing goes in `.env`: the client is
+saved in Storm's **Settings → Google**.
 
 What you create: a Google Cloud **project**, with the **Calendar API** and the **Drive API** turned on, a **consent
-screen** (what Google shows when you sign in), and an **OAuth client** (an id and a secret that Storm puts in `.env`).
+screen** (what Google shows when you sign in), and an **OAuth client** (an id and a secret you save in Storm's
+Settings).
 
 > Google renames buttons in its console now and then. If a label differs, look for the same idea nearby; the
 > addresses below take you to the right page.
@@ -90,35 +91,18 @@ run lists it among its problems until you reconnect, then reads what changed.
    `GOCSPX-`). **Copy both now, or press Download JSON**: Google may not show the secret again. (If you lose it: open
    the client, **Add secret**, and use the new one.)
 
-## 5. Put them in Storm's `.env`
+## 5. Save them in Storm
 
-On the server, in Storm's folder (the repository's root):
-
-```sh
-nano .env
-```
-
-Fill in these two lines (they are already in the file, empty, if it was made from `.env.example`; otherwise add them
-at the end):
-
-```sh
-GOOGLE_CLIENT_ID=123456789012-abcdefghijklmnop.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-Save (Ctrl+O, Enter, Ctrl+X), then restart Storm so it reads them:
-
-```sh
-./docker/storm up
-```
-
-Check that it started: `./docker/storm ps` shows `api` and `worker` running. If `api` keeps restarting, its log says
-which key is wrong (`./docker/storm logs api`; it names the key, never the value).
+1. Open Storm's **Settings → Google**. The **OAuth client** card says *Not set up*, and shows the redirect URI to
+   compare with step 4.5.
+2. **Set up**: paste the **Client id** and the **Client secret**, and the current **code from your authenticator app**
+   (asked again here: the client decides which Google project your calendars and files are read through).
+3. **Save**. The card shows the client id and the secret's last four characters; the secret itself is never shown
+   again. No restart: the next sign-in uses it.
 
 ## 6. Connect in Storm
 
-1. Open Storm's **Settings** (`APP_ORIGIN` + `/settings`). The **Google accounts** card now has **Connect Google**
-   (it said *Not set up* before step 5).
+1. On the same page, the **Google accounts** card now has **Connect Google** (it asked for the client before step 5).
 2. Press it. Google's sign-in opens: choose your account.
 3. Google says **"Google hasn't verified this app"**. That's your own app (step 3): press **Continue** (or
    **Advanced**, then **Go to Storm (unsafe)**).
@@ -149,8 +133,8 @@ not allowed**. Do step 2's second line and step 3's fourth scope, then **Reconne
   itself.
 - **To stop Storm using your calendar:** the account's remove button on Settings (Storm forgets the token), and remove **Storm** at
   <https://myaccount.google.com/permissions> (Google forgets the access).
-- **A new client secret:** Google Cloud → **Clients** → `storm` → **Add secret**, put it in `.env`,
-  `./docker/storm up`, then disable the old secret there.
+- **A new client secret:** Google Cloud → **Clients** → `storm` → **Add secret**, then **Settings → Google → OAuth
+  client → Change**: the new secret and the code. Then disable the old secret there.
 
 ## Later: In production
 
@@ -170,10 +154,10 @@ To stop the weekly reconnect, publish the app. Google asks for two public pages 
 
 | What you see | What to do |
 |---|---|
-| Settings: **Not set up** | `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` aren't in `.env`, or Storm wasn't restarted (step 5) |
+| Settings: **Not set up** | the OAuth client isn't saved yet (step 5) |
 | Google: **Error 400: redirect_uri_mismatch** | the redirect URI of the client (step 4.5) isn't exactly the one Settings shows: fix it in **Clients → storm**, wait a minute, connect again |
 | Google: **Error 403: access_denied**, "has not completed the Google verification process" | your account isn't a test user: add it (step 3, *You as the test user*) |
-| Google: **invalid_client** | the client id or secret in `.env` is wrong or has a space: copy them again, restart |
+| Google: **invalid_client** | the client id or secret saved in Settings is wrong: **Change**, paste them again |
 | Back on Settings: **neither the calendar nor Drive was allowed** | on Google's list (step 6.4) no box was ticked: connect again and tick them |
 | Settings: **Drive (read-only): not allowed**, or a topic's run says "Storm's Google access doesn't include Google Drive" | connected before Drive was added, or the Drive box wasn't ticked: **Reconnect** and tick it (and step 3's fourth scope, if it isn't there) |
 | A topic's run says **Google Drive: refused … is the Drive API on** | step 2's Drive API isn't enabled in `realentity-storm`: enable it |

@@ -2,6 +2,7 @@ import { Integrations, llmCostSince, llmSpendSince } from "@realentity/storm-db"
 import { isOpenAiModel, ModelRouter, OpenAiApi, parseServerModel, serverModelId } from "@realentity/storm-llm";
 import {
   BUILDER_CHAT_MAX_TOKENS,
+  RUN_LIMIT_DEFAULTS,
   CLAUDE_MODELS,
   EFFORTS,
   LLM_TASKS,
@@ -113,6 +114,10 @@ export class ControlsService {
       telegramApprovals: settings?.telegramApprovals ?? true,
       weeklyReview: settings?.weeklyReview ?? true,
       morningBrief: settings?.morningBrief ?? true,
+      hooksPublicUrl: settings?.hooksPublicUrl ?? null,
+      artifactsRetentionDays: settings?.artifactsRetentionDays ?? RUN_LIMIT_DEFAULTS.artifactsRetentionDays,
+      takeoverTimeoutMinutes: settings?.takeoverTimeoutMinutes ?? RUN_LIMIT_DEFAULTS.takeoverTimeoutMinutes,
+      downloadMaxMb: settings?.downloadMaxMb ?? RUN_LIMIT_DEFAULTS.downloadMaxMb,
     };
   }
 
@@ -121,7 +126,7 @@ export class ControlsService {
    * few seconds at most); a server that doesn't answer says why, and the page still works.
    */
   private async servers(userId: string): Promise<SettingsView["servers"]> {
-    const rows = await this.integrations.of(userId);
+    const rows = (await this.integrations.of(userId)).flatMap((row) => (row.kind === "CLAUDE" || row.kind === "OPENAI_COMPATIBLE" ? [{ ...row, kind: row.kind }] : []));
     return Promise.all(
       rows.map(async (row) => {
         const base = { integrationId: row.integrationId, kind: row.kind, name: row.name, enabled: row.enabled };
@@ -170,6 +175,10 @@ export class ControlsService {
         ? { embeddingsIntegrationId: body.embeddings?.integrationId ?? null, embeddingsModel: body.embeddings?.model ?? null }
         : {}),
       ...(body.builderChatMaxTokens !== undefined ? { builderChatMaxTokens: body.builderChatMaxTokens } : {}),
+      ...(body.hooksPublicUrl !== undefined ? { hooksPublicUrl: body.hooksPublicUrl } : {}),
+      ...(body.artifactsRetentionDays !== undefined ? { artifactsRetentionDays: body.artifactsRetentionDays } : {}),
+      ...(body.takeoverTimeoutMinutes !== undefined ? { takeoverTimeoutMinutes: body.takeoverTimeoutMinutes } : {}),
+      ...(body.downloadMaxMb !== undefined ? { downloadMaxMb: body.downloadMaxMb } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([

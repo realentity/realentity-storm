@@ -159,6 +159,19 @@ describe("notify.telegram", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ chat_id: "42", text: "Two new jobs" });
   });
 
+  // M63: the bot as saved in Settings → Telegram, looked up at each message: a change applies to the next one.
+  it("looks the bot up at each message", async () => {
+    const send = jest.fn(ok);
+    let saved = { botToken: "123:first", chatId: "42" };
+    const step = new TelegramStep(() => Promise.resolve(saved), send);
+    await step.execute(input("notify.telegram", { text: "One" }), context());
+    saved = { botToken: "456:second", chatId: "43" };
+    await step.execute(input("notify.telegram", { text: "Two" }), context());
+    const urls = send.mock.calls.map((call) => (call as unknown as [string])[0]);
+    expect(urls).toEqual(["https://api.telegram.org/bot123:first/sendMessage", "https://api.telegram.org/bot456:second/sendMessage"]);
+    expect(JSON.parse((send.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ chat_id: "43" });
+  });
+
   it("marks dry-run messages", async () => {
     const send = jest.fn(ok);
     await new TelegramStep({ botToken: "123:t", chatId: "42" }, send).execute(input("notify.telegram", { text: "Hi" }), context(true));
@@ -167,7 +180,7 @@ describe("notify.telegram", () => {
   });
 
   it("fails clearly without configuration or on errors, never showing the token", async () => {
-    await expect(new TelegramStep({}).execute({ text: "x" }, context())).rejects.toThrow("Telegram is not configured");
+    await expect(new TelegramStep({}).execute({ text: "x" }, context())).rejects.toThrow("The Storm bot isn't set up (Settings → Telegram)");
 
     const refused = () =>
       Promise.resolve(new Response(JSON.stringify({ ok: false, description: "Bad Request: chat not found" }), { status: 400 }));

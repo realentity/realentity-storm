@@ -27,7 +27,7 @@ export type QuarantineResult =
 
 /**
  * Downloads land in quarantine first (docs/design.md §6, M8-T9): a run's own folder that is never served. A download is
- * accepted only when its size is within DOWNLOAD_MAX_MB and its content is one of the allowed types matching its
+ * accepted only when its size is within the download limit (Settings → Runs & browser) and its content is one of the allowed types matching its
  * extension; then it moves to the run's artifacts. Anything else is deleted.
  */
 export class Quarantine {

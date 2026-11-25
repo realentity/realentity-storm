@@ -5,7 +5,7 @@ import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { type UploadedFile } from "../documents/documents.service";
 import { AppFilesService } from "./app-files.service";
 
-/** Above DOWNLOAD_MAX_MB's maximum; the service checks the configured limit. */
+/** Above the download limit's maximum (Settings → Runs & browser); the service checks the one set. */
 const MAX_UPLOAD = 500 * 1_048_576;
 
 /** M46: an entity's files and images: uploaded on its form, then downloaded or shown. */

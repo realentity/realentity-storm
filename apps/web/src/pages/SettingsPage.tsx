@@ -1,6 +1,7 @@
 import {
   EFFORTS,
   LLM_TASKS,
+  RUN_LIMIT_DEFAULTS,
   type LlmTask,
   type SettingsRequest,
   type SettingsView,
@@ -15,6 +16,7 @@ import { EmailAccountsCard } from "../components/EmailAccountsCard";
 import { ModelServersCard } from "../components/ModelServersCard";
 import { GoogleAccountsCard } from "../components/GoogleAccountsCard";
 import { TelegramCommandsCard } from "../components/TelegramCommandsCard";
+import { TelegramConnectionCard } from "../components/TelegramConnectionCard";
 import { ErrorAlert, Loading, PageHeader } from "../components/ui";
 import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
@@ -36,8 +38,9 @@ const SECTIONS = [
 type Section = (typeof SECTIONS)[number]["key"];
 
 /**
- * Settings, in pages (M61): AI (model per task, the budget, spending; docs/design.md §5), Email, Google, Telegram
- * (approvals, commands, the brief and the review), Runs & browser (global rate limits, §2.2).
+ * Settings, in pages (M61): AI (model servers, model per task, the budget, spending; docs/design.md §5), Email, Google
+ * (the OAuth client, the accounts), Telegram (the Storm bot, the hooks address, approvals, commands, the brief and the
+ * review), Runs & browser (the run limits, global rate limits, §2.2).
  */
 export function SettingsPage() {
   const { section } = useParams();
@@ -76,18 +79,23 @@ function WithSettings({ section }: { section: Exclude<Section, "email" | "google
   const settings = useLoad(() => api.settings.get(), []);
   const spending = useLoad(() => (section === "ai" ? api.settings.spending() : Promise.resolve(undefined)), [section, settings.data?.monthlyBudgetUsd]);
   const catalog = useCatalog();
+  // M63: the commands card asks again once the bot changed.
+  const [botChanges, setBotChanges] = useState(0);
   if (!settings.data) return settings.error ? <ErrorAlert error={settings.error} /> : <Loading />;
   if (section === "telegram")
     return (
       <div className="d-flex flex-column gap-3" style={{ maxWidth: 820 }}>
+        <TelegramConnectionCard hooksPublicUrl={settings.data.hooksPublicUrl} onChanged={() => (settings.reload(), setBotChanges((n) => n + 1))} />
+        <HooksAddress settings={settings.data} onSaved={settings.reload} />
         <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
-        <TelegramCommandsCard />
+        <TelegramCommandsCard key={botChanges} />
         <WeeklyReview settings={settings.data} onSaved={settings.reload} />
       </div>
     );
   if (section === "runs")
     return (
-      <div style={{ maxWidth: 820 }}>
+      <div className="d-flex flex-column gap-3" style={{ maxWidth: 820 }}>
+        <RunLimits settings={settings.data} onSaved={settings.reload} />
         <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
       </div>
     );
@@ -104,6 +112,96 @@ function WithSettings({ section }: { section: Exclude<Section, "email" | "google
         <BuilderLimit settings={settings.data} onSaved={settings.reload} />
       </div>
     </div>
+  );
+}
+
+/** M63: the webhooks' public address, shown on the pipeline pages (+ /<webhook id>) and offered for the bot's webhook. */
+function HooksAddress({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  const [value, setValue] = useState(settings.hooksPublicUrl ?? "");
+  useEffect(() => setValue(settings.hooksPublicUrl ?? ""), [settings.hooksPublicUrl]);
+  const url = value.trim();
+  return (
+    <form
+      className="card"
+      data-testid="hooks-address"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.save({ hooksPublicUrl: url || null }, url ? "The hooks address is saved" : "The hooks address is cleared");
+      }}
+    >
+      <div className="card-header">
+        <h3 className="card-title">Hooks address</h3>
+      </div>
+      <div className="card-body">
+        <ErrorAlert error={action.error} />
+        <div className="input-group">
+          <input className="form-control" value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://hooks.example.com/hooks" aria-label="Hooks address" />
+          <button type="submit" className="btn btn-primary" disabled={action.busy || (url !== "" && !url.startsWith("https://"))}>
+            Save
+          </button>
+        </div>
+        <div className="form-hint">
+          The public address of Storm's /hooks (https), as callers reach it: a pipeline's webhook is it + /&lt;id&gt;, the bot's
+          is it + /telegram (docs/self-hosting.md). Empty: the pipeline pages show only the path.
+        </div>
+      </div>
+    </form>
+  );
+}
+
+/** M63: how long run files are kept, how long a run waits in the live view, the largest download (Settings → Runs & browser). */
+function RunLimits({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  const initial = () => ({
+    artifactsRetentionDays: String(settings.artifactsRetentionDays),
+    takeoverTimeoutMinutes: String(settings.takeoverTimeoutMinutes),
+    downloadMaxMb: String(settings.downloadMaxMb),
+  });
+  const [values, setValues] = useState(initial);
+  useEffect(() => setValues(initial()), [settings.artifactsRetentionDays, settings.takeoverTimeoutMinutes, settings.downloadMaxMb]); // eslint-disable-line react-hooks/exhaustive-deps
+  const n = (key: keyof typeof values) => Number(values[key]);
+  const valid =
+    Number.isInteger(n("artifactsRetentionDays")) && n("artifactsRetentionDays") >= 0 && n("artifactsRetentionDays") <= 3650 &&
+    Number.isInteger(n("takeoverTimeoutMinutes")) && n("takeoverTimeoutMinutes") >= 1 && n("takeoverTimeoutMinutes") <= 120 &&
+    Number.isInteger(n("downloadMaxMb")) && n("downloadMaxMb") >= 1 && n("downloadMaxMb") <= 500;
+  const field = (key: keyof typeof values, label: string, unit: string, hint: string, min: number, max: number) => (
+    <div className="mb-3">
+      <label className="form-label">{label}</label>
+      <div className="input-group" style={{ maxWidth: 260 }}>
+        <input type="number" min={min} max={max} className="form-control" value={values[key]} onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))} aria-label={label} />
+        <span className="input-group-text">{unit}</span>
+      </div>
+      <div className="form-hint">
+        {hint} Default {RUN_LIMIT_DEFAULTS[key]} {unit}.
+      </div>
+    </div>
+  );
+  return (
+    <form
+      className="card"
+      data-testid="run-limits"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void action.save(
+          { artifactsRetentionDays: n("artifactsRetentionDays"), takeoverTimeoutMinutes: n("takeoverTimeoutMinutes"), downloadMaxMb: n("downloadMaxMb") },
+          "The run limits are saved",
+        );
+      }}
+    >
+      <div className="card-header">
+        <h3 className="card-title">Run limits</h3>
+      </div>
+      <div className="card-body">
+        <ErrorAlert error={action.error} />
+        {field("artifactsRetentionDays", "Keep run files", "days", "Screenshots, traces and downloads older than this are deleted nightly; the runs stay. 0 keeps them.", 0, 3650)}
+        {field("takeoverTimeoutMinutes", "Wait in the live view", "minutes", "A run waiting for you to take over gives up after this long (its step fails).", 1, 120)}
+        {field("downloadMaxMb", "Largest download", "MB", "Downloads, uploads and kept files larger than this are refused.", 1, 500)}
+        <button type="submit" className="btn btn-primary" disabled={action.busy || !valid}>
+          Save
+        </button>
+      </div>
+    </form>
   );
 }
 

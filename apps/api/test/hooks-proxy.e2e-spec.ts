@@ -3,7 +3,7 @@ import { request as httpRequest, type Server } from "node:http";
 import { type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { GenericContainer, TestContainers, Wait, type StartedTestContainer } from "testcontainers";
-import { createTestApp, type TestApp } from "./support/test-app";
+import { createTestApp, withTelegram, type TestApp } from "./support/test-app";
 
 /** The image docker/Dockerfile builds the web stage from. */
 const CADDY_IMAGE = "caddy:2.10-alpine";
@@ -18,10 +18,8 @@ describe("the hooks-only site", () => {
   let host: string;
 
   beforeAll(async () => {
-    process.env.TELEGRAM_WEBHOOK_SECRET = SECRET;
-    process.env.TELEGRAM_BOT_TOKEN = `123456:${"b".repeat(35)}`;
-    process.env.TELEGRAM_CHAT_ID = "4242";
     api = await createTestApp();
+    await withTelegram(api, { botToken: `123456:${"b".repeat(35)}`, chatId: "4242", webhookSecret: SECRET });
     await api.app.listen(0, "0.0.0.0");
     const apiPort = ((api.app.getHttpServer() as Server).address() as AddressInfo).port;
     await TestContainers.exposeHostPorts(apiPort);
@@ -38,7 +36,7 @@ describe("the hooks-only site", () => {
   });
 
   afterAll(async () => {
-    for (const key of ["TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]) delete process.env[key];
+    if (api) await withTelegram(api, null);
     await caddy?.stop();
     await api?.close();
   });

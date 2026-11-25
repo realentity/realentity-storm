@@ -1,4 +1,4 @@
-import { type Document } from "@realentity/storm-db";
+import { Integrations, type Document } from "@realentity/storm-db";
 import { DOCUMENT_NAME_PATTERN, type DocumentView, type ServerEnv } from "@realentity/storm-shared";
 import { BadRequestException, Inject, Injectable, NotFoundException, PayloadTooLargeException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
@@ -35,6 +35,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly integrations: Integrations,
   ) {}
 
   async list(userId: string): Promise<DocumentView[]> {
@@ -45,7 +46,8 @@ export class DocumentsService {
   async upload(userId: string, name: string, file: UploadedFile | undefined): Promise<DocumentView> {
     if (!DOCUMENT_NAME_PATTERN.test(name)) throw new BadRequestException('A document name is lowercase letters, digits, ".", "_" or "-", e.g. "cv-main"');
     if (!file || file.size === 0) throw new BadRequestException("No file, or an empty one");
-    if (file.size > this.env.DOWNLOAD_MAX_MB * 1_048_576) throw new PayloadTooLargeException(`Larger than ${this.env.DOWNLOAD_MAX_MB} MB`);
+    const { downloadMaxMb } = await this.integrations.runLimits(userId);
+    if (file.size > downloadMaxMb * 1_048_576) throw new PayloadTooLargeException(`Larger than ${downloadMaxMb} MB`);
     const filename = safeName(file.originalname);
     const extension = extname(filename).toLowerCase();
     const type = TYPES.find((t) => t.extensions.includes(extension));

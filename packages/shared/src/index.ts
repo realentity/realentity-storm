@@ -21,6 +21,7 @@ export * from "./events";
 export * from "./examples";
 export * from "./google";
 export * from "./integrations-api";
+export * from "./connections-api";
 export * from "./health-api";
 export * from "./jobs-api";
 export * from "./learning-api";

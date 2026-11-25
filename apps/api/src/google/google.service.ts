@@ -1,4 +1,5 @@
 import { KeyRing, seal } from "@realentity/storm-crypto";
+import { Integrations } from "@realentity/storm-db";
 import {
   CALENDAR_SCOPE,
   DRIVE_SCOPE,
@@ -44,6 +45,7 @@ export class GoogleService {
     private readonly keys: KeyRing,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
     @Inject(GOOGLE_FETCH) private readonly send: typeof fetch,
+    private readonly integrations: Integrations,
   ) {}
 
   async status(userId: string, origin: string): Promise<GoogleStatusView> {
@@ -72,7 +74,7 @@ export class GoogleService {
         ),
     }));
     return {
-      configured: Boolean(this.env.GOOGLE_CLIENT_ID && this.env.GOOGLE_CLIENT_SECRET),
+      configured: (await this.integrations.google(userId)) !== null,
       redirectUri: this.redirectUri(origin),
       accounts,
     };
@@ -83,7 +85,7 @@ export class GoogleService {
    * in as that one (reconnecting it); without, choosing an account (another one is added).
    */
   async connect(userId: string, origin: string, returnTo = "/settings/google", account?: string): Promise<{ url: string }> {
-    const client = this.client(origin);
+    const client = await this.client(userId, origin);
     if (!returnTo.startsWith("/") || returnTo.startsWith("//")) throw new BadRequestException("returnTo must be a path of Storm");
     const state = randomBytes(24).toString("base64url");
     const verifier = randomBytes(48).toString("base64url");
@@ -111,7 +113,7 @@ export class GoogleService {
       return back(pending.returnTo, query.error === "access_denied" ? "you didn't allow access" : `Google said ${query.error}`);
     if (!query.code) return back(pending.returnTo, "Google sent no code");
 
-    const result = await exchangeGoogleCode(this.send, this.client(origin), query.code, pending.verifier);
+    const result = await exchangeGoogleCode(this.send, await this.client(userId, origin), query.code, pending.verifier);
     if (!result.ok) return back(pending.returnTo, result.error);
     // Either is enough: the other one's steps say it wasn't allowed.
     if (!result.scopes.includes(CALENDAR_SCOPE) && !result.scopes.includes(DRIVE_SCOPE)) {
@@ -179,11 +181,11 @@ export class GoogleService {
     return `${this.env.APP_ORIGIN ?? origin}/api/google/callback`;
   }
 
-  private client(origin: string): GoogleClient {
-    const { GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: clientSecret } = this.env;
-    if (!clientId || !clientSecret)
-      throw new BadRequestException("Google isn't set up: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env");
-    return { clientId, clientSecret, redirectUri: this.redirectUri(origin) };
+  /** M63: the OAuth client of Settings → Google. */
+  private async client(userId: string, origin: string): Promise<GoogleClient> {
+    const client = await this.integrations.google(userId);
+    if (!client) throw new BadRequestException("Google isn't set up: add its OAuth client in Settings → Google");
+    return { ...client, redirectUri: this.redirectUri(origin) };
   }
 
   private forgetOld(): void {

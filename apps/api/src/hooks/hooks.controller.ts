@@ -1,3 +1,4 @@
+import { Integrations } from "@realentity/storm-db";
 import { HealthReportSchema, type ServerEnv, type WebhookView } from "@realentity/storm-shared";
 import {
   Body,
@@ -40,6 +41,7 @@ export class HooksController {
     private readonly bot: TelegramBot,
     private readonly webhooks: WebhooksService,
     private readonly health: HealthChecks,
+    private readonly integrations: Integrations,
   ) {}
 
   /**
@@ -58,12 +60,15 @@ export class HooksController {
     await this.health.report(new ZodBodyPipe(HealthReportSchema).transform(body));
   }
 
-  /** The Storm bot's updates. A wrong secret gets the same 404 as an unknown path. */
+  /**
+   * The Storm bot's updates. A wrong secret gets the same 404 as an unknown path. M63: the secret saved in Settings →
+   * Telegram is kept as its SHA-256 only, and compared as one.
+   */
   @Post("telegram")
   @HttpCode(200)
   async telegram(@Headers("x-telegram-bot-api-secret-token") secret: string | undefined, @Req() request: Request): Promise<{ ok: true }> {
-    const expected = this.env.TELEGRAM_WEBHOOK_SECRET;
-    if (!expected || !secret || !timingSafeEqual(digest(secret), digest(expected))) throw new NotFoundException();
+    const expected = await this.integrations.telegramWebhookHash();
+    if (!expected || !secret || !timingSafeEqual(digest(secret), Buffer.from(expected, "hex"))) throw new NotFoundException();
     await this.bot.handle(request.body);
     return { ok: true };
   }

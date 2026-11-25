@@ -4,12 +4,26 @@ import { type PrismaClient } from "./generated/prisma/client";
 /** An Integration as the clients need it: its secret opened. Never leaves the process. */
 export interface OpenIntegration {
   integrationId: string;
-  kind: "CLAUDE" | "OPENAI_COMPATIBLE";
+  kind: "CLAUDE" | "OPENAI_COMPATIBLE" | "TELEGRAM" | "GOOGLE_OAUTH";
   name: string;
   enabled: boolean;
   baseUrl: string | null;
+  /** Nothing secret: { chatId, webhookUrl } for TELEGRAM, { clientId } for GOOGLE_OAUTH. */
+  config: Record<string, unknown>;
   secret: string | null;
+  /** M63: the Telegram webhook secret's SHA-256 (hex), compared and never opened. */
+  secretHash: string | null;
 }
+
+/** M63: the run limits in effect (Settings → Runs & browser), their defaults while none is set. */
+export interface RunLimits {
+  artifactsRetentionDays: number;
+  takeoverTimeoutMinutes: number;
+  downloadMaxMb: number;
+}
+
+/** The same as @realentity/storm-shared's RUN_LIMIT_DEFAULTS (db doesn't depend on shared). */
+export const RUN_LIMIT_DEFAULTS: RunLimits = { artifactsRetentionDays: 90, takeoverTimeoutMinutes: 30, downloadMaxMb: 25 };
 
 const OPENAI_PREFIX = "openai:";
 const SERVER_ID = /^openai:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):/i;
@@ -52,6 +66,8 @@ export class Integrations {
       name: row.name,
       enabled: row.enabled,
       baseUrl: (row.config as { baseUrl?: string } | null)?.baseUrl ?? null,
+      config: (row.config ?? {}) as Record<string, unknown>,
+      secretHash: row.secretHash,
       secret:
         row.ciphertext && row.iv && row.authTag && row.wrappedDek && row.keyVersion !== null
           ? openIntegration(this.keys, row.integrationId, {
@@ -109,6 +125,57 @@ export class Integrations {
     if (!setting?.embeddingsIntegrationId || !setting.embeddingsModel) return null;
     const server = await this.server(setting.embeddingsIntegrationId, userId);
     return server ? { ...server, model: setting.embeddingsModel } : null;
+  }
+
+  // M63: the Storm bot, Google's OAuth client, the run limits
+
+  /** The Storm bot while it is set up and on; {} otherwise (nothing is sent). Matches shared's TelegramConfig. */
+  async telegram(owner?: string): Promise<{ botToken?: string; chatId?: string }> {
+    const userId = await this.ownerOf(owner);
+    if (!userId) return {};
+    const bot = (await this.of(userId)).find((i) => i.kind === "TELEGRAM");
+    const chatId = typeof bot?.config.chatId === "string" ? bot.config.chatId : undefined;
+    return bot?.enabled && bot.secret && chatId ? { botToken: bot.secret, chatId } : {};
+  }
+
+  /** The webhook secret's hash, while the bot is on: /hooks/telegram takes only updates that carry it. */
+  async telegramWebhookHash(owner?: string): Promise<string | null> {
+    const userId = await this.ownerOf(owner);
+    if (!userId) return null;
+    const bot = (await this.of(userId)).find((i) => i.kind === "TELEGRAM");
+    return bot?.enabled ? bot.secretHash : null;
+  }
+
+  /** Google's OAuth client, when both halves are saved. */
+  async google(owner?: string): Promise<{ clientId: string; clientSecret: string } | null> {
+    const userId = await this.ownerOf(owner);
+    if (!userId) return null;
+    const client = (await this.of(userId)).find((i) => i.kind === "GOOGLE_OAUTH");
+    const clientId = typeof client?.config.clientId === "string" ? client.config.clientId : null;
+    return client?.enabled && client.secret && clientId ? { clientId, clientSecret: client.secret } : null;
+  }
+
+  /** The run limits in effect: read each time (a cheap row), so a change applies to the next step. */
+  async runLimits(owner?: string): Promise<RunLimits> {
+    const userId = await this.ownerOf(owner);
+    const setting = userId
+      ? await this.prisma.userSetting.findUnique({
+          where: { userId },
+          select: { artifactsRetentionDays: true, takeoverTimeoutMinutes: true, downloadMaxMb: true },
+        })
+      : null;
+    return {
+      artifactsRetentionDays: setting?.artifactsRetentionDays ?? RUN_LIMIT_DEFAULTS.artifactsRetentionDays,
+      takeoverTimeoutMinutes: setting?.takeoverTimeoutMinutes ?? RUN_LIMIT_DEFAULTS.takeoverTimeoutMinutes,
+      downloadMaxMb: setting?.downloadMaxMb ?? RUN_LIMIT_DEFAULTS.downloadMaxMb,
+    };
+  }
+
+  /** The webhooks' public address (Settings → Telegram); null: not set. */
+  async hooksPublicUrl(owner?: string): Promise<string | null> {
+    const userId = await this.ownerOf(owner);
+    if (!userId) return null;
+    return (await this.prisma.userSetting.findUnique({ where: { userId }, select: { hooksPublicUrl: true } }))?.hooksPublicUrl ?? null;
   }
 }
 

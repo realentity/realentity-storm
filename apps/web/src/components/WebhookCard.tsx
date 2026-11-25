@@ -55,7 +55,7 @@ export function WebhookCard({ pipelineId, auth }: { pipelineId: string; auth: "h
                 </code>
                 <Copy text={address!} />
               </div>
-              {!webhook.url && <div className="small text-secondary">Set HOOKS_PUBLIC_URL for the full public address.</div>}
+              {!webhook.url && <div className="small text-secondary">Set the hooks address in Settings → Telegram for the full public address.</div>}
             </div>
             <div className="small text-secondary">
               {auth === "token" ? "With Authorization: Bearer <secret>." : "Signed: X-Hub-Signature-256 (as GitHub sends it), with the secret."}{" "}

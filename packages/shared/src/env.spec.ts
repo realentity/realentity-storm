@@ -28,9 +28,29 @@ describe("parseServerEnv", () => {
     expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
     expect(env).not.toHaveProperty("OPENAI_BASE_URL");
     const warning = removedEnvWarning(old);
-    expect(warning).toBe("No longer read from .env (set them up in Settings → AI, then remove them): ANTHROPIC_API_KEY, OPENAI_BASE_URL, LLM_MODEL_WRITING");
+    expect(warning).toBe("No longer read from .env (set them up in Settings, then remove them): ANTHROPIC_API_KEY, OPENAI_BASE_URL, LLM_MODEL_WRITING");
     expect(warning).not.toContain("sk-ant");
     expect(removedEnvWarning(valid())).toBeNull();
+  });
+
+  // M63: the Storm bot, the hooks address, Google's client and the run limits are settings too
+  it("doesn't read the Telegram, Google, hooks and run limit keys, even invalid, and names them", () => {
+    const old = {
+      TELEGRAM_BOT_TOKEN: "not a token",
+      TELEGRAM_CHAT_ID: "4242",
+      TELEGRAM_WEBHOOK_SECRET: "short",
+      HOOKS_PUBLIC_URL: "http://not-https.example",
+      GOOGLE_CLIENT_ID: "123-abc.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "GOCSPX-made-up",
+      ARTIFACTS_RETENTION_DAYS: "lots",
+      TAKEOVER_TIMEOUT_MINUTES: "30",
+      DOWNLOAD_MAX_MB: "9999",
+    };
+    const env = parseServerEnv({ ...valid(), ...old });
+    for (const key of Object.keys(old)) expect(env).not.toHaveProperty(key);
+    const warning = removedEnvWarning(old) ?? "";
+    for (const key of Object.keys(old)) expect(warning).toContain(key);
+    expect(warning).not.toContain("GOCSPX");
   });
 
   it("accepts a hex ENCRYPTION_KEY", () => {

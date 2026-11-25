@@ -8,6 +8,7 @@ import {
   proposalMessage,
   sendTelegramMessage,
   sendTelegramTyping,
+  telegramConfig,
   type ServerEnv,
   type TargetView,
   type TelegramMessage,
@@ -83,13 +84,14 @@ const HELP = [
 const BUILDER_HELP = "Anything else goes to the pipeline builder: say what a pipeline should do.";
 
 /**
- * The Storm bot, inbound (M12-T3/T4): commands and buttons from the user's private chat only (TELEGRAM_CHAT_ID is
- * their user id); anything else is ignored without an answer. The single user of this instance is APP_ADMIN_EMAIL.
+ * The Storm bot, inbound (M12-T3/T4): commands and buttons from the user's private chat only (its chat id in
+ * Settings → Telegram is their user id); anything else is ignored without an answer. The single user of this instance is APP_ADMIN_EMAIL.
  */
 @Injectable()
 export class TelegramBot {
   private readonly logger = new Logger(TelegramBot.name);
-  private readonly ownerId: number | null;
+  /** The chat id saved in Settings → Telegram, as of the update being handled (M63). */
+  private ownerId: number | null = null;
   /** Builder turns answering in the background. */
   private readonly working = new Set<Promise<void>>();
 
@@ -103,14 +105,15 @@ export class TelegramBot {
     private readonly facts: FactsService,
     private readonly builder: TelegramBuilder,
     private readonly commands: TelegramCommands,
-  ) {
-    this.ownerId = env.TELEGRAM_CHAT_ID ? Number(env.TELEGRAM_CHAT_ID) : null;
-  }
+  ) {}
 
   /** Whatever Telegram sent. Never throws: Telegram would send it again. */
   async handle(raw: unknown, now = new Date()): Promise<void> {
     const parsed = UpdateSchema.safeParse(raw);
-    if (!parsed.success || this.ownerId === null || !this.notices.configured) return;
+    if (!parsed.success) return;
+    const { botToken, chatId } = await telegramConfig(this.notices.config).catch(() => ({ botToken: undefined, chatId: undefined }));
+    this.ownerId = botToken && chatId ? Number(chatId) : null;
+    if (this.ownerId === null) return;
     const update = parsed.data;
     try {
       if (update.callback_query) await this.button(update.callback_query);

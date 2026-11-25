@@ -206,7 +206,7 @@ types:
   form with those fields set; `group: path` (an enum or a ref) shows a group for each value, or each entity (the
   Project's own Paths, as `path` matches by `project`), empty ones too, each with its buttons; an add takes the
   group and the filters chosen.
-- **Files and images (M46):** uploaded on the entity's form (up to `DOWNLOAD_MAX_MB`), checked by their content: an
+- **Files and images (M46):** uploaded on the entity's form (up to the download limit, Settings → Runs & browser), checked by their content: an
   `image` is a PNG, JPEG, WebP or GIF (never SVG) and gets a thumbnail, shown in lists and on its page; a `file` is
   also a PDF, an office document (DOCX, XLSX, ODT, ODS) or text (TXT, MD, CSV), a download. The entity holds
   `{ id, name, mime, size }`, never the bytes; a file replaced or cleared on the form, or whose entity or App is

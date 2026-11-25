@@ -29,7 +29,8 @@ import { ClassifyStep, ExtractStep, GenerateStep, ScoreStep, SummarizeStep } fro
 import { BrowserDetailsStep, BrowserExtractStep } from "./recipe-steps";
 import { RecipeFallback } from "./recipe-fallback";
 import { BrowserTeachStep, RecipeWriter } from "./teach-step";
-import { TelegramStep, type TelegramConfig } from "./telegram-step";
+import { TelegramStep, type TelegramSource } from "./telegram-step";
+import { type Setting } from "../runner/setting";
 import { TopicApplyStep, TopicExtractStep } from "./topic-memory-steps";
 import { TopicTidyStep } from "./topic-tidy-step";
 import { DriveChangesStep, GitChangesStep, TopicAttachmentsStep, TopicIndexStep } from "./topic-source-steps";
@@ -40,7 +41,8 @@ import { TopicMatchStep } from "./topic-steps";
 export interface CoreStepDependencies {
   llm: LlmClient;
   router: ModelRouter;
-  telegram: TelegramConfig;
+  /** M63: the Storm bot of Settings → Telegram, looked up at each message. */
+  telegram: TelegramSource;
   fetch?: typeof fetch;
   mail: MailConnector;
   prisma: PrismaClient;
@@ -50,8 +52,8 @@ export interface CoreStepDependencies {
   browser?: BrowserDependencies | FormDependencies;
   /** browser.agent's conversation with tools (docs/design.md §2.4); without it, no agent. */
   chat?: LlmChat;
-  /** DOWNLOAD_MAX_MB: browser.download keeps nothing larger. */
-  downloadMaxMb?: number;
+  /** M63: the download limit (Settings → Runs & browser): browser.download and file.keep keep nothing larger. */
+  downloadMaxMb?: Setting<number>;
   /** calendar.* (M14-T1); left out where there is no Google connection. */
   google?: GoogleConnection;
   /** APP_ORIGIN: the calendar's Reconnect button. */

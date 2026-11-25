@@ -1,13 +1,14 @@
 import { type AppFile, type PrismaClient } from "@realentity/storm-db";
 import { FileProblem, readStored, recordFile, storeFile, sweepFiles, detectFile, safeName, type EntityFile } from "@realentity/storm-files";
-import { downloadTelegramFile, FILE_KINDS, fileRefId, type TelegramConfig } from "@realentity/storm-shared";
+import { downloadTelegramFile, FILE_KINDS, fileRefId, telegramReady, type TelegramSource } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { type ArtifactStore } from "../browser/artifact-store";
 import { mailWho, type MailConnector } from "../mail/mail-connector";
+import { settingOf, type Setting } from "../runner/setting";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { appType } from "./entity-steps";
 
-/** DOWNLOAD_MAX_MB's default. */
+/** The download limit's default (Settings → Runs & browser). */
 const DEFAULT_MAX_MB = 25;
 /** An email's attachments are read from a message at most this large. */
 const MAX_MESSAGE_BYTES = 30 * 1_048_576;
@@ -64,9 +65,9 @@ export class FileKeepStep implements StepExecutor {
     private readonly files: AppFileStore,
     private readonly mail: MailConnector,
     private readonly artifacts?: ArtifactStore,
-    private readonly maxMb = DEFAULT_MAX_MB,
+    private readonly limitMb: Setting<number> = DEFAULT_MAX_MB,
     /** M49: the bot, to download a file sent with a command; tests give a stand-in fetch. */
-    private readonly telegram?: { config: TelegramConfig; fetch?: typeof fetch },
+    private readonly telegram?: { config: TelegramSource; fetch?: typeof fetch },
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
@@ -79,6 +80,7 @@ export class FileKeepStep implements StepExecutor {
     if (!field || !FILE_KINDS.includes(field.type)) throw new Error(`${typeName}.${fieldName} isn't a file or an image`);
     if (field.mine) throw new Error(`${typeName}.${fieldName} is mine: a pipeline can't write it`);
     const kind = field.type as "file" | "image";
+    const maxMb = await settingOf(this.limitMb, context.userId);
 
     const candidates: { name: string; content: Buffer }[] = [];
     if (message) {
@@ -93,11 +95,11 @@ export class FileKeepStep implements StepExecutor {
     } else if (telegram !== undefined) {
       // A command sent without a photo or file: nothing to keep.
       if (telegram !== null) {
-        if (!this.telegram?.config.botToken) throw new Error("Telegram is not configured (TELEGRAM_BOT_TOKEN)");
+        if (!this.telegram || !(await telegramReady(this.telegram.config))) throw new Error("The Storm bot isn't set up (Settings → Telegram)");
         const content = await downloadTelegramFile(
           this.telegram.config,
           telegram.telegramFileId,
-          Math.min(this.maxMb * 1_048_576, 20 * 1_048_576),
+          Math.min(maxMb * 1_048_576, 20 * 1_048_576),
           this.telegram.fetch,
         );
         candidates.push({ name: telegram.name, content });
@@ -117,8 +119,8 @@ export class FileKeepStep implements StepExecutor {
         skipped.push({ name, reason: `more than ${max}` });
         continue;
       }
-      if (candidate.content.length > this.maxMb * 1_048_576) {
-        skipped.push({ name, reason: `larger than ${this.maxMb} MB` });
+      if (candidate.content.length > maxMb * 1_048_576) {
+        skipped.push({ name, reason: `larger than ${maxMb} MB` });
         continue;
       }
       const detected = detectFile(candidate.content, name, kind);

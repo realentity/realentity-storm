@@ -1,10 +1,10 @@
 import { seal, KeyRing } from "@realentity/storm-crypto";
 import { JobQueue } from "@realentity/storm-queue";
-import { isWebhookTrigger, type CompiledDefinition, type ServerEnv, type WebhookView } from "@realentity/storm-shared";
-import { Inject, Injectable, NotFoundException, PayloadTooLargeException, UnauthorizedException, UnsupportedMediaTypeException } from "@nestjs/common";
+import { Integrations } from "@realentity/storm-db";
+import { isWebhookTrigger, type CompiledDefinition, type WebhookView } from "@realentity/storm-shared";
+import { Injectable, NotFoundException, PayloadTooLargeException, UnauthorizedException, UnsupportedMediaTypeException } from "@nestjs/common";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { type IncomingHttpHeaders } from "node:http";
-import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 
 /** The largest body a webhook takes (a gateway in front, if any, should limit it the same). */
@@ -25,13 +25,13 @@ export class WebhooksService {
     private readonly prisma: PrismaService,
     private readonly keys: KeyRing,
     private readonly queue: JobQueue,
-    @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly integrations: Integrations,
   ) {}
 
   async get(userId: string, pipelineId: string): Promise<WebhookView | null> {
     await this.pipeline(userId, pipelineId);
     const hook = await this.prisma.client.webhook.findUnique({ where: { pipelineId } });
-    return hook ? this.view(hook) : null;
+    return hook ? this.view(userId, hook) : null;
   }
 
   /** A new secret, shown in this answer only; the address stays (a first call creates it). */
@@ -47,7 +47,7 @@ export class WebhooksService {
       create: { webhookId, userId, pipelineId, ...data },
       update: data,
     });
-    return { ...this.view(hook), secret };
+    return { ...(await this.view(userId, hook)), secret };
   }
 
   async remove(userId: string, pipelineId: string): Promise<void> {
@@ -88,10 +88,12 @@ export class WebhooksService {
     if (!pipeline) throw new NotFoundException();
   }
 
-  private view(hook: { webhookId: string; lastCalledAt: Date | null; dateCreated: Date }): WebhookView {
+  /** M63: the public address from Settings → Telegram (the hooks address), else only the path. */
+  private async view(userId: string, hook: { webhookId: string; lastCalledAt: Date | null; dateCreated: Date }): Promise<WebhookView> {
+    const base = await this.integrations.hooksPublicUrl(userId);
     return {
       path: `/hooks/${hook.webhookId}`,
-      url: this.env.HOOKS_PUBLIC_URL ? `${this.env.HOOKS_PUBLIC_URL}/${hook.webhookId}` : null,
+      url: base ? `${base}/${hook.webhookId}` : null,
       lastCalledAt: hook.lastCalledAt?.toISOString() ?? null,
       dateCreated: hook.dateCreated.toISOString(),
     };
