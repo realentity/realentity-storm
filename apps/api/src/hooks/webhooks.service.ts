@@ -1,4 +1,4 @@
-import { seal, KeyRing } from "@realentity/storm-crypto";
+import { seal, SealKeys } from "@realentity/storm-crypto";
 import { JobQueue } from "@realentity/storm-queue";
 import { Integrations } from "@realentity/storm-db";
 import { isWebhookTrigger, type CompiledDefinition, type WebhookView } from "@realentity/storm-shared";
@@ -23,7 +23,7 @@ const sha256 = (text: string): string => createHash("sha256").update(text).diges
 export class WebhooksService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
     private readonly queue: JobQueue,
     private readonly integrations: Integrations,
   ) {}

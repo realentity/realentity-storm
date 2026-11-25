@@ -200,6 +200,12 @@ git pull --ff-only && ./docker/storm up && ./docker/storm check
 - A run in progress continues after the restart: the interrupted step runs again (an interrupted LLM call is paid
   twice). An interrupted **send** is never repeated: it fails and shows on the run.
 - After a `.env` change: `./docker/storm up --force-recreate`.
+- **A new encryption key:** add `ENCRYPTION_KEY_V2` (then `_V3`, …) to `.env`, set `ENCRYPTION_KEY_VERSION=2`,
+  `./docker/storm up --force-recreate`, then `./docker/storm rotate`: every secret's data key moves to the new version
+  without any value being decrypted. Keep the old key as long as backups made before it exist.
+- **Once, after updating to a version with M64** (the api seals to a public key, [design.md §7](design.md)):
+  `./docker/storm rotate` moves the secrets saved before it to the public key. They open either way; it only means
+  nothing is left wrapped the old way.
 
 ## 8. Backups and restore
 

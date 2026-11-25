@@ -1,4 +1,4 @@
-import { type KeyRing, rewrap, rewrapField, rewrapIntegration } from "@realentity/storm-crypto";
+import { fieldNeedsRewrap, type KeyRing, needsRewrap, rewrap, rewrapField, rewrapIntegration } from "@realentity/storm-crypto";
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { isSealed } from "@realentity/storm-shared";
 
@@ -13,8 +13,9 @@ export interface RotationResult {
 /**
  * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens, email account passwords, App entities'
  * encrypted fields, M62's and M63's integrations: the Claude key, the model servers' keys, the bot's token, Google's client secret) to the current root key version
- * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
- * only if its version is still the old one.
+ * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. M64: a data key wrapped the pre-M64
+ * way (with the root key itself) is moved to the version's public key too, so the api's SealKeys never meet it. Safe to
+ * re-run: each row is updated only if its data key is still the one read.
  */
 export class KeyRotation {
   private static readonly BATCH = 100;
@@ -34,7 +35,7 @@ export class KeyRotation {
     for (;;) {
       // Keyset paging on the id, not a Prisma cursor: re-wrapped rows leave the filter, so a cursor + skip would skip rows.
       const batch = await this.prisma.credential.findMany({
-        where: { keyVersion: { not: toVersion }, ...(lastId ? { credentialId: { gt: lastId } } : {}) },
+        where: lastId ? { credentialId: { gt: lastId } } : {},
         select: { credentialId: true, wrappedDek: true, keyVersion: true },
         orderBy: { credentialId: "asc" },
         take: KeyRotation.BATCH,
@@ -42,10 +43,11 @@ export class KeyRotation {
       if (batch.length === 0) break;
 
       for (const row of batch) {
+        if (!needsRewrap(row, toVersion)) continue;
         fromVersions.add(row.keyVersion);
         const next = rewrap(this.keys, row.credentialId, row, toVersion);
         const { count } = await this.prisma.credential.updateMany({
-          where: { credentialId: row.credentialId, keyVersion: row.keyVersion },
+          where: { credentialId: row.credentialId, keyVersion: row.keyVersion, wrappedDek: { equals: row.wrappedDek } },
           data: next,
         });
         if (count === 1) rewrapped++;
@@ -55,19 +57,21 @@ export class KeyRotation {
     }
 
     // Webhook secrets (AAD webhookId) and Google refresh tokens (AAD googleAccountId, M50-T8): a few rows each.
-    for (const row of await this.prisma.webhook.findMany({ where: { keyVersion: { not: toVersion } } })) {
+    for (const row of await this.prisma.webhook.findMany()) {
+      if (!needsRewrap(row, toVersion)) continue;
       fromVersions.add(row.keyVersion);
       const { count } = await this.prisma.webhook.updateMany({
-        where: { webhookId: row.webhookId, keyVersion: row.keyVersion },
+        where: { webhookId: row.webhookId, keyVersion: row.keyVersion, wrappedDek: { equals: row.wrappedDek } },
         data: rewrap(this.keys, row.webhookId, row, toVersion),
       });
       if (count === 1) rewrapped++;
       else skipped++;
     }
-    for (const row of await this.prisma.googleAccount.findMany({ where: { keyVersion: { not: toVersion } } })) {
+    for (const row of await this.prisma.googleAccount.findMany()) {
+      if (!needsRewrap(row, toVersion)) continue;
       fromVersions.add(row.keyVersion);
       const { count } = await this.prisma.googleAccount.updateMany({
-        where: { googleAccountId: row.googleAccountId, keyVersion: row.keyVersion },
+        where: { googleAccountId: row.googleAccountId, keyVersion: row.keyVersion, wrappedDek: { equals: row.wrappedDek } },
         data: rewrap(this.keys, row.googleAccountId, row, toVersion),
       });
       if (count === 1) rewrapped++;
@@ -75,17 +79,19 @@ export class KeyRotation {
     }
 
     // M50-T7: email accounts' app passwords (AAD emailAccountId).
-    for (const row of await this.prisma.emailAccount.findMany({ where: { keyVersion: { not: toVersion } } })) {
+    for (const row of await this.prisma.emailAccount.findMany()) {
+      if (!needsRewrap(row, toVersion)) continue;
       fromVersions.add(row.keyVersion);
       const { count } = await this.prisma.emailAccount.updateMany({
-        where: { emailAccountId: row.emailAccountId, keyVersion: row.keyVersion },
+        where: { emailAccountId: row.emailAccountId, keyVersion: row.keyVersion, wrappedDek: { equals: row.wrappedDek } },
         data: rewrap(this.keys, row.emailAccountId, row, toVersion),
       });
       if (count === 1) rewrapped++;
       else skipped++;
     }
 
-    // M62: the integrations' secrets (their own derived key, AAD "integration:" + the id).
+    // M62: the integrations' secrets (their own derived key, AAD "integration:" + the id). They stay wrapped with that key
+    // (M64): the api opens them.
     for (const row of await this.prisma.integration.findMany({ where: { keyVersion: { not: toVersion }, wrappedDek: { not: null } } })) {
       if (!row.wrappedDek || row.keyVersion === null) continue;
       fromVersions.add(row.keyVersion);
@@ -136,7 +142,7 @@ export class KeyRotation {
     const out: Record<string, unknown> = { ...((json ?? {}) as Prisma.JsonObject) };
     let count = 0;
     for (const [field, value] of Object.entries(out)) {
-      if (!isSealed(value) || value.$sealed.keyVersion === toVersion) continue;
+      if (!isSealed(value) || !fieldNeedsRewrap(value, toVersion)) continue;
       fromVersions.add(value.$sealed.keyVersion);
       out[field] = rewrapField(this.keys, value, toVersion);
       count++;

@@ -1,4 +1,4 @@
-import { KeyRing, sealField } from "@realentity/storm-crypto";
+import { SealKeys, sealField } from "@realentity/storm-crypto";
 import { Prisma } from "@realentity/storm-db";
 import {
   appMap,
@@ -57,7 +57,7 @@ export class AppsService {
     private readonly catalog: StepCatalog,
     private readonly files: AppFilesService,
     private readonly bindings: BindingsService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
   ) {}
 
   /** The App a pipeline names (`app:`), for the compiler; nothing for a pipeline outside any App. */

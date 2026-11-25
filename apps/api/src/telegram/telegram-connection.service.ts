@@ -1,4 +1,4 @@
-import { KeyRing, sealIntegration } from "@realentity/storm-crypto";
+import { SealKeys, sealIntegration } from "@realentity/storm-crypto";
 import { Integrations } from "@realentity/storm-db";
 import {
   sendTelegram,
@@ -34,7 +34,7 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 export class TelegramConnection {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
     private readonly integrations: Integrations,
     private readonly auth: AuthService,
     private readonly commands: TelegramCommands,

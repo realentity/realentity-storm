@@ -1,4 +1,4 @@
-import { KeyRing } from "@realentity/storm-crypto";
+import { SealKeys } from "@realentity/storm-crypto";
 import { Integrations } from "@realentity/storm-db";
 import { type Provider } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
@@ -9,6 +9,6 @@ import { PrismaService } from "../database/prisma.service";
  */
 export const integrationsProvider: Provider = {
   provide: Integrations,
-  inject: [PrismaService, KeyRing],
-  useFactory: (prisma: PrismaService, keys: KeyRing): Integrations => new Integrations(prisma.client, keys),
+  inject: [PrismaService, SealKeys],
+  useFactory: (prisma: PrismaService, keys: SealKeys): Integrations => new Integrations(prisma.client, keys),
 };

@@ -1,4 +1,4 @@
-import { KeyRing } from "@realentity/storm-crypto";
+import { SealKeys } from "@realentity/storm-crypto";
 import { parseServerEnv, type ServerEnv } from "@realentity/storm-shared";
 import { type Provider } from "@nestjs/common";
 
@@ -10,8 +10,11 @@ export const serverEnvProvider: Provider = {
   useFactory: (): ServerEnv => parseServerEnv(process.env),
 };
 
-/** The root keys. The api uses them to seal (encrypt) credentials, and to open the integrations' secrets (M62). */
-export const keyRingProvider: Provider = {
-  provide: KeyRing,
-  useFactory: (): KeyRing => KeyRing.fromEnv(process.env),
+/**
+ * M64: what the api seals with, and the integration key it opens the connections' secrets with (M62); derived from the
+ * root keys, which aren't kept. Nothing here opens a credential, a mail password, a Google token or a sealed field.
+ */
+export const sealKeysProvider: Provider = {
+  provide: SealKeys,
+  useFactory: (): SealKeys => SealKeys.fromEnv(process.env),
 };
