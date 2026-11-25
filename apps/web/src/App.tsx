@@ -73,6 +73,7 @@ export function App() {
             <Route path="costs" element={<CostsPage />} />
             <Route path="health" element={<HealthPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/:section" element={<SettingsPage />} />
             <Route path="apps" element={<AppsPage />} />
             <Route path="apps/new" element={<AppEditorPage />} />
             <Route path="apps/:appId" element={<AppPage />} />

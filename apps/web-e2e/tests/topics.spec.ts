@@ -348,7 +348,7 @@ test("a topic's source: a Drive folder from its link, with a word when Google's 
     },
   });
   try {
-    await page.goto("/settings");
+    await page.goto("/settings/google");
     await expect(page.getByTestId("google-allowed")).toContainText("Calendar: allowed");
     await expect(page.getByTestId("google-allowed")).toContainText("Drive (read-only): not allowed");
 

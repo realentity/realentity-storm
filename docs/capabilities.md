@@ -875,7 +875,7 @@ instructions.
 
 ### 4.4 Email
 
-Reading uses IMAP and sending uses SMTP, through one of your **email accounts** (Settings → Email accounts: Gmail
+Reading uses IMAP and sending uses SMTP, through one of your **email accounts** (Settings → Email: Gmail
 with an [app password](https://myaccount.google.com/apppasswords), or any server with IMAP and SMTP over TLS; its
 password is stored encrypted, like a credential). One of them is the default. Reading never marks or moves anything.
 

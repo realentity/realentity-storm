@@ -66,7 +66,7 @@ export function GoogleAccountsCard() {
             type="button"
             className={`btn btn-sm ms-auto ${g.accounts.length ? "" : "btn-primary"}`}
             disabled={action.busy}
-            onClick={() => void action.run(() => connectGoogle("/settings"))}
+            onClick={() => void action.run(() => connectGoogle("/settings/google"))}
             data-testid="google-connect"
           >
             <IconPlus size={16} className="me-1" />
@@ -100,7 +100,7 @@ export function GoogleAccountsCard() {
                     type="button"
                     className={`btn btn-sm ${account.status === "CONNECTED" ? "btn-ghost-secondary" : "btn-primary"}`}
                     disabled={action.busy}
-                    onClick={() => void action.run(() => connectGoogle("/settings", account.googleAccountId))}
+                    onClick={() => void action.run(() => connectGoogle("/settings/google", account.googleAccountId))}
                     data-testid="google-reconnect"
                   >
                     Reconnect

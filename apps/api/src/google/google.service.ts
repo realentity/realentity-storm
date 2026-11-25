@@ -82,7 +82,7 @@ export class GoogleService {
    * The consent screen's address; `returnTo` is the page to come back to (a path of this app). With `account`, signing
    * in as that one (reconnecting it); without, choosing an account (another one is added).
    */
-  async connect(userId: string, origin: string, returnTo = "/settings", account?: string): Promise<{ url: string }> {
+  async connect(userId: string, origin: string, returnTo = "/settings/google", account?: string): Promise<{ url: string }> {
     const client = this.client(origin);
     if (!returnTo.startsWith("/") || returnTo.startsWith("//")) throw new BadRequestException("returnTo must be a path of Storm");
     const state = randomBytes(24).toString("base64url");
@@ -105,7 +105,7 @@ export class GoogleService {
   async callback(origin: string, query: { code?: string; state?: string; error?: string }): Promise<string> {
     const pending = query.state ? this.pending.get(query.state) : undefined;
     if (query.state) this.pending.delete(query.state);
-    if (!pending || pending.expiresAt < Date.now()) return back("/settings", "the sign-in expired or wasn't started here: connect again");
+    if (!pending || pending.expiresAt < Date.now()) return back("/settings/google", "the sign-in expired or wasn't started here: connect again");
     const { userId } = pending;
     if (query.error)
       return back(pending.returnTo, query.error === "access_denied" ? "you didn't allow access" : `Google said ${query.error}`);

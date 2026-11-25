@@ -83,7 +83,7 @@ run lists it among its problems until you reconnect, then reads what changed.
    ```
 
    That is your `APP_ORIGIN` followed by `/api/google/callback`. It must match exactly: `https`, the same host and
-   port, no slash at the end. Storm's **Settings → Google accounts** shows the address it uses, if you want
+   port, no slash at the end. Storm's **Settings → Google** shows the address it uses, if you want
    to compare.
 6. Press **Create**.
 7. A dialog shows the **Client ID** (ends in `.apps.googleusercontent.com`) and the **Client secret** (starts with

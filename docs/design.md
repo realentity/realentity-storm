@@ -234,7 +234,7 @@ Besides `manual` and `{ schedule, tz }`, a pipeline can start on what happens (M
 **The Storm bot** (its own Telegram bot, not n8n's):
 
 - **Tells you** what a run waits for: each new proposal with **Approve / Reject / Open** (one message for a gate with more than 5), "needs you" with **Open the live view**, a broken recipe with **Open the recipe**. When you decide anywhere, the message says so and loses its buttons.
-- **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens Storm. **Settings → Approve on Telegram** turns the buttons off.
+- **Approve on Telegram** only when the message holds the whole payload, nothing new is targeted, the proposal is still waiting and its payload hash is the one the button carries; anything else opens Storm. **Settings → Telegram → Approve on Telegram** turns the buttons off.
 - **Commands:** `/run <pipeline>` (by name or the start of it), `/status`, `/inbox`, `/pause` and `/resume` (the kill switch), `/help`, and each enabled pipeline's own command (`telegram.command`), kept in the bot's menu. Only from your private chat (`TELEGRAM_CHAT_ID` is your user id); commands older than 5 minutes are dropped.
 - **The builder (M21):** any other message goes to the pipeline builder, and its answer comes back with the proposal (what it does, when, its steps, the warnings) and Save, Dry run and Open in Storm. The chat goes on while you're on it (two hours); `/new` starts over, `/edit <pipeline>` talks about one pipeline. A saved pipeline is off until you press Turn on. The answer comes in the background ("typing…" meanwhile), since a turn can take longer than Telegram waits.
 
@@ -944,7 +944,7 @@ pnpm test:web                  # browser tests (Playwright) against the composed
 pnpm --filter @realentity/storm-worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
 ```
 
-**Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. In Settings → Email accounts
+**Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. In Settings → Email
 add the Gmail address with that app password (several accounts are fine: one is the default, and a pipeline's email
 slot picks another; M50-T7). Then paste [examples/pipelines/recruiter-replies.yaml](../examples/pipelines/recruiter-replies.yaml) on
 the Pipelines page, dry run, save and enable. Every reply waits in the inbox until you press Act.

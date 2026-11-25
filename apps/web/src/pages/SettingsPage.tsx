@@ -10,6 +10,7 @@ import {
 } from "@realentity/storm-shared";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { Navigate, NavLink, useLocation, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { EmailAccountsCard } from "../components/EmailAccountsCard";
 import { GoogleAccountsCard } from "../components/GoogleAccountsCard";
@@ -24,33 +25,82 @@ const SOURCE_LABEL = { settings: "chosen here", local: "the local model for all 
 /** M60: a model on the OpenAI-compatible server. */
 const OPENAI_PREFIX = "openai:";
 
-/** Model per LLM task, the monthly LLM budget, and global rate limits for side-effect steps (docs/design.md §5, §2.2). */
+/** M61: Settings' pages, each at /settings/<key>. */
+const SECTIONS = [
+  { key: "ai", label: "AI" },
+  { key: "email", label: "Email" },
+  { key: "google", label: "Google" },
+  { key: "telegram", label: "Telegram" },
+  { key: "runs", label: "Runs & browser" },
+] as const;
+type Section = (typeof SECTIONS)[number]["key"];
+
+/**
+ * Settings, in pages (M61): AI (model per task, the budget, spending; docs/design.md §5), Email, Google, Telegram
+ * (approvals, commands, the brief and the review), Runs & browser (global rate limits, §2.2).
+ */
 export function SettingsPage() {
-  const settings = useLoad(() => api.settings.get(), []);
-  const spending = useLoad(() => api.settings.spending(), [settings.data?.monthlyBudgetUsd]);
-  const catalog = useCatalog();
-  if (!settings.data) return settings.error ? <ErrorAlert error={settings.error} /> : <Loading />;
+  const { section } = useParams();
+  const { hash, search } = useLocation();
+  if (!SECTIONS.some((s) => s.key === section)) {
+    // /settings, and the old /settings#email and #google links: to their page, the query kept (?google=…).
+    const old = hash.slice(1);
+    const to = SECTIONS.find((s) => s.key === old)?.key ?? "ai";
+    return <Navigate to={`/settings/${to}${search}`} replace />;
+  }
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="row g-3">
-        <div className="col-lg-7">
-          <div className="d-flex flex-column gap-3">
-            <Models settings={settings.data} onSaved={settings.reload} />
-            {spending.data && <Spending spending={spending.data} />}
-          </div>
-        </div>
-        <div className="col-lg-5 d-flex flex-column gap-3">
-          <Budget settings={settings.data} spending={spending.data} onSaved={settings.reload} />
-          <EmailAccountsCard />
-          <GoogleAccountsCard />
-          <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
-          <TelegramCommandsCard />
-          <WeeklyReview settings={settings.data} onSaved={settings.reload} />
-          <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
-        </div>
-      </div>
+      <ul className="nav nav-tabs mb-3" data-testid="settings-sections">
+        {SECTIONS.map((s) => (
+          <li key={s.key} className="nav-item">
+            <NavLink to={`/settings/${s.key}`} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={`settings-${s.key}`}>
+              {s.label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+      <SectionPage section={section as Section} />
     </>
+  );
+}
+
+function SectionPage({ section }: { section: Section }) {
+  if (section === "email") return <EmailAccountsCard />;
+  if (section === "google") return <GoogleAccountsCard />;
+  return <WithSettings section={section} />;
+}
+
+/** The pages that show the settings themselves. */
+function WithSettings({ section }: { section: Exclude<Section, "email" | "google"> }) {
+  const settings = useLoad(() => api.settings.get(), []);
+  const spending = useLoad(() => (section === "ai" ? api.settings.spending() : Promise.resolve(undefined)), [section, settings.data?.monthlyBudgetUsd]);
+  const catalog = useCatalog();
+  if (!settings.data) return settings.error ? <ErrorAlert error={settings.error} /> : <Loading />;
+  if (section === "telegram")
+    return (
+      <div className="d-flex flex-column gap-3" style={{ maxWidth: 820 }}>
+        <TelegramApprovals settings={settings.data} onSaved={settings.reload} />
+        <TelegramCommandsCard />
+        <WeeklyReview settings={settings.data} onSaved={settings.reload} />
+      </div>
+    );
+  if (section === "runs")
+    return (
+      <div style={{ maxWidth: 820 }}>
+        <RateLimits settings={settings.data} catalog={catalog} onSaved={settings.reload} />
+      </div>
+    );
+  return (
+    <div className="row g-3">
+      <div className="col-lg-8 d-flex flex-column gap-3">
+        <Models settings={settings.data} onSaved={settings.reload} />
+        {spending.data && <Spending spending={spending.data} />}
+      </div>
+      <div className="col-lg-4">
+        <Budget settings={settings.data} spending={spending.data} onSaved={settings.reload} />
+      </div>
+    </div>
   );
 }
 
