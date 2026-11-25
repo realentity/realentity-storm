@@ -1,29 +1,35 @@
-import { canonicalJson } from "@realentity/storm-shared";
+import { entityValueAt } from "./app";
+import { canonicalJson } from "./canonical-json";
 
 type Item = Record<string, unknown>;
 
+/**
+ * data.filter's and data.read's `where` (M65: also a page's sources and filters, in the api). Moved here from the
+ * worker so both match the same way.
+ */
+
 /** A field of an item by dotted path ("company.name"); undefined when missing. */
-export function valueAt(item: Item, path: string): unknown {
-  let current: unknown = item;
-  for (const segment of path.split(".")) {
-    if (current === null || typeof current !== "object" || Array.isArray(current)) return undefined;
-    current = (current as Item)[segment];
-  }
-  return current;
-}
+export const valueAt: (item: Item, path: string) => unknown = entityValueAt;
+
+export const CONDITION_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in", "nin"] as const;
 
 export interface Condition {
   field: string;
-  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in" | "nin";
+  op: (typeof CONDITION_OPS)[number];
   value: unknown;
 }
 
-/** Every condition holds for the item (data.filter, data.read's `where`). */
-export function matchesAll(item: Item, where: readonly Condition[]): boolean {
-  return where.every((condition) => matches(valueAt(item, condition.field), condition));
+export interface MatchOptions {
+  /** M65: fields whose list entries match without case (a `list of text` that isn't `caseSensitive`). */
+  caseless?: ReadonlySet<string>;
 }
 
-export function matches(actual: unknown, { op, value }: Condition): boolean {
+/** Every condition holds for the item (data.filter, data.read's `where`). */
+export function matchesAll(item: Item, where: readonly Condition[], options: MatchOptions = {}): boolean {
+  return where.every((condition) => matches(valueAt(item, condition.field), condition, options.caseless?.has(condition.field) ?? false));
+}
+
+export function matches(actual: unknown, { op, value }: Pick<Condition, "op" | "value">, caseless = false): boolean {
   switch (op) {
     case "eq":
       return same(actual, value);
@@ -39,7 +45,10 @@ export function matches(actual: unknown, { op, value }: Condition): boolean {
     }
     case "contains":
       if (typeof actual === "string" && typeof value === "string") return actual.toLowerCase().includes(value.toLowerCase());
-      return Array.isArray(actual) && actual.some((entry) => same(entry, value));
+      if (!Array.isArray(actual)) return false;
+      // M65: a tag matches "Home" and "home" alike, unless the list is case-sensitive.
+      if (caseless && typeof value === "string") return actual.some((entry) => typeof entry === "string" && entry.toLowerCase() === value.toLowerCase());
+      return actual.some((entry) => same(entry, value));
     case "in":
       return Array.isArray(value) && value.some((entry) => same(actual, entry));
     case "nin":

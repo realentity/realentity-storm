@@ -19,6 +19,7 @@ types:
       due: { type: date }
       status: { type: enum, values: [due, paid, late] }
       paid: { type: yesno, mine: true }
+      labels: { type: list, of: text }
   Payee:
     key: name
     fields:
@@ -73,9 +74,9 @@ describe("app pages", () => {
     });
     await db.client.dataEntity.createMany({
       data: [
-        bill("e1", { payee: "Electricity", amount: 120.5, currency: "BGN", due: "2026-11-10", status: "due" }),
+        bill("e1", { payee: "Electricity", amount: 120.5, currency: "BGN", due: "2026-11-10", status: "due", labels: ["Home", "utilities"] }),
         bill("w1", { payee: "Water", amount: 30, currency: "BGN", due: "2026-11-20", status: "paid" }, { mine: { paid: true } }),
-        bill("n1", { payee: "Netflix", amount: 12.99, currency: "EUR", due: "2026-11-05", status: "due" }),
+        bill("n1", { payee: "Netflix", amount: 12.99, currency: "EUR", due: "2026-11-05", status: "due", labels: "streaming" }),
         bill("e0", { payee: "Electricity", amount: 99, currency: "BGN", due: "2026-10-10", status: "paid" }),
         bill("x1", { payee: "No date", amount: 5, currency: "BGN" }),
         bill("old", { payee: "Old gym", amount: 40, currency: "BGN", due: "2026-09-01" }, { removedAt: new Date() }),
@@ -212,6 +213,10 @@ steps:
     expect(keys(await list(`?filter=${encodeURIComponent('{"status":"due"}')}`))).toEqual(["e1", "n1"]);
     expect(keys(await list(`?filter=${encodeURIComponent('{"paid":"true"}')}`))).toEqual(["w1"]);
     expect(keys(await list("?q=electric"))).toEqual(["e1", "e0"]);
+    // M65-T1: a list of text searched by default; one value saved before reads as a one-item list.
+    expect(keys(await list("?q=UTILIT"))).toEqual(["e1"]);
+    const streaming = await list("?q=stream");
+    expect(streaming.rows.map((r) => [r.key, r.value.labels])).toEqual([["n1", ["streaming"]]]);
     const paged = await list("?offset=1&limit=2");
     expect([keys(paged), paged.total, paged.groups?.length]).toEqual([["e1", "n1"], 5, 3]);
     expect(keys(await list("?tab=removed"))).toEqual(["old"]);
@@ -223,7 +228,7 @@ steps:
   it("an entity's page: its fields as the view says, its history by its key", async () => {
     const view = (await agent.get(`/api/apps/${appId}/pages/Bill/e1`).expect(200)).body as AppEntityView;
     expect(view).toMatchObject({ app: "Bills", type: "Bill", list: { label: "My bills", title: "payee" }, row: { key: "e1" } });
-    expect(view.page.sections[0]?.fields.map((f) => f.field)).toEqual(["id", "payee", "amount", "currency", "due", "status", "paid"]);
+    expect(view.page.sections[0]?.fields.map((f) => f.field)).toEqual(["id", "payee", "amount", "currency", "due", "status", "paid", "labels"]);
     expect(view.history?.map((p) => p.value)).toEqual([110, 120.5]);
     await agent.get(`/api/apps/${appId}/pages/Bill/nope`).expect(404);
   });

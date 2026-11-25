@@ -194,6 +194,12 @@ types:
   Paths whose `project` is the entry's (both refs to the same type); the form lists them once the project is chosen,
   and the api refuses another's. `paths: { type: list, of: ref, to: Path }` holds several, in the order picked (the
   form moves them up and down); `{{item.paths}}` is their keys.
+- **Lists of text (M65):** `tags: { type: list, of: text }` holds free values (tags), typed one per line on the form.
+  A save cleans rather than refuses: values trimmed, empty ones dropped, each kept once with its first spelling
+  (`unique: false` keeps repeats), at most 200 of 200 characters each. "Home" and "home" are the same tag unless
+  `caseSensitive: true`, when saved, searched and in `where`'s `contains` (`{ field: tags, op: contains, value: home }`
+  in data.read). One value given as text is a one-item list, so a field that held one value (an enum) can become a list
+  without moving its data. A list page searches its lists of text by default.
 - **Credentials (M57):** `token: { type: credential, for: api.github.com }` holds one of your credentials, by id: the
   form lists the ones allowed on that host, by name, with **New** to add one there (the field's `help` on it). Only on
   a type of mine (pipelines never write which credential it is). A pipeline gets it as a handle (shown `***`), which
@@ -491,7 +497,8 @@ the same with what the old Jobs page kept).
 
 #### `data.filter`
 Keeps the items that match **every** condition. Operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `in`, `nin` (not one of a list's values).
-Fields can be dotted paths.
+Fields can be dotted paths. `contains` finds text in text without case, and a value in a list exactly (in `data.read`,
+a list of text's value without case, unless the field is `caseSensitive`).
 - In: `items`, `where` (list of `{ field, op, value }`).
 - Out: `items`, `removed`.
 

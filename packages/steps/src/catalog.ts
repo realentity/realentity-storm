@@ -1,4 +1,4 @@
-import { defaultTimeZone, isTimeZone, TYPE_NAME, type FieldKind, type TargetKind } from "@realentity/storm-shared";
+import { CONDITION_OPS, defaultTimeZone, isTimeZone, TYPE_NAME, type FieldKind, type TargetKind } from "@realentity/storm-shared";
 import jsonata from "jsonata";
 import { z } from "zod";
 import { RecipeNameSchema } from "./recipe";
@@ -389,7 +389,7 @@ const DrewOn = z.array(z.string()).describe("the topic facts the text relies on,
 
 const FilterCondition = z.object({
   field: z.string().min(1),
-  op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in", "nin"]),
+  op: z.enum(CONDITION_OPS),
   value: z.unknown(),
 });
 

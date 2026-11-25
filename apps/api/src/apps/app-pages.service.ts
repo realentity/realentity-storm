@@ -18,6 +18,7 @@ import {
   reportPageOf,
   reportPagesOf,
   viewPageOf,
+  withTextLists,
   type AppDefinition,
   type AppEntityView,
   type AppReportView,
@@ -341,7 +342,7 @@ function listOf(
       Object.entries(query.filter).every(([field, value]) => text(fieldOf(row, field)) === value) &&
       (!q ||
         row.key.toLowerCase().includes(q) ||
-        page.search.some((f) => (row.titles?.[f] ?? text(fieldOf(row, f)))?.toLowerCase().includes(q))),
+        page.search.some((f) => (row.titles?.[f] ?? searchText(fieldOf(row, f)))?.toLowerCase().includes(q))),
   );
   matching.sort((a, b) => compare(fieldOf(a, page.sort.by), fieldOf(b, page.sort.by), page.sort.desc));
 
@@ -367,10 +368,9 @@ function listOf(
 function rowOf(entity: DataEntity, type: DataType): ViewRow {
   return {
     key: entity.key,
-    value: entityItem(
-      entity.value,
-      entity.mine,
-      type.stages ? { field: type.stages.field, value: entity.stage ?? type.stages.initial } : undefined,
+    value: withTextLists(
+      type,
+      entityItem(entity.value, entity.mine, type.stages ? { field: type.stages.field, value: entity.stage ?? type.stages.initial } : undefined),
     ),
     marks: {},
     firstSeenAt: entity.firstSeenAt.toISOString(),
@@ -419,6 +419,13 @@ function pointsAt(value: unknown, key: string): boolean {
 }
 
 /** A value as filters and search compare it: text, numbers and yes/no as text. */
+/** M65: what search looks in: a value as text, a list's values (a memo's tags) one after another. */
+function searchText(value: unknown): string | null {
+  if (!Array.isArray(value)) return text(value);
+  const texts = value.map(text).filter((v): v is string => v !== null);
+  return texts.length > 0 ? texts.join("\n") : null;
+}
+
 function text(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
