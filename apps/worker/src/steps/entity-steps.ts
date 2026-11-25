@@ -4,6 +4,7 @@ import {
   addedByHand,
   canMove,
   canonicalJson,
+  caselessFields,
   checkEntity,
   comparableSealed,
   credentialAt,
@@ -13,15 +14,18 @@ import {
   FILE_KINDS,
   fileRefId,
   inPlace,
+  matchesAll,
   readAppSource,
   sealedAt,
+  valueAt,
+  withTextLists,
   type AppDefinition,
+  type Condition,
   type DataType,
   type SealedValue,
 } from "@realentity/storm-shared";
 import { type CredentialVault } from "../secrets/credential-vault";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
-import { matchesAll, valueAt, type Condition } from "./conditions";
 import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
 import { emitStatus, STAGE_STATUS } from "./job-entities";
 
@@ -255,12 +259,16 @@ export class ReadStep implements StepExecutor {
     let entities = rows.map((row) => ({
       row,
       item: this.withCredentials(
-        inPlace(entityItem(row.value, row.mine, stageOf(type, row.stage)), sealed, (field) => sealedAt(appId, typeName, row.key, field)),
+        inPlace(withTextLists(type, entityItem(row.value, row.mine, stageOf(type, row.stage))), sealed, (field) =>
+          sealedAt(appId, typeName, row.key, field),
+        ),
         credentials,
         (field) => credentialAt(appId, typeName, row.key, field),
       ),
     }));
-    if (where) entities = entities.filter(({ item }) => matchesAll(item, where));
+    // M65: a list of text matches its values without case unless it is caseSensitive (a tag "Home" is "home").
+    const caseless = caselessFields(type);
+    if (where) entities = entities.filter(({ item }) => matchesAll(item, where, { caseless }));
     if (sort) {
       const by = sort.replace(/^-/, "");
       const desc = sort.startsWith("-");

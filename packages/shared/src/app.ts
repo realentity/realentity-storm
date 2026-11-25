@@ -84,8 +84,15 @@ export const EntityFieldSchema = z
     currency: z.string().regex(ENTITY_FIELD).optional(),
     /** M55: ref: the type of this App it points at; the field holds that entity's key. */
     to: z.string().regex(TYPE_NAME).optional(),
-    /** M56: a list of refs (`to` says of what), in the order they are picked: { type: list, of: ref, to: Path }. */
-    of: z.literal("ref").optional(),
+    /**
+     * M56: a list of refs (`to` says of what), in the order they are picked: { type: list, of: ref, to: Path }.
+     * M65: a list of text (tags): { type: list, of: text }, each value trimmed, empty ones dropped.
+     */
+    of: z.enum(["ref", "text"]).optional(),
+    /** M65: a list of text: each value once, the first spelling kept (default true). */
+    unique: z.boolean().optional(),
+    /** M65: a list of text: "Home" and "home" differ, when saved, filtered and searched (default false). */
+    caseSensitive: z.boolean().optional(),
     /**
      * M56: a ref (or a list of refs) picked only among the ones whose field of this name is this entity's: an Entry's
      * path among its project's paths (match: project). Both are refs to the same type.
@@ -121,6 +128,66 @@ export function isRefField(field: Pick<EntityField, "type" | "of">): boolean {
   return field.type === "ref" || (field.type === "list" && field.of === "ref");
 }
 
+/** M65: a list of text (tags). */
+export function isTextList(field: Pick<EntityField, "type" | "of">): boolean {
+  return field.type === "list" && field.of === "text";
+}
+
+/** M65: the fields of a type whose list values match without case: its lists of text that aren't `caseSensitive`. */
+export function caselessFields(type: Pick<DataType, "fields">): Set<string> {
+  return new Set(
+    Object.entries(type.fields)
+      .filter(([, field]) => isTextList(field) && field.caseSensitive !== true)
+      .map(([name]) => name),
+  );
+}
+
+/** M65: the longest value of a list of text, and how many values it keeps. */
+const TEXT_LIST_ITEM_MAX = 200;
+const LIST_MAX = 200;
+
+/**
+ * M65: a list of text as saved: values trimmed, empty ones dropped, each once (the first spelling kept; without case
+ * unless `caseSensitive`), unless `unique: false`. One value given as text is a one-item list (a field that was one
+ * value before, like Tasks' `tag`).
+ */
+export function cleanTextList(field: Pick<EntityField, "unique" | "caseSensitive">, value: unknown): string[] | null {
+  const values: unknown[] | null = typeof value === "string" ? [value] : null;
+  const entries = values ?? (Array.isArray(value) ? value : null);
+  if (entries === null) return null;
+  const texts: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    const text = textEntry(entry);
+    if (text === null) return null;
+    if (text === "") continue;
+    const id = field.caseSensitive === true ? text : text.toLowerCase();
+    if (field.unique !== false && seen.has(id)) continue;
+    seen.add(id);
+    texts.push(text);
+  }
+  return texts.slice(0, LIST_MAX);
+}
+
+/** A value of a list of text, trimmed; null: not text. */
+function textEntry(entry: unknown): string | null {
+  if (typeof entry === "string") return entry.trim().slice(0, TEXT_LIST_ITEM_MAX);
+  return typeof entry === "number" && Number.isFinite(entry) ? String(entry) : null;
+}
+
+/**
+ * M65: an entity's lists of text as lists, also when saved as one value before the field became a list (Tasks'
+ * `tag`, once an enum). Changes the item in place; other fields as they are.
+ */
+export function withTextLists<T extends Record<string, unknown>>(type: Pick<DataType, "fields">, item: T): T {
+  for (const [name, field] of Object.entries(type.fields)) {
+    if (!isTextList(field)) continue;
+    const value = entityValueAt(item, name);
+    if (typeof value === "string") setAt(item, name, value.trim() === "" ? [] : [value.trim()]);
+  }
+  return item;
+}
+
 /** M56: does an entity (or a form's values) have what a field's `when` asks for? A field without one always applies. */
 export function fieldApplies(field: Pick<EntityField, "when">, values: Record<string, unknown>): boolean {
   return Object.entries(field.when ?? {}).every(([name, wanted]) => {
@@ -138,7 +205,11 @@ function checkFieldOptions(
   key: string,
   issue: (path: string[], message: string) => void,
 ): void {
-  if (field.of && field.type !== "list") issue(["of"], "only a list holds refs: type: list, of: ref");
+  if (field.of && field.type !== "list")
+    issue(["of"], field.of === "ref" ? "only a list holds refs: type: list, of: ref" : "only a list holds text values: type: list, of: text");
+  for (const option of ["unique", "caseSensitive"] as const) {
+    if (field[option] !== undefined && !isTextList(field)) issue([option], `only a list of text has ${option}: type: list, of: text`);
+  }
   if (field.match !== undefined) {
     const other = fields[field.match];
     if (!isRefField(field)) issue(["match"], "only a ref picks among the ones that match");
@@ -901,8 +972,12 @@ export function fieldValue(field: EntityField, value: unknown): { ok: true; valu
         ? { ok: true, value: text }
         : { ok: false, problem: `isn't one of ${field.values?.join(", ")}` };
     case "list": {
+      if (field.of === "text") {
+        const texts = cleanTextList(field, value);
+        return texts ? { ok: true, value: texts } : { ok: false, problem: "isn't a list of text" };
+      }
       if (!Array.isArray(value)) return { ok: false, problem: "isn't a list" };
-      if (field.of !== "ref") return { ok: true, value: value.slice(0, 200) };
+      if (field.of !== "ref") return { ok: true, value: value.slice(0, LIST_MAX) };
       // M56: keys of entities of its type (the api checks that they are), each once, in the order given.
       const keys = value.map((v) => (typeof v === "string" || typeof v === "number" ? String(v).trim() : ""));
       if (keys.some((k) => k === "")) return { ok: false, problem: "isn't a list of ones to point at" };
@@ -950,8 +1025,12 @@ export function checkFormValues(
       continue;
     }
     const value = fieldValue(field, field.type === "list" && typeof raw === "string" ? raw.split(LINES).map((v) => v.trim()).filter(Boolean) : raw);
-    if (value.ok) checked[name] = value.value;
-    else problems.push({ field: name, message: value.problem });
+    if (!value.ok) problems.push({ field: name, message: value.problem });
+    // M65: a list of text left with nothing once cleaned (blank lines) is cleared.
+    else if (Array.isArray(value.value) && value.value.length === 0 && isTextList(field)) {
+      if (field.required) problems.push({ field: name, message: "is required" });
+      else checked[name] = null;
+    } else checked[name] = value.value;
   }
   return { values: checked, problems };
 }

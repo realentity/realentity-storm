@@ -4,6 +4,7 @@ import {
   addFieldNames,
   formFieldNames,
   isRefField,
+  isTextList,
   movesFrom,
   type AppDefinition,
   type DataType,
@@ -181,7 +182,8 @@ function naming(type: DataType): { title: string; link: string | null } {
 
 /**
  * The type's list: as written, or by default its title, then its required fields, then the others that fit a row
- * (not long text, lists or currency codes), six at most; enum and yes/no fields as filters; text fields searched;
+ * (not long text, lists or currency codes), six at most; enum and yes/no fields as filters; text fields (M65: and
+ * lists of text) searched;
  * newest first.
  */
 export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPage {
@@ -222,7 +224,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
     filters: filterFields.map((field) => pageFilter(type, field)),
     search:
       page?.search ??
-      entries.filter(([, f]) => (f.type === "text" || f.type === "longtext" || f.type === "enum") && !f.encrypted).map(([n]) => n),
+      entries.filter(([, f]) => (f.type === "text" || f.type === "longtext" || f.type === "enum" || isTextList(f)) && !f.encrypted).map(([n]) => n),
     sort: { by: sort.replace(/^-/, ""), desc: sort.startsWith("-") },
     group: page?.group
       ? {

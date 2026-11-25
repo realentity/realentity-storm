@@ -22,6 +22,7 @@ const JOB_SEARCH: AppDefinition = AppDefinitionSchema.parse({
         salary: { type: "money" },
         posted: { type: "date" },
         favorite: { type: "yesno", mine: true },
+        tags: { type: "list", of: "text" },
       },
     },
   },
@@ -185,6 +186,23 @@ describe("M30: entities", () => {
     expect((await read({ sort: "position", limit: 1 })).items).toEqual([job(1)]);
     await save([job(1)], { complete: true });
     expect((await read({ removed: true })).items.map((i) => i.url).sort()).toEqual(["https://jobs.test/2", "https://jobs.test/3"]);
+  });
+
+  // M65-T1: a list of text, cleaned on save; `contains` finds a tag without case; one value saved before is a list.
+  it("data.read: a list of text's tags, matched without case, an old single value read as a list", async () => {
+    const saved = await save([job(1, { tags: [" Remote ", "remote", "Go"] }), job(2, { tags: ["Onsite"] })]);
+    expect(saved.added.map((i) => i.tags)).toEqual([["Remote", "Go"], ["Onsite"]]);
+    // A row from before the field was a list (as Tasks' tag was an enum).
+    await db.client.dataEntity.update({
+      where: { appId_type_key: { appId, type: "Job", key: "https://jobs.test/2" } },
+      data: { value: { ...job(2), tags: "remote" } },
+    });
+    const remote = await read({ where: [{ field: "tags", op: "contains", value: "REMOTE" }], sort: "position" });
+    expect(remote.items.map((i) => [i.url, i.tags])).toEqual([
+      ["https://jobs.test/1", ["Remote", "Go"]],
+      ["https://jobs.test/2", ["remote"]],
+    ]);
+    expect((await read({ where: [{ field: "tags", op: "contains", value: "rem" }] })).count).toBe(0);
   });
 
   describe("entity.changed", () => {
