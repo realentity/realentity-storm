@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LlmError, type LlmClient } from "./claude-client";
 import { ModelRouter } from "./models";
 import { OpenAiApi, OpenAiChat, OpenAiClient, toOpenAiMessages } from "./openai";
-import { RoutedBatches, RoutedChat, RoutedClient, SequentialBatches, llmConfigured, llmFromConfig } from "./providers";
+import { RoutedBatches, RoutedChat, RoutedClient, SequentialBatches, llmConfigured, llmFromConfig, openAiApi } from "./providers";
 import { costUsd } from "./usage";
 
 /** A fake OpenAI-compatible server: answers in order, records each request. */
@@ -292,6 +292,8 @@ describe("providers", () => {
     expect(llmConfigured({})).toBe(false);
     // A key for OpenAI's embeddings alone doesn't make the default (Claude) models work.
     expect(llmConfigured({ openaiApiKey: KEY })).toBe(false);
+    // ...nor sends an openai: model's calls to OpenAI itself: only OPENAI_BASE_URL does.
+    expect(openAiApi({ openaiApiKey: KEY })).toBeNull();
     expect(llmConfigured({ anthropicApiKey: KEY })).toBe(true);
     expect(llmConfigured({ openaiBaseUrl: "http://localhost:11434/v1" })).toBe(true);
     expect(llmFromConfig({}).batches).toBeNull();
@@ -328,6 +330,37 @@ describe("M60 models and cost", () => {
     const router = new ModelRouter(() => Promise.resolve(null), { LLM_MODEL: "openai:qwen3:14b", LLM_MODEL_BUILDER: "claude-opus-5-5" });
     expect(router.fallback("llm.classify")).toMatchObject({ model: "openai:qwen3:14b", effort: "low", source: "env" });
     expect(router.fallback("builder")).toMatchObject({ model: "claude-opus-5-5", source: "env" });
+  });
+
+  it("passes over every local model while local models are off, and keeps the tasks' choices for when they are on", async () => {
+    const settings: Record<string, { model: string; effort: string }> = {
+      "email.classify": { model: "openai:gemma3:12b", effort: "low" },
+      "llm.summarize": { model: "claude-opus-5-5", effort: "high" },
+    };
+    let local = { on: false, model: "openai:qwen3:14b" as string | null };
+    const router = new ModelRouter(
+      (_userId, task) => Promise.resolve(settings[task] ?? null),
+      { LLM_MODEL: "openai:qwen3:8b", LLM_MODEL_BUILDER: "claude-opus-5-5" },
+      () => Promise.resolve(local),
+    );
+
+    // Off: Claude everywhere (the defaults, a Claude model from .env, a task's Claude choice).
+    await expect(router.choose("u", "email.classify")).resolves.toEqual({ model: "claude-haiku-5-5", effort: "low" });
+    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "claude-sonnet-5-5", effort: "medium" });
+    await expect(router.choose("u", "builder")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
+    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
+
+    // On: the task's own choice, else the model for all tasks (over .env), else LLM_MODEL.
+    local = { on: true, model: "openai:qwen3:14b" };
+    await expect(router.choose("u", "email.classify")).resolves.toEqual({ model: "openai:gemma3:12b", effort: "low" });
+    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "openai:qwen3:14b", effort: "medium" });
+    await expect(router.choose("u", "builder")).resolves.toEqual({ model: "openai:qwen3:14b", effort: "high" });
+    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
+    expect(router.fallback("llm.generate", local)).toMatchObject({ source: "local" });
+
+    local = { on: true, model: null };
+    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "openai:qwen3:8b", effort: "medium" });
+    await expect(router.choose("u", "builder")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
   });
 
   it("prices a model on an OpenAI-compatible server at nothing, an unknown Claude model at the most", () => {

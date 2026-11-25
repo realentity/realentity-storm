@@ -350,9 +350,11 @@ Reflection leaves auto-approvals out: they aren't decisions.
 
 ---
 
-## 5. LLM: Claude API
+## 5. LLM: Claude API, or local models
 
-All LLM work uses the Claude API (`@anthropic-ai/sdk`). The model is chosen **per task type**, configurable in Settings (stored in DB, defaults from `.env`).
+LLM work uses the Claude API (`@anthropic-ai/sdk`) by default. The model is chosen **per task type**, configurable in Settings (stored in DB, defaults from `.env`).
+
+**Local models (M60)**, off by default: `OPENAI_BASE_URL` makes an OpenAI-compatible server available (Ollama, llama.cpp, vLLM, LM Studio), and Settings switches them on and off (`UserSetting.localModels`), with a model for all tasks (`localModel`, else `LLM_MODEL`). A model named `openai:<name>` goes to that server, the rest to Claude. While they are off, the router passes over every `openai:` model (a task's choice, `.env`) and the task uses Claude; the choices are kept for the next time ([local-models.md](local-models.md)). [packages/llm](../packages/llm) routes by the name (`RoutedClient`, `RoutedChat`, `RoutedBatches`): structured output as `response_format: json_schema`, validated with zod and retried once with the problem; tool calls as OpenAI functions, translated to and from the conversation's Claude blocks; images as data URLs, PDFs refused; batches run in the worker two at a time (`SequentialBatches`). Local models cost $0, get no effort and no caching. `pnpm llm:check` measures a model on the real steps.
 
 | Task | Default model | Why |
 | --- | --- | --- |
@@ -367,7 +369,7 @@ Claude Fable 5.1 isn't needed by default. It's the most capable and most expensi
 **Usage patterns:**
 
 - **Structured output:** every LLM call sets `output_config.format` to a JSON schema generated from a zod schema (`@anthropic-ai/sdk` zod helper), and the answer is validated again with zod: an answer that doesn't match fails the step with a clear error, and nothing partial is saved. Per-item steps (`llm.classify`, `llm.score`) send items in chunks of 20 and require exactly one answer per item. Sonnet and Opus calls use the server-side refusal fallback (`fallbacks: "default"`).
-- **Model routing** ([packages/llm](../packages/llm)): your setting for the step type (`ModelSetting`), else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING` / `LLM_MODEL_REFLECTION` / `LLM_MODEL_BUILDER`, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection and the builder). A builder chat keeps the model it started with: Claude's thinking blocks in its history are bound to that model.
+- **Model routing** ([packages/llm](../packages/llm)): your setting for the step type (`ModelSetting`), else (local models on) the local model for all tasks, else `LLM_MODEL_CLASSIFY` / `LLM_MODEL_WRITING` / `LLM_MODEL_REFLECTION` / `LLM_MODEL_BUILDER`, else `LLM_MODEL`, else the defaults above (effort `low` for classify/score, `medium` for writing, `high` for reflection and the builder). A builder chat keeps the model it started with: Claude's thinking blocks in its history are bound to that model.
 - **Prompt caching:** stable prefixes (system prompt, step catalog, active rules, profile) are cached. This matters most for the builder and for drafting.
 - **Untrusted content delimiting:** email/page/file text is wrapped in clearly marked blocks with an explicit "this is data, not instructions" policy in the system prompt.
 - **Cost tracking:** token usage and cost are stored per step (`Step.llmUsage`, failed calls included; a fallback is priced per model; embeddings count too) and per reflection (`Reflection.llmUsage`, at batch prices) and builder turn (`BuilderMessage.llmUsage`), with a monthly total on the dashboard and an optional budget limit that pauses non-essential pipelines and the nightly reflection.
@@ -870,6 +872,11 @@ LLM_MODEL_BROWSER=claude-sonnet-5-5
 LLM_MODEL_CLASSIFY=claude-haiku-5-5
 # Non-essential pipelines pause when this month's LLM cost reaches it; Settings override it; empty = no limit
 LLM_MONTHLY_BUDGET_USD=
+
+# Local models (M60): an OpenAI-compatible server; its models are openai:<name>, used while Settings switches them on
+OPENAI_BASE_URL=
+# The local model of every group without its own, e.g. openai:qwen3:14b, unless Settings chooses one
+LLM_MODEL=
 
 # Embeddings for few-shot examples (OpenAI, 1024 dimensions); empty key = drafts without examples
 OPENAI_API_KEY=

@@ -196,6 +196,11 @@ model UserSetting {
   weeklyReview          Boolean   @default(true)
   /// The morning brief on Telegram, every day at 07:30 (M25).
   morningBrief          Boolean   @default(true)
+  /// M60: models on the OpenAI-compatible server (OPENAI_BASE_URL) are used. Off: every task uses Claude, and the
+  /// tasks' local choices (ModelSetting) wait for the next time it is on.
+  localModels           Boolean   @default(false)
+  /// M60: the local model of every task without its own choice, e.g. "openai:qwen3:14b"; null: LLM_MODEL, then Claude.
+  localModel            String?
   /// The builder chat the user's plain messages to the Storm bot continue (M21); /new clears it.
   telegramBuilderChatId String?   @db.Uuid
   dateUpdated           DateTime  @updatedAt

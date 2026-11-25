@@ -1,3 +1,4 @@
+import { localModelsOf } from "@realentity/storm-db";
 import { llmFromConfig, ModelRouter, type LlmChat } from "@realentity/storm-llm";
 import { AppsModule } from "../apps/apps.module";
 import { type ServerEnv } from "@realentity/storm-shared";
@@ -27,10 +28,11 @@ import { BUILDER_LLM, BuilderService } from "./builder.service";
       provide: ModelRouter,
       inject: [PrismaService, SERVER_ENV],
       useFactory: (db: PrismaService, env: ServerEnv) =>
-        new ModelRouter((userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }), {
-          LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER,
-          LLM_MODEL: env.LLM_MODEL,
-        }),
+        new ModelRouter(
+          (userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }),
+          { LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER, LLM_MODEL: env.LLM_MODEL },
+          (userId) => localModelsOf(db.client, userId, Boolean(env.OPENAI_BASE_URL)),
+        ),
     },
     {
       provide: Builder,

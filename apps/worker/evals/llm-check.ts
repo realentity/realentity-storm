@@ -168,7 +168,7 @@ const CHECKS: Check[] = [
       const out = (await new SummarizeStep(llm.client, router).execute({ content, maxWords: 40 }, context)) as { summary: string };
       const words = out.summary.split(/\s+/).filter(Boolean).length;
       if (words > 48) return fail(`${words} words`);
-      return /example hosting|third/i.test(out.summary) && /8 jan|january/i.test(out.summary) ? pass(`${words} words`) : fail(`left out the decision: ${out.summary}`);
+      return /example hosting|third/i.test(out.summary) && /\b8(th)? jan|jan(uary)?\.? 8|january/i.test(out.summary) ? pass(`${words} words`) : fail(`left out the decision: ${out.summary}`);
     },
   },
   {
@@ -304,8 +304,13 @@ const CHECKS: Check[] = [
         const results = [];
         for (const use of uses) {
           if (use.name === "finish") {
-            const answer = (use.input as { answer?: unknown })?.answer;
-            return added && String(answer).includes("42") ? pass(`${turn + 1} turns`) : fail(`finished with ${JSON.stringify(use.input)}${added ? "" : " before adding"}`);
+            // As the builder does: a call that doesn't fit the tool goes back as an error, and the model may correct it.
+            const finish = z.object({ answer: z.string() }).safeParse(use.input);
+            if (!finish.success) {
+              results.push(toolResult(use.id, `Invalid call: finish takes {"answer": string}, got ${JSON.stringify(use.input)}`, true));
+              continue;
+            }
+            return added && finish.data.answer.includes("42") ? pass(`${turn + 1} turns`) : fail(`finished with ${JSON.stringify(use.input)}${added ? "" : " before adding"}`);
           }
           const input = z.object({ a: z.number(), b: z.number() }).safeParse(use.input);
           if (use.name !== "add" || !input.success) {
@@ -362,6 +367,14 @@ async function main(): Promise<void> {
   if (checks.length === 0) throw new Error(`No check named ${args.only}; there are ${CHECKS.map((c) => c.task).join(", ")}`);
   console.log(`llm:check ${MODEL}, ${RUNS} run(s) of ${checks.length} check(s)\n`);
 
+  // Saved after every check: a run cut short (a crash, the PC off) keeps what it measured; --only resumes it.
+  const dir = resolve(__dirname, "results");
+  mkdirSync(dir, { recursive: true });
+  // Some checks (--only) go to a file of their own: they don't replace the day's full run.
+  const name = `${new Date().toISOString().slice(0, 10)}-llm-check-${MODEL}${only ? `-only-${only.join("+")}` : ""}`;
+  const file = resolve(dir, `${name.replace(/[^a-z0-9.+-]+/gi, "_")}.json`);
+  const save = () => writeFileSync(file, JSON.stringify({ date: new Date().toISOString(), model: MODEL, runs: RUNS, rows }, null, 2));
+
   const rows: Row[] = [];
   for (const check of checks) {
     const row: Row = { task: check.task, what: check.what, passed: 0, runs: RUNS, seconds: [], usage: emptyUsage(), failures: [] };
@@ -391,6 +404,7 @@ async function main(): Promise<void> {
       console.log(`  ${outcome.ok ? "✓" : "✗"} ${check.task} #${run} ${seconds.toFixed(1)}s ${outcome.detail}`.trimEnd());
     }
     rows.push(row);
+    save();
   }
 
   const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
@@ -404,10 +418,6 @@ async function main(): Promise<void> {
   const passed = rows.reduce((sum, r) => sum + r.passed, 0);
   console.log(`\n${passed}/${rows.length * RUNS} passed; cost $${total.costUsd.toFixed(4)}`);
 
-  const dir = resolve(__dirname, "results");
-  mkdirSync(dir, { recursive: true });
-  const file = resolve(dir, `${new Date().toISOString().slice(0, 10)}-llm-check-${MODEL.replace(/[^a-z0-9.-]+/gi, "_")}.json`);
-  writeFileSync(file, JSON.stringify({ date: new Date().toISOString(), model: MODEL, runs: RUNS, rows }, null, 2));
   console.log(`Results: ${file}`);
 }
 

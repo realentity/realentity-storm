@@ -18,8 +18,6 @@ export function serverModel(model: string): string {
   return isOpenAiModel(model) ? model.slice(OPENAI_PREFIX.length) : model;
 }
 
-export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
 export interface OpenAiServer {
   /** Up to and including `/v1`, e.g. http://localhost:11434/v1 (Ollama). */
   baseUrl: string;

@@ -1,3 +1,4 @@
+import { localModelsOf } from "@realentity/storm-db";
 import { llmFromConfig, ModelRouter, OpenAiEmbeddings, type LlmBatches, type LlmChat, type LlmClient } from "@realentity/storm-llm";
 import { TopicBackfills } from "../sources/backfill";
 import { JobQueue, publishEvent } from "@realentity/storm-queue";
@@ -111,14 +112,19 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       provide: ModelRouter,
       inject: [PrismaService, SERVER_ENV],
       useFactory: (db: PrismaService, env: ServerEnv) =>
-        new ModelRouter((userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }), {
-          LLM_MODEL_CLASSIFY: env.LLM_MODEL_CLASSIFY,
-          LLM_MODEL_WRITING: env.LLM_MODEL_WRITING,
-          LLM_MODEL_REFLECTION: env.LLM_MODEL_REFLECTION,
-          // browser.agent.escalation is in the builder group.
-          LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER,
-          LLM_MODEL: env.LLM_MODEL,
-        }),
+        new ModelRouter(
+          (userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }),
+          {
+            LLM_MODEL_CLASSIFY: env.LLM_MODEL_CLASSIFY,
+            LLM_MODEL_WRITING: env.LLM_MODEL_WRITING,
+            LLM_MODEL_REFLECTION: env.LLM_MODEL_REFLECTION,
+            // browser.agent.escalation is in the builder group.
+            LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER,
+            LLM_MODEL: env.LLM_MODEL,
+          },
+          // M60: local models only while switched on in Settings.
+          (userId) => localModelsOf(db.client, userId, Boolean(env.OPENAI_BASE_URL)),
+        ),
     },
     {
       provide: Learning,

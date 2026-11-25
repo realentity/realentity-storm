@@ -12,21 +12,25 @@ import {
   type StructuredRequest,
   type StructuredResult,
 } from "./claude-client";
-import { isOpenAiModel, OPENAI_DEFAULT_BASE_URL, OpenAiApi, OpenAiChat, OpenAiClient } from "./openai";
+import { isOpenAiModel, OpenAiApi, OpenAiChat, OpenAiClient } from "./openai";
 import { emptyUsage } from "./usage";
 
 /** Where the models are (M60): Claude with its key, and/or an OpenAI-compatible server. */
 export interface LlmProviderConfig {
   anthropicApiKey?: string;
-  /** Set for a local server (Ollama: http://localhost:11434/v1); unset with a key, OpenAI itself. */
+  /**
+   * The OpenAI-compatible server (Ollama: http://localhost:11434/v1). Only it makes `openai:` models reachable: a key
+   * alone (for embeddings) never sends a model's calls to OpenAI.
+   */
   openaiBaseUrl?: string;
+  /** Sent to the server as its key. */
   openaiApiKey?: string;
 }
 
-/** The OpenAI-compatible server, if one is set up: a base URL, or OpenAI's own with a key. */
+/** The OpenAI-compatible server, if one is set up. */
 export function openAiApi(config: LlmProviderConfig): OpenAiApi | null {
-  if (!config.openaiBaseUrl && !config.openaiApiKey) return null;
-  return new OpenAiApi({ baseUrl: config.openaiBaseUrl ?? OPENAI_DEFAULT_BASE_URL, apiKey: config.openaiApiKey });
+  if (!config.openaiBaseUrl) return null;
+  return new OpenAiApi({ baseUrl: config.openaiBaseUrl, apiKey: config.openaiApiKey });
 }
 
 /** True when some model can answer: the LLM steps, the builder and reflection are on. */

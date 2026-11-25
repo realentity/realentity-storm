@@ -26,7 +26,9 @@ repository's `.env`. For development without Docker, see [design.md](design.md) 
   or the container in [`docker/compose.local.yml`](../docker/compose.local.yml) (`STORM_LOCAL=1`).
 - A way to reach the app over HTTPS: [Tailscale](https://tailscale.com/) (`tailscale serve`), a reverse proxy with a
   certificate, or a VPN. The live updates and the session cookie need HTTPS outside `localhost`.
-- A **Claude API key** (<https://platform.claude.com/settings/keys>) for the LLM steps and the builder.
+- A **Claude API key** (<https://platform.claude.com/settings/keys>) for the LLM steps and the builder, or **local
+  models** on your own hardware instead (Ollama or another OpenAI-compatible server), for every task or only some.
+  They are off until you switch them on: [local-models.md](local-models.md).
 - Optional: a Telegram bot, an IMAP/SMTP mailbox, Google Calendar and Drive, an OpenAI key (embeddings for drafts and topics).
 
 ## 1. Database
@@ -76,6 +78,8 @@ TZ=Europe/London
   the system jobs follow it.
 - The rest of `.env.example` can stay as it is: the containers set `API_HOST`, `API_PORT` and the file folders
   themselves, and the models have defaults (changeable in Settings).
+- **Local models** instead of Claude, or next to it: `OPENAI_BASE_URL` makes a model server available, and Settings
+  switches them on and off (off by default). How to let the containers reach the server: [local-models.md](local-models.md).
 
 **Files.** Run artifacts (screenshots, traces, downloads) and your documents (CVs, letters that forms attach; the files
 and images on your Apps' entities, under `documents/app-files`) live in

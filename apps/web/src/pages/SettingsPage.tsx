@@ -19,7 +19,10 @@ import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
 import { useAction, useLoad } from "../lib/use-load";
 
-const SOURCE_LABEL = { settings: "chosen here", env: "from .env", default: "default" } as const;
+const SOURCE_LABEL = { settings: "chosen here", local: "the local model for all tasks", env: "from .env", default: "default" } as const;
+
+/** M60: a model on the OpenAI-compatible server. */
+const OPENAI_PREFIX = "openai:";
 
 /** Model per LLM task, the monthly LLM budget, and global rate limits for side-effect steps (docs/design.md §5, §2.2). */
 export function SettingsPage() {
@@ -181,6 +184,71 @@ function money(usd: number): string {
   return `$${usd.toFixed(usd > 0 && usd < 0.01 ? 4 : 2)}`;
 }
 
+/** M60: local models on or off, and the local model of every task without its own choice. */
+function LocalModels({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
+  const action = useSave(onSaved);
+  const { local, serverModels } = settings;
+  const models: string[] = serverModels?.models ?? [];
+  const host = serverModels?.host;
+  return (
+    <div className="card-body border-bottom" data-testid="local-models">
+      <ErrorAlert error={action.error} />
+      <label className="form-check form-switch mb-2">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          checked={local.on}
+          disabled={action.busy || !local.available}
+          onChange={(e) => void action.save({ localModels: e.target.checked }, e.target.checked ? "Local models are on" : "Local models are off: every task uses Claude")}
+          data-testid="local-models-switch"
+        />
+        <span className="form-check-label">Local models{host ? ` on ${host}` : ""}</span>
+        <div className="small text-secondary">
+          {local.available
+            ? "On: the tasks below can use the server's models, which cost nothing in the budget and get no effort. Off: every task uses Claude, and the local models chosen below wait for the next time."
+            : "Off. To run tasks on your own hardware (Ollama or another OpenAI-compatible server), set OPENAI_BASE_URL in .env and restart: docs/local-models.md."}
+        </div>
+      </label>
+      {serverModels?.error && (
+        <div className="alert alert-warning mb-2" data-testid="server-models-error">
+          The models on {serverModels.host} couldn't be listed: {serverModels.error}
+        </div>
+      )}
+      {local.on && (
+        <div className="row g-2 align-items-center">
+          <label className="col-auto col-form-label" htmlFor="local-model">
+            Model for all tasks
+          </label>
+          <div className="col-auto">
+            <select
+              id="local-model"
+              className="form-select"
+              value={local.model ?? ""}
+              disabled={action.busy}
+              onChange={(e) =>
+                void action.save(
+                  { localModel: e.target.value || null },
+                  e.target.value ? `Every task without its own model: ${e.target.value}` : "Every task without its own model: its default",
+                )
+              }
+              data-testid="local-model"
+            >
+              <option value="">None: each task's default</option>
+              {local.model && !models.includes(local.model) && <option value={local.model}>{local.model}</option>}
+              {models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-12 small text-secondary">A model chosen for a task below comes first.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => void }) {
   const action = useSave(onSaved);
   const serverModels: string[] = settings.serverModels?.models ?? [];
@@ -189,17 +257,8 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
       <div className="card-header">
         <h3 className="card-title">Model per task</h3>
       </div>
+      <LocalModels settings={settings} onSaved={onSaved} />
       <ErrorAlert error={action.error} />
-      {settings.serverModels?.error && (
-        <div className="alert alert-warning m-3" data-testid="server-models-error">
-          The models on {settings.serverModels.host} couldn't be listed: {settings.serverModels.error}
-        </div>
-      )}
-      {serverModels.length > 0 && (
-        <div className="card-body small text-secondary py-2">
-          Models on {settings.serverModels?.host} cost nothing in the budget, and the effort isn't sent to them.
-        </div>
-      )}
       <div className="table-responsive">
         <table className="table table-vcenter card-table" data-testid="models">
           <thead>
@@ -220,6 +279,11 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
                   <td>
                     <code>{task}</code>
                     <div className="small text-secondary">{SOURCE_LABEL[choice.source]}</div>
+                    {choice.waiting && (
+                      <div className="small text-warning" data-testid={`waiting-${task}`}>
+                        {choice.waiting} once local models are on
+                      </div>
+                    )}
                   </td>
                   <td>
                     <select
@@ -238,9 +302,9 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
                         ))}
                       </optgroup>
                       {settings.serverModels && serverModels.length > 0 && (
-                        <optgroup label={`On ${settings.serverModels.host}`}>
+                        <optgroup label={settings.local.on ? `On ${settings.serverModels.host}` : `On ${settings.serverModels.host} (local models are off)`}>
                           {serverModels.map((m) => (
-                            <option key={m} value={m}>
+                            <option key={m} value={m} disabled={!settings.local.on}>
                               {m}
                             </option>
                           ))}
@@ -249,19 +313,26 @@ function Models({ settings, onSaved }: { settings: SettingsView; onSaved: () => 
                     </select>
                   </td>
                   <td>
-                    <select
-                      className="form-select"
-                      value={choice.effort}
-                      disabled={action.busy}
-                      onChange={(e) => set(choice.model, e.target.value)}
-                      aria-label={`${task} effort`}
-                    >
-                      {EFFORTS.map((e) => (
-                        <option key={e} value={e}>
-                          {e}
-                        </option>
-                      ))}
-                    </select>
+                    {choice.model.startsWith(OPENAI_PREFIX) ? (
+                      // M60: not sent to a local model.
+                      <span className="text-secondary" title="A local model gets no effort" data-testid={`no-effort-${task}`}>
+                        —
+                      </span>
+                    ) : (
+                      <select
+                        className="form-select"
+                        value={choice.effort}
+                        disabled={action.busy}
+                        onChange={(e) => set(choice.model, e.target.value)}
+                        aria-label={`${task} effort`}
+                      >
+                        {EFFORTS.map((e) => (
+                          <option key={e} value={e}>
+                            {e}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td>
                     {choice.source === "settings" && (

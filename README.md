@@ -11,7 +11,9 @@ it. It reads your email, watches websites, feeds and APIs, works real web pages 
 prepares replies, form entries, uploads and calendar events. **Nothing leaves the system until you have seen exactly
 what will be sent and pressed Act.** It learns from how you edit what it proposes.
 
-Single user. Runs with Docker on a machine of yours, reached over your private network, not the Internet.
+Single user. Runs with Docker on a machine of yours, reached over your private network, not the Internet. Its LLM is
+Claude, or **models on your own hardware** (Ollama or any OpenAI-compatible server), for every task or only some:
+off by default, switched on and off in Settings ([docs/local-models.md](docs/local-models.md)).
 
 ![The Job Search App: postings scored against what you look for, grouped by where you are with each](docs/images/job-search.png)
 
@@ -184,6 +186,8 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 - **Limits you set.** Allowed domains per pipeline, rate limits per step type, a monthly LLM budget, a kill switch.
   Private and VPN addresses are never fetched. The one exception: an uptime check (`http.check`, `net.check`) of an
   address you typed yourself on a Monitor, which says only whether it answers; a cloud's metadata address never.
+- **Your email can stay at home.** With local models switched on, the steps that read your email, pages and
+  documents send them to a model on your own hardware instead of an API ([docs/local-models.md](docs/local-models.md)).
 - **A browser you can watch and take over.** Browser steps run in a real Chromium, visible live in the app. CAPTCHAs,
   2FA and odd dialogs are handed to you; you click and type on the site, then continue.
 - **Everything recorded.** Each run keeps its pipeline version, steps, inputs, outputs, screenshots and traces.
@@ -193,7 +197,8 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 | What | For | |
 |---|---|---|
 | **Docker** with Compose v2, about 4 GB of free memory and 5 GB of disk | Running Storm (Linux, macOS, or Windows with WSL) | Required |
-| **A Claude API key** ([platform.claude.com](https://platform.claude.com/settings/keys)) | The builder and every LLM step: triage, scoring, drafts, summaries. Paid per use; set a monthly budget in Settings or `.env` | Required |
+| **A Claude API key** ([platform.claude.com](https://platform.claude.com/settings/keys)) | The builder and every LLM step: triage, scoring, drafts, summaries. Paid per use; set a monthly budget in Settings or `.env` | Required, unless local models do it all |
+| **A local model server**: [Ollama](https://ollama.com), llama.cpp, vLLM, LM Studio | Running the LLM steps on your own hardware instead of Claude, for every task or only some. Off until you switch it on in Settings ([docs/local-models.md](docs/local-models.md)) | Optional |
 | **PostgreSQL 17** with the `vector` (pgvector) and `citext` extensions | Storm's data. A bundled container works for trying it out | Required (bundled) |
 | **An authenticator app** | The login: a password and a one-time code | Required |
 | **A way to reach it over HTTPS**: Tailscale, a reverse proxy, or a VPN | Using it from other devices. Not needed on `localhost` | On a server |
@@ -306,6 +311,7 @@ to start with an invalid value and names the key, never the value.
 | `ENCRYPTION_KEY` | Encrypts every stored credential. **Keep a copy outside the server**: without it no credential opens, not even from a backup | Always |
 | `APP_ADMIN_PASSWORD_HASH`, `APP_TOTP_SECRET` | The login, from `auth-setup` (until they're set, nobody can sign in) | Always |
 | `ANTHROPIC_API_KEY` | The Claude API | Always, in practice |
+| `OPENAI_BASE_URL` | Local models: the server (Ollama: `http://host.docker.internal:11434/v1`). It makes them available; you switch them on and off in Settings, off by default ([docs/local-models.md](docs/local-models.md)) | Local models |
 | `APP_ORIGIN` | Exactly the address you open in the browser, without a trailing `/`. Live updates accept only this origin | Always, except in development |
 | `TZ` | Your time zone, for schedules, the morning brief and the weekly review. Empty: UTC in the containers | Recommended |
 | `LLM_MONTHLY_BUDGET_USD` | Pauses non-essential pipelines when the month's LLM cost reaches it (also in Settings) | Recommended |
@@ -327,6 +333,7 @@ the ports and folders themselves.
 | [docs/topics.md](docs/topics.md) | Topics: what Storm knows about your projects and customers, and how your replies use it |
 | [docs/design.md](docs/design.md) | How it works: principles, pipelines, gates, architecture, security, data model |
 | [docs/self-hosting.md](docs/self-hosting.md) | Install, HTTPS, webhooks and Telegram, updates, backups |
+| [docs/local-models.md](docs/local-models.md) | Local models: switching them on and off, which model, measured on a GPU and a CPU |
 | [docs/telegram.md](docs/telegram.md) | What the bot does |
 | [docs/google-setup.md](docs/google-setup.md) | Connecting Google: Calendar, and Drive for topics |
 | [examples/](examples/) | Example pipelines and Apps |

@@ -20,7 +20,11 @@ function modelServer(): { server: Server; requests: string[]; setDown(down: bool
   return { server, requests, setDown: (value) => (down = value) };
 }
 
-// M60: models on an OpenAI-compatible server, chosen in Settings
+const settingsOf = async (agent: ReturnType<typeof request.agent>) => (await agent.get("/api/settings").expect(200)).body as SettingsView;
+const put = async (agent: ReturnType<typeof request.agent>, body: object, status = 200) =>
+  (await agent.put("/api/settings").send(body).expect(status)).body as SettingsView & { errors?: { path: string; message: string }[] };
+
+// M60: models on an OpenAI-compatible server, switched on and off in Settings
 describe("local models", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;
@@ -42,6 +46,7 @@ describe("local models", () => {
   afterEach(async () => {
     fake.setDown(false);
     await db.client.modelSetting.deleteMany();
+    await db.client.userSetting.updateMany({ data: { localModels: false, localModel: null } });
   });
 
   afterAll(async () => {
@@ -53,34 +58,70 @@ describe("local models", () => {
     await new Promise((resolve) => fake.server.close(resolve));
   });
 
-  it("lists the server's models, uses LLM_MODEL where no group model is set, and takes a server model per task", async () => {
-    const settings = (await agent.get("/api/settings").expect(200)).body as SettingsView;
+  it("is off by default: every task on Claude, LLM_MODEL waiting, the server's models listed", async () => {
+    const settings = await settingsOf(agent);
+    expect(settings.local).toEqual({ available: true, on: false, model: null });
     expect(settings.serverModels).toEqual({ host, models: ["openai:gemma3:12b", "openai:qwen3:14b"], error: null });
-    expect(settings.claude).toBe(false);
     expect(fake.requests).toContain("GET /v1/models");
-    expect(settings.models["llm.classify"]).toEqual({ model: "openai:qwen3:14b", effort: "low", source: "env" });
-    expect(settings.models["email.draftReply"]).toEqual({ model: "openai:qwen3:14b", effort: "medium", source: "env" });
+    expect(settings.claude).toBe(false);
+    expect(settings.models["llm.classify"]).toEqual({ model: "claude-haiku-5-5", effort: "low", source: "default" });
     expect(settings.models.builder).toEqual({ model: "claude-opus-5-5", effort: "high", source: "env" });
 
-    const chosen = (
-      await agent
-        .put("/api/settings")
-        .send({ models: { "bill.read": { model: "openai:gemma3:12b", effort: "medium" } } })
-        .expect(200)
-    ).body as SettingsView;
-    expect(chosen.models["bill.read"]).toEqual({ model: "openai:gemma3:12b", effort: "medium", source: "settings" });
+    // A local model for a task, while they are off: refused, so no choice points at nothing.
+    const refused = await put(agent, { models: { "bill.read": { model: "openai:gemma3:12b", effort: "medium" } } }, 400);
+    expect(refused.errors).toEqual([{ path: "models.bill.read", message: "Local models are off: switch them on first" }]);
+  });
+
+  it("on: LLM_MODEL, then the model for all tasks, then a task's own; off again: Claude, the choices kept", async () => {
+    let settings = await put(agent, { localModels: true });
+    expect(settings.local).toEqual({ available: true, on: true, model: null });
+    expect(settings.models["llm.classify"]).toEqual({ model: "openai:qwen3:14b", effort: "low", source: "env" });
+    expect(settings.models.builder).toEqual({ model: "claude-opus-5-5", effort: "high", source: "env" });
+
+    settings = await put(agent, { localModel: "openai:gemma3:12b", models: { "email.draftReply": { model: "openai:qwen3:14b", effort: "medium" } } });
+    expect(settings.models["llm.classify"]).toEqual({ model: "openai:gemma3:12b", effort: "low", source: "local" });
+    expect(settings.models.builder).toEqual({ model: "openai:gemma3:12b", effort: "high", source: "local" });
+    expect(settings.models["email.draftReply"]).toEqual({ model: "openai:qwen3:14b", effort: "medium", source: "settings" });
 
     // A name without the prefix would go to Claude: refused, as any unknown model.
-    await agent
-      .put("/api/settings")
-      .send({ models: { "bill.read": { model: "gemma3:12b", effort: "medium" } } })
-      .expect(400);
+    await put(agent, { models: { "bill.read": { model: "gemma3:12b", effort: "medium" } } }, 400);
+
+    settings = await put(agent, { localModels: false });
+    expect(settings.local).toEqual({ available: true, on: false, model: "openai:gemma3:12b" });
+    expect(settings.models["llm.classify"]).toEqual({ model: "claude-haiku-5-5", effort: "low", source: "default" });
+    expect(settings.models["email.draftReply"]).toEqual({ model: "claude-sonnet-5-5", effort: "medium", source: "default", waiting: "openai:qwen3:14b" });
+
+    settings = await put(agent, { localModels: true });
+    expect(settings.models["email.draftReply"]).toEqual({ model: "openai:qwen3:14b", effort: "medium", source: "settings" });
   });
 
   it("shows why the server's models couldn't be listed, and still shows the settings", async () => {
     fake.setDown(true);
-    const settings = (await agent.get("/api/settings").expect(200)).body as SettingsView;
+    const settings = await settingsOf(agent);
     expect(settings.serverModels).toEqual({ host, models: [], error: `The model server (${host}) refused the request (503: loading model)` });
-    expect(settings.models["llm.classify"].model).toBe("openai:qwen3:14b");
+    expect(settings.models["llm.classify"].model).toBe("claude-haiku-5-5");
+  });
+});
+
+describe("local models without a server", () => {
+  let api: TestApp;
+  let agent: ReturnType<typeof request.agent>;
+
+  beforeAll(async () => {
+    api = await createTestApp();
+    agent = await api.signedIn();
+  });
+
+  afterAll(() => api.close());
+
+  it("can't be switched on, and lists nothing", async () => {
+    const settings = await settingsOf(agent);
+    expect(settings.local).toEqual({ available: false, on: false, model: null });
+    expect(settings.serverModels).toBeNull();
+    const refused = await put(agent, { localModels: true, localModel: "openai:qwen3:14b" }, 400);
+    expect(refused.errors).toEqual([
+      { path: "localModels", message: "No OpenAI-compatible server is set up (OPENAI_BASE_URL)" },
+      { path: "localModel", message: "No OpenAI-compatible server is set up (OPENAI_BASE_URL)" },
+    ]);
   });
 });
