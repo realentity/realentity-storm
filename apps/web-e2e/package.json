@@ -1,6 +1,6 @@
 {
   "name": "@realentity/storm-web-e2e",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Browser tests (Playwright) against the composed stack: PostgreSQL, api, worker and the web app",
   "scripts": {
