@@ -27,7 +27,12 @@ types:
 pages:
   - list: Bill
     menu: { label: My bills }
-    filters: [status, paid]
+    filters: [status, paid, labels, due]
+    sources:
+      labels: { from: Bill, distinct: labels }
+      days: { from: Bill, distinct: due, by: day }
+      payees: { from: Payee, sort: name }
+      unpaid: { from: Bill, where: [{ field: status, op: eq, value: due }], sort: payee, display: payee }
     sort: -due
     group: { by: due, period: month, totals: [amount] }
     removed: true
@@ -223,6 +228,42 @@ steps:
     await agent.get(`/api/apps/${appId}/pages/Bill?filter=${encodeURIComponent('{"payee":"Water"}')}`).expect(400);
     await agent.get(`/api/apps/${appId}/pages/Bill?filter=nope`).expect(400);
     await agent.get(`/api/apps/${appId}/pages/Invoice`).expect(404);
+  });
+
+  // M65-I2: sources (distinct values with counts, items) and filters by type, together with search.
+  it("returns its sources, and filters by a list's values, a day or a range, several values as any", async () => {
+    await db.client.dataEntity.createMany({ data: [{ appId, type: "Payee", key: "Water", value: { name: "Water" } }, { appId, type: "Payee", key: "Acme", value: { name: "Acme" } }] });
+    const view = await list();
+    expect(view.sources).toEqual({
+      labels: { kind: "values", field: "labels", values: [{ value: "Home", label: "Home", count: 1 }, { value: "streaming", label: "streaming", count: 1 }, { value: "utilities", label: "utilities", count: 1 }] },
+      days: {
+        kind: "values",
+        field: "due",
+        values: [
+          { value: "2026-10-10", label: "2026-10-10", count: 1 },
+          { value: "2026-11-05", label: "2026-11-05", count: 1 },
+          { value: "2026-11-10", label: "2026-11-10", count: 1 },
+          { value: "2026-11-20", label: "2026-11-20", count: 1 },
+        ],
+      },
+      payees: { kind: "items", items: [{ id: "Acme", label: "Acme" }, { id: "Water", label: "Water" }] },
+      unpaid: { kind: "items", items: [{ id: "e1", label: "Electricity" }, { id: "n1", label: "Netflix" }] },
+    });
+    // A list's filter picks among the values in use.
+    expect(view.page.filters.find((f) => f.field === "labels")).toMatchObject({ match: "contains", values: [{ value: "Home" }, { value: "streaming" }, { value: "utilities" }] });
+    const filtered = (filter: Record<string, unknown>, more = "") => list(`?filter=${encodeURIComponent(JSON.stringify(filter))}${more}`);
+    expect(keys(await filtered({ labels: "HOME" }))).toEqual(["e1"]);
+    expect(keys(await filtered({ labels: ["home", "streaming"] }))).toEqual(["e1", "n1"]);
+    expect(keys(await filtered({ due: "2026-11-10" }))).toEqual(["e1"]);
+    expect(keys(await filtered({ due: "2026-11-01..2026-11-15" }))).toEqual(["e1", "n1"]);
+    expect(keys(await filtered({ due: "..2026-10-31" }))).toEqual(["e0"]);
+    expect(keys(await filtered({ status: ["paid", "due"], due: "2026-11-01.." }))).toEqual(["w1", "e1", "n1"]);
+    expect(keys(await filtered({ due: "2026-11-01..", status: "due" }, "&q=netf"))).toEqual(["n1"]);
+    // On the page's own type, a source counts what the other filters leave; its own field's filter doesn't narrow it.
+    const narrowed = await filtered({ status: "due", due: "2026-11-05" });
+    expect(narrowed.sources.labels).toMatchObject({ values: [{ value: "streaming", count: 1 }] });
+    expect(narrowed.sources.days).toMatchObject({ values: [{ value: "2026-11-05" }, { value: "2026-11-10" }] });
+    await agent.get(`/api/apps/${appId}/pages/Bill?filter=${encodeURIComponent('{"due":"yesterday"}')}`).expect(400);
   });
 
   it("an entity's page: its fields as the view says, its history by its key", async () => {

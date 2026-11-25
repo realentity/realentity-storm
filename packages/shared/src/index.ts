@@ -5,6 +5,7 @@ export * from "./app-page-designer";
 export * from "./app-pages";
 export * from "./app-preview";
 export * from "./app-report";
+export * from "./app-sources";
 export * from "./app-source";
 export * from "./app-stages";
 export * from "./auth";

@@ -130,7 +130,8 @@ export function AppListPage() {
           </ul>
         </div>
         <div className="card-body border-bottom py-2 d-flex flex-wrap gap-2 align-items-center">
-          {page.filters.map((f) => (
+          {/* M65: a date's filter (a day or a range) has no values to pick from here: the calendar control picks it. */}
+          {page.filters.filter((f) => f.match !== "day").map((f) => (
             <select
               key={f.field}
               className="form-select form-select-sm w-auto"

@@ -2,6 +2,7 @@ import { parse as parseYaml } from "yaml";
 import { NeedsSchema } from "./needs";
 import { z } from "zod";
 import { HOST_PATTERN } from "./credentials";
+import { CONDITION_OPS } from "./conditions";
 import { holdsSealed, isSealed } from "./sealed";
 import { safeLink, VIEW_ICONS } from "./view";
 
@@ -419,6 +420,42 @@ export type EntityActionDef = z.output<typeof EntityAction>;
 
 const PageSort = z.string().regex(/^-?(@firstSeen|@lastSeen|[A-Za-z_][\w.-]*)$/, '"field" or "-field", e.g. -salary');
 
+/** M65: a source's name on its page, by which a control uses it ("tags", "days"). */
+export const SOURCE_NAME = /^[a-z][A-Za-z0-9]{0,39}$/;
+
+/**
+ * M65: a page's query of the App's own data (DataSource): the distinct values of a field with how many have each (the
+ * tags in use; a date's days with `by: day`), or entities of a type (`where`, `sort`), each with an id and a label.
+ * Always a collection; how many may be picked is the control's. Evaluated by the api, over the App's own types only.
+ */
+export const PageSourceSchema = z.union([
+  z
+    .object({
+      from: z.string().regex(TYPE_NAME),
+      distinct: PageField,
+      /** A date's or a time's day, in the instance's time zone (TZ). */
+      by: z.literal("day").optional(),
+    })
+    .strict(),
+  z
+    .object({
+      from: z.string().regex(TYPE_NAME),
+      /** data.read's conditions. */
+      where: z
+        .array(z.object({ field: PageField, op: z.enum(CONDITION_OPS), value: z.unknown() }).strict())
+        .max(10)
+        .optional(),
+      sort: PageSort.optional(),
+      /** The field that is an item's id; default its key. */
+      id: PageField.optional(),
+      /** The field it is shown by; default its title (else its key). */
+      display: PageField.optional(),
+      limit: z.number().int().min(1).max(500).default(200),
+    })
+    .strict(),
+]);
+export type PageSource = z.output<typeof PageSourceSchema>;
+
 /**
  * A type's list page (M31): in the menu under Pages, its columns, filters, search, sort and groups with totals. A
  * field's format comes from its kind. Anything left out has a default from the type's fields.
@@ -445,8 +482,16 @@ export const ListPageSchema = z
       .min(1)
       .max(8)
       .optional(),
-    /** Fields to filter by: enum and yes/no ones, picked from their values. */
-    filters: z.array(z.string().regex(ENTITY_FIELD)).max(6).optional(),
+    /**
+     * Fields to filter by: enum and yes/no ones, picked from their values; M65: a list's values (a tag), a date's day
+     * or range (@firstSeen too).
+     */
+    filters: z.array(PageField).max(6).optional(),
+    /** M65: named queries of the App's own data, for the page's controls: { tags: { from: Memo, distinct: tags } }. */
+    sources: z
+      .record(z.string().regex(SOURCE_NAME, 'a name, e.g. "tags"'), PageSourceSchema)
+      .refine((sources) => Object.keys(sources).length <= 6, "6 sources at most")
+      .optional(),
     /** Fields the search box looks in; default: the text fields. */
     search: z.array(z.string().regex(ENTITY_FIELD)).min(1).max(10).optional(),
     sort: PageSort.optional(),
@@ -656,6 +701,10 @@ const FILTER_KINDS: readonly FieldKind[] = ["enum", "yesno", "ref"];
 const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", "enum", "ref"];
 const TOTAL_KINDS: readonly FieldKind[] = ["number", "money"];
 const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
+/** M65: a list page also filters by a list's values and a date's day or range. */
+const LIST_FILTER_KINDS: readonly FieldKind[] = [...FILTER_KINDS, "list", "date", "datetime"];
+/** M65: what a source counts the distinct values of. */
+const DISTINCT_KINDS: readonly FieldKind[] = ["text", "email", "number", "enum", "yesno", "list", "ref", "date", "datetime"];
 
 /** Pages only on the App's types, and only on their fields, each used as its kind allows. */
 function checkPages(
@@ -745,7 +794,8 @@ function checkPages(
         for (const name of Object.keys(c.due?.unless ?? {})) field(name, [...at, "columns", j, "due", "unless", name]);
       });
       if (page.moves && !type.stages) issue([...at, "moves"], `${typeName} has no stages to move`);
-      page.filters?.forEach((f, j) => field(f, [...at, "filters", j], FILTER_KINDS, "a filter is an enum, a yes/no or a ref field"));
+      page.filters?.forEach((f, j) => field(f, [...at, "filters", j], LIST_FILTER_KINDS, "a filter is an enum, a yes/no, a ref, a list or a date field"));
+      for (const [name, source] of Object.entries(page.sources ?? {})) checkSource(app, source, [...at, "sources", name], issue);
       page.search?.forEach((f, j) => {
         field(f, [...at, "search", j], SEARCH_KINDS, "search looks in text fields");
         if (type.fields[f]?.encrypted) issue([...at, "search", j], `${typeName}.${f} is encrypted: it can't be searched`);
@@ -815,6 +865,28 @@ export function pageKind(page: AppPage): ["list" | "view" | "form" | "report", s
 }
 
 /** A report's measures each count one thing, on the type's fields and states; its shares and columns name its tiles. */
+/** M65: a page's source reads a type of this App, by fields it has, never an encrypted one. */
+function checkSource(app: { types: Record<string, DataType> }, source: PageSource, at: (string | number)[], issue: (path: (string | number)[], message: string) => void): void {
+  const type = Object.hasOwn(app.types, source.from) ? app.types[source.from] : undefined;
+  if (!type) return issue([...at, "from"], `there is no type "${source.from}" in this App (a source reads only its own types)`);
+  const kindOf = (name: string): FieldKind | undefined => (name.startsWith("@") ? "datetime" : type.fields[name]?.type);
+  const field = (name: string, path: (string | number)[], kinds?: readonly FieldKind[], what?: string) => {
+    const kind = kindOf(name);
+    if (!kind) return issue(path, `${source.from} has no field "${name}"`);
+    if (type.fields[name]?.encrypted) return issue(path, `${source.from}.${name} is encrypted: a source can't read it`);
+    if (kinds && !kinds.includes(kind)) issue(path, `${what}: "${name}" is ${kind}`);
+  };
+  if ("distinct" in source) {
+    field(source.distinct, [...at, "distinct"], DISTINCT_KINDS, "a source counts the values of a text, number, enum, yes/no, list, ref or date field");
+    if (source.by) field(source.distinct, [...at, "by"], PERIOD_KINDS, "by day is a date's or a time's");
+    return;
+  }
+  source.where?.forEach((condition, j) => field(condition.field, [...at, "where", j, "field"]));
+  if (source.sort) field(source.sort.replace(/^-/, ""), [...at, "sort"]);
+  if (source.id) field(source.id, [...at, "id"]);
+  if (source.display) field(source.display, [...at, "display"]);
+}
+
 function checkReport(
   page: ReportPage,
   type: DataType,

@@ -49,10 +49,11 @@ describe("an App's pages (M31)", () => {
       { field: "paid", label: "Paid", as: "yesno" },
     ]);
     expect(list.filters).toEqual([
-      { field: "status", label: "Status", values: ["due", "paid", "late"].map((v) => ({ value: v, label: v })) },
+      { field: "status", label: "Status", match: "equals", values: ["due", "paid", "late"].map((v) => ({ value: v, label: v })) },
       {
         field: "paid",
         label: "Paid",
+        match: "equals",
         values: [
           { value: "true", label: "Yes" },
           { value: "false", label: "No" },
@@ -115,7 +116,7 @@ describe("an App's pages (M31)", () => {
     ).toEqual([
       'pages.0.list: there is no type "Invoice"',
       'pages.1.columns.1: Bill has no field "salery"',
-      'pages.1.filters.0: a filter is an enum, a yes/no or a ref field: "payee" is text',
+      'pages.1.filters.0: a filter is an enum, a yes/no, a ref, a list or a date field: "payee" is text',
       'pages.1.search.0: search looks in text fields: "amount" is money',
       'pages.1.sort: Bill has no field "nope"',
       'pages.1.group.period: a period groups a date field: "status" is enum',

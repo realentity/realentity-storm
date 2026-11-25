@@ -12,8 +12,10 @@ import {
   type FieldKind,
   type FormPage,
   type ListPage,
+  type PageSource,
   type ViewPage,
 } from "./app";
+import { filterMatch, kindOfField, type FilterValue, type SourceView } from "./app-sources";
 import { type ViewChart, type ViewFormat, type ViewIcon, type ViewRow } from "./view";
 
 /**
@@ -61,6 +63,8 @@ export interface PageFilter {
   values: { value: string; label: string }[];
   /** M55: a ref's: the type its values are entities of. */
   ref?: string;
+  /** M65: how it matches: equals (enum, yes/no, ref), contains (a list's values), on a day or in a range (a date). */
+  match: "equals" | "contains" | "day";
 }
 
 /** A field on a form (M32): its input from its kind. */
@@ -126,6 +130,8 @@ export interface ResolvedListPage {
   columns: PageColumn[];
   filters: PageFilter[];
   search: string[];
+  /** M65: the page's sources, as written; the list view carries what they return. */
+  sources: Record<string, PageSource>;
   sort: { by: string; desc: boolean };
   group: { by: PageColumn; period: "month" | "year" | null; totals: PageTotal[] } | null;
   removed: boolean;
@@ -222,6 +228,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
     link,
     columns,
     filters: filterFields.map((field) => pageFilter(type, field)),
+    sources: page?.sources ?? {},
     search:
       page?.search ??
       entries.filter(([, f]) => (f.type === "text" || f.type === "longtext" || f.type === "enum" || isTextList(f)) && !f.encrypted).map(([n]) => n),
@@ -242,19 +249,22 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
   };
 }
 
-/** A filter's values: an enum's, yes and no; M55: a ref's are its type's entities, filled in by the api. */
+/**
+ * A filter's values: an enum's, yes and no; M55: a ref's are its type's entities, filled in by the api; M65: a list's
+ * are the values in use (the api), a date has none (a day or a range is picked).
+ */
 function pageFilter(type: DataType, field: string): PageFilter {
   const f = type.fields[field];
-  const values =
-    f?.type === "enum"
-      ? (f.values ?? []).map((value) => ({ value, label: value }))
-      : f?.type === "ref"
-        ? []
-        : [
-            { value: "true", label: "Yes" },
-            { value: "false", label: "No" },
-          ];
-  return { field, label: fieldLabel(type, field), values, ...(f?.type === "ref" && f.to ? { ref: f.to } : {}) };
+  const kind = kindOfField(type, field);
+  const match = filterMatch(kind);
+  let values: { value: string; label: string }[] = [];
+  if (f?.type === "enum") values = (f.values ?? []).map((value) => ({ value, label: value }));
+  else if (kind === "yesno")
+    values = [
+      { value: "true", label: "Yes" },
+      { value: "false", label: "No" },
+    ];
+  return { field, label: fieldLabel(type, field), values, match, ...(f?.type === "ref" && f.to ? { ref: f.to } : {}) };
 }
 
 /** M55: what points at the type's entities, as its view page lists them. */
@@ -383,15 +393,18 @@ export const AppListQuerySchema = z
   .object({
     tab: z.enum(["current", "removed"]).default("current"),
     q: z.string().trim().max(200).optional(),
-    /** Filters as JSON: { "status": "applied", "favorite": "true" }. */
+    /**
+     * Filters as JSON: { "status": "applied", "favorite": "true" }; M65: several values, any of them ({ "tags": ["home",
+     * "work"] }); a date's day or range ({ "due": "2026-11-01..2026-11-30" }).
+     */
     filter: z
       .string()
-      .max(2000)
+      .max(4000)
       .optional()
-      .transform((text, ctx) => {
+      .transform((text, ctx): Record<string, FilterValue> => {
         if (!text) return {};
         try {
-          const parsed = z.record(z.string(), z.string().max(200)).parse(JSON.parse(text));
+          const parsed = z.record(z.string(), z.union([z.string().max(200), z.array(z.string().max(200)).max(20)])).parse(JSON.parse(text));
           return parsed;
         } catch {
           ctx.addIssue({ code: "custom", message: 'filters as JSON, e.g. {"status":"applied"}' });
@@ -432,6 +445,8 @@ export interface AppListView extends AppPageHeader {
   groups: EntityGroup[] | null;
   /** The list's chart (M33): a series per key, the highest latest values; null without `chart`. */
   chart: ViewChart | null;
+  /** M65: what the page's sources return, by name. */
+  sources: Record<string, SourceView>;
 }
 
 export interface AppEntityView extends AppPageHeader {
