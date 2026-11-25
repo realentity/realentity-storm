@@ -266,6 +266,24 @@ pages:
     history: { collection: bill-amounts }    # a data.history collection, by the entity's key, as a chart
 ```
 
+**Filters and sources (M65).** A list filters by an enum, a yes/no or a ref field (equals), a list's values
+(contains: one of the tags; its choices the values in use), or a date (`@firstSeen` too: a day, `2026-11-25`, or a
+range, `2026-11-01..2026-11-30`, either end open). Several values of a filter match any of them; filters and search
+together match all. Days are counted in the instance's time zone (`TZ`). A page's `sources:` are named queries of the
+App's own types, for its controls: the distinct values of a field with how many entities have each (`by: day` for a
+date's or a time's days), or entities as items (data.read's `where` and `sort`, `id` and `display` fields: default
+the key and the title). On the page's own type, a source counts what the page's other filters and search leave.
+A source can't read another App's types, nor an encrypted field.
+
+```yaml
+  - list: Memo
+    filters: [tags, "@firstSeen"]
+    sources:
+      tags: { from: Memo, distinct: tags }                    # each tag in use, with a count
+      days: { from: Memo, distinct: "@firstSeen", by: day }   # a count per day a memo was added
+      open: { from: Task, where: [{ field: done, op: eq, value: false }], sort: due }
+```
+
 **Stages, forms and buttons (M32).** A type may have a stage: where an entity is (new, favorite, applied…), moved
 only as its `moves` allow and by whom: you on its page (the default), or a pipeline's `data.save` (`by: [me,
 pipeline]`, where `me` is you). A move a pipeline may not make is said in `invalid` and the stage stays, so an

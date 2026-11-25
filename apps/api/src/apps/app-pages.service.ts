@@ -19,6 +19,13 @@ import {
   reportPagesOf,
   viewPageOf,
   withTextLists,
+  isDayFilter,
+  defaultTimeZone,
+  distinctValues,
+  filterMatches,
+  filterValues,
+  sourceItems,
+  type SourceView,
   type AppDefinition,
   type AppEntityView,
   type AppReportView,
@@ -129,7 +136,14 @@ export class AppPagesService {
   async list(userId: string, appId: string, type: string, query: AppListQueryParsed): Promise<AppListView> {
     const { header, definition } = await this.header(userId, appId, type);
     const rows = await this.withTitles(userId, appId, definition, type, await this.rows(appId, definition, type));
-    const listed = listOf(definition, type, rows, query);
+    // M65: the rows of the other types the page's sources read (of this App only).
+    const read = new Map<string, ViewRow[]>([[type, rows]]);
+    for (const source of Object.values(listPageOf(definition, type).sources)) {
+      if (!read.has(source.from) && Object.hasOwn(definition.types, source.from)) {
+        read.set(source.from, await this.withTitles(userId, appId, definition, source.from, await this.rows(appId, definition, source.from)));
+      }
+    }
+    const listed = listOf(definition, type, rows, query, (from) => read.get(from) ?? []);
     const chart = listed.page.chart ? await this.chart(userId, listed.page.chart.history, rows, listed.page.title) : null;
     // M55: a ref filter's values are the entities of its type.
     const filters = await this.withRefValues(appId, definition, listed.page.filters);
@@ -154,7 +168,9 @@ export class AppPagesService {
     }
     const sample = rows.length === 0;
     if (sample) rows = sampleRows(request.type, definition.types[request.type]);
-    const listed = listOf(definition, request.type, rows, { tab: "current", filter: {}, offset: 0, limit: PREVIEW_ROWS });
+    const listed = listOf(definition, request.type, rows, { tab: "current", filter: {}, offset: 0, limit: PREVIEW_ROWS }, (from) =>
+      from === request.type ? rows : [],
+    );
     const first = listed.rows[0];
     return {
       list: { appId: request.appId ?? "", app: definition.name, version, type: request.type, ...listed, chart: null },
@@ -321,28 +337,62 @@ export class AppPagesService {
   }
 }
 
-/** A type's rows as its list page shows them: the tab's, filtered, searched, sorted, in groups with totals, then paged. */
+/**
+ * A type's rows as its list page shows them: the tab's, filtered, searched, sorted, in groups with totals, then paged;
+ * M65: with what its sources return (`rowsOf`: a type's rows, of this App).
+ */
 function listOf(
   definition: AppDefinition,
   type: string,
   rows: ViewRow[],
   query: AppListQueryParsed,
+  rowsOf: (type: string) => ViewRow[],
 ): Omit<AppListView, keyof AppPageHeader | "chart"> {
-  const page = listPageOf(definition, type);
+  const resolved = listPageOf(definition, type);
+  const dataType = definition.types[type];
+  // Days in the instance's time zone (TZ).
+  const zone = defaultTimeZone();
   const counts = { current: rows.filter((r) => !r.removedAt).length, removed: rows.filter((r) => r.removedAt).length };
-  for (const field of Object.keys(query.filter)) {
+  const wanted = Object.entries(query.filter).map(([field, value]) => [field, filterValues(value)] as const);
+  for (const [field, values] of wanted) {
     // M55: any ref field too: an entity's page lists what points at it.
-    const isRef = definition.types[type]?.fields[field]?.type === "ref";
-    if (!isRef && !page.filters.some((f) => f.field === field)) throw new BadRequestException(`This page has no filter "${field}"`);
+    const isRef = dataType?.fields[field]?.type === "ref";
+    const filter = resolved.filters.find((f) => f.field === field);
+    if (!isRef && !filter) throw new BadRequestException(`This page has no filter "${field}"`);
+    if (filter?.match === "day" && values.some((v) => !isDayFilter(v)))
+      throw new BadRequestException(`"${field}" is filtered by a day (2026-11-25) or a range (2026-11-01..2026-11-30)`);
   }
   const q = query.q?.toLowerCase();
-  const matching = rows.filter(
+  const inTab = rows.filter((row) => (query.tab === "removed") === (row.removedAt !== null));
+  const searched = inTab.filter(
     (row) =>
-      (query.tab === "removed") === (row.removedAt !== null) &&
-      Object.entries(query.filter).every(([field, value]) => text(fieldOf(row, field)) === value) &&
-      (!q ||
-        row.key.toLowerCase().includes(q) ||
-        page.search.some((f) => (row.titles?.[f] ?? searchText(fieldOf(row, f)))?.toLowerCase().includes(q))),
+      !q ||
+      row.key.toLowerCase().includes(q) ||
+      resolved.search.some((f) => (row.titles?.[f] ?? searchText(fieldOf(row, f)))?.toLowerCase().includes(q)),
+  );
+  // M65: each filter by its field's type; filters and search together (AND).
+  const passes = (row: ViewRow, except?: string) =>
+    wanted.every(([field, values]) => field === except || filterMatches(dataType, field, row, values, zone));
+  const matching = searched.filter((row) => passes(row));
+  const current = rows.filter((r) => !r.removedAt);
+  // M65: a list's filter picks among the values in use.
+  const page: ResolvedListPage = {
+    ...resolved,
+    filters: resolved.filters.map((f) =>
+      f.match === "contains" && !f.ref ? { ...f, values: distinctValues(dataType, f.field, false, current, zone).map(({ value, label }) => ({ value, label })) } : f,
+    ),
+  };
+  const sources = Object.fromEntries(
+    Object.entries(resolved.sources).map(([name, source]): [string, SourceView] => {
+      const from = definition.types[source.from];
+      if ("distinct" in source) {
+        // On the page's own type, what the other filters and the search leave (a tag's count among the days picked).
+        const over = source.from === type ? searched.filter((row) => passes(row, source.distinct)) : rowsOf(source.from).filter((r) => !r.removedAt);
+        return [name, { kind: "values", field: source.distinct, values: distinctValues(from, source.distinct, source.by === "day", over, zone) }];
+      }
+      const items = sourceItems(from, source, rowsOf(source.from).filter((r) => !r.removedAt), { title: listPageOf(definition, source.from).title });
+      return [name, { kind: "items", items }];
+    }),
   );
   matching.sort((a, b) => compare(fieldOf(a, page.sort.by), fieldOf(b, page.sort.by), page.sort.desc));
 
@@ -361,7 +411,7 @@ function listOf(
     // Rows by group, each group in the page's sort (a stable sort keeps it).
     matching.sort((a, b) => order.indexOf(valueOf(a)) - order.indexOf(valueOf(b)));
   }
-  return { page, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, groups };
+  return { page, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, groups, sources };
 }
 
 /** An entity as a row: what pipelines wrote, with the user's fields over it, and its stage. */

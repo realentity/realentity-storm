@@ -1,15 +1,21 @@
-import { entityValueAt } from "./app";
 import { canonicalJson } from "./canonical-json";
 
 type Item = Record<string, unknown>;
 
 /**
- * data.filter's and data.read's `where` (M65: also a page's sources and filters, in the api). Moved here from the
- * worker so both match the same way.
+ * data.filter's and data.read's `where` (M65: also a page's sources, in the api). Moved here from the worker so both
+ * match the same way.
  */
 
 /** A field of an item by dotted path ("company.name"); undefined when missing. */
-export const valueAt: (item: Item, path: string) => unknown = entityValueAt;
+export function valueAt(item: Item, path: string): unknown {
+  let current: unknown = item;
+  for (const segment of path.split(".")) {
+    if (current === null || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Item)[segment];
+  }
+  return current;
+}
 
 export const CONDITION_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in", "nin"] as const;
 
@@ -44,17 +50,21 @@ export function matches(actual: unknown, { op, value }: Pick<Condition, "op" | "
       return op === "gt" ? order > 0 : op === "gte" ? order >= 0 : op === "lt" ? order < 0 : order <= 0;
     }
     case "contains":
-      if (typeof actual === "string" && typeof value === "string") return actual.toLowerCase().includes(value.toLowerCase());
-      if (!Array.isArray(actual)) return false;
-      // M65: a tag matches "Home" and "home" alike, unless the list is case-sensitive.
-      if (caseless && typeof value === "string") return actual.some((entry) => typeof entry === "string" && entry.toLowerCase() === value.toLowerCase());
-      return actual.some((entry) => same(entry, value));
+      return contains(actual, value, caseless);
     case "in":
       return Array.isArray(value) && value.some((entry) => same(actual, entry));
     case "nin":
       // M58-T9: not one of the list's values; a value that isn't a list (an empty step's) leaves out nothing.
       return !(Array.isArray(value) && value.some((entry) => same(actual, entry)));
   }
+}
+
+/** Text in text, without case; a value in a list (M65: a tag without case, unless the list is case-sensitive). */
+function contains(actual: unknown, value: unknown, caseless: boolean): boolean {
+  if (typeof actual === "string" && typeof value === "string") return actual.toLowerCase().includes(value.toLowerCase());
+  if (!Array.isArray(actual)) return false;
+  if (caseless && typeof value === "string") return actual.some((entry) => typeof entry === "string" && entry.toLowerCase() === value.toLowerCase());
+  return actual.some((entry) => same(entry, value));
 }
 
 function same(a: unknown, b: unknown): boolean {
