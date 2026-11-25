@@ -36,21 +36,47 @@ test("Settings opens on AI; each tab is a page of its own; the old #email and #g
   await expect(page).toHaveURL(/\/settings\/ai$/);
 });
 
-// M60 on its page: without a model server local models can't be switched on, and a task's effort is chosen here
-test("AI: local models off without a server; a task's effort chosen, then reset", async ({ page }) => {
+// M62: the model servers on the AI page; the models chosen from them
+test("AI: Claude among the model servers; a task's effort chosen, then reset; a server switched off and on", async ({ page }) => {
   await page.goto("/settings/ai");
-  const local = page.getByTestId("local-models");
-  await expect(page.getByTestId("local-models-switch")).toBeDisabled();
-  await expect(local).toContainText("set OPENAI_BASE_URL in .env");
-  await expect(page.getByTestId("local-model")).toHaveCount(0);
+  const servers = page.getByTestId("model-servers");
+  const claude = servers.getByTestId("model-server").filter({ hasText: "Claude" });
+  await expect(claude).toContainText("Claude API");
+  await expect(claude).toContainText("key …-key");
+  await expect(page.getByTestId("default-model")).toBeVisible();
 
   const row = page.getByTestId("models").getByRole("row").filter({ hasText: "llm.summarize" });
   await row.getByLabel("llm.summarize effort").selectOption("high");
   await expect(row).toContainText("chosen here");
   await expect(row.getByLabel("llm.summarize effort")).toHaveValue("high");
   await row.getByRole("button", { name: "Reset" }).click();
-  await expect(row).toContainText("default");
+  await expect(row).toContainText("built-in default");
   await expect(row.getByLabel("llm.summarize effort")).toHaveValue("medium");
+
+  // Off: its models can't be chosen; on again.
+  // The switch follows the saved state: it changes once the server is switched off.
+  await claude.getByLabel("Claude on").click();
+  await expect(claude.getByLabel("Claude on")).not.toBeChecked();
+  await expect(page.getByTestId("models").getByLabel("llm.summarize model").locator("optgroup")).toHaveAttribute("label", "Claude (off)");
+  await claude.getByLabel("Claude on").click();
+  await expect(claude.getByLabel("Claude on")).toBeChecked();
+  await expect(page.getByTestId("models").getByLabel("llm.summarize model").locator("optgroup")).toHaveAttribute("label", "Claude");
+});
+
+test("AI: a model server's address and key are saved only with the authenticator code", async ({ page }) => {
+  await page.goto("/settings/ai");
+  await page.getByTestId("model-server-add").click();
+  const dialog = page.getByRole("dialog");
+  // Claude is set up already: the form offers a server of your own.
+  await expect(dialog.getByTestId("model-server-kind-openai")).toBeChecked();
+  await expect(dialog.getByTestId("model-server-url")).toHaveValue("http://host.docker.internal:11434/v1");
+  await expect(dialog.getByTestId("model-server-code")).toBeVisible();
+  await expect(dialog.getByTestId("model-server-save")).toBeDisabled();
+  await dialog.getByTestId("model-server-code").fill("12ab");
+  await expect(dialog.getByTestId("model-server-code")).toHaveValue("12");
+  await expect(dialog.getByTestId("model-server-save")).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("Telegram: the morning brief switched off and on again on its page", async ({ page }) => {

@@ -113,7 +113,7 @@ describe("OpenAiEmbeddings", () => {
       "text-embedding-3-large",
       jest.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "Incorrect API key" } }), { status: 401 })),
     );
-    await expect(refused.embed(["x"])).rejects.toThrow("OpenAI refused the embeddings request (401: Incorrect API key)");
+    await expect(refused.embed(["x"])).rejects.toThrow("The embeddings server refused the request (401: Incorrect API key)");
     await expect(refused.embed(["x"])).rejects.not.toThrow(/sk-secret/);
 
     const offline = new OpenAiEmbeddings(
@@ -121,7 +121,7 @@ describe("OpenAiEmbeddings", () => {
       "text-embedding-3-large",
       jest.fn().mockRejectedValue(new Error("ECONNREFUSED sk-secret")),
     );
-    await expect(offline.embed(["x"])).rejects.toThrow(/^OpenAI could not be reached$/);
+    await expect(offline.embed(["x"])).rejects.toThrow(/^The embeddings server could not be reached$/);
 
     const short = new OpenAiEmbeddings(
       "k",

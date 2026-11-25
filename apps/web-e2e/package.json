@@ -11,6 +11,7 @@
   "devDependencies": {
     "@realentity/storm-api": "workspace:*",
     "@realentity/storm-config": "workspace:*",
+    "@realentity/storm-crypto": "workspace:*",
     "@realentity/storm-db": "workspace:*",
     "@realentity/storm-shared": "workspace:*",
     "@realentity/storm-steps": "workspace:*",

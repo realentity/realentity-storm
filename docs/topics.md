@@ -143,7 +143,7 @@ and the topic's documents for facts:
   the closest to the email. It must never contradict a fact, and what none of them says stays a placeholder.
 - **When there are too many facts:** a draft has room for about 6,000 characters of them. While they fit, all go in.
   When they don't, the ones you wrote or confirmed go first, then the ones closest to the email: by meaning, in any
-  language, if `OPENAI_API_KEY` is set, otherwise by the words they share. The topic's page tells you when not all
+  language, with embeddings on (Settings → AI), otherwise by the words they share. The topic's page tells you when not all
   fit. Saying which facts are no longer true, or splitting the topic, keeps more of them in every draft, and so does
   the weekly tidy-up.
 - **Why:** the draft lists what it relied on, and the gate shows it under **Why**, each fact with its source. You see
@@ -183,8 +183,9 @@ Both are one change in the History, and **Undo** puts everything back.
 - **To the LLM (Anthropic):** the text of the emails and documents being matched, read for facts or answered, as for
   any pipeline. Email and document text is always passed as data: it can lead to a proposal, never write a fact or a
   direction.
-- **To OpenAI, only if `OPENAI_API_KEY` is set:** the passages of your topics' documents, your facts, and the start of
-  an email being answered, for their embeddings. Without the key, everything works by words.
+- **To the embeddings server, only with embeddings on (Settings → AI):** the passages of your topics' documents, your
+  facts, and the start of an email being answered, for their embeddings: OpenAI's, or a model on your own server, where
+  the text stays home. Off, everything works by words.
 - **Kept in Storm's database:** your topics, directions and facts; the passages of your topics' documents (the index);
   and the ids, sender, subject and date of linked emails. Never the text of an email.
 

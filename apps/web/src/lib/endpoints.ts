@@ -1,4 +1,8 @@
 import {
+  type IntegrationCreate,
+  type IntegrationTestView,
+  type IntegrationUpdate,
+  type IntegrationView,
   type EmailAccountRequest,
   type EmailAccountUpdate,
   type EmailAccountView,
@@ -364,6 +368,14 @@ export const api = {
   },
   telegram: {
     commands: () => request<TelegramCommandsView>("GET", "/telegram/commands"),
+  },
+  // M62: Settings → AI → Model servers.
+  integrations: {
+    list: () => request<IntegrationView[]>("GET", "/integrations"),
+    create: (body: IntegrationCreate) => request<IntegrationView>("POST", "/integrations", body),
+    update: (integrationId: string, body: IntegrationUpdate) => request<IntegrationView>("PATCH", `/integrations/${integrationId}`, body),
+    remove: (integrationId: string) => request<void>("DELETE", `/integrations/${integrationId}`),
+    test: (integrationId: string, body: { model?: string }) => request<IntegrationTestView>("POST", `/integrations/${integrationId}/test`, body),
   },
   settings: {
     get: () => request<SettingsView>("GET", "/settings"),

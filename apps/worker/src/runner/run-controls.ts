@@ -3,7 +3,7 @@ import { Logger } from "@nestjs/common";
 import { LIMIT, type TelegramMessage } from "@realentity/storm-shared";
 
 export interface RunControlsOptions {
-  /** LLM_MONTHLY_BUDGET_USD; a UserSetting overrides it. */
+  /** A fixed budget for tests; the user's Settings → AI budget overrides it. */
   monthlyBudgetUsd?: number;
   /** The Storm bot: 80% of the budget spent, and the budget reached (M19-T2). Without it, nothing is told. */
   notify?: (message: TelegramMessage) => Promise<void>;
@@ -128,7 +128,7 @@ export class RunControls {
     return (await this.monthlySpendUsd(userId)) >= budget;
   }
 
-  /** The budget in effect: the setting, else LLM_MONTHLY_BUDGET_USD. */
+  /** The budget in effect: the setting, else the fixed one. */
   budgetOf(settings: UserSetting | null): number | undefined {
     return settings?.monthlyBudgetUsd != null ? Number(settings.monthlyBudgetUsd) : this.options.monthlyBudgetUsd;
   }

@@ -119,7 +119,7 @@ async function main(): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set in .env");
   const llm = ClaudeClient.fromApiKey(apiKey);
-  const router = new ModelRouter(() => Promise.resolve(null), process.env);
+  const router = new ModelRouter(() => Promise.resolve(null));
   // propose() uses only the LLM: the browser parts are never touched.
   const step = new MapFormStep({} as FormDependencies, llm, router);
   let usage: LlmUsage = emptyUsage();

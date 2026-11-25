@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   const instruction = `${draftWith.instruction} Open with a warm, polite first sentence before getting to the point.`;
 
   const llm = ClaudeClient.fromApiKey(apiKey);
-  const router = new ModelRouter(() => Promise.resolve(null), process.env);
+  const router = new ModelRouter(() => Promise.resolve(null));
   let usage: LlmUsage = emptyUsage();
   const context: StepContext = {
     runId: "eval",

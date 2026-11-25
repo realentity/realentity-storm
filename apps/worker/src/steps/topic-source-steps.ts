@@ -1,5 +1,5 @@
 import { addTopicCosts, type PrismaClient, type TopicSource } from "@realentity/storm-db";
-import { type Embeddings } from "@realentity/storm-llm";
+import { embeddingsSource, type Embeddings, type EmbeddingsSource } from "@realentity/storm-llm";
 import { isTextFile, pathMatches } from "@realentity/storm-shared";
 import { type EmailMessage } from "@realentity/storm-steps";
 import { type GoogleWho } from "../google/google-connection";
@@ -276,7 +276,7 @@ export class TopicIndexStep implements StepExecutor {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly github: GitHubClient,
-    private readonly embeddings: Embeddings | null,
+    private readonly embeddings: Embeddings | EmbeddingsSource | null,
     private readonly drive?: DriveClient,
   ) {}
 
@@ -285,6 +285,8 @@ export class TopicIndexStep implements StepExecutor {
     const changes = (input.changes as (SourceChange | SourceChange[])[]).flat();
     const reads = (input.sources as (SourceRead | SourceRead[])[]).flat();
     const { userId } = context;
+    // M62: the embeddings of Settings → AI, looked up once for this step.
+    const embeddings = (await embeddingsSource(this.embeddings)?.current(userId)) ?? null;
     const ids = [...new Set([...changes.map((c) => c.sourceId), ...reads.map((r) => r.sourceId)])];
     const sources = new Map(
       (await this.prisma.topicSource.findMany({ where: { userId, topicSourceId: { in: ids } } })).map((s) => [s.topicSourceId, s]),
@@ -324,7 +326,7 @@ export class TopicIndexStep implements StepExecutor {
         if (!context.dryRun)
           passages += await indexPassages(
             this.prisma,
-            this.embeddings,
+            embeddings,
             source,
             change.path,
             change.commit,
@@ -452,7 +454,7 @@ export class TopicAttachmentsStep implements StepExecutor {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly mail: MailConnector,
-    private readonly embeddings: Embeddings | null,
+    private readonly embeddings: Embeddings | EmbeddingsSource | null,
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
@@ -466,6 +468,7 @@ export class TopicAttachmentsStep implements StepExecutor {
       matches?: { messageId: string; topics: { topic: string; status: string }[] }[];
     };
     const { userId } = context;
+    const embeddings = (await embeddingsSource(this.embeddings)?.current(userId)) ?? null;
     const withFiles = messages.filter((m) => m.messageId && m.attachments.some(readableAttachment));
     let added = 0;
     if (withFiles.length && !context.dryRun) {
@@ -552,7 +555,7 @@ export class TopicAttachmentsStep implements StepExecutor {
         if (!file) problems.push(`${source.path}: no longer in its email`);
         passages += await indexPassages(
           this.prisma,
-          this.embeddings,
+          embeddings,
           source,
           source.path,
           "attachment",

@@ -1,4 +1,4 @@
-import { type KeyRing, rewrap, rewrapField } from "@realentity/storm-crypto";
+import { type KeyRing, rewrap, rewrapField, rewrapIntegration } from "@realentity/storm-crypto";
 import { type Prisma, type PrismaClient } from "@realentity/storm-db";
 import { isSealed } from "@realentity/storm-shared";
 
@@ -12,7 +12,7 @@ export interface RotationResult {
 
 /**
  * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens, email account passwords, App entities'
- * encrypted fields) to the current root key version
+ * encrypted fields, M62's integrations: the Claude key, the model servers' keys) to the current root key version
  * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
  * only if its version is still the old one.
  */
@@ -80,6 +80,18 @@ export class KeyRotation {
       const { count } = await this.prisma.emailAccount.updateMany({
         where: { emailAccountId: row.emailAccountId, keyVersion: row.keyVersion },
         data: rewrap(this.keys, row.emailAccountId, row, toVersion),
+      });
+      if (count === 1) rewrapped++;
+      else skipped++;
+    }
+
+    // M62: the integrations' secrets (their own derived key, AAD "integration:" + the id).
+    for (const row of await this.prisma.integration.findMany({ where: { keyVersion: { not: toVersion }, wrappedDek: { not: null } } })) {
+      if (!row.wrappedDek || row.keyVersion === null) continue;
+      fromVersions.add(row.keyVersion);
+      const { count } = await this.prisma.integration.updateMany({
+        where: { integrationId: row.integrationId, keyVersion: row.keyVersion },
+        data: rewrapIntegration(this.keys, row.integrationId, { wrappedDek: row.wrappedDek, keyVersion: row.keyVersion }, toVersion),
       });
       if (count === 1) rewrapped++;
       else skipped++;

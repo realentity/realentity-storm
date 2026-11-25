@@ -41,4 +41,17 @@ export class AuthService {
     }
     return user;
   }
+
+  /**
+   * M62-T6: the authenticator code asked again before a change that could send your data elsewhere (a model server's
+   * address or key). A code used once (here or at login) isn't accepted again.
+   */
+  checkCode(code: string | undefined): void {
+    const totpSecret = this.env.APP_TOTP_SECRET;
+    if (!totpSecret) throw new ServiceUnavailableException("Login is not configured: run pnpm auth:setup and set the values in .env");
+    if (!code || !authenticator.check(code, totpSecret) || code === this.lastAcceptedTotp) {
+      throw new UnauthorizedException("The code from your authenticator app is needed for this change, and this one isn't valid");
+    }
+    this.lastAcceptedTotp = code;
+  }
 }

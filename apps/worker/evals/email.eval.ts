@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const stepWith = (id: string) => compiled.definition.steps.find((s) => s.id === id)!.with;
 
   const llm = ClaudeClient.fromApiKey(apiKey);
-  const router = new ModelRouter(() => Promise.resolve(null), process.env);
+  const router = new ModelRouter(() => Promise.resolve(null));
   let usage: LlmUsage = emptyUsage();
   const context: StepContext = {
     runId: "eval",

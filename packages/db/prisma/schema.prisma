@@ -141,6 +141,7 @@ model User {
   alertStates      AlertState[]
   googleAccounts   GoogleAccount[]
   emailAccounts    EmailAccount[]
+  integrations     Integration[]
   facts            Fact[]
   questions        Question[]
   topics           Topic[]
@@ -196,11 +197,15 @@ model UserSetting {
   weeklyReview          Boolean   @default(true)
   /// The morning brief on Telegram, every day at 07:30 (M25).
   morningBrief          Boolean   @default(true)
-  /// M60: models on the OpenAI-compatible server (OPENAI_BASE_URL) are used. Off: every task uses Claude, and the
-  /// tasks' local choices (ModelSetting) wait for the next time it is on.
-  localModels           Boolean   @default(false)
-  /// M60: the local model of every task without its own choice, e.g. "openai:qwen3:14b"; null: LLM_MODEL, then Claude.
-  localModel            String?
+  /// M62: the model of every task without its own choice (ModelSetting), e.g. "claude-sonnet-5-5" or a model on a
+  /// server ("openai:<integrationId>:qwen3:14b"); null: each task group's built-in default.
+  defaultModel          String?
+  /// M62: the server embeddings come from (an OPENAI_COMPATIBLE Integration) and its model; null: no embeddings.
+  embeddingsIntegrationId String?    @db.Uuid
+  embeddingsIntegration Integration? @relation("Embeddings", fields: [embeddingsIntegrationId], references: [integrationId], onDelete: SetNull)
+  embeddingsModel       String?
+  /// M62: a builder chat stops once its calls used this many tokens (cache reads included); null: 2,000,000.
+  builderChatMaxTokens  Int?
   /// The builder chat the user's plain messages to the Storm bot continue (M21); /new clears it.
   telegramBuilderChatId String?   @db.Uuid
   dateUpdated           DateTime  @updatedAt
@@ -739,6 +744,41 @@ model Credential {
 
   @@unique([userId, name])
   @@map("Credentials")
+}
+
+enum IntegrationKind {
+  CLAUDE
+  OPENAI_COMPATIBLE
+}
+
+/// M62: a connection Storm itself uses (docs/design.md §7): Claude, a model server (Ollama, LM Studio, vLLM, OpenAI).
+/// Its secret is sealed with the integration key (sealIntegration: a key derived for this purpose, AAD "integration:" +
+/// the id), which the api may open too; the user's own secrets stay the worker's. Never returned: only `secretHint`.
+model Integration {
+  integrationId String          @id @db.Uuid
+  userId        String          @db.Uuid
+  user          User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  kind          IntegrationKind
+  /// The user's name for it: "Claude", "Ollama", "OpenAI".
+  name          String
+  /// Off: its models aren't used; a task choosing one falls back to the default model, its choice kept.
+  enabled       Boolean         @default(true)
+  /// Nothing secret: { baseUrl } for an OPENAI_COMPATIBLE server.
+  config        Json            @default("{}")
+  ciphertext    Bytes?
+  iv            Bytes?
+  authTag       Bytes?
+  wrappedDek    Bytes?
+  keyVersion    Int?
+  /// The secret's last four characters, to show which one is set ("…a1b2").
+  secretHint    String?
+  dateCreated   DateTime        @default(now())
+  dateUpdated   DateTime        @updatedAt
+  embeddingsFor UserSetting[]   @relation("Embeddings")
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("Integrations")
 }
 
 model ModelSetting {

@@ -1,4 +1,5 @@
 import { Prisma, type BuilderChat, type BuilderMessage } from "@realentity/storm-db";
+import { Integrations } from "@realentity/storm-db";
 import { ModelRouter, type ChatMessage, type LlmChat, type LlmUsage } from "@realentity/storm-llm";
 import {
   definitionToSource,
@@ -17,13 +18,12 @@ import {
   type CompiledPolicy,
   type CompileIssue,
   type EffortName,
-  type ServerEnv,
+  BUILDER_CHAT_MAX_TOKENS,
 } from "@realentity/storm-shared";
 import { diffApps, diffDefinitions, RecipeSchema } from "@realentity/storm-steps";
 import { readAppSource, type AppProposalView } from "@realentity/storm-shared";
 import { AppsService } from "../apps/apps.service";
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
@@ -31,7 +31,7 @@ import { RunsService } from "../runs/runs.service";
 import { Builder, tokensOf, type BuilderRuns } from "./builder";
 import { runData, runList } from "./run-data";
 
-/** The builder's LLM; null without ANTHROPIC_API_KEY or OPENAI_BASE_URL. */
+/** The builder's LLM: the model servers of Settings → AI, looked up at each call (M62). */
 export const BUILDER_LLM = Symbol("BUILDER_LLM");
 
 const RECENT_CHATS = 20;
@@ -74,12 +74,12 @@ export class BuilderService {
     private readonly prisma: PrismaService,
     private readonly builder: Builder,
     private readonly router: ModelRouter,
-    @Inject(BUILDER_LLM) private readonly llm: LlmChat | null,
+    @Inject(BUILDER_LLM) private readonly llm: LlmChat,
+    private readonly integrations: Integrations,
     private readonly pipelines: PipelinesService,
     private readonly runs: RunsService,
     private readonly events: EventsService,
     private readonly apps: AppsService,
-    @Inject(SERVER_ENV) private readonly env: ServerEnv,
   ) {}
 
   /** Recent chats about one pipeline, or (without one) about new pipelines not saved yet. */
@@ -129,7 +129,7 @@ export class BuilderService {
       pipelineName: pipeline?.name ?? null,
       currentVersion: version?.version ?? null,
       tokensUsed: chat.tokensUsed,
-      tokenCap: this.env.BUILDER_CHAT_MAX_TOKENS,
+      tokenCap: await this.tokenCap(userId),
       costUsd: round(messages.reduce((sum, m) => sum + (usageOf(m)?.costUsd ?? 0), 0)),
       messages: messages.map((m) => messageView(m, current, apps, appPipelines)),
       suggestions: suggestions.map((s) => ({
@@ -141,15 +141,21 @@ export class BuilderService {
         status: s.status,
         dateCreated: s.dateCreated.toISOString(),
       })),
-      available: this.llm !== null,
+      available: await this.integrations.configured(userId),
     };
+  }
+
+  /** M62: a chat's token limit, from Settings → AI. */
+  async tokenCap(userId: string): Promise<number> {
+    const settings = await this.prisma.client.userSetting.findUnique({ where: { userId }, select: { builderChatMaxTokens: true } });
+    return settings?.builderChatMaxTokens ?? BUILDER_CHAT_MAX_TOKENS;
   }
 
   /** One builder turn: the user's message, the builder's answer (and proposal, if it made one). */
   async send(userId: string, chatId: string, body: BuilderMessageRequest): Promise<BuilderChatView> {
-    if (!this.llm) throw new ServiceUnavailableException("The builder needs ANTHROPIC_API_KEY or OPENAI_BASE_URL");
+    if (!(await this.integrations.configured(userId))) throw new ServiceUnavailableException("The builder needs a model: set up Claude or a model server in Settings → AI");
     const chat = await this.findChat(userId, chatId);
-    if (chat.tokensUsed >= this.env.BUILDER_CHAT_MAX_TOKENS) {
+    if (chat.tokensUsed >= (await this.tokenCap(userId))) {
       throw new ConflictException("This chat reached its token limit. Start a new chat to continue.");
     }
     if (this.busy.has(chatId)) throw new ConflictException("The builder is still answering the previous message");
@@ -285,13 +291,13 @@ export class BuilderService {
     const user: ChatMessage = { role: "user", content: [{ type: "text", text: parts.join("\n\n") }] };
 
     const result = await this.builder.turn({
-      choice: { model: chat.model, effort: (EFFORTS as readonly string[]).includes(chat.effort) ? (chat.effort as EffortName) : "high" },
+      choice: { model: chat.model, effort: (EFFORTS as readonly string[]).includes(chat.effort) ? (chat.effort as EffortName) : "high", owner: userId },
       history,
       user,
       current: currentDefinition,
       runs: chat.pipelineId ? this.runsOf(userId, chat.pipelineId) : null,
       system: chat.system ?? undefined,
-      tokensLeft: this.env.BUILDER_CHAT_MAX_TOKENS - chat.tokensUsed,
+      tokensLeft: (await this.tokenCap(userId)) - chat.tokensUsed,
       apps: appsList,
       ...(about ? { appPipelines: about.pipelines } : {}),
       draftType: async (runId, stepKey) => {

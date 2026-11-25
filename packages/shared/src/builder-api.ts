@@ -97,14 +97,14 @@ export interface BuilderChatView extends BuilderChatSummaryView {
   pipelineName: string | null;
   /** The pipeline's saved version the proposals are compared with; null: none yet (saving makes v1). */
   currentVersion: number | null;
-  /** Tokens this chat's calls used, against its cap (BUILDER_CHAT_MAX_TOKENS). */
+  /** Tokens this chat's calls used, against its cap (Settings → AI, else BUILDER_CHAT_MAX_TOKENS). */
   tokensUsed: number;
   tokenCap: number;
   costUsd: number;
   messages: BuilderMessageView[];
   /** Open reflection suggestions for the pipeline (docs/design.md §2.5). */
   suggestions: PipelineSuggestionView[];
-  /** A model is set up: ANTHROPIC_API_KEY, or OPENAI_BASE_URL (M60). */
+  /** A model is set up: Claude or a model server, on, in Settings → AI (M62). */
   available: boolean;
 }
 

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { LlmError, type LlmClient } from "./claude-client";
+import { LlmError } from "./claude-client";
 import { ModelRouter } from "./models";
-import { OpenAiApi, OpenAiChat, OpenAiClient, toOpenAiMessages } from "./openai";
-import { RoutedBatches, RoutedChat, RoutedClient, SequentialBatches, llmConfigured, llmFromConfig, openAiApi } from "./providers";
+import { OpenAiApi, OpenAiChat, OpenAiClient, parseServerModel, serverModelId, toOpenAiMessages } from "./openai";
+import { SequentialBatches, llmFromConfig, llmOver } from "./providers";
 import { costUsd } from "./usage";
 
 /** A fake OpenAI-compatible server: answers in order, records each request. */
@@ -271,105 +271,95 @@ describe("toOpenAiMessages", () => {
 });
 
 describe("providers", () => {
-  const request = (model: string) => ({ choice: { model, effort: "low" as const }, system: "s", prompt: "p", schema });
+  const SERVER = "5a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const request = (model: string, owner?: string) => ({ choice: { model, effort: "low" as const, owner }, system: "s", prompt: "p", schema });
 
-  it("routes openai: models to the server and the rest to Claude, and says what is missing", async () => {
-    const claude = { structured: jest.fn().mockResolvedValue({ output: "claude" }) };
-    const openai = { structured: jest.fn().mockResolvedValue({ output: "openai" }) };
-    const both = new RoutedClient(claude, openai);
-    expect((await both.structured(request("claude-haiku-5-5"))).output).toBe("claude");
-    expect((await both.structured(request("openai:qwen3:14b"))).output).toBe("openai");
-
-    await expect(new RoutedClient(null, openai).structured(request("claude-haiku-5-5"))).rejects.toThrow("ANTHROPIC_API_KEY is not set");
-    await expect(new RoutedClient(claude, null).structured(request("openai:qwen3:14b"))).rejects.toThrow(
-      "No OpenAI-compatible server is set up (OPENAI_BASE_URL)",
-    );
-    const chat = new RoutedChat(null, null);
-    await expect(chat.send({ choice: { model: "openai:m", effort: "low" }, system: "s", tools: [], messages: [] })).rejects.toThrow("OPENAI_BASE_URL");
-  });
-
-  it("is configured with a Claude key or a server", () => {
-    expect(llmConfigured({})).toBe(false);
-    // A key for OpenAI's embeddings alone doesn't make the default (Claude) models work.
-    expect(llmConfigured({ openaiApiKey: KEY })).toBe(false);
-    // ...nor sends an openai: model's calls to OpenAI itself: only OPENAI_BASE_URL does.
-    expect(openAiApi({ openaiApiKey: KEY })).toBeNull();
-    expect(llmConfigured({ anthropicApiKey: KEY })).toBe(true);
-    expect(llmConfigured({ openaiBaseUrl: "http://localhost:11434/v1" })).toBe(true);
-    expect(llmFromConfig({}).batches).toBeNull();
-  });
-
-  it("answers a batch one call after another, without a batch API", async () => {
-    let calls = 0;
-    const client = {
-      structured: jest.fn(() => {
-        calls++;
-        return calls === 2 ? Promise.reject(new LlmError("bad", { ...emptyUsageFor(), calls: 1 })) : Promise.resolve({ output: { n: calls }, usage: emptyUsageFor() });
-      }),
+  // M62: the server and the Claude key are looked up at each call, in the settings of whom the model was chosen for
+  it("finds a model's server by the id in its name, for its owner, and says where to set up what is missing", async () => {
+    const server = fakeServer(completion('{"category":"other","amount":null}'));
+    const where = {
+      claude: jest.fn(() => Promise.resolve(null)),
+      server: jest.fn((id: string | null) => Promise.resolve(id === SERVER ? { baseUrl: "http://ollama.test/v1", send: server.send } : null)),
     };
-    const batches = new RoutedBatches(null, new SequentialBatches(client as unknown as LlmClient, 1));
-    const requests = ["a", "b", "c"].map((customId) => ({ customId, request: request("openai:qwen3:14b") }));
-    const id = await batches.submit(requests);
+    const llm = llmOver(where);
+
+    const answer = await llm.client.structured(request(`openai:${SERVER}:qwen3:14b`, "user-1"));
+    expect(answer.output).toEqual({ category: "other", amount: null });
+    expect(where.server).toHaveBeenCalledWith(SERVER, "user-1");
+    expect(server.requests[0]).toMatchObject({ url: "http://ollama.test/v1/chat/completions", body: { model: "qwen3:14b" } });
+
+    await expect(llm.client.structured(request("claude-haiku-5-5", "user-1"))).rejects.toThrow("Claude isn't set up or is off (Settings → AI → Model servers)");
+    expect(where.claude).toHaveBeenCalledWith("user-1");
+    await expect(llm.client.structured(request("openai:5a1b2c3d-0000-4a6b-8c7d-9e0f1a2b3c4d:m"))).rejects.toThrow("This model's server isn't set up or is off");
+    await expect(llm.chat.send({ choice: { model: "claude-opus-5-5", effort: "low" }, system: "s", tools: [], messages: [] })).rejects.toThrow("Claude isn't set up");
+  });
+
+  it("reads a model's server and name out of its id; one without a server id is a fixed setup's", () => {
+    expect(parseServerModel(`openai:${SERVER.toUpperCase()}:hf.co/org/model:Q4_K_M`)).toEqual({ serverId: SERVER, name: "hf.co/org/model:Q4_K_M" });
+    expect(parseServerModel("openai:qwen3:14b")).toEqual({ serverId: null, name: "qwen3:14b" });
+    expect(serverModelId(SERVER, "qwen3:14b")).toBe(`openai:${SERVER}:qwen3:14b`);
+  });
+
+  it("answers a batch one call after another, without a batch API, and finds it again by its id", async () => {
+    const server = fakeServer(completion('{"category":"bill","amount":1}'), new Error("down"), completion('{"category":"bill","amount":3}'));
+    const batches = llmFromConfig({ openaiBaseUrl: "http://ollama.test/v1" }).batches;
+    // The fixed setup's server has no fake fetch: a SequentialBatches of its own shows the order instead.
+    const direct = new SequentialBatches(new OpenAiClient(new OpenAiApi({ baseUrl: "http://ollama.test/v1", send: server.send })), 1);
+    const id = await direct.submit(["a", "b", "c"].map((customId) => ({ customId, request: request("openai:qwen3:14b") })));
     expect(id).toMatch(/^seq_/);
-    while (!(await batches.ended(id))) await new Promise((resolve) => setImmediate(resolve));
-    const results = await batches.results(id, schema, "openai:qwen3:14b");
+    while (!(await direct.ended(id))) await new Promise((resolve) => setImmediate(resolve));
+    const results = await direct.results(id);
     expect(results.map((r) => [r.customId, r.ok])).toEqual([
       ["a", true],
       ["b", false],
       ["c", true],
     ]);
-    expect(results[1]).toMatchObject({ error: "bad", usage: { calls: 1 } });
     // Read once; after that (or after a restart) the batch is gone.
-    await expect(batches.results(id, schema, "openai:qwen3:14b")).rejects.toThrow("The batch is gone");
-    await expect(batches.submit([{ customId: "x", request: request("claude-haiku-5-5") }])).rejects.toThrow("ANTHROPIC_API_KEY");
+    await expect(direct.results(id)).rejects.toThrow("The batch is gone");
+    await expect(batches.ended("seq_unknown")).rejects.toThrow("The batch is gone");
+    await expect(batches.submit([{ customId: "x", request: request("claude-haiku-5-5") }])).rejects.toThrow("Claude isn't set up");
+  });
+
+  it("keeps a Claude batch's owner in its id, so its key is found again when it is polled", async () => {
+    const claude = jest.fn(() => Promise.resolve(null));
+    const { batches } = llmOver({ claude, server: () => Promise.resolve(null) });
+    await expect(batches.ended("claude:user-7:msgbatch_123")).rejects.toThrow("Claude isn't set up");
+    expect(claude).toHaveBeenCalledWith("user-7");
   });
 });
 
-describe("M60 models and cost", () => {
-  it("uses LLM_MODEL for every group without its own", () => {
-    const router = new ModelRouter(() => Promise.resolve(null), { LLM_MODEL: "openai:qwen3:14b", LLM_MODEL_BUILDER: "claude-opus-5-5" });
-    expect(router.fallback("llm.classify")).toMatchObject({ model: "openai:qwen3:14b", effort: "low", source: "env" });
-    expect(router.fallback("builder")).toMatchObject({ model: "claude-opus-5-5", source: "env" });
-  });
+describe("M62 model choice", () => {
+  const SERVER = "5a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const local = `openai:${SERVER}:qwen3:14b`;
 
-  it("passes over every local model while local models are off, and keeps the tasks' choices for when they are on", async () => {
+  it("a task's own choice, else the default model, else the built-in one; a model that can't be used now is passed over", async () => {
     const settings: Record<string, { model: string; effort: string }> = {
-      "email.classify": { model: "openai:gemma3:12b", effort: "low" },
+      "email.classify": { model: `openai:${SERVER}:gemma3:12b`, effort: "low" },
       "llm.summarize": { model: "claude-opus-5-5", effort: "high" },
     };
-    let local = { on: false, model: "openai:qwen3:14b" as string | null };
+    let on = false;
     const router = new ModelRouter(
       (_userId, task) => Promise.resolve(settings[task] ?? null),
-      { LLM_MODEL: "openai:qwen3:8b", LLM_MODEL_BUILDER: "claude-opus-5-5" },
-      () => Promise.resolve(local),
+      () => Promise.resolve({ defaultModel: local, usable: (model: string) => on || !model.startsWith("openai:") }),
     );
 
-    // Off: Claude everywhere (the defaults, a Claude model from .env, a task's Claude choice).
-    await expect(router.choose("u", "email.classify")).resolves.toEqual({ model: "claude-haiku-5-5", effort: "low" });
-    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "claude-sonnet-5-5", effort: "medium" });
-    await expect(router.choose("u", "builder")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
-    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
+    // The server off: its models are passed over, the choices kept.
+    await expect(router.choose("u", "email.classify")).resolves.toEqual({ model: "claude-haiku-5-5", effort: "low", owner: "u" });
+    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "claude-sonnet-5-5", effort: "medium", owner: "u" });
+    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high", owner: "u" });
+    expect(router.fallback("llm.generate")).toEqual({ model: "claude-sonnet-5-5", effort: "medium", source: "built-in" });
 
-    // On: the task's own choice, else the model for all tasks (over .env), else LLM_MODEL.
-    local = { on: true, model: "openai:qwen3:14b" };
-    await expect(router.choose("u", "email.classify")).resolves.toEqual({ model: "openai:gemma3:12b", effort: "low" });
-    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "openai:qwen3:14b", effort: "medium" });
-    await expect(router.choose("u", "builder")).resolves.toEqual({ model: "openai:qwen3:14b", effort: "high" });
-    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
-    expect(router.fallback("llm.generate", local)).toMatchObject({ source: "local" });
-
-    local = { on: true, model: null };
-    await expect(router.choose("u", "llm.generate")).resolves.toEqual({ model: "openai:qwen3:8b", effort: "medium" });
-    await expect(router.choose("u", "builder")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high" });
+    on = true;
+    await expect(router.choose("u", "email.classify")).resolves.toEqual({ model: `openai:${SERVER}:gemma3:12b`, effort: "low", owner: "u" });
+    await expect(router.choose("u", "builder")).resolves.toEqual({ model: local, effort: "high", owner: "u" });
+    await expect(router.choose("u", "llm.summarize")).resolves.toEqual({ model: "claude-opus-5-5", effort: "high", owner: "u" });
+    expect(router.fallback("builder", { defaultModel: local, usable: () => true })).toEqual({ model: local, effort: "high", source: "default" });
   });
 
   it("prices a model on an OpenAI-compatible server at nothing, an unknown Claude model at the most", () => {
     const tokens = { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    expect(costUsd(local, tokens)).toBe(0);
     expect(costUsd("openai:qwen3:14b", tokens)).toBe(0);
     expect(costUsd("claude-unknown", tokens)).toBe(10);
   });
 });
-
-function emptyUsageFor() {
-  return { models: [], calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
-}

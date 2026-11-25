@@ -398,22 +398,26 @@ export const CLAUDE_MODELS = [
 ] as const;
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+/** A builder chat stops answering once its calls used this many tokens (Settings → AI can change it, M62). */
+export const BUILDER_CHAT_MAX_TOKENS = 2_000_000;
 export type EffortName = (typeof EFFORTS)[number];
 
-/** M60: a model on the OpenAI-compatible server (OPENAI_BASE_URL), by its name there. */
-export const OPENAI_MODEL = /^openai:\S{1,200}$/;
+/** M62: a model on a model server of Settings → AI: `openai:<integrationId>:<its name there>`. */
+export const OPENAI_MODEL = /^openai:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\S{1,200}$/i;
 
-const ModelChoiceSchema = z
-  .object({ model: z.union([z.enum(CLAUDE_MODELS), z.string().regex(OPENAI_MODEL, "a Claude model or openai:<model>")]), effort: z.enum(EFFORTS) })
-  .strict();
+/** A Claude model, or a model on one of the model servers. */
+const ModelId = z.union([z.enum(CLAUDE_MODELS), z.string().regex(OPENAI_MODEL, "a Claude model or a model on one of your model servers")]);
+
+const ModelChoiceSchema = z.object({ model: ModelId, effort: z.enum(EFFORTS) }).strict();
 
 export const SettingsSchema = z
   .object({
-    /** Task → model and effort; null: back to the default (LLM_MODEL_* or built in). */
+    /** Task → model and effort; null: back to the default model. */
     models: z.partialRecord(z.enum(LLM_TASKS), ModelChoiceSchema.nullable()).optional(),
     /** Step type → "N/day" | "N/hour": caps across all pipelines. */
     rateLimits: z.record(z.string(), z.string().regex(LIMIT, '"N/day" or "N/hour"')).optional(),
-    /** null: back to LLM_MONTHLY_BUDGET_USD. */
+    /** null: no limit. */
     monthlyBudgetUsd: z.number().positive().max(100_000).nullable().optional(),
     /** Facts for application forms (browser.mapForm); "" clears it. */
     profile: z.string().max(10_000).optional(),
@@ -423,10 +427,12 @@ export const SettingsSchema = z
     weeklyReview: z.boolean().optional(),
     /** The morning brief on Telegram (M25). */
     morningBrief: z.boolean().optional(),
-    /** M60: local models on (needs OPENAI_BASE_URL) or off; off, every task uses Claude. */
-    localModels: z.boolean().optional(),
-    /** M60: the local model of every task without its own choice; null: LLM_MODEL, then Claude's defaults. */
-    localModel: z.string().regex(OPENAI_MODEL, "openai:<model>").nullable().optional(),
+    /** M62: the model of every task without its own choice; null: each task group's built-in default. */
+    defaultModel: ModelId.nullable().optional(),
+    /** M62: embeddings from a model server and its model (OpenAI's text-embedding-3-large, bge-m3 on Ollama); null: off. */
+    embeddings: z.object({ integrationId: z.uuid(), model: z.string().min(1).max(200) }).strict().nullable().optional(),
+    /** M62: a builder chat stops at this many tokens; null: 2,000,000. */
+    builderChatMaxTokens: z.number().int().min(10_000).max(100_000_000).nullable().optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -434,33 +440,28 @@ export type SettingsRequest = z.infer<typeof SettingsSchema>;
 export interface ModelChoiceView {
   model: string;
   effort: EffortName;
-  /**
-   * settings: chosen here for the task; local: the local model for all tasks (M60); env: LLM_MODEL_CLASSIFY / _WRITING /
-   * _REFLECTION / _BUILDER, else LLM_MODEL; default: built in.
-   */
-  source: "settings" | "local" | "env" | "default";
-  /** M60: the local model chosen for this task while local models are off: used again once they are on. */
+  /** settings: chosen here for the task; default: the default model (M62); built-in: the task group's own. */
+  source: "settings" | "default" | "built-in";
+  /** The model chosen for this task while its server is off or gone (M62): used again once it is back. */
   waiting?: string;
 }
 
 export interface SettingsView {
   models: Record<LlmTask, ModelChoiceView>;
+  /** M62: the model of every task without its own choice; null: the task groups' built-in defaults. */
+  defaultModel: string | null;
   /**
-   * M60: local models. `available`: OPENAI_BASE_URL is set; `on`: switched on here (and available); `model`: the one
-   * for every task without its own choice.
+   * M62: what can be chosen, by server: Claude's models while Claude is set up and on, each model server's (as
+   * `openai:<integrationId>:<name>`) while it is on. `error`: a server that didn't list them.
    */
-  local: { available: boolean; on: boolean; model: string | null };
-  /**
-   * M60: the OpenAI-compatible server's models, as they are chosen (`openai:<name>`); null without a server. `error`:
-   * the server is set up but didn't list them.
-   */
-  serverModels: { host: string; models: string[]; error: string | null } | null;
-  /** ANTHROPIC_API_KEY is set: the Claude models can be used. */
-  claude: boolean;
+  servers: { integrationId: string; kind: "CLAUDE" | "OPENAI_COMPATIBLE"; name: string; enabled: boolean; models: { id: string; name: string }[]; error: string | null }[];
+  /** M62: the embeddings' server and model; null: off. */
+  embeddings: { integrationId: string; model: string } | null;
+  /** M62: a builder chat stops at this many tokens. */
+  builderChatMaxTokens: number;
   rateLimits: Record<string, string>;
-  /** The budget in effect: the setting, else LLM_MONTHLY_BUDGET_USD, else none. */
+  /** The monthly LLM budget; null: no limit. */
   monthlyBudgetUsd: number | null;
-  budgetSource: "settings" | "env" | null;
   /** Facts for application forms (browser.mapForm). */
   profile: string;
   telegramApprovals: boolean;

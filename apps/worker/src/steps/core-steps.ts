@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { type Embeddings, type LlmChat, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { type Embeddings, type EmbeddingsSource, type LlmChat, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { type StepLearning } from "../learning/learning";
 import { type GoogleConnection } from "../google/google-connection";
 import { type MailConnector } from "../mail/mail-connector";
@@ -71,7 +71,7 @@ export interface CoreStepDependencies {
   /** drive.changes and topic.index's Drive files (M43-T2); by default through `google`. */
   drive?: DriveClient;
   /** topic.index's passage embeddings (M43-T3); without them passages are found by their words. */
-  embeddings?: Embeddings | null;
+  embeddings?: Embeddings | EmbeddingsSource | null;
 }
 
 /** Implementations of the catalog's steps (gates need none: the runner handles them). */

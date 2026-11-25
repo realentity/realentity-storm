@@ -12,68 +12,101 @@ import {
   type StructuredRequest,
   type StructuredResult,
 } from "./claude-client";
-import { isOpenAiModel, OpenAiApi, OpenAiChat, OpenAiClient } from "./openai";
+import { type ModelChoice } from "./models";
+import { isOpenAiModel, OpenAiApi, OpenAiChat, OpenAiClient, parseServerModel } from "./openai";
 import { emptyUsage } from "./usage";
 
-/** Where the models are (M60): Claude with its key, and/or an OpenAI-compatible server. */
-export interface LlmProviderConfig {
-  anthropicApiKey?: string;
-  /**
-   * The OpenAI-compatible server (Ollama: http://localhost:11434/v1). Only it makes `openai:` models reachable: a key
-   * alone (for embeddings) never sends a model's calls to OpenAI.
-   */
-  openaiBaseUrl?: string;
-  /** Sent to the server as its key. */
-  openaiApiKey?: string;
+/** An OpenAI-compatible server's address and key. */
+export interface ServerConfig {
+  /** Up to and including `/v1`. */
+  baseUrl: string;
+  apiKey?: string;
+  /** Tests: a fake server. */
+  send?: typeof fetch;
 }
 
-/** The OpenAI-compatible server, if one is set up. */
-export function openAiApi(config: LlmProviderConfig): OpenAiApi | null {
-  if (!config.openaiBaseUrl) return null;
-  return new OpenAiApi({ baseUrl: config.openaiBaseUrl, apiKey: config.openaiApiKey });
+/**
+ * M62: where the models are, looked up at each call: the Claude key and the model servers of the user a model was
+ * chosen for (`ModelChoice.owner`, Integration rows in Settings → AI), or a fixed setup (tests, evals, llm:check).
+ * Null: not set up, or switched off.
+ */
+export interface ModelServers {
+  claude(owner: string | undefined): Promise<string | null>;
+  /** A server by its id in the model's id; null id: the one server of a fixed setup. */
+  server(serverId: string | null, owner: string | undefined): Promise<ServerConfig | null>;
 }
 
-/** True when some model can answer: the LLM steps, the builder and reflection are on. */
-export function llmConfigured(config: LlmProviderConfig): boolean {
-  return Boolean(config.anthropicApiKey || config.openaiBaseUrl);
+/** A fixed setup (M60's `--base-url`): the Claude key and one server, for every owner and server id. */
+export function fixedServers(config: { anthropicApiKey?: string; openaiBaseUrl?: string; openaiApiKey?: string }): ModelServers {
+  return {
+    claude: () => Promise.resolve(config.anthropicApiKey ?? null),
+    server: () => Promise.resolve(config.openaiBaseUrl ? { baseUrl: config.openaiBaseUrl, apiKey: config.openaiApiKey } : null),
+  };
 }
 
 const NOT_SET = {
-  claude: "ANTHROPIC_API_KEY is not set",
-  openai: "No OpenAI-compatible server is set up (OPENAI_BASE_URL)",
+  claude: "Claude isn't set up or is off (Settings → AI → Model servers)",
+  server: "This model's server isn't set up or is off (Settings → AI → Model servers)",
 };
 
-/** The provider a model id belongs to: `openai:…` to the OpenAI-compatible server, anything else to Claude. */
-function route<T>(model: string, claude: T | null, openai: T | null): T | string {
-  if (isOpenAiModel(model)) return openai ?? NOT_SET.openai;
-  return claude ?? NOT_SET.claude;
+/** One client per key or address, made when first used. */
+class Clients {
+  private readonly claude = new Map<string, { client: ClaudeClient; chat: ClaudeChat; batches: ClaudeBatches }>();
+  private readonly servers = new Map<string, { client: OpenAiClient; chat: OpenAiChat; batches: SequentialBatches }>();
+
+  constructor(private readonly where: ModelServers) {}
+
+  async claudeOf(owner: string | undefined) {
+    const key = await this.where.claude(owner);
+    if (!key) return null;
+    let clients = this.claude.get(key);
+    if (!clients) {
+      clients = { client: ClaudeClient.fromApiKey(key), chat: ClaudeChat.fromApiKey(key), batches: ClaudeBatches.fromApiKey(key) };
+      this.claude.set(key, clients);
+    }
+    return clients;
+  }
+
+  async serverOf(model: string, owner: string | undefined) {
+    const config = await this.where.server(parseServerModel(model).serverId, owner);
+    if (!config) return null;
+    const id = `${config.baseUrl}\n${config.apiKey ?? ""}`;
+    let clients = this.servers.get(id);
+    if (!clients) {
+      const api = new OpenAiApi({ baseUrl: config.baseUrl, apiKey: config.apiKey, send: config.send });
+      const client = new OpenAiClient(api);
+      clients = { client, chat: new OpenAiChat(api), batches: new SequentialBatches(client) };
+      this.servers.set(id, clients);
+    }
+    return clients;
+  }
+
+  /** The clients of a model's provider, or what to set up. */
+  async of(choice: ModelChoice) {
+    if (isOpenAiModel(choice.model)) return (await this.serverOf(choice.model, choice.owner)) ?? NOT_SET.server;
+    return (await this.claudeOf(choice.owner)) ?? NOT_SET.claude;
+  }
 }
 
 /** Structured calls, each to its model's provider. */
 export class RoutedClient implements LlmClient {
-  constructor(
-    private readonly claude: LlmClient | null,
-    private readonly openai: LlmClient | null,
-  ) {}
+  constructor(private readonly clients: Clients) {}
 
-  structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<StructuredResult<z.infer<S>>> {
-    const client = route(request.choice.model, this.claude, this.openai);
-    if (typeof client === "string") return Promise.reject(new LlmError(client, emptyUsage()));
-    return client.structured(request);
+  async structured<S extends z.ZodObject>(request: StructuredRequest<S>): Promise<StructuredResult<z.infer<S>>> {
+    const provider = await this.clients.of(request.choice);
+    if (typeof provider === "string") throw new LlmError(provider, emptyUsage());
+    return provider.client.structured(request);
   }
 }
 
 /** Chats, each turn to its model's provider. */
 export class RoutedChat implements LlmChat {
-  constructor(
-    private readonly claude: LlmChat | null,
-    private readonly openai: LlmChat | null,
-  ) {}
+  constructor(private readonly clients: Clients) {}
 
-  send(request: ChatRequest): Promise<ChatResponse> {
-    const chat = route(request.choice.model, this.claude, this.openai);
-    if (typeof chat === "string") return Promise.reject(new Error(chat));
-    return chat.send(request);
+  async send(request: ChatRequest): Promise<ChatResponse> {
+    const provider = await this.clients.of(request.choice);
+    if (typeof provider === "string") throw new Error(provider);
+    return provider.chat.send(request);
   }
 }
 
@@ -129,43 +162,60 @@ export class SequentialBatches implements LlmBatches {
   }
 }
 
-/** Batches to the provider of their requests' model; a batch's id says which provider holds it. */
+/** Every SequentialBatches of the process, by batch id: a server's batches are found again without its config. */
+const sequential = new Map<string, SequentialBatches>();
+
+/**
+ * Batches to the provider of their requests' model. The id says where it is: `seq_…` in this process, `claude:<owner>:…`
+ * at Anthropic with that owner's key (M62: the key is looked up again when it is polled).
+ */
 export class RoutedBatches implements LlmBatches {
-  constructor(
-    private readonly claude: LlmBatches | null,
-    private readonly openai: LlmBatches | null,
-  ) {}
+  constructor(private readonly clients: Clients) {}
 
-  private byId(batchId: string): LlmBatches {
-    const batches = batchId.startsWith("seq_") ? this.openai : this.claude;
-    if (!batches) throw new Error(batchId.startsWith("seq_") ? NOT_SET.openai : NOT_SET.claude);
-    return batches;
+  async submit<S extends z.ZodObject>(requests: BatchRequest<S>[]): Promise<string> {
+    const choice = requests[0]?.request.choice ?? { model: "", effort: "low" };
+    const provider = await this.clients.of(choice);
+    if (typeof provider === "string") throw new Error(provider);
+    const id = await provider.batches.submit(requests);
+    if (provider.batches instanceof SequentialBatches) {
+      sequential.set(id, provider.batches);
+      return id;
+    }
+    return `claude:${choice.owner ?? ""}:${id}`;
   }
 
-  submit<S extends z.ZodObject>(requests: BatchRequest<S>[]): Promise<string> {
-    const batches = route(requests[0]?.request.choice.model ?? "", this.claude, this.openai);
-    if (typeof batches === "string") return Promise.reject(new Error(batches));
-    return batches.submit(requests);
+  private async byId(batchId: string): Promise<{ batches: LlmBatches; id: string }> {
+    if (batchId.startsWith("seq_")) {
+      const batches = sequential.get(batchId);
+      if (!batches) throw new Error("The batch is gone: the worker restarted before it finished");
+      return { batches, id: batchId };
+    }
+    const [, owner, id] = /^claude:([^:]*):(.+)$/.exec(batchId) ?? [null, "", batchId];
+    const claude = await this.clients.claudeOf(owner || undefined);
+    if (!claude) throw new Error(NOT_SET.claude);
+    return { batches: claude.batches, id };
   }
 
-  ended(batchId: string): Promise<boolean> {
-    return this.byId(batchId).ended(batchId);
+  async ended(batchId: string): Promise<boolean> {
+    const { batches, id } = await this.byId(batchId);
+    return batches.ended(id);
   }
 
-  results<S extends z.ZodObject>(batchId: string, schema: S, model: string): Promise<BatchItemResult<z.infer<S>>[]> {
-    return this.byId(batchId).results(batchId, schema, model);
+  async results<S extends z.ZodObject>(batchId: string, schema: S, model: string): Promise<BatchItemResult<z.infer<S>>[]> {
+    const { batches, id } = await this.byId(batchId);
+    const results = await batches.results(id, schema, model);
+    if (batchId.startsWith("seq_")) sequential.delete(batchId);
+    return results;
   }
 }
 
-/** The clients for the configured providers; a call to a provider that isn't set up fails with what to set. */
-export function llmFromConfig(config: LlmProviderConfig): { client: LlmClient; chat: LlmChat; batches: LlmBatches | null; configured: boolean } {
-  const api = openAiApi(config);
-  const key = config.anthropicApiKey;
-  const openaiClient = api ? new OpenAiClient(api) : null;
-  return {
-    client: new RoutedClient(key ? ClaudeClient.fromApiKey(key) : null, openaiClient),
-    chat: new RoutedChat(key ? ClaudeChat.fromApiKey(key) : null, api ? new OpenAiChat(api) : null),
-    batches: key || openaiClient ? new RoutedBatches(key ? ClaudeBatches.fromApiKey(key) : null, openaiClient ? new SequentialBatches(openaiClient) : null) : null,
-    configured: llmConfigured(config),
-  };
+/** The clients over a set of model servers; a call to a provider that isn't set up fails with where to set it up. */
+export function llmOver(servers: ModelServers): { client: LlmClient; chat: LlmChat; batches: LlmBatches } {
+  const clients = new Clients(servers);
+  return { client: new RoutedClient(clients), chat: new RoutedChat(clients), batches: new RoutedBatches(clients) };
+}
+
+/** The clients of a fixed setup (tests, evals, `pnpm llm:check`). */
+export function llmFromConfig(config: { anthropicApiKey?: string; openaiBaseUrl?: string; openaiApiKey?: string }) {
+  return llmOver(fixedServers(config));
 }

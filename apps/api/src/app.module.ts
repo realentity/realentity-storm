@@ -6,7 +6,8 @@ import { BillsModule } from "./bills/bills.module";
 import { BuilderModule } from "./builder/builder.module";
 import { BundlesModule } from "./bundles/bundles.module";
 import { ExamplesModule } from "./examples/examples.module";
-import { serverEnvProvider, SERVER_ENV } from "./config/server-env";
+import { integrationsProvider } from "./config/integrations.provider";
+import { keyRingProvider, serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { ControlsModule } from "./controls/controls.module";
 import { CredentialsModule } from "./credentials/credentials.module";
 import { EmailAccountsModule } from "./email-accounts/email-accounts.module";
@@ -30,11 +31,14 @@ import { AppsModule } from "./apps/apps.module";
 import { StepsModule } from "./steps/steps.module";
 import { ViewsModule } from "./views/views.module";
 import { MaskSealedInterceptor } from "./mask-sealed.interceptor";
+import { IntegrationsModule } from "./integrations/integrations.module";
+import { Integrations } from "@realentity/storm-db";
 
 @Global()
 @Module({
-  providers: [serverEnvProvider, PrismaService],
-  exports: [SERVER_ENV, PrismaService],
+  // M62: the connections in Settings → AI (Claude, model servers), read by the builder, Settings and the Examples.
+  providers: [serverEnvProvider, PrismaService, keyRingProvider, integrationsProvider],
+  exports: [SERVER_ENV, PrismaService, Integrations],
 })
 export class CoreModule {}
 
@@ -52,6 +56,7 @@ export class CoreModule {}
     ProposalsModule,
     RunsModule,
     ControlsModule,
+    IntegrationsModule,
     LearningModule,
     BuilderModule,
     BundlesModule,

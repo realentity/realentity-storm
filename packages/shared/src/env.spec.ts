@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { parseServerEnv } from "./env";
+import { parseServerEnv, removedEnvWarning } from "./env";
 
 const valid = (): Record<string, string> => ({
   DATABASE_URL: "postgresql://u:p@localhost:5432/db",
@@ -16,17 +16,21 @@ describe("parseServerEnv", () => {
   });
 
   it("treats empty values as not set", () => {
-    const env = parseServerEnv({ ...valid(), APP_TOTP_SECRET: "", ANTHROPIC_API_KEY: "" });
+    const env = parseServerEnv({ ...valid(), APP_TOTP_SECRET: "", VNC_PASSWORD: "" });
     expect(env.APP_TOTP_SECRET).toBeUndefined();
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.VNC_PASSWORD).toBeUndefined();
   });
 
-  // M60
-  it("takes a model on an OpenAI-compatible server and its address", () => {
-    const env = parseServerEnv({ ...valid(), OPENAI_BASE_URL: "http://localhost:11434/v1", LLM_MODEL: "openai:qwen3:14b", LLM_MODEL_BUILDER: "claude-opus-5-5" });
-    expect(env).toMatchObject({ OPENAI_BASE_URL: "http://localhost:11434/v1", LLM_MODEL: "openai:qwen3:14b", LLM_MODEL_BUILDER: "claude-opus-5-5" });
-    expect(() => parseServerEnv({ ...valid(), LLM_MODEL_WRITING: "qwen3:14b" })).toThrow(/LLM_MODEL_WRITING: a Claude model id or openai:<model>/);
-    expect(() => parseServerEnv({ ...valid(), OPENAI_BASE_URL: "localhost:11434" })).toThrow(/OPENAI_BASE_URL/);
+  // M62: Claude, the model servers and the models are set up in Settings → AI
+  it("doesn't read the AI keys any more, and says which are still set, never their values", () => {
+    const old = { ANTHROPIC_API_KEY: "sk-ant-made-up", LLM_MODEL_WRITING: "claude-sonnet-5-5", OPENAI_BASE_URL: "not even a url", LLM_MONTHLY_BUDGET_USD: "" };
+    const env = parseServerEnv({ ...valid(), ...old });
+    expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
+    expect(env).not.toHaveProperty("OPENAI_BASE_URL");
+    const warning = removedEnvWarning(old);
+    expect(warning).toBe("No longer read from .env (set them up in Settings → AI, then remove them): ANTHROPIC_API_KEY, OPENAI_BASE_URL, LLM_MODEL_WRITING");
+    expect(warning).not.toContain("sk-ant");
+    expect(removedEnvWarning(valid())).toBeNull();
   });
 
   it("accepts a hex ENCRYPTION_KEY", () => {

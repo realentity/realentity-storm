@@ -1,5 +1,5 @@
-import { localModelsOf } from "@realentity/storm-db";
-import { llmFromConfig, ModelRouter, OpenAiEmbeddings, type LlmBatches, type LlmChat, type LlmClient } from "@realentity/storm-llm";
+import { Integrations } from "@realentity/storm-db";
+import { embeddingsFrom, llmOver, ModelRouter, type LlmBatches, type LlmChat, type LlmClient } from "@realentity/storm-llm";
 import { TopicBackfills } from "../sources/backfill";
 import { JobQueue, publishEvent } from "@realentity/storm-queue";
 import { KeyRing } from "@realentity/storm-crypto";
@@ -62,12 +62,14 @@ export const STEP_EXECUTORS = Symbol("STEP_EXECUTORS");
 const EVENT_SINK = Symbol("EVENT_SINK");
 
 /**
- * The models (M60: Claude and/or an OpenAI-compatible server). Without them, LLM steps fail with a clear error instead
- * of the worker refusing to start; reflection and topic backfill (batches) are off.
+ * The models (M62: Claude and the model servers of Settings → AI), looked up at each call. Without them, an LLM step
+ * fails saying where to set them up, instead of the worker refusing to start. One set of clients per process.
  */
-function llmOf(env: ServerEnv): { client: LlmClient; chat: LlmChat; batches: LlmBatches | null } {
-  const llm = llmFromConfig({ anthropicApiKey: env.ANTHROPIC_API_KEY, openaiBaseUrl: env.OPENAI_BASE_URL, openaiApiKey: env.OPENAI_API_KEY });
-  return { client: llm.client, chat: llm.chat, batches: llm.configured ? llm.batches : null };
+const llms = new WeakMap<Integrations, { client: LlmClient; chat: LlmChat; batches: LlmBatches }>();
+function llmOf(integrations: Integrations): { client: LlmClient; chat: LlmChat; batches: LlmBatches } {
+  let llm = llms.get(integrations);
+  if (!llm) llms.set(integrations, (llm = llmOver(integrations)));
+  return llm;
 }
 
 /** Recovers interrupted runs and syncs schedules before consuming jobs; stops the queue on shutdown. */
@@ -108,29 +110,22 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       },
     },
     { provide: StepCatalog, useFactory: (): StepCatalog => defaultCatalog() },
+    // M62: Claude, the model servers and the embeddings of Settings → AI, their secrets opened.
+    { provide: Integrations, inject: [PrismaService, KeyRing], useFactory: (db: PrismaService, keys: KeyRing) => new Integrations(db.client, keys) },
     {
       provide: ModelRouter,
-      inject: [PrismaService, SERVER_ENV],
-      useFactory: (db: PrismaService, env: ServerEnv) =>
+      inject: [PrismaService, Integrations],
+      useFactory: (db: PrismaService, integrations: Integrations) =>
         new ModelRouter(
           (userId, taskKey) => db.client.modelSetting.findUnique({ where: { userId_taskKey: { userId, taskKey } } }),
-          {
-            LLM_MODEL_CLASSIFY: env.LLM_MODEL_CLASSIFY,
-            LLM_MODEL_WRITING: env.LLM_MODEL_WRITING,
-            LLM_MODEL_REFLECTION: env.LLM_MODEL_REFLECTION,
-            // browser.agent.escalation is in the builder group.
-            LLM_MODEL_BUILDER: env.LLM_MODEL_BUILDER,
-            LLM_MODEL: env.LLM_MODEL,
-          },
-          // M60: local models only while switched on in Settings.
-          (userId) => localModelsOf(db.client, userId, Boolean(env.OPENAI_BASE_URL)),
+          (userId) => integrations.prefs(userId),
         ),
     },
     {
       provide: Learning,
-      inject: [PrismaService, SERVER_ENV, StepCatalog],
-      useFactory: (db: PrismaService, env: ServerEnv, catalog: StepCatalog) =>
-        new Learning(db.client, catalog, env.OPENAI_API_KEY ? new OpenAiEmbeddings(env.OPENAI_API_KEY, env.EMBEDDINGS_MODEL) : null),
+      inject: [PrismaService, StepCatalog, Integrations],
+      useFactory: (db: PrismaService, catalog: StepCatalog, integrations: Integrations) =>
+        new Learning(db.client, catalog, embeddingsFrom((owner) => integrations.embeddings(owner))),
     },
     { provide: BrowserPool, useFactory: () => new BrowserPool() },
     { provide: ArtifactStore, inject: [SERVER_ENV], useFactory: (env: ServerEnv) => new ArtifactStore(env.ARTIFACTS_DIR) },
@@ -164,6 +159,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         GoogleConnection,
         LaterStarts,
         KeyRing,
+        Integrations,
       ],
       useFactory: (
         db: PrismaService,
@@ -177,6 +173,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         google: GoogleConnection,
         later: LaterStarts,
         keys: KeyRing,
+        integrations: Integrations,
       ): StepExecutor[] => {
         return coreSteps({
           google,
@@ -194,8 +191,8 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             notify: notifier(env),
             appOrigin: env.APP_ORIGIN,
           },
-          llm: llmOf(env).client,
-          chat: llmOf(env).chat,
+          llm: llmOf(integrations).client,
+          chat: llmOf(integrations).chat,
           downloadMaxMb: env.DOWNLOAD_MAX_MB,
           appFiles: new AppFileStore(env.DOCUMENTS_DIR),
           router,
@@ -204,7 +201,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           prisma: db.client,
           learning,
           vault,
-          embeddings: env.OPENAI_API_KEY ? new OpenAiEmbeddings(env.OPENAI_API_KEY, env.EMBEDDINGS_MODEL) : null,
+          embeddings: embeddingsFrom((owner) => integrations.embeddings(owner)),
         });
       },
     },
@@ -224,7 +221,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
       provide: RunControls,
       inject: [PrismaService, SERVER_ENV],
       useFactory: (db: PrismaService, env: ServerEnv) =>
-        new RunControls(db.client, { monthlyBudgetUsd: env.LLM_MONTHLY_BUDGET_USD, notify: notifier(env), appOrigin: env.APP_ORIGIN }),
+        new RunControls(db.client, { notify: notifier(env), appOrigin: env.APP_ORIGIN }),
     },
     {
       provide: TakeoverDesk,
@@ -251,10 +248,10 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: Reflector,
-      inject: [PrismaService, SERVER_ENV, StepCatalog, ModelRouter, RunControls, JobQueue, EVENT_SINK],
+      inject: [PrismaService, Integrations, StepCatalog, ModelRouter, RunControls, JobQueue, EVENT_SINK],
       useFactory: (
         db: PrismaService,
-        env: ServerEnv,
+        integrations: Integrations,
         catalog: StepCatalog,
         router: ModelRouter,
         controls: RunControls,
@@ -264,7 +261,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         new Reflector(
           db.client,
           catalog,
-          llmOf(env).batches,
+          llmOf(integrations).batches,
           router,
           controls,
           (reflectionId, startAfter) => queue.pollReflection(reflectionId, startAfter),
@@ -288,6 +285,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         GoogleConnection,
         CredentialVault,
         ModelRouter,
+        Integrations,
       ],
       useFactory: (
         db: PrismaService,
@@ -304,6 +302,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
         google: GoogleConnection,
         vault: CredentialVault,
         router: ModelRouter,
+        integrations: Integrations,
       ) =>
         new JobHandlers(
           db.client,
@@ -321,7 +320,7 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             backfills: new TopicBackfills(
               db.client,
               new ImapSmtpConnector(db.client, keys),
-              llmOf(env).batches,
+              llmOf(integrations).batches,
               router,
               controls,
               (topicBackfillId, startAfter) => queue.enqueueBackfill(topicBackfillId, startAfter),

@@ -219,8 +219,8 @@ export function RulesPage() {
                 <div className="card-body">
                   {!data.embeddings && (
                     <div className="alert alert-warning">
-                      OPENAI_API_KEY is not set: drafts are written without examples. Approved replies are still kept and embedded once it
-                      is set.
+                      Embeddings are off (Settings → AI): drafts are written without examples. Approved replies are still kept, and
+                      embedded once they are on.
                     </div>
                   )}
                   {data.examples.length === 0 ? (
