@@ -21,7 +21,7 @@ test("Google accounts: listed in Settings, one the default; a calendar step's sl
   });
   await db.client.googleAccount.create({ data: { googleAccountId: randomUUID(), userId, email: work, scopes: [DRIVE], ...sealed } });
   try {
-    await page.goto("/settings");
+    await page.goto("/settings/google");
     const card = page.getByTestId("google-accounts");
     await expect(card.getByTestId(`google-account-${home}`)).toContainText("default");
     await expect(card.getByTestId(`google-account-${work}`).getByTestId("google-allowed")).toContainText("Calendar: not allowed");
@@ -44,7 +44,7 @@ steps:
     await slot.selectOption({ label: home });
     await expect(page.getByText("Chosen")).toBeVisible();
 
-    await page.goto("/settings");
+    await page.goto("/settings/google");
     await expect(card.getByTestId(`google-account-${home}`)).toContainText("Chosen on");
     await card.getByRole("button", { name: `Disconnect ${home}` }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();

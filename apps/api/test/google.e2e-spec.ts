@@ -256,7 +256,7 @@ describe("Google Calendar connection", () => {
   });
 
   it("refuses a state it didn't start, a sign-in allowing neither the calendar nor Drive, and one without a refresh token", async () => {
-    expect((await callback({ code: "code-1", state: "made-up" })).headers.location).toMatch(/^\/settings\?google=the%20sign-in%20expired/);
+    expect((await callback({ code: "code-1", state: "made-up" })).headers.location).toMatch(/^\/settings\/google\?google=the%20sign-in%20expired/);
     expect(exchanges).toHaveLength(0);
 
     // A state is used once.
@@ -275,7 +275,7 @@ describe("Google Calendar connection", () => {
     answer.body.scope = "openid email https://www.googleapis.com/auth/drive.readonly";
     const driveOnly = await startConnect();
     expect((await callback({ code: "c", state: driveOnly.searchParams.get("state")! })).headers.location).toBe(
-      "/settings?google=connected#google",
+      "/settings/google?google=connected#google",
     );
     expect(((await agent.get("/api/google").expect(200)).body as GoogleStatusView).accounts).toEqual([
       expect.objectContaining({ calendar: false, drive: true }),

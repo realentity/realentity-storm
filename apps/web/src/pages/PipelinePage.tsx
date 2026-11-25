@@ -323,7 +323,7 @@ function CalendarNotice() {
   return (
     <div className="alert alert-warning mb-0" data-testid="calendar-notice">
       This pipeline uses Google Calendar, which {account ? "needs reconnecting" : "isn't connected"}:{" "}
-      <Link to="/settings#google">connect it in Settings</Link>, or its runs wait for it.
+      <Link to="/settings/google">connect it in Settings</Link>, or its runs wait for it.
     </div>
   );
 }

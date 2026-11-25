@@ -115,7 +115,7 @@ test("the credential form points Gmail and Google to Settings", async ({ page })
   const note = page.getByRole("dialog").getByTestId("accounts-note");
   await expect(note).toContainText("Google Calendar");
   await note.getByRole("link", { name: "Google accounts" }).click();
-  await expect(page).toHaveURL(/\/settings#google$/);
+  await expect(page).toHaveURL(/\/settings\/google$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByTestId("google-accounts")).toBeVisible();
 });

@@ -8,7 +8,7 @@ test("email accounts: added in Settings, one the default; a pipeline's email slo
   const home = `home-${id}@example.com`;
   const work = `work-${id}@example.com`;
 
-  await page.goto("/settings");
+  await page.goto("/settings/email");
   const card = page.getByTestId("email-accounts");
   for (const [address, label] of [
     [home, ""],
@@ -46,7 +46,7 @@ steps:
   await expect(page.getByText("Chosen")).toBeVisible();
 
   // Settings says where each is used; removing asks first.
-  await page.goto("/settings");
+  await page.goto("/settings/email");
   await expect(card.getByTestId(`email-account-${home}`)).toContainText("Chosen on");
   for (const address of [home, work]) {
     await card.getByRole("button", { name: `Remove ${address}` }).click();

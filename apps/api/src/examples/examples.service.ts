@@ -116,9 +116,9 @@ function slotLabel(slot: BindingView): string {
 function where(need: ExampleNeed, appId: string): { link: string | null; note?: string } {
   switch (need.kind) {
     case "email":
-      return { link: "/settings#email" };
+      return { link: "/settings/email" };
     case "google-calendar":
-      return { link: "/settings" };
+      return { link: "/settings/google" };
     case "recipe":
       return { link: "/recipes" };
     case "entities":

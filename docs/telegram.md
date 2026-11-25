@@ -30,8 +30,8 @@ Inbound path: Telegram → your public hooks address (a tunnel, a proxy or a gat
 (`127.0.0.1:7101`, `POST /hooks/*` only) → api `POST /api/hooks/telegram`. The api checks the secret header and your
 user id. See [self-hosting.md](self-hosting.md) ("Webhooks and Telegram") for the setup and `setWebhook`.
 
-**Setting:** *Settings → Approve on Telegram* turns the Approve/Reject buttons on proposals on or off (default: on).
-*Settings → Morning brief* and *Weekly review* turn those messages on or off.
+**Setting:** *Settings → Telegram → Approve on Telegram* turns the Approve/Reject buttons on proposals on or off (default: on).
+*Settings → Telegram → Morning brief* and *Weekly review* turn those messages on or off.
 
 ---
 
@@ -70,7 +70,7 @@ with what follows it as `{{trigger.text}}` and a photo or file sent with it (the
 - The bot's menu (the `/` button in the chat) follows: Storm updates it when a pipeline with a command is switched on
   or off, saved, or deleted.
 - The Tasks, Memos and Papers examples come with `/task`, `/memo` and `/paper`: switch those pipelines on.
-- **Settings → Telegram commands** lists them all: Storm's own, and each pipeline's with the pipeline it starts, those
+- **Settings → Telegram → Telegram commands** lists them all: Storm's own, and each pipeline's with the pipeline it starts, those
   that are off too (they answer once on), and which pipeline has a command when two want it.
 
 ### Examples

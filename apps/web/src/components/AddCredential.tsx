@@ -49,11 +49,11 @@ export function AccountsNote({ onLeave }: Readonly<{ onLeave?: () => void }>) {
     <div className="alert alert-info py-2 small" data-testid="accounts-note">
       <strong>Gmail or another mailbox</strong>, <strong>Google Calendar</strong> or <strong>Google Drive</strong>? They aren&apos;t
       credentials: add them in Settings,{" "}
-      <Link to="/settings#email" onClick={onLeave}>
+      <Link to="/settings/email" onClick={onLeave}>
         Email accounts
       </Link>{" "}
       and{" "}
-      <Link to="/settings#google" onClick={onLeave}>
+      <Link to="/settings/google" onClick={onLeave}>
         Google accounts
       </Link>
       .

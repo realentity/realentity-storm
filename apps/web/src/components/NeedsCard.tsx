@@ -175,7 +175,7 @@ export function NeedsCard({
                     ))}
                   </select>
                   {view.fits.length === 0 && (
-                    <Link to={view.need.kind === "email" ? "/settings#email" : "/settings#google"} className="small text-nowrap">
+                    <Link to={view.need.kind === "email" ? "/settings/email" : "/settings/google"} className="small text-nowrap">
                       Add one
                     </Link>
                   )}

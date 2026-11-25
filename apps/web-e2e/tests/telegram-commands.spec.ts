@@ -16,7 +16,7 @@ steps:
 `,
   );
 
-  await page.goto("/settings");
+  await page.goto("/settings/telegram");
   const card = page.getByTestId("telegram-commands");
   const row = card.getByTestId("telegram-command").filter({ hasText: `/${command}` });
   await expect(row).toContainText(name);
@@ -30,7 +30,7 @@ steps:
   await expect(page).toHaveURL(new RegExp(`/pipelines/${pipeline.pipelineId}$`));
   await page.getByTestId("enable-pipeline").click();
   await expect(page.getByTestId("enable-pipeline")).toBeChecked();
-  await page.goto("/settings");
+  await page.goto("/settings/telegram");
   await expect(row).toHaveAttribute("data-answers", "true");
   await expect(row.getByTestId("telegram-command-off")).toHaveCount(0);
 

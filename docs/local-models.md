@@ -41,7 +41,7 @@ These steps use Ollama; another server works the same way with its own address.
 
    This is the server, up to its `/v1`. It makes local models available; it doesn't switch them on.
 
-5. **Switch them on** in **Settings → Model per task → Local models**. Then:
+5. **Switch them on** in **Settings → AI → Local models**. Then:
 
    - **Model for all tasks**: the local model of every task without its own choice, e.g. `openai:qwen3:14b`.
    - **Per task**: each step type's menu lists the server's models next to Claude's. A task's own choice comes first.
@@ -57,7 +57,7 @@ on Claude while the rest is local. Without `ANTHROPIC_API_KEY`, Storm runs on lo
 
 ## Switch them off
 
-**Settings → Local models** off. From the next step on, every task uses Claude: its Claude choice in Settings, else
+**Settings → AI → Local models** off. From the next step on, every task uses Claude: its Claude choice in Settings, else
 `.env`, else the defaults. The local models you chose stay where they are, marked "… once local models are on", and
 are used again when you switch back on.
 

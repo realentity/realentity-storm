@@ -328,7 +328,7 @@ function MailboxFields({ account, setAccount }: { account: string; setAccount: (
       </select>
       <div className="form-hint">
         The topic&apos;s email is read in this mailbox, and replies go out from it. Without a mailbox, a topic reads your default account.{" "}
-        {list.length === 0 && <Link to="/settings#email">Add an email account in Settings.</Link>}
+        {list.length === 0 && <Link to="/settings/email">Add an email account in Settings.</Link>}
       </div>
     </>
   );
@@ -406,7 +406,7 @@ function DriveFields({
             : reading.status === "NEEDS_RECONNECT"
               ? `${reading.email} needs reconnecting: `
               : `Storm's access to ${reading.email} doesn't include Drive: `}
-          <Link to="/settings#google">{reading ? "reconnect in Settings" : "connect it in Settings"}</Link>
+          <Link to="/settings/google">{reading ? "reconnect in Settings" : "connect it in Settings"}</Link>
           {reading ? " and tick Drive on Google's list." : ", and allow Drive."}
         </div>
       )}

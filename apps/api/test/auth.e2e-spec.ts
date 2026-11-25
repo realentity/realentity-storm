@@ -32,7 +32,7 @@ describe("auth", () => {
     const PUBLIC = ["GET /api/health", "POST /api/auth/login", ...HOOKS, ...GOOGLE];
     await http().post("/api/hooks/telegram").send({}).expect(404);
     await http().post("/api/hooks/health").send({}).expect(404);
-    expect((await http().get("/api/google/callback?code=x&state=made-up").expect(302)).headers.location).toMatch(/^\/settings\?google=the%20sign-in%20expired/);
+    expect((await http().get("/api/google/callback?code=x&state=made-up").expect(302)).headers.location).toMatch(/^\/settings\/google\?google=the%20sign-in%20expired/);
     await http().post(`/api/hooks/${"A".repeat(43)}`).send({}).expect(404);
     const routes = registeredRoutes(api);
     expect(routes).toEqual(

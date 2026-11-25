@@ -55,7 +55,7 @@ default, so any email already linked to a topic gets the topic's knowledge.
 ## Which email belongs to a topic
 
 **Which mailbox.** A topic reads your default email account, unless you give it a mailbox: **Sources → Mailbox**, one of
-your email accounts (Settings → Email accounts). A client's topic can read your work mailbox and a family one your
+your email accounts (Settings → Email). A client's topic can read your work mailbox and a family one your
 personal mailbox; a topic can have several. Topic upkeep and Topic replies read every mailbox your topics read (their
 `email.fetch` says `account: topics`), and an email belongs only to the topics that read its mailbox. A reply goes out
 from the mailbox the email came to.
@@ -113,7 +113,7 @@ A topic can point to where its documents live. Storm links them and never keeps 
   copy the address). Storm reads it with its subfolders: Google Docs (as Markdown, so their headings split the
   passages), Slides, PDFs and text files; **Files** narrows it (`Specs/**`, `**/*.pdf`). It is read through one of your
   Google accounts (the one chosen in the folder's form, else the default), which must allow Drive (read-only):
-  Settings → Google accounts shows whether it does, and [google-setup.md](google-setup.md)
+  Settings → Google shows whether it does, and [google-setup.md](google-setup.md)
   says how. Every upkeep run asks Drive what changed in your Drive since the last one, which is one call when nothing
   did, and reads only the files that changed under the folder. A file deleted, binned or moved out of the folder loses
   its passages; a renamed or moved one keeps its place by its id. A folder moved into the source's folder is read at
