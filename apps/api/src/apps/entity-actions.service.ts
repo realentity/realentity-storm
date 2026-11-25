@@ -1,4 +1,4 @@
-import { KeyRing, sealField } from "@realentity/storm-crypto";
+import { SealKeys, sealField } from "@realentity/storm-crypto";
 import { type DataEntity, type Prisma } from "@realentity/storm-db";
 import { JobQueue } from "@realentity/storm-queue";
 import {
@@ -60,7 +60,7 @@ export class EntityActionsService {
     private readonly queue: JobQueue,
     private readonly runs: RunsService,
     private readonly files: AppFilesService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
   ) {}
 
   /**

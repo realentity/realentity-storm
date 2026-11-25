@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
-import { keyRingProvider } from "../config/server-env";
+import { sealKeysProvider } from "../config/server-env";
 import { TelegramCommands } from "./telegram-commands";
 import { TelegramConnection } from "./telegram-connection.service";
 import { TelegramController } from "./telegram.controller";
@@ -13,7 +13,7 @@ import { TELEGRAM_FETCH, TelegramNotices } from "./telegram-notices";
 @Module({
   imports: [AuthModule],
   controllers: [TelegramController],
-  providers: [TelegramNotices, TelegramCommands, TelegramConnection, keyRingProvider, { provide: TELEGRAM_FETCH, useValue: fetch }],
+  providers: [TelegramNotices, TelegramCommands, TelegramConnection, sealKeysProvider, { provide: TELEGRAM_FETCH, useValue: fetch }],
   exports: [TelegramNotices, TelegramCommands],
 })
 export class TelegramModule {}

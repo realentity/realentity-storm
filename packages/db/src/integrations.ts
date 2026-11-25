@@ -1,4 +1,4 @@
-import { type KeyRing, openIntegration } from "@realentity/storm-crypto";
+import { openIntegration, type SealingKeys } from "@realentity/storm-crypto";
 import { type PrismaClient } from "./generated/prisma/client";
 
 /** An Integration as the clients need it: its secret opened. Never leaves the process. */
@@ -39,7 +39,7 @@ export class Integrations {
 
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly keys: KeyRing,
+    private readonly keys: SealingKeys,
     private readonly ttlMs = 10_000,
   ) {}
 

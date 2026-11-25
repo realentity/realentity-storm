@@ -440,7 +440,7 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 ### Rules
 
-- **Only the worker decrypts** your secrets, at the moment of `fill()`. The API only encrypts on create/update.
+- **Only the worker decrypts** your secrets, at the moment of `fill()`. The API only encrypts on create/update, and since M64 it holds no key that could do otherwise: it seals to a public key (below).
 - **The connections Storm itself uses (M62, M63)** are kept apart: `Integration` rows (Claude, the model servers, the Storm bot's token, Google's OAuth client secret) are sealed with a key derived from the root for this purpose only (HKDF-SHA256, info `storm:integration`) and AAD `integration:` + the row id. The api opens them too (the builder chat needs the Claude key); a credential's ciphertext doesn't open with that key, nor the reverse. The api's ESLint rule allows `openIntegration` and still forbids `open`, `openField` and the re-wraps. Their keys are never returned (only a hint, `…a1b2`), and saving an address, a key, the bot's token, chat or webhook secret, or Google's client needs the authenticator code again: they decide where your data goes and whose commands are taken. The Telegram webhook secret isn't sealed but hashed (`secretHash`): it is only ever compared. `pnpm keys:rotate` re-wraps them too.
 - **Credentials are write-only in the UI.** Values are never returned by the API. There's a "Replace" button, and optionally "Reveal" protected by TOTP.
 - **Never sent to the LLM, logs, traces or screenshots.** Pipelines and proposals contain only `{{cred:<slot>}}`: a slot, filled by a credential chosen by id, never by name (capabilities.md §2.6), or a credential field's sealed handle (below). Password fields are filled last and masked in traces where possible.
@@ -471,13 +471,14 @@ Same approach as Infisical: **envelope encryption** with a root key from the env
 
 [packages/crypto/src/envelope.ts](../packages/crypto/src/envelope.ts) and [key-ring.ts](../packages/crypto/src/key-ring.ts):
 
-- `seal(keys, id, secret)`: random 32-byte DEK, AES-256-GCM with AAD = row id, DEK wrapped with the current root key version. Returns `ciphertext`, `iv`, `authTag`, `wrappedDek` (iv 12 + tag 16 + DEK 32 bytes) and `keyVersion`.
-- `open(keys, id, sealed)`: unwraps with the row's `keyVersion`, decrypts; throws on any tampering, wrong id or missing key version.
-- `rewrap(keys, id, sealed, toVersion)`: moves the DEK to another root key version without decrypting the value (`pnpm keys:rotate`).
+- `seal(keys, id, secret)`: random 32-byte DEK, AES-256-GCM with AAD = row id; the DEK **wrapped to the current root key version's X25519 public key** (M64): an ephemeral X25519 key pair, HKDF-SHA256 over the shared secret (salt: both public keys, info `storm:dek-wrap`), AES-256-GCM with the same AAD; an all-zero shared secret (a low-order point) is refused. Returns `ciphertext`, `iv`, `authTag`, `wrappedDek` (ephemeral public key 32 + iv 12 + tag 16 + DEK 32 bytes) and `keyVersion`.
+- `SealKeys` ([seal-keys.ts](../packages/crypto/src/seal-keys.ts)): what sealing needs, per root key version, all derived from the root key with HKDF: the X25519 public key (its private key is derived with info `storm:seal-x25519`), the integration key (`storm:integration`) and the field-hash key. **The api holds only this** (`SealKeys.fromEnv()`, the root keys dropped once derived); none of it opens a credential, a mail password, a Google token, a webhook secret or a sealed field.
+- `open(keys, id, sealed)`: the worker's `KeyRing`; derives the version's private key, unwraps, decrypts; throws on any tampering, wrong id or missing key version. A 60-byte `wrappedDek` (iv + tag + DEK, wrapped with the root key itself) is a secret sealed before M64, still opened.
+- `rewrap(keys, id, sealed, toVersion)`: moves the DEK to another root key version's public key without decrypting the value (`pnpm keys:rotate`, which also moves the pre-M64 ones at the current version). The integrations keep their own symmetric wrapping (`rewrapIntegration`).
 - `KeyRing.fromEnv()`: `ENCRYPTION_KEY` is version 1, `ENCRYPTION_KEY_V<n>` later versions, `ENCRYPTION_KEY_VERSION` selects the one new secrets are sealed with. Keys are 32 bytes as 64 hex characters or base64.
-- The api imports only `seal` (enforced by ESLint `no-restricted-imports`); `open` and `rewrap` are used only in the worker ([apps/worker/src/secrets/](../apps/worker/src/secrets/)).
+- The api imports neither `KeyRing` nor `open`, `rewrap`, `openField` or the re-wraps (ESLint `no-restricted-imports`); they are used only in the worker ([apps/worker/src/secrets/](../apps/worker/src/secrets/)). A test boots the api and checks it has no `KeyRing` to inject and that no key it holds opens what it sealed (M64-S1).
 
-**Future hardening (optional):** the API wraps DEKs with a *public* key (X25519 / RSA-OAEP) and only the worker holds the private key. A compromised API process could then store secrets but never read them. `keyVersion` allows migrating to this later.
+**What M64 doesn't do:** the api's container still reads `ENCRYPTION_KEY` from the shared `.env` to derive its `SealKeys` (a deliberate choice: one `.env`). So the code can't open your secrets, by construction and by test, but a process that runs other code inside the api container could still read the key from its environment. Keeping the root key out of that container (an env file only the worker loads) is the step left.
 
 ---
 

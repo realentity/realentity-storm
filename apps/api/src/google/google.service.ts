@@ -1,4 +1,4 @@
-import { KeyRing, seal } from "@realentity/storm-crypto";
+import { SealKeys, seal } from "@realentity/storm-crypto";
 import { Integrations } from "@realentity/storm-db";
 import {
   CALENDAR_SCOPE,
@@ -42,7 +42,7 @@ export class GoogleService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
     @Inject(GOOGLE_FETCH) private readonly send: typeof fetch,
     private readonly integrations: Integrations,

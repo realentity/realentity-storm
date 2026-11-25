@@ -1,4 +1,4 @@
-import { KeyRing, seal } from "@realentity/storm-crypto";
+import { SealKeys, seal } from "@realentity/storm-crypto";
 import { Prisma } from "@realentity/storm-db";
 import type { EmailAccountRequestSchema, EmailAccountUpdate, EmailAccountView } from "@realentity/storm-shared";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
@@ -30,7 +30,7 @@ type AccountRow = Prisma.EmailAccountGetPayload<{ select: typeof viewSelect }>;
 export class EmailAccountsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
   ) {}
 
   async list(userId: string): Promise<EmailAccountView[]> {

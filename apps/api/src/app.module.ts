@@ -7,7 +7,7 @@ import { BuilderModule } from "./builder/builder.module";
 import { BundlesModule } from "./bundles/bundles.module";
 import { ExamplesModule } from "./examples/examples.module";
 import { integrationsProvider } from "./config/integrations.provider";
-import { keyRingProvider, serverEnvProvider, SERVER_ENV } from "./config/server-env";
+import { sealKeysProvider, serverEnvProvider, SERVER_ENV } from "./config/server-env";
 import { ControlsModule } from "./controls/controls.module";
 import { CredentialsModule } from "./credentials/credentials.module";
 import { EmailAccountsModule } from "./email-accounts/email-accounts.module";
@@ -37,7 +37,7 @@ import { Integrations } from "@realentity/storm-db";
 @Global()
 @Module({
   // M62: the connections in Settings → AI (Claude, model servers), read by the builder, Settings and the Examples.
-  providers: [serverEnvProvider, PrismaService, keyRingProvider, integrationsProvider],
+  providers: [serverEnvProvider, PrismaService, sealKeysProvider, integrationsProvider],
   exports: [SERVER_ENV, PrismaService, Integrations],
 })
 export class CoreModule {}

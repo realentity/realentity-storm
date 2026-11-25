@@ -1,4 +1,4 @@
-import { KeyRing, open, openIntegration, seal, sealIntegration } from "@realentity/storm-crypto";
+import { KeyRing, open, openIntegration, SealKeys, seal, sealIntegration, sealSymmetric, wrappedToPublicKey } from "@realentity/storm-crypto";
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { Test } from "@nestjs/testing";
@@ -28,7 +28,7 @@ describe("worker secrets", () => {
     await db.close();
   });
 
-  async function insert(keys: KeyRing, name: string, secret: string, allowedHosts = ["example.com"]): Promise<string> {
+  async function insert(keys: KeyRing | SealKeys, name: string, secret: string, allowedHosts = ["example.com"]): Promise<string> {
     const credentialId = randomUUID();
     await db.client.credential.create({
       data: { credentialId, userId, name, allowedHosts, kind: "PASSWORD", username: "me", ...seal(keys, credentialId, secret) },
@@ -87,6 +87,36 @@ describe("worker secrets", () => {
 
       const again = await new KeyRotation(db.client, ring(2, { 1: v1, 2: v2 })).run();
       expect(again.rewrapped).toBe(0);
+    });
+
+    // M64-T3: what was sealed before M64 (the data key wrapped with the root key itself) moves to the version's public key,
+    // even at the current version; the integrations stay wrapped with their derived key (the api opens them).
+    it("moves pre-M64 secrets to the public key at the same version, and leaves the integrations as they are", async () => {
+      const v1 = randomBytes(32);
+      const keys = ring(1, { 1: v1 });
+      const legacy = randomUUID();
+      await db.client.credential.create({
+        data: { credentialId: legacy, userId, name: "legacy", allowedHosts: ["example.com"], kind: "PASSWORD", username: "me", ...sealSymmetric(keys, legacy, "old-password") },
+      });
+      const current = await insert(SealKeys.of(keys), "current", "new-password");
+      const integrationId = randomUUID();
+      await db.client.integration.create({
+        data: { integrationId, userId, kind: "CLAUDE", name: "Claude", ...sealIntegration(keys, integrationId, "sk-ant-made-up-key") },
+      });
+      try {
+        const result = await new KeyRotation(db.client, keys).run();
+        expect(result).toEqual({ rewrapped: 1, skipped: 0, fromVersions: [1], toVersion: 1 });
+        const moved = await db.client.credential.findUniqueOrThrow({ where: { credentialId: legacy } });
+        expect(wrappedToPublicKey(moved)).toBe(true);
+        expect(open(keys, legacy, moved)).toBe("old-password");
+        const untouched = await db.client.credential.findUniqueOrThrow({ where: { credentialId: current } });
+        expect(open(keys, current, untouched)).toBe("new-password");
+        const integration = await db.client.integration.findUniqueOrThrow({ where: { integrationId } });
+        expect(integration.wrappedDek).toHaveLength(60);
+        expect((await new KeyRotation(db.client, keys).run()).rewrapped).toBe(0);
+      } finally {
+        await db.client.integration.deleteMany({ where: { integrationId } });
+      }
     });
 
     // M62: the integrations' secrets (the Claude key, a model server's) under their own derived key

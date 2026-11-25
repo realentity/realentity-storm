@@ -179,7 +179,8 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
   addresses come from real data or from the pipeline, never from LLM text.
 - **Secrets never reach the LLM.** Credentials are encrypted in PostgreSQL (envelope encryption, the key in `.env`);
   the LLM sees only references like `{{cred:github}}`; the real value is opened only for the step that uses it, and
-  only on the hosts it is for. Email passwords and Google tokens are sealed the same way.
+  only on the hosts it is for. Email passwords and Google tokens are sealed the same way. The web-facing api seals
+  them to a public key and holds no key that opens them: only the worker does.
 - **You choose what each pipeline uses.** A pipeline names what it needs (a credential, an email or Google account, a
   setting), never your credentials themselves; you fill it on its **What it needs** card, once per pipeline or per
   App. Several email and Google accounts are fine, one the default.

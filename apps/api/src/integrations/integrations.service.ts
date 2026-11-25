@@ -1,4 +1,4 @@
-import { KeyRing, sealIntegration } from "@realentity/storm-crypto";
+import { SealKeys, sealIntegration } from "@realentity/storm-crypto";
 import { Integrations, Prisma } from "@realentity/storm-db";
 import { fixedServers, llmOver, OPENAI_PREFIX, OpenAiApi, serverModelId } from "@realentity/storm-llm";
 import {
@@ -41,7 +41,7 @@ export const hintOf = (secret: string): string | null => (secret.length >= 12 ? 
 export class IntegrationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
     private readonly integrations: Integrations,
     private readonly auth: AuthService,
   ) {}

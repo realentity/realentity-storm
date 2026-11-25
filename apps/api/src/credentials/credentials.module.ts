@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
-import { keyRingProvider } from "../config/server-env";
+import { sealKeysProvider } from "../config/server-env";
 import { CredentialsController } from "./credentials.controller";
 import { CredentialsService } from "./credentials.service";
 
 @Module({
   controllers: [CredentialsController],
-  providers: [CredentialsService, keyRingProvider],
+  providers: [CredentialsService, sealKeysProvider],
 })
 export class CredentialsModule {}

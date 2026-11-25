@@ -2,6 +2,7 @@
 # Storm's docker compose, from anywhere in the repository (docs/self-hosting.md).
 #   ./docker/storm up             build and start (or update) everything
 #   ./docker/storm check          every credential opens with this ENCRYPTION_KEY (values are never printed)
+#   ./docker/storm rotate         every secret moved to ENCRYPTION_KEY_VERSION and its public key (pnpm keys:rotate, M64)
 #   ./docker/storm restore-test   the newest dump restored into a test database and checked; the result to Storm's Health page (M18-T4)
 #   ./docker/storm <args>         passed to docker compose: ps, logs -f worker, restart worker, down, ...
 # STORM_LOCAL=1 adds compose.local.yml (a PostgreSQL container, when the host has none).
@@ -138,6 +139,10 @@ case "${1:-}" in
     ;;
   check)
     compose exec worker node dist/tools/check-credentials.js
+    ;;
+  rotate)
+    # Every secret's data key for ENCRYPTION_KEY_VERSION, wrapped to its public key (docs/design.md §7, M64).
+    compose exec worker node dist/tools/rotate-keys.js
     ;;
   restore-test)
     shift

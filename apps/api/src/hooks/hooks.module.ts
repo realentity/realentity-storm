@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { BuilderModule } from "../builder/builder.module";
-import { keyRingProvider } from "../config/server-env";
+import { sealKeysProvider } from "../config/server-env";
 import { ControlsModule } from "../controls/controls.module";
 import { FactsModule } from "../facts/facts.module";
 import { HealthModule } from "../health/health.module";
@@ -17,6 +17,6 @@ import { WebhooksService } from "./webhooks.service";
 @Module({
   imports: [BindingsModule, BuilderModule, ControlsModule, FactsModule, HealthModule, PipelinesModule, ProposalsModule, RunsModule, TelegramModule],
   controllers: [HooksController, WebhooksController],
-  providers: [TelegramBot, TelegramBuilder, WebhooksService, keyRingProvider],
+  providers: [TelegramBot, TelegramBuilder, WebhooksService, sealKeysProvider],
 })
 export class HooksModule {}

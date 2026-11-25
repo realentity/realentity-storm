@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { BindingsModule } from "../bindings/bindings.module";
-import { keyRingProvider } from "../config/server-env";
+import { sealKeysProvider } from "../config/server-env";
 import { RunsModule } from "../runs/runs.module";
 import { AppFilesController } from "./app-files.controller";
 import { AppFilesService } from "./app-files.service";
@@ -15,7 +15,7 @@ import { EntityActionsService } from "./entity-actions.service";
   imports: [RunsModule, BindingsModule],
   // AppPagesController first: its /apps/menu before AppsController's /apps/:appId.
   controllers: [AppPagesController, AppsController, AppFilesController],
-  providers: [AppsService, AppPagesService, EntityActionsService, AppImportsService, AppFilesService, keyRingProvider],
+  providers: [AppsService, AppPagesService, EntityActionsService, AppImportsService, AppFilesService, sealKeysProvider],
   exports: [AppsService],
 })
 export class AppsModule {}

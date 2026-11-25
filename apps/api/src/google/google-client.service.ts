@@ -1,4 +1,4 @@
-import { KeyRing, sealIntegration } from "@realentity/storm-crypto";
+import { SealKeys, sealIntegration } from "@realentity/storm-crypto";
 import { Integrations } from "@realentity/storm-db";
 import { type GoogleClientRequest, type GoogleClientView } from "@realentity/storm-shared";
 import { BadRequestException, Injectable } from "@nestjs/common";
@@ -16,7 +16,7 @@ import { hintOf } from "../integrations/integrations.service";
 export class GoogleClientService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
     private readonly integrations: Integrations,
     private readonly auth: AuthService,
   ) {}

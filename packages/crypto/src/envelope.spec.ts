@@ -39,11 +39,11 @@ describe("envelope encryption", () => {
     expect(same(a.iv, b.iv)).toBe(false);
   });
 
-  it("stores the current key version and a 60-byte wrapped key", () => {
+  it("stores the current key version and a 92-byte wrapped key (to the version's public key, M64)", () => {
     const keys = ring(2, { 1: key(), 2: key() });
     const sealed = seal(keys, id, "s");
     expect(sealed.keyVersion).toBe(2);
-    expect(sealed.wrappedDek).toHaveLength(60);
+    expect(sealed.wrappedDek).toHaveLength(92);
   });
 
   // M1-S1

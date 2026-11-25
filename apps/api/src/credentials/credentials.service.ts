@@ -1,4 +1,4 @@
-import { KeyRing, seal } from "@realentity/storm-crypto";
+import { SealKeys, seal } from "@realentity/storm-crypto";
 import { Prisma } from "@realentity/storm-db";
 import { CredentialKind, databaseProblem, type CreateCredentialRequest, type CredentialView } from "@realentity/storm-shared";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
@@ -28,7 +28,7 @@ type CredentialRow = Prisma.CredentialGetPayload<{ select: typeof viewSelect }>;
 export class CredentialsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly keys: KeyRing,
+    private readonly keys: SealKeys,
   ) {}
 
   async list(userId: string): Promise<CredentialView[]> {
