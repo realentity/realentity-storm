@@ -8,6 +8,7 @@ import {
   type ServerEnv,
   type SetupView,
 } from "@realentity/storm-shared";
+import { llmConfigured } from "@realentity/storm-llm";
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { AppsService } from "../apps/apps.service";
 import { BindingsService } from "../bindings/bindings.service";
@@ -55,7 +56,7 @@ export class ExamplesService {
       emailProblem,
       googleCalendar: google?.status === "CONNECTED",
       telegram: Boolean(this.env.TELEGRAM_BOT_TOKEN),
-      llm: Boolean(this.env.ANTHROPIC_API_KEY),
+      llm: llmConfigured({ anthropicApiKey: this.env.ANTHROPIC_API_KEY, openaiBaseUrl: this.env.OPENAI_BASE_URL }),
       credentials: names,
       recipes: recipes.map((r) => r.name),
     };

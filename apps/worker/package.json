@@ -17,7 +17,8 @@
     "eval:email": "tsx evals/email.eval.ts",
     "eval:learning": "tsx evals/learning.eval.ts",
     "eval:forms": "tsx evals/forms.eval.ts",
-    "eval:agent": "tsx evals/agent.eval.ts"
+    "eval:agent": "tsx evals/agent.eval.ts",
+    "llm:check": "tsx evals/llm-check.ts"
   },
   "dependencies": {
     "@realentity/storm-crypto": "workspace:*",

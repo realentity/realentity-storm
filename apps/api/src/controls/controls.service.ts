@@ -1,5 +1,5 @@
 import { llmCostSince, llmSpendSince } from "@realentity/storm-db";
-import { ModelRouter } from "@realentity/storm-llm";
+import { isOpenAiModel, ModelRouter, OPENAI_PREFIX, openAiApi, usable } from "@realentity/storm-llm";
 import {
   EFFORTS,
   LLM_TASKS,
@@ -92,12 +92,18 @@ export class ControlsService {
       LLM_MODEL_WRITING: this.env.LLM_MODEL_WRITING,
       LLM_MODEL_REFLECTION: this.env.LLM_MODEL_REFLECTION,
       LLM_MODEL_BUILDER: this.env.LLM_MODEL_BUILDER,
+      LLM_MODEL: this.env.LLM_MODEL,
     });
+    const available = Boolean(this.env.OPENAI_BASE_URL);
+    // M60: what the worker uses (localModelsOf): off unless switched on here with a server set up.
+    const local = { on: available && (settings?.localModels ?? false), model: settings?.localModel ?? null };
     const models = Object.fromEntries(
       LLM_TASKS.map((task): [LlmTask, ModelChoiceView] => {
-        const fallback = router.fallback(task);
+        const fallback = router.fallback(task, local);
         const own = modelSettings.find((s) => s.taskKey === task);
         if (!own) return [task, fallback];
+        // Its local model waits while local models are off; the task uses what it would without it.
+        if (!usable(own.model, local)) return [task, { ...fallback, waiting: own.model }];
         const effort = (EFFORTS as readonly string[]).includes(own.effort ?? "") ? (own.effort as EffortName) : fallback.effort;
         return [task, { model: own.model, effort, source: "settings" }];
       }),
@@ -106,6 +112,9 @@ export class ControlsService {
     const fromEnv = this.env.LLM_MONTHLY_BUDGET_USD ?? null;
     return {
       models,
+      local: { available, on: local.on, model: local.model },
+      serverModels: await this.serverModels(),
+      claude: Boolean(this.env.ANTHROPIC_API_KEY),
       rateLimits: (settings?.rateLimits as Record<string, string> | null) ?? {},
       monthlyBudgetUsd: own ?? fromEnv,
       budgetSource: own !== null ? "settings" : fromEnv !== null ? "env" : null,
@@ -114,6 +123,17 @@ export class ControlsService {
       weeklyReview: settings?.weeklyReview ?? true,
       morningBrief: settings?.morningBrief ?? true,
     };
+  }
+
+  /** M60: what the OpenAI-compatible server offers, for the model lists; its failure is shown, not thrown. */
+  private async serverModels(): Promise<SettingsView["serverModels"]> {
+    const api = openAiApi({ openaiBaseUrl: this.env.OPENAI_BASE_URL, openaiApiKey: this.env.OPENAI_API_KEY });
+    if (!api) return null;
+    try {
+      return { host: api.host, models: (await api.models()).map((m) => `${OPENAI_PREFIX}${m}`), error: null };
+    } catch (error) {
+      return { host: api.host, models: [], error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   /** This month's LLM cost against the budget, and the last 30 days by step type and model (M19-T3). */
@@ -134,6 +154,7 @@ export class ControlsService {
       if (!step) return [{ path: `rateLimits.${type}`, message: `unknown step type "${type}"` }];
       return step.sideEffect ? [] : [{ path: `rateLimits.${type}`, message: "only side-effect steps have rate limits" }];
     });
+    errors.push(...(await this.localErrors(userId, body)));
     if (errors.length > 0) throw new BadRequestException({ message: "Validation failed", errors });
 
     const data = {
@@ -143,6 +164,8 @@ export class ControlsService {
       ...(body.telegramApprovals !== undefined ? { telegramApprovals: body.telegramApprovals } : {}),
       ...(body.weeklyReview !== undefined ? { weeklyReview: body.weeklyReview } : {}),
       ...(body.morningBrief !== undefined ? { morningBrief: body.morningBrief } : {}),
+      ...(body.localModels !== undefined ? { localModels: body.localModels } : {}),
+      ...(body.localModel !== undefined ? { localModel: body.localModel } : {}),
     };
     const models = Object.entries(body.models ?? {});
     await this.prisma.client.$transaction([
@@ -158,5 +181,23 @@ export class ControlsService {
       ),
     ]);
     return this.settings(userId);
+  }
+
+  /**
+   * M60: local models go on only with a server set up, and a local model is chosen only while they are on (in this
+   * request or before): a choice never points at a server that isn't there.
+   */
+  private async localErrors(userId: string, body: SettingsRequest): Promise<{ path: string; message: string }[]> {
+    const chosen = [
+      ...(body.localModel ? [{ path: "localModel", model: body.localModel }] : []),
+      ...Object.entries(body.models ?? {}).flatMap(([task, choice]) => (choice && isOpenAiModel(choice.model) ? [{ path: `models.${task}`, model: choice.model }] : [])),
+    ];
+    if (!body.localModels && chosen.length === 0) return [];
+    if (!this.env.OPENAI_BASE_URL) {
+      const message = "No OpenAI-compatible server is set up (OPENAI_BASE_URL)";
+      return [...(body.localModels ? [{ path: "localModels", message }] : []), ...chosen.map(({ path }) => ({ path, message }))];
+    }
+    const on = body.localModels ?? (await this.prisma.client.userSetting.findUnique({ where: { userId }, select: { localModels: true } }))?.localModels ?? false;
+    return on ? [] : chosen.map(({ path }) => ({ path, message: "Local models are off: switch them on first" }));
   }
 }

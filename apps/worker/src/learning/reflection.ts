@@ -132,7 +132,7 @@ export class Reflector {
   /** Submits a reflection on the decisions since the last one; null when there is nothing to learn from. */
   async submit(userId: string, now = new Date()): Promise<string | null> {
     if (!this.batches) {
-      this.logger.warn("Reflection skipped: ANTHROPIC_API_KEY is not set");
+      this.logger.warn("Reflection skipped: no LLM is set up (ANTHROPIC_API_KEY or OPENAI_BASE_URL)");
       return null;
     }
     if (await this.prisma.reflection.findFirst({ where: { userId, status: "SUBMITTED" } })) return null;

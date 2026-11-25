@@ -400,7 +400,12 @@ export const CLAUDE_MODELS = [
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type EffortName = (typeof EFFORTS)[number];
 
-const ModelChoiceSchema = z.object({ model: z.enum(CLAUDE_MODELS), effort: z.enum(EFFORTS) }).strict();
+/** M60: a model on the OpenAI-compatible server (OPENAI_BASE_URL), by its name there. */
+export const OPENAI_MODEL = /^openai:\S{1,200}$/;
+
+const ModelChoiceSchema = z
+  .object({ model: z.union([z.enum(CLAUDE_MODELS), z.string().regex(OPENAI_MODEL, "a Claude model or openai:<model>")]), effort: z.enum(EFFORTS) })
+  .strict();
 
 export const SettingsSchema = z
   .object({
@@ -418,6 +423,10 @@ export const SettingsSchema = z
     weeklyReview: z.boolean().optional(),
     /** The morning brief on Telegram (M25). */
     morningBrief: z.boolean().optional(),
+    /** M60: local models on (needs OPENAI_BASE_URL) or off; off, every task uses Claude. */
+    localModels: z.boolean().optional(),
+    /** M60: the local model of every task without its own choice; null: LLM_MODEL, then Claude's defaults. */
+    localModel: z.string().regex(OPENAI_MODEL, "openai:<model>").nullable().optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -425,12 +434,29 @@ export type SettingsRequest = z.infer<typeof SettingsSchema>;
 export interface ModelChoiceView {
   model: string;
   effort: EffortName;
-  /** settings: chosen here; env: LLM_MODEL_CLASSIFY / _WRITING / _REFLECTION / _BUILDER; default: built in. */
-  source: "settings" | "env" | "default";
+  /**
+   * settings: chosen here for the task; local: the local model for all tasks (M60); env: LLM_MODEL_CLASSIFY / _WRITING /
+   * _REFLECTION / _BUILDER, else LLM_MODEL; default: built in.
+   */
+  source: "settings" | "local" | "env" | "default";
+  /** M60: the local model chosen for this task while local models are off: used again once they are on. */
+  waiting?: string;
 }
 
 export interface SettingsView {
   models: Record<LlmTask, ModelChoiceView>;
+  /**
+   * M60: local models. `available`: OPENAI_BASE_URL is set; `on`: switched on here (and available); `model`: the one
+   * for every task without its own choice.
+   */
+  local: { available: boolean; on: boolean; model: string | null };
+  /**
+   * M60: the OpenAI-compatible server's models, as they are chosen (`openai:<name>`); null without a server. `error`:
+   * the server is set up but didn't list them.
+   */
+  serverModels: { host: string; models: string[]; error: string | null } | null;
+  /** ANTHROPIC_API_KEY is set: the Claude models can be used. */
+  claude: boolean;
   rateLimits: Record<string, string>;
   /** The budget in effect: the setting, else LLM_MONTHLY_BUDGET_USD, else none. */
   monthlyBudgetUsd: number | null;

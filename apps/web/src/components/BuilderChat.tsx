@@ -69,7 +69,7 @@ export function BuilderChat({ chatId, pipelineId, appId, editor, onUse, onCreate
   return (
     <div className="d-flex flex-column gap-3" data-testid="builder-chat">
       {view && !view.available && (
-        <div className="alert alert-warning mb-0">The builder needs ANTHROPIC_API_KEY in .env. Until then, edit the YAML directly.</div>
+        <div className="alert alert-warning mb-0">The builder needs a model: ANTHROPIC_API_KEY, or OPENAI_BASE_URL for a local one, in .env. Until then, edit the YAML directly.</div>
       )}
       {view && view.suggestions.length > 0 && (
         <Suggestions

@@ -43,6 +43,9 @@ export function isPriced(model: string): boolean {
 }
 
 export function costUsd(model: string, tokens: TokenCounts): number {
+  // M60: a model on an OpenAI-compatible server (openai:…) has no known price: a local one costs nothing, and the
+  // budget counts what Storm can price (docs/self-hosting.md: local models).
+  if (!(model in PRICES) && model.startsWith("openai:")) return 0;
   const price = PRICES[model] ?? MOST_EXPENSIVE;
   const usd =
     (tokens.inputTokens * price.input +

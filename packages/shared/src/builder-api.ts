@@ -104,7 +104,7 @@ export interface BuilderChatView extends BuilderChatSummaryView {
   messages: BuilderMessageView[];
   /** Open reflection suggestions for the pipeline (docs/design.md §2.5). */
   suggestions: PipelineSuggestionView[];
-  /** ANTHROPIC_API_KEY is set. */
+  /** A model is set up: ANTHROPIC_API_KEY, or OPENAI_BASE_URL (M60). */
   available: boolean;
 }
 
