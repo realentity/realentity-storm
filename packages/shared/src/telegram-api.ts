@@ -12,7 +12,7 @@ export interface TelegramCommandView {
 }
 
 export interface TelegramCommandsView {
-  /** The bot is set up (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID): without it no command answers. */
+  /** The bot is set up and on (Settings → Telegram): without it no command answers. */
   configured: boolean;
   commands: TelegramCommandView[];
 }

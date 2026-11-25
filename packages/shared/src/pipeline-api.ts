@@ -181,7 +181,7 @@ export interface PipelineDetailView extends PipelineSummaryView {
 export interface WebhookView {
   /** Where it is received: POST /hooks/<webhookId>. */
   path: string;
-  /** The address to give the caller (HOOKS_PUBLIC_URL + /<webhookId>); null when HOOKS_PUBLIC_URL isn't set. */
+  /** The address to give the caller (the hooks address of Settings → Telegram + /<webhookId>); null without it. */
   url: string | null;
   lastCalledAt: string | null;
   dateCreated: string;

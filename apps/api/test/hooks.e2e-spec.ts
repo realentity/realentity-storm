@@ -12,7 +12,7 @@ import { TELEGRAM_CHAT_IDLE_MS } from "../src/telegram/telegram-builder";
 import { TELEGRAM_FETCH } from "../src/telegram/telegram-notices";
 import { propose, say, ScriptedChat } from "./support/scripted-chat";
 import { freeName } from "./support/names";
-import { createTestApp, type TestApp } from "./support/test-app";
+import { createTestApp, withTelegram, type TestApp } from "./support/test-app";
 
 const TEST_STEPS: StepDefinition[] = [
   {
@@ -45,13 +45,9 @@ steps:
 
 const ME = 4242;
 const SECRET = "s".repeat(40);
-const ENV = {
-  TELEGRAM_BOT_TOKEN: `123456:${"a".repeat(35)}`,
-  TELEGRAM_CHAT_ID: String(ME),
-  TELEGRAM_WEBHOOK_SECRET: SECRET,
-  APP_ORIGIN: "https://storm.test",
-  HOOKS_PUBLIC_URL: "https://hooks.test/storm",
-};
+const ENV = { APP_ORIGIN: "https://storm.test" };
+/** M63: the bot as Settings → Telegram saves it. */
+const BOT = { botToken: `123456:${"a".repeat(35)}`, chatId: String(ME), webhookSecret: SECRET };
 
 interface Call {
   method: string;
@@ -87,6 +83,7 @@ describe("M12: the Storm bot and webhooks", () => {
     agent = await api.signedIn();
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
+    await withTelegram(api, BOT);
   });
 
   beforeEach(() => {
@@ -104,6 +101,7 @@ describe("M12: the Storm bot and webhooks", () => {
 
   afterAll(async () => {
     for (const key of Object.keys(ENV)) delete process.env[key];
+    await withTelegram(api, null);
     await db.close();
     await api.close();
   });
@@ -357,6 +355,8 @@ describe("M12: the Storm bot and webhooks", () => {
     const call = (hook: WebhookView) => request(api.http).post(`/api${hook.path}`);
 
     it("M12-E1 (api): created with its secret shown once, rotated keeping its address, removed", async () => {
+      // M63: the hooks address of Settings → Telegram.
+      await agent.put("/api/settings").send({ hooksPublicUrl: "https://hooks.test/storm/" }).expect(200);
       const { pipeline, hook } = await withHook("token");
       expect(hook).toMatchObject({
         path: expect.stringMatching(/^\/hooks\/[A-Za-z0-9_-]{43}$/) as unknown,

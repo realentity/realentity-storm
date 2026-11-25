@@ -26,7 +26,7 @@ export function TelegramCommandsCard() {
         <>
           {!view.data.configured && (
             <div className="card-body border-bottom small text-secondary" data-testid="telegram-not-configured">
-              The Storm bot isn't set up (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env): no command answers yet.
+              The Storm bot isn't set up or is off (above): no command answers yet.
             </div>
           )}
           <div className="list-group list-group-flush">

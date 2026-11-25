@@ -71,7 +71,7 @@ export class TelegramCommands implements OnApplicationBootstrap {
         (a, b) =>
           a.command.localeCompare(b.command) || Number(b.answers) - Number(a.answers) || a.pipeline.name.localeCompare(b.pipeline.name),
       );
-    return { configured: this.notices.configured, commands: [...own, ...theirs] };
+    return { configured: await this.notices.configured(), commands: [...own, ...theirs] };
   }
 
   /** The commands of the user's pipelines; only those that are on, or all. */
@@ -128,9 +128,14 @@ export class TelegramCommands implements OnApplicationBootstrap {
     return `/${wanted.command} is already "${taken.name}"'s command: switch that one off, or give this one another, e.g. ${instead}`;
   }
 
+  /** M63: another bot or chat was saved: the next sync sends the menu again. */
+  forgetMenu(): void {
+    this.sent = null;
+  }
+
   /** The bot's menu, as the registry is now: Storm's own commands, then the pipelines'. Never throws. */
   async sync(userId: string): Promise<void> {
-    if (!this.notices.configured) return;
+    if (!(await this.notices.configured())) return;
     try {
       const commands = [...BUILT_IN_COMMANDS.filter((c) => c.command !== "start"), ...(await this.registry(userId))].map((c) => ({
         command: c.command,

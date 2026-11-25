@@ -1,4 +1,4 @@
-import { type GoogleAccountView, type GoogleStatusView } from "@realentity/storm-shared";
+import { type GoogleAccountView } from "@realentity/storm-shared";
 import { IconBrandGoogle, IconBrandGoogleDrive, IconCalendar, IconCheck, IconPlus, IconStar, IconTrash, IconX } from "@tabler/icons-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -7,6 +7,7 @@ import { api } from "../lib/endpoints";
 import { formatDateTime } from "../lib/format";
 import { connectGoogle } from "../lib/google";
 import { useAction, useLoad } from "../lib/use-load";
+import { GoogleClientCard } from "./GoogleClientCard";
 import { ErrorAlert, Loading, Modal } from "./ui";
 
 /**
@@ -55,6 +56,8 @@ export function GoogleAccountsCard() {
   };
 
   return (
+    <div className="d-flex flex-column gap-3">
+    <GoogleClientCard redirectUri={g?.redirectUri ?? null} onChanged={status.reload} />
     <div className="card" id="google" data-testid="google-accounts">
       <div className="card-header">
         <h3 className="card-title">
@@ -78,7 +81,7 @@ export function GoogleAccountsCard() {
       {!g && status.loading && <Loading />}
       {g && !g.configured && (
         <div className="card-body">
-          <Setup g={g} />
+          <Setup />
         </div>
       )}
       {g?.configured && g.accounts.length === 0 && (
@@ -183,6 +186,7 @@ export function GoogleAccountsCard() {
         </Modal>
       )}
     </div>
+    </div>
   );
 }
 
@@ -201,14 +205,10 @@ function Allowed({ icon, name, allowed }: { icon: ReactNode; name: string; allow
   );
 }
 
-function Setup({ g }: { g: GoogleStatusView }) {
+function Setup() {
   return (
     <div className="text-secondary small" data-testid="google-setup">
-      Not set up: create an OAuth client in Google Cloud (docs/google-setup.md) with this redirect URI, then put its id and secret in{" "}
-      <code>.env</code> as <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code>:
-      <div className="mt-1">
-        <code>{g.redirectUri}</code>
-      </div>
+      Set up the OAuth client above first: then accounts can be connected here.
     </div>
   );
 }

@@ -184,7 +184,7 @@ model UserSetting {
   pausedAt              DateTime?
   /// Step type → "N/day" | "N/hour": caps across all pipelines (a pipeline's own `limits` count only its runs).
   rateLimits            Json      @default("{}")
-  /// Overrides LLM_MONTHLY_BUDGET_USD.
+  /// Non-essential pipelines pause when this month's LLM cost reaches it; null: no limit.
   monthlyBudgetUsd      Decimal?  @db.Decimal(10, 2)
   /// Facts about the user for application forms (name, contacts, location, work permit, notice period...), as they write them.
   profile               String?
@@ -206,6 +206,14 @@ model UserSetting {
   embeddingsModel       String?
   /// M62: a builder chat stops once its calls used this many tokens (cache reads included); null: 2,000,000.
   builderChatMaxTokens  Int?
+  /// M63: the public address of the webhooks, e.g. https://hooks.example.com/hooks; null: only their paths are shown.
+  hooksPublicUrl        String?
+  /// M63: run files older than this many days are deleted nightly (0 keeps them); null: 90.
+  artifactsRetentionDays Int?
+  /// M63: a run waiting in the live view gives up after this many minutes; null: 30.
+  takeoverTimeoutMinutes Int?
+  /// M63: downloads and uploads larger than this many MB are refused; null: 25.
+  downloadMaxMb         Int?
   /// The builder chat the user's plain messages to the Storm bot continue (M21); /new clears it.
   telegramBuilderChatId String?   @db.Uuid
   dateUpdated           DateTime  @updatedAt
@@ -749,6 +757,10 @@ model Credential {
 enum IntegrationKind {
   CLAUDE
   OPENAI_COMPATIBLE
+  /// M63: the Storm bot: its token sealed, { chatId, webhookUrl } in config, the webhook secret as secretHash.
+  TELEGRAM
+  /// M63: Google's OAuth client: its secret sealed, { clientId } in config.
+  GOOGLE_OAUTH
 }
 
 /// M62: a connection Storm itself uses (docs/design.md §7): Claude, a model server (Ollama, LM Studio, vLLM, OpenAI).
@@ -763,7 +775,8 @@ model Integration {
   name          String
   /// Off: its models aren't used; a task choosing one falls back to the default model, its choice kept.
   enabled       Boolean         @default(true)
-  /// Nothing secret: { baseUrl } for an OPENAI_COMPATIBLE server.
+  /// Nothing secret: { baseUrl } for an OPENAI_COMPATIBLE server, { chatId, webhookUrl } for TELEGRAM, { clientId }
+  /// for GOOGLE_OAUTH.
   config        Json            @default("{}")
   ciphertext    Bytes?
   iv            Bytes?
@@ -772,6 +785,8 @@ model Integration {
   keyVersion    Int?
   /// The secret's last four characters, to show which one is set ("…a1b2").
   secretHint    String?
+  /// M63: a secret only compared, never opened (the Telegram webhook's): its SHA-256, hex.
+  secretHash    String?
   dateCreated   DateTime        @default(now())
   dateUpdated   DateTime        @updatedAt
   embeddingsFor UserSetting[]   @relation("Embeddings")

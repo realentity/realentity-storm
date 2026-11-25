@@ -1,6 +1,7 @@
 import { type PrismaClient, type Takeover } from "@realentity/storm-db";
 import { type TelegramMessage } from "@realentity/storm-shared";
 import { type EventSink } from "./pipeline-runner";
+import { settingOf, type Setting } from "./setting";
 import { RunStopped, type Attention } from "./step-executor";
 
 export interface TakeoverScope {
@@ -12,7 +13,8 @@ export interface TakeoverScope {
 }
 
 export interface TakeoverOptions {
-  timeoutMs: number;
+  /** M63: the takeover timeout of Settings → Runs & browser, looked up when a takeover starts waiting. */
+  timeoutMs: Setting<number>;
   pollMs?: number;
   /** "Storm needs you" on Telegram, with a button to the run. */
   notify?: (message: TelegramMessage) => Promise<void>;
@@ -91,7 +93,8 @@ export class TakeoverDesk {
 
   private async wait(scope: TakeoverScope, takeover: Takeover): Promise<void> {
     await this.setRun(scope, "RUNNING", "WAITING_FOR_USER");
-    const deadline = takeover.requestedAt.getTime() + this.options.timeoutMs;
+    const timeoutMs = await settingOf(this.options.timeoutMs, scope.userId);
+    const deadline = takeover.requestedAt.getTime() + timeoutMs;
     for (;;) {
       const [current, run] = await Promise.all([
         this.prisma.takeover.findUniqueOrThrow({ where: { takeoverId: takeover.takeoverId } }),
@@ -112,7 +115,7 @@ export class TakeoverDesk {
       if (current.status === "EXPIRED" || Date.now() >= deadline) {
         await this.resolve(scope, takeover, "EXPIRED");
         await this.setRun(scope, "WAITING_FOR_USER", "RUNNING");
-        throw new Error(`${takeover.reason}: nobody took over within ${duration(this.options.timeoutMs)}`);
+        throw new Error(`${takeover.reason}: nobody took over within ${duration(timeoutMs)}`);
       }
       await new Promise((resolve) => setTimeout(resolve, this.pollMs));
     }

@@ -136,8 +136,8 @@ export function ModelServersCard({ onChanged }: { onChanged: () => void }) {
                 disabled={action.busy}
                 data-testid="model-server-remove"
                 onClick={() =>
-                  void action.run(() => api.integrations.remove(removing.integrationId)).then((done) => {
-                    if (done === undefined) return;
+                  void action.run(() => api.integrations.remove(removing.integrationId).then(() => true)).then((done) => {
+                    if (!done) return;
                     toast.success(`${removing.name} removed`);
                     setRemoving(null);
                     changed();

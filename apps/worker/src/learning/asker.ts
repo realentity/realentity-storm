@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@realentity/storm-db";
-import { sendTelegramMessage, type TelegramConfig } from "@realentity/storm-shared";
+import { sendTelegramMessage, telegramConfig, type TelegramSource } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 import { RunStopped, type StepContext } from "../runner/step-executor";
 
@@ -21,7 +21,7 @@ export class Asker {
 
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly telegram: TelegramConfig,
+    private readonly telegram: TelegramSource,
     private readonly appOrigin?: string,
     private readonly send: typeof fetch = fetch,
   ) {}
@@ -54,7 +54,8 @@ export class Asker {
   }
 
   private async tell(questionId: string, runId: string, ask: Ask): Promise<void> {
-    if (!this.telegram.botToken || !this.telegram.chatId) return;
+    const telegram = await telegramConfig(this.telegram);
+    if (!telegram.botToken || !telegram.chatId) return;
     const text = [
       `Storm asks${ask.site ? ` (a form on ${ask.site})` : ""}: ${ask.question}`,
       ask.options?.length ? `One of: ${ask.options.join(" · ")}` : "",

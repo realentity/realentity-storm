@@ -14,7 +14,10 @@ import { z } from "zod";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 
-type Row = Prisma.IntegrationGetPayload<object>;
+type Row = Prisma.IntegrationGetPayload<object> & { kind: "CLAUDE" | "OPENAI_COMPATIBLE" };
+
+/** M63: this card's rows only; Telegram and Google have their own pages. */
+const AI_KINDS = { kind: { in: ["CLAUDE" as const, "OPENAI_COMPATIBLE" as const] } };
 
 const view = (row: Row): IntegrationView => ({
   integrationId: row.integrationId,
@@ -27,7 +30,7 @@ const view = (row: Row): IntegrationView => ({
 });
 
 /** The last four characters, to recognise a key by; nothing of a short one. */
-const hintOf = (secret: string): string | null => (secret.length >= 12 ? `…${secret.slice(-4)}` : null);
+export const hintOf = (secret: string): string | null => (secret.length >= 12 ? `…${secret.slice(-4)}` : null);
 
 /**
  * M62: Claude and the model servers (Settings → AI, docs/design.md §5, §7). Secrets are sealed with the integration key
@@ -44,8 +47,8 @@ export class IntegrationsService {
   ) {}
 
   async list(userId: string): Promise<IntegrationView[]> {
-    const rows = await this.prisma.client.integration.findMany({ where: { userId }, orderBy: [{ kind: "asc" }, { dateCreated: "asc" }] });
-    return rows.map(view);
+    const rows = await this.prisma.client.integration.findMany({ where: { userId, ...AI_KINDS }, orderBy: [{ kind: "asc" }, { dateCreated: "asc" }] });
+    return (rows as Row[]).map(view);
   }
 
   async create(userId: string, body: z.output<typeof IntegrationCreateSchema>): Promise<IntegrationView> {
@@ -66,7 +69,7 @@ export class IntegrationsService {
           ...(secret ? { ...sealIntegration(this.keys, integrationId, secret), secretHint: hintOf(secret) } : {}),
         },
       });
-      return view(row);
+      return view(row as Row);
     } catch (error) {
       throw this.nameTaken(error, body.name);
     } finally {
@@ -95,7 +98,7 @@ export class IntegrationsService {
           ...sealed,
         },
       });
-      return view(updated);
+      return view(updated as Row);
     } catch (error) {
       throw this.nameTaken(error, body.name ?? row.name);
     } finally {
@@ -151,9 +154,9 @@ export class IntegrationsService {
   }
 
   private async find(userId: string, integrationId: string): Promise<Row> {
-    const row = await this.prisma.client.integration.findFirst({ where: { integrationId, userId } });
+    const row = await this.prisma.client.integration.findFirst({ where: { integrationId, userId, ...AI_KINDS } });
     if (!row) throw new NotFoundException("No such model server");
-    return row;
+    return row as Row;
   }
 
   private nameTaken(error: unknown, name: string): unknown {

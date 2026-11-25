@@ -6,7 +6,8 @@ import {
   sendTelegramMessage,
   type CompiledDefinition,
   type ProposalForTelegram,
-  type TelegramConfig,
+  telegramConfig,
+  type TelegramSource,
 } from "@realentity/storm-shared";
 import { Logger } from "@nestjs/common";
 
@@ -22,13 +23,14 @@ export class ProposalNotifier {
 
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly telegram: TelegramConfig,
+    private readonly telegram: TelegramSource,
     private readonly appOrigin?: string,
     private readonly send: typeof fetch = fetch,
   ) {}
 
   async waiting(runId: string): Promise<void> {
-    if (!this.telegram.botToken || !this.telegram.chatId) return;
+    const ready = await telegramConfig(this.telegram);
+    if (!ready.botToken || !ready.chatId) return;
     const run = await this.prisma.run.findUniqueOrThrow({
       where: { runId },
       include: { pipelineVersion: { include: { pipeline: true } } },

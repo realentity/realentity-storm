@@ -17,7 +17,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { DocumentsService, type UploadedFile } from "./documents.service";
 
-/** Above DOWNLOAD_MAX_MB's maximum; the service checks the configured limit. */
+/** Above the download limit's maximum (Settings → Runs & browser); the service checks the one set. */
 const MAX_UPLOAD = 500 * 1_048_576;
 
 @Controller("documents")

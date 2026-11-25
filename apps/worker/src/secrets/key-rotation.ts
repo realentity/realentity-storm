@@ -12,7 +12,7 @@ export interface RotationResult {
 
 /**
  * Moves every sealed secret's data key (credentials, webhook secrets, Google tokens, email account passwords, App entities'
- * encrypted fields, M62's integrations: the Claude key, the model servers' keys) to the current root key version
+ * encrypted fields, M62's and M63's integrations: the Claude key, the model servers' keys, the bot's token, Google's client secret) to the current root key version
  * (docs/design.md §7). Values are never decrypted, only their data keys are re-wrapped. Safe to re-run: each row is updated
  * only if its version is still the old one.
  */

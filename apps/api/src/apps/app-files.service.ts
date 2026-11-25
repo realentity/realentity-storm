@@ -1,3 +1,4 @@
+import { Integrations } from "@realentity/storm-db";
 import { attachFiles, dropFiles, FileProblem, IMAGE_MIMES, insideRoot, recordFile, releaseFiles, storeFile, sweepFiles } from "@realentity/storm-files";
 import { FILE_KINDS, readAppSource, type AppDefinition, type FileRef, type ServerEnv } from "@realentity/storm-shared";
 import { BadRequestException, Inject, Injectable, NotFoundException, PayloadTooLargeException } from "@nestjs/common";
@@ -18,6 +19,7 @@ export class AppFilesService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly integrations: Integrations,
   ) {}
 
   async upload(userId: string, appId: string, typeName: string, fieldName: string, file: UploadedFile | undefined): Promise<FileRef> {
@@ -25,7 +27,8 @@ export class AppFilesService {
     const field = Object.hasOwn(definition.types, typeName) ? definition.types[typeName].fields[fieldName] : undefined;
     if (!field || !FILE_KINDS.includes(field.type)) throw new BadRequestException(`${typeName}.${fieldName} isn't a file or an image`);
     if (!file || file.size === 0) throw new BadRequestException("No file, or an empty one");
-    if (file.size > this.env.DOWNLOAD_MAX_MB * 1_048_576) throw new PayloadTooLargeException(`Larger than ${this.env.DOWNLOAD_MAX_MB} MB`);
+    const { downloadMaxMb } = await this.integrations.runLimits(userId);
+    if (file.size > downloadMaxMb * 1_048_576) throw new PayloadTooLargeException(`Larger than ${downloadMaxMb} MB`);
     const stored = await storeFile(this.env.DOCUMENTS_DIR, file.buffer, file.originalname, field.type as "file" | "image").catch((error: unknown) => {
       throw error instanceof FileProblem ? new BadRequestException(error.message) : error;
     });

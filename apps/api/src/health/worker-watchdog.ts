@@ -1,6 +1,6 @@
-import { sendTelegram, type ServerEnv } from "@realentity/storm-shared";
-import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
+import { Integrations } from "@realentity/storm-db";
+import { sendTelegram } from "@realentity/storm-shared";
+import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 
 export type WorkerState = "up" | "down" | "unknown";
@@ -24,9 +24,10 @@ export class WorkerWatchdog implements OnApplicationBootstrap, OnApplicationShut
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(SERVER_ENV) env: ServerEnv,
+    integrations: Integrations,
   ) {
-    this.alert = (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text);
+    // M63: the Storm bot of Settings → Telegram, looked up at each alert.
+    this.alert = (text) => sendTelegram(() => integrations.telegram(), text);
   }
 
   onApplicationBootstrap(): void {

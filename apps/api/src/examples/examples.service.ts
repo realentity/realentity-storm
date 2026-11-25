@@ -56,7 +56,7 @@ export class ExamplesService {
       email: configured && !emailProblem,
       emailProblem,
       googleCalendar: google?.status === "CONNECTED",
-      telegram: Boolean(this.env.TELEGRAM_BOT_TOKEN),
+      telegram: Object.keys(await this.integrations.telegram(userId)).length > 0,
       llm: await this.integrations.configured(userId),
       credentials: names,
       recipes: recipes.map((r) => r.name),

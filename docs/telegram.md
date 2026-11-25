@@ -15,11 +15,18 @@ It talks only to you. Anything from another user, a group chat, or a forwarded c
 
 ## 1. Setup (once)
 
-| Variable | What it is |
+In **Settings → Telegram → The Storm bot → Set up** (nothing goes in `.env`; no restart):
+
+| Field | What it is |
 | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | The bot's token from @BotFather |
-| `TELEGRAM_CHAT_ID` | **Your Telegram user id**. In a private chat with the bot this is also the chat id |
-| `TELEGRAM_WEBHOOK_SECRET` | The `secret_token` the webhook was registered with (`setWebhook`) |
+| **Bot token** | The bot's token from @BotFather. Sealed in the database, never shown again (only its last four characters) |
+| **Your chat id** | **Your Telegram user id**. In a private chat with the bot this is also the chat id |
+| **Webhook secret** | The `secret_token` Telegram sends with each update. **Paste** the one your gateway checks, or **Generate** one: Storm shows it once and keeps only its hash |
+| **Register the webhook** | Optional: Storm calls Telegram's `setWebhook` with the secret, at the address you give (Storm's `<hooks address>/telegram`, or your gateway's) |
+
+Saving a token, a chat or a secret asks for the code from your authenticator app again: they decide where your
+messages go and whose commands are taken. **Test** checks the token and sends a message to your chat; the switch turns
+the bot off (nothing sent, no update taken) without forgetting it.
 
 Without the token and chat id, nothing is sent and the bot ignores all messages. Pipelines still run.
 
@@ -174,8 +181,8 @@ Bot:  Storm needs you: CAPTCHA at apply (jobs.example.com).
       [Open the live view]
 ```
 
-Open the live view, solve it, then press Continue (or Abort) in Storm. If nobody responds within
-`TAKEOVER_TIMEOUT_MINUTES`, the step fails.
+Open the live view, solve it, then press Continue (or Abort) in Storm. If nobody responds within the takeover timeout
+(Settings → Runs & browser, 30 minutes by default), the step fails.
 
 ### 3.3 Questions: reply to answer
 
@@ -352,9 +359,9 @@ Other pipelines that use Telegram: [release-watch.yaml](../examples/apps/release
 
 | Symptom | Cause |
 | --- | --- |
-| Nothing is ever sent | `TELEGRAM_BOT_TOKEN` or `TELEGRAM_CHAT_ID` is missing |
-| Notifications arrive, but the bot doesn't respond | The webhook isn't set up, or `TELEGRAM_WEBHOOK_SECRET` doesn't match the `secret_token` the webhook was registered with (the hooks site answers 404) |
-| Calls arrive but the bot is silent | `TELEGRAM_CHAT_ID` isn't your user id |
+| Nothing is ever sent | The bot isn't set up, or it is switched off (Settings → Telegram); **Test** says why |
+| Notifications arrive, but the bot doesn't respond | The webhook isn't registered, or the secret saved in Settings isn't the `secret_token` it was registered with (the hooks site answers 404): save the secret again and tick **Register** |
+| Calls arrive but the bot is silent | The chat id saved in Settings isn't your user id |
 | No Approve button | The payload was too long, it's a `gate.review`, or *Approve on Telegram* is off |
 | "It changed since this message" | The payload was edited after the message was sent: decide in Storm |
 | A reply to a question went to the builder | It was a new message, not a Telegram *reply* to the question |

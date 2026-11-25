@@ -8,11 +8,12 @@ import { type ArtifactStore } from "../browser/artifact-store";
 import { type DocumentStore } from "../browser/document-store";
 import { type AppFileStore } from "./app-file-steps";
 import { Quarantine } from "../browser/quarantine";
+import { settingOf, type Setting } from "../runner/setting";
 import { NO_ATTENTION, RunStopped, type StepContext, type StepExecutor } from "../runner/step-executor";
 import { ownerOf, settle, unblock, type FormDependencies } from "./form-steps";
 import { type BrowserDependencies } from "./browser-steps";
 
-/** DOWNLOAD_MAX_MB's default. */
+/** The download limit's default (Settings → Runs & browser). */
 const DEFAULT_MAX_MB = 25;
 const MAX_CONFIRMATION = 2000;
 /** Reading a PDF's text takes longer than this only for a hostile one. */
@@ -27,7 +28,7 @@ interface DownloadInput {
 
 /**
  * browser.download (docs/design.md §6, M11-T5): the address itself, or what a click on that page downloads, through the
- * quarantine: kept as the run's artifact only within DOWNLOAD_MAX_MB and when its content is an allowed type for its
+ * quarantine: kept as the run's artifact only within the download limit (Settings → Runs & browser) and when its content is an allowed type for its
  * extension; anything else is deleted and the step fails saying why.
  */
 export class BrowserDownloadStep implements StepExecutor {
@@ -35,7 +36,7 @@ export class BrowserDownloadStep implements StepExecutor {
 
   constructor(
     private readonly deps: BrowserDependencies,
-    private readonly maxMb = DEFAULT_MAX_MB,
+    private readonly limitMb: Setting<number> = DEFAULT_MAX_MB,
   ) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
@@ -60,7 +61,8 @@ export class BrowserDownloadStep implements StepExecutor {
       const download = await downloading.catch(() => {
         throw new Error(`Nothing was downloaded from ${url}${click ? ` by clicking "${click}"` : ""}`);
       });
-      const result = await new Quarantine(this.deps.prisma, this.deps.artifacts, this.maxMb * 1_048_576).accept(download, ownerOf(context));
+      const maxMb = await settingOf(this.limitMb, context.userId);
+      const result = await new Quarantine(this.deps.prisma, this.deps.artifacts, maxMb * 1_048_576).accept(download, ownerOf(context));
       if (!result.accepted) throw new Error(`The download ${result.name} was deleted: ${result.reason}`);
       const row = await this.deps.prisma.artifact.findUniqueOrThrow({ where: { artifactId: result.artifactId } });
       return { artifactId: result.artifactId, filename: result.name, mime: result.mime, size: result.size, sha256: row.sha256 ?? "" };

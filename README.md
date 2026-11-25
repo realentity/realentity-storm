@@ -203,8 +203,8 @@ Storm doesn't fine-tune a model. It keeps what it learns from you as data you ca
 | **An authenticator app** | The login: a password and a one-time code | Required |
 | **A way to reach it over HTTPS**: Tailscale, a reverse proxy, or a VPN | Using it from other devices. Not needed on `localhost` | On a server |
 | **A mailbox** with IMAP and SMTP (for Gmail, an app password), added in Settings | The email steps | Optional |
-| **A Telegram bot** of your own, from @BotFather | Approvals and notifications on your phone. Commands and buttons also need a public address for webhooks | Optional |
-| **A Google Cloud OAuth client** | Google Calendar steps and topics' Drive folders (several accounts, connected in Settings) | Optional |
+| **A Telegram bot** of your own, from @BotFather, entered in **Settings → Telegram** | Approvals and notifications on your phone. Commands and buttons also need a public address for webhooks | Optional |
+| **A Google Cloud OAuth client**, entered in **Settings → Google** | Google Calendar steps and topics' Drive folders (several accounts, connected in Settings) | Optional |
 | **Embeddings**: an OpenAI API key, or a model on your own server, in **Settings → AI** | Past replies as examples in new drafts, topics by meaning. That text then also goes to that server | Optional |
 
 ## Setup
@@ -319,13 +319,17 @@ to start with an invalid value and names the key, never the value.
 | `APP_ORIGIN` | Exactly the address you open in the browser, without a trailing `/`. Live updates accept only this origin | Always, except in development |
 | `TZ` | Your time zone, for schedules, the morning brief and the weekly review. Empty: UTC in the containers | Recommended |
 | `VNC_PASSWORD`, `VNC_VIEW_PASSWORD` | Watching and taking over browser runs live. Empty: browser runs still work, unwatched | Browser steps |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `HOOKS_PUBLIC_URL` | The bot, your Telegram user id, and the webhook address ([docs/telegram.md](docs/telegram.md)) | Telegram, webhooks |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [docs/google-setup.md](docs/google-setup.md) | Calendar steps, Drive folders |
 | `HEALTH_REPORT_TOKEN` | Lets the server's own jobs (backups, disk checks) report to the Health page | Optional |
 
-The rest can stay as it is: the containers set the ports and folders themselves. **Not in `.env`:** Claude, OpenAI,
-models on your own servers, the model per task, the embeddings and the monthly budget. They are settings, in
-**Settings → AI**, changed without a restart.
+The rest can stay as it is: the containers set the ports and folders themselves. **Not in `.env`:** they are settings,
+changed without a restart, their secrets sealed in the database and saved with your authenticator code:
+
+| Where | What |
+|---|---|
+| **Settings → AI** | Claude, OpenAI, models on your own servers, the model per task, the embeddings, the monthly budget |
+| **Settings → Telegram** | The Storm bot (its token, your Telegram user id, the webhook secret) and the hooks address ([docs/telegram.md](docs/telegram.md)) |
+| **Settings → Google** | Google's OAuth client, for the calendar steps and Drive folders ([docs/google-setup.md](docs/google-setup.md)) |
+| **Settings → Runs & browser** | How long run files are kept, the live view's takeover timeout, the largest download |
 
 ## Documentation
 

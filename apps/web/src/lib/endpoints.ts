@@ -74,6 +74,8 @@ import {
   type FactRequest,
   type FactView,
   type FailureCountView,
+  type GoogleClientRequest,
+  type GoogleClientView,
   type GoogleStatusView,
   type ImportRecipeRequest,
   type JobFilter,
@@ -101,6 +103,10 @@ import {
   type SettingsRequest,
   type SettingsView,
   type TelegramCommandsView,
+  type TelegramConnectionRequest,
+  type TelegramConnectionSaved,
+  type TelegramConnectionView,
+  type TelegramTestView,
   type SpendingView,
   type StepTypeView,
   type TriggerDataView,
@@ -265,6 +271,12 @@ export const api = {
       request<{ url: string }>("POST", "/google/connect", { ...(returnTo ? { returnTo } : {}), ...(account ? { account } : {}) }),
     makeDefault: (googleAccountId: string) => request<void>("PUT", `/google/accounts/${googleAccountId}/default`),
     disconnect: (googleAccountId: string) => request<void>("DELETE", `/google/accounts/${googleAccountId}`),
+    // M63: Google's OAuth client, Settings → Google.
+    client: {
+      get: () => request<GoogleClientView>("GET", "/google/client"),
+      save: (body: GoogleClientRequest) => request<GoogleClientView>("PUT", "/google/client", body),
+      remove: () => request<void>("DELETE", "/google/client"),
+    },
   },
   scheduledStarts: {
     list: (pipelineId?: string) =>
@@ -368,6 +380,13 @@ export const api = {
   },
   telegram: {
     commands: () => request<TelegramCommandsView>("GET", "/telegram/commands"),
+    // M63: the Storm bot, Settings → Telegram.
+    connection: {
+      get: () => request<TelegramConnectionView>("GET", "/telegram/connection"),
+      save: (body: TelegramConnectionRequest) => request<TelegramConnectionSaved>("PUT", "/telegram/connection", body),
+      test: () => request<TelegramTestView>("POST", "/telegram/connection/test"),
+      remove: () => request<void>("DELETE", "/telegram/connection"),
+    },
   },
   // M62: Settings → AI → Model servers.
   integrations: {

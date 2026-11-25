@@ -1,3 +1,4 @@
+import { Integrations } from "@realentity/storm-db";
 import { type CompiledDefinition, type LiveView, type LiveWindow, type ServerEnv, type TakeoverView } from "@realentity/storm-shared";
 import { StepCatalog } from "@realentity/storm-steps";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
@@ -31,6 +32,7 @@ export class LiveService {
     private readonly events: EventsService,
     private readonly catalog: StepCatalog,
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
+    private readonly integrations: Integrations,
   ) {}
 
   async live(userId: string, runId: string): Promise<LiveView> {
@@ -96,8 +98,9 @@ export class LiveService {
       include: { run: { include: { pipelineVersion: { include: { pipeline: { select: { name: true } } } } } } },
       orderBy: { requestedAt: "asc" },
     });
+    const { takeoverTimeoutMinutes } = await this.integrations.runLimits(userId);
     return takeovers.map((t) => ({
-      ...takeoverView(t, this.env.TAKEOVER_TIMEOUT_MINUTES),
+      ...takeoverView(t, takeoverTimeoutMinutes),
       runId: t.runId,
       pipelineName: t.run.pipelineVersion.pipeline.name,
     }));

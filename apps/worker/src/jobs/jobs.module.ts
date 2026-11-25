@@ -34,13 +34,15 @@ import { MorningBrief, type TodaysEvents } from "./morning-brief";
 import { WeeklyReview } from "./weekly-review";
 import { listEvents } from "../steps/calendar-steps";
 
-/** A message to the user on the Storm bot: text, or text with buttons. */
-function notifier(env: ServerEnv): (message: string | TelegramMessage) => Promise<void> {
-  const config = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
+/** A message to the user on the Storm bot (M63: as saved in Settings → Telegram, looked up at each message). */
+function notifier(integrations: Integrations): (message: string | TelegramMessage) => Promise<void> {
   return async (message) => {
-    await sendTelegramMessage(config, typeof message === "string" ? { text: message } : message);
+    await sendTelegramMessage(() => integrations.telegram(), typeof message === "string" ? { text: message } : message);
   };
 }
+
+/** M63: the run limits of Settings → Runs & browser, for the user whose work it is. */
+const limits = (integrations: Integrations) => (userId?: string) => integrations.runLimits(userId);
 
 /** Today's events for the morning brief; none when Google was never connected. */
 function calendarEvents(db: PrismaService, google: GoogleConnection): TodaysEvents {
@@ -136,9 +138,9 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: GoogleConnection,
-      inject: [PrismaService, KeyRing, SERVER_ENV],
-      useFactory: (db: PrismaService, keys: KeyRing, env: ServerEnv) =>
-        new GoogleConnection(db.client, keys, { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }),
+      inject: [PrismaService, KeyRing, Integrations],
+      useFactory: (db: PrismaService, keys: KeyRing, integrations: Integrations) =>
+        new GoogleConnection(db.client, keys, { client: () => integrations.google() }),
     },
     {
       provide: LaterStarts,
@@ -187,16 +189,16 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
             artifacts,
             documents: new DocumentStore(env.DOCUMENTS_DIR),
             facts: new Facts(db.client),
-            asker: new Asker(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
-            notify: notifier(env),
+            asker: new Asker(db.client, () => integrations.telegram(), env.APP_ORIGIN),
+            notify: notifier(integrations),
             appOrigin: env.APP_ORIGIN,
           },
           llm: llmOf(integrations).client,
           chat: llmOf(integrations).chat,
-          downloadMaxMb: env.DOWNLOAD_MAX_MB,
+          downloadMaxMb: async (userId) => (await limits(integrations)(userId)).downloadMaxMb,
           appFiles: new AppFileStore(env.DOCUMENTS_DIR),
           router,
-          telegram: { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID },
+          telegram: () => integrations.telegram(),
           mail: new ImapSmtpConnector(db.client, keys),
           prisma: db.client,
           learning,
@@ -219,18 +221,18 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
     },
     {
       provide: RunControls,
-      inject: [PrismaService, SERVER_ENV],
-      useFactory: (db: PrismaService, env: ServerEnv) =>
-        new RunControls(db.client, { notify: notifier(env), appOrigin: env.APP_ORIGIN }),
+      inject: [PrismaService, SERVER_ENV, Integrations],
+      useFactory: (db: PrismaService, env: ServerEnv, integrations: Integrations) =>
+        new RunControls(db.client, { notify: notifier(integrations), appOrigin: env.APP_ORIGIN }),
     },
     {
       provide: TakeoverDesk,
-      inject: [PrismaService, SERVER_ENV, EVENT_SINK],
-      useFactory: (db: PrismaService, env: ServerEnv, events: EventSink) =>
+      inject: [PrismaService, SERVER_ENV, EVENT_SINK, Integrations],
+      useFactory: (db: PrismaService, env: ServerEnv, events: EventSink, integrations: Integrations) =>
         new TakeoverDesk(db.client, events, {
-          timeoutMs: env.TAKEOVER_TIMEOUT_MINUTES * 60_000,
+          timeoutMs: async (userId) => (await limits(integrations)(userId)).takeoverTimeoutMinutes * 60_000,
           appOrigin: env.APP_ORIGIN,
-          notify: notifier(env),
+          notify: notifier(integrations),
         }),
     },
     {
@@ -311,12 +313,12 @@ class JobsLifecycle implements OnApplicationBootstrap, OnModuleDestroy {
           learning,
           reflector,
           takeovers,
-          { artifacts, days: env.ARTIFACTS_RETENTION_DAYS },
+          { artifacts, days: async () => (await limits(integrations)()).artifactsRetentionDays },
           {
             triggers: new Triggers(db.client, runner, queue, keys, later),
-            notifier: new ProposalNotifier(db.client, { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, env.APP_ORIGIN),
-            review: new WeeklyReview(db.client, controls, notifier(env), env.APP_ORIGIN),
-            brief: new MorningBrief(db.client, notifier(env), calendarEvents(db, google), env.APP_ORIGIN),
+            notifier: new ProposalNotifier(db.client, () => integrations.telegram(), env.APP_ORIGIN),
+            review: new WeeklyReview(db.client, controls, notifier(integrations), env.APP_ORIGIN),
+            brief: new MorningBrief(db.client, notifier(integrations), calendarEvents(db, google), env.APP_ORIGIN),
             backfills: new TopicBackfills(
               db.client,
               new ImapSmtpConnector(db.client, keys),

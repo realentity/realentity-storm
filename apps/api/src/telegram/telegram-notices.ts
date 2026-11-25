@@ -1,15 +1,14 @@
 import { payloadHash } from "@realentity/storm-crypto";
-import { emailSenders, stepTypeIn, type Prisma, type PrismaClient } from "@realentity/storm-db";
+import { emailSenders, Integrations, stepTypeIn, type Prisma, type PrismaClient } from "@realentity/storm-db";
 import {
   decidedMessage,
   editTelegramMessage,
+  telegramReady,
   type CompiledDefinition,
   type ProposalForTelegram,
-  type ServerEnv,
-  type TelegramConfig,
+  type TelegramLookup,
 } from "@realentity/storm-shared";
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
 import { PrismaService } from "../database/prisma.service";
 
 /** How the api reaches the Bot API; tests replace it. */
@@ -64,23 +63,25 @@ export function forTelegram(proposal: ProposalForBot, senders?: ReadonlyMap<stri
 @Injectable()
 export class TelegramNotices {
   private readonly logger = new Logger(TelegramNotices.name);
-  readonly config: TelegramConfig;
+  /** M63: the bot as saved in Settings → Telegram, looked up at each call. */
+  readonly config: TelegramLookup;
 
   constructor(
-    @Inject(SERVER_ENV) env: ServerEnv,
     private readonly prisma: PrismaService,
+    integrations: Integrations,
     @Inject(TELEGRAM_FETCH) readonly send: typeof fetch,
   ) {
-    this.config = { botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID };
+    this.config = () => integrations.telegram();
   }
 
-  get configured(): boolean {
-    return Boolean(this.config.botToken && this.config.chatId);
+  /** The bot is set up and on. */
+  configured(): Promise<boolean> {
+    return telegramReady(this.config);
   }
 
   /** The proposal's message, if the bot sent one, says how it was decided and loses its buttons. */
   async decided(proposalId: string, outcome: string): Promise<void> {
-    if (!this.configured) return;
+    if (!(await this.configured())) return;
     const proposal = await this.prisma.client.proposal.findUnique({ where: { proposalId }, include: TELEGRAM_PROPOSAL_INCLUDE });
     if (proposal?.telegramMessageId == null) return;
     // M53: a batch's message stays: its Approve all refuses now that the batch changed, and says to open the inbox.
@@ -98,7 +99,7 @@ export class TelegramNotices {
 
   /** M53: a batch decided at once: each message it was told in says so once ("✅ 23 approved, ✖ 2 rejected in Telegram"). */
   async decidedBatch(proposalIds: readonly string[], approved: ReadonlySet<string>, via: string): Promise<void> {
-    if (!this.configured) return;
+    if (!(await this.configured())) return;
     const proposals = await this.prisma.client.proposal.findMany({
       where: { proposalId: { in: [...proposalIds] } },
       include: TELEGRAM_PROPOSAL_INCLUDE,

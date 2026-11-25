@@ -411,6 +411,13 @@ const ModelId = z.union([z.enum(CLAUDE_MODELS), z.string().regex(OPENAI_MODEL, "
 
 const ModelChoiceSchema = z.object({ model: ModelId, effort: z.enum(EFFORTS) }).strict();
 
+/** "https://hooks.example.com/hooks/" → "https://hooks.example.com/hooks" (a loop: no backtracking regex). */
+function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end--;
+  return url.slice(0, end);
+}
+
 export const SettingsSchema = z
   .object({
     /** Task → model and effort; null: back to the default model. */
@@ -433,6 +440,19 @@ export const SettingsSchema = z
     embeddings: z.object({ integrationId: z.uuid(), model: z.string().min(1).max(200) }).strict().nullable().optional(),
     /** M62: a builder chat stops at this many tokens; null: 2,000,000. */
     builderChatMaxTokens: z.number().int().min(10_000).max(100_000_000).nullable().optional(),
+    /** M63: the public address of the webhooks (https), e.g. https://hooks.example.com/hooks; null: only their paths. */
+    hooksPublicUrl: z
+      .url({ protocol: /^https$/ })
+      .max(500)
+      .transform(withoutTrailingSlashes)
+      .nullable()
+      .optional(),
+    /** M63, Settings → Runs & browser; null: the default (RUN_LIMIT_DEFAULTS). Run files kept this many days, 0: always. */
+    artifactsRetentionDays: z.number().int().min(0).max(3650).nullable().optional(),
+    /** A run waiting for you in the live view gives up after this many minutes. */
+    takeoverTimeoutMinutes: z.number().int().min(1).max(120).nullable().optional(),
+    /** Downloads and uploads larger than this many MB are refused. */
+    downloadMaxMb: z.number().int().min(1).max(500).nullable().optional(),
   })
   .strict();
 export type SettingsRequest = z.infer<typeof SettingsSchema>;
@@ -467,6 +487,12 @@ export interface SettingsView {
   telegramApprovals: boolean;
   weeklyReview: boolean;
   morningBrief: boolean;
+  /** M63: the webhooks' public address; null: not set. */
+  hooksPublicUrl: string | null;
+  /** M63: the run limits in effect (the default while none is set). */
+  artifactsRetentionDays: number;
+  takeoverTimeoutMinutes: number;
+  downloadMaxMb: number;
 }
 
 /** Where the LLM money goes (M19-T3): this month against the budget, and the last 30 days by step type and model. */
@@ -498,7 +524,7 @@ export interface GoogleAccountView {
 }
 
 export interface GoogleStatusView {
-  /** GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set. */
+  /** Google's OAuth client is set up (Settings → Google, M63). */
   configured: boolean;
   /** The sign-in return address to register on the Google client. */
   redirectUri: string;

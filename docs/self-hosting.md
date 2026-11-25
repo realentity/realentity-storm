@@ -140,32 +140,26 @@ Make `https://<public host>/hooks/*` reach `127.0.0.1:7101/hooks/*`, by whatever
 - **A gateway of your own** that checks paths and secrets before forwarding (defence in depth): forward to
   `/hooks/telegram` and `/hooks/<webhook id>` and nothing else.
 
-Then in `.env`:
+Then in **Settings → Telegram** (nothing goes in `.env`; no restart):
 
-```
-HOOKS_PUBLIC_URL=https://hooks.example.com/hooks   # what callers use: + /<webhook id> (a gateway may map its own prefix)
-TELEGRAM_BOT_TOKEN=…                                # a bot of your own from @BotFather
-TELEGRAM_CHAT_ID=…                                  # your Telegram user id
-TELEGRAM_WEBHOOK_SECRET=…                           # openssl rand -hex 32
-```
+1. **Hooks address**: what callers use, e.g. `https://hooks.example.com/hooks`. A pipeline's webhook is it +
+   `/<webhook id>`, the bot's it + `/telegram` (a gateway may map its own prefix).
+2. **The Storm bot → Set up**: the bot's token from @BotFather, your Telegram user id, and the webhook secret:
+   **Paste** the one your gateway checks, or **Generate** one (shown once; Storm keeps only its hash). Tick **Register
+   the webhook with Telegram** and give the address Telegram posts to: Storm calls `setWebhook` with the secret
+   (commands and buttons only, `max_connections=2`, pending updates dropped). The code from your authenticator app
+   is asked for again.
 
-`./docker/storm up`, then register the bot's webhook once:
+`/status` to the bot answers; **Test** on the card checks the token and sends a message to your chat. Without the
+webhook the bot still **sends** (notifications work), but commands and buttons don't. Everything the bot does:
+[telegram.md](telegram.md).
 
-```bash
-curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -d "url=https://hooks.example.com/hooks/telegram" -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
-  -d 'allowed_updates=["message","callback_query"]' -d "max_connections=2" -d "drop_pending_updates=true"
-```
-
-`/status` to the bot answers. Without the webhook the bot still **sends** (notifications work), but commands and
-buttons don't. Everything the bot does: [telegram.md](telegram.md).
-
-**Webhooks:** a pipeline page creates the address (`HOOKS_PUBLIC_URL/<id>`) and a secret, shown once and rotatable.
+**Webhooks:** a pipeline page creates the address (the hooks address + `/<id>`) and a secret, shown once and rotatable.
 
 | If | Fix |
 |---|---|
-| The bot is silent though calls arrive | `TELEGRAM_CHAT_ID` isn't your user id: Storm ignores anyone else without a word |
-| `404` from `/hooks/telegram` | `TELEGRAM_WEBHOOK_SECRET` differs from the `secret_token` the webhook was registered with |
+| The bot is silent though calls arrive | the chat id in Settings → Telegram isn't your user id: Storm ignores anyone else without a word |
+| `404` from `/hooks/telegram` | the webhook secret saved in Settings differs from the `secret_token` the webhook was registered with, or the bot is switched off: save the secret again with **Register** ticked |
 | A webhook gets `202` but no run starts | the worker's log: `wrong or missing signature` (**New secret** replaced it), or the pipeline isn't enabled |
 
 ## 6. Features that need setup
@@ -174,7 +168,7 @@ buttons don't. Everything the bot does: [telegram.md](telegram.md).
 |---|---|
 | **Mail** (`email.*` steps) | **Settings → Email → Add**: the address and its password (for Gmail an [app password](https://myaccount.google.com/apppasswords)), Gmail's servers or your own (IMAP and SMTP over TLS). Several are fine; one is the default. Then `./docker/storm check` says its password opens with this key |
 | **Live browser** (watch and take over browser steps) | `printf 'VNC_PASSWORD=%s\nVNC_VIEW_PASSWORD=%s\n' "$(openssl rand -base64 6)" "$(openssl rand -base64 6)" >> .env`, then `./docker/storm up --force-recreate`. The view goes through the app's `/vnc` (signed in), never a port of its own. [examples/pipelines/live-view-check.yaml](../examples/pipelines/live-view-check.yaml) tests it |
-| **Google Calendar and Drive** (`calendar.*` steps, topics' Drive folders) | [google-setup.md](google-setup.md): an OAuth client, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then **Settings → Google → Connect Google** (several are fine; one is the default) |
+| **Google Calendar and Drive** (`calendar.*` steps, topics' Drive folders) | [google-setup.md](google-setup.md): an OAuth client, saved in **Settings → Google → OAuth client**, then **Connect Google** (several are fine; one is the default) |
 | **Drafts with examples**, topics by meaning | **Settings → AI → Embeddings**: a model server (OpenAI with its key, or `bge-m3` on Ollama) and its model. It embeds the emails you replied to, so new drafts get your most similar approved replies as examples; and your topics' document passages and facts, so a draft gets the ones closest to the email in meaning, in any language ([topics.md](topics.md)). That text then also goes to that server. Off, examples are left out and topics match by words |
 | **Documents** (forms attach a CV) | **Profile → Documents**; they live in `STORM_DATA_DIR/documents` |
 | **Health reports** | below |
@@ -212,7 +206,7 @@ git pull --ff-only && ./docker/storm up && ./docker/storm check
 - **Database:** a nightly `pg_dump -Fc` of the database, named `<database>-YYYY-MM-DD.dump`, in a folder you also copy
   off the machine.
 - **Files:** `.env`, and `STORM_DATA_DIR/documents` (with your Apps' files and images). The artifacts are working files (deleted after
-  `ARTIFACTS_RETENTION_DAYS`); the runs themselves are in the database.
+  the days set in Settings → Runs & browser, 90 by default); the runs themselves are in the database.
 - **`ENCRYPTION_KEY`:** a backup with `.env` holds the key next to the data; treat it as sensitive. Keep the key's own
   copy elsewhere: it is what restores the credentials on a new machine.
 
@@ -225,7 +219,7 @@ sudo ./docker/storm restore-test            # or: ... restore-test /path/to/<dat
 ```
 
 It restores the newest dump into `storm_restore_test`, compares the counts with the live database, opens every
-credential with the key in `.env`, drops the test database, and reports the result (below; or to Telegram). It fails
+credential with the key in `.env`, drops the test database, and reports the result to Storm (below). It fails
 when the restore fails, a table is missing or empty, a credential doesn't open, or the newest dump is more than 2 days
 old. Run it monthly from a systemd timer or cron.
 
@@ -254,7 +248,9 @@ curl -s -X POST -H "x-storm-health-token: $HEALTH_REPORT_TOKEN" -H 'content-type
   http://127.0.0.1:7101/hooks/health
 ```
 
-`maxAgeHours`: how long until a missing report counts as a problem. A wrong token gets a 404.
+`maxAgeHours`: how long until a missing report counts as a problem. A wrong token gets a 404. `./docker/storm
+restore-test` reports the same way; when Storm can't be reached (or the token isn't set), it prints the result and
+fails, so the timer's journal or cron's mail has it. The alerts go through the Storm bot of Settings → Telegram.
 
 ## Checks
 

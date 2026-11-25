@@ -6,13 +6,11 @@ import { createHash } from "node:crypto";
 import request from "supertest";
 import type TestAgent from "supertest/lib/agent";
 import { GOOGLE_FETCH } from "../src/google/google.service";
-import { createTestApp, type TestApp } from "./support/test-app";
+import { createTestApp, withGoogleClient, type TestApp } from "./support/test-app";
 
-const ENV = {
-  GOOGLE_CLIENT_ID: "123-abc.apps.googleusercontent.com",
-  GOOGLE_CLIENT_SECRET: "GOCSPX-secret-value",
-  APP_ORIGIN: "https://storm.test",
-};
+const ENV = { APP_ORIGIN: "https://storm.test" };
+/** M63: Google's OAuth client as Settings → Google saves it (made-up values). */
+const CLIENT = { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-secret-value" };
 
 const idToken = (email: string) => `x.${Buffer.from(JSON.stringify({ email })).toString("base64url")}.sig`;
 
@@ -39,6 +37,7 @@ describe("Google Calendar connection", () => {
     agent = await api.signedIn();
     db = createPrismaConnection();
     userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
+    await withGoogleClient(api, CLIENT);
   });
 
   beforeEach(() => {
@@ -63,6 +62,7 @@ describe("Google Calendar connection", () => {
 
   afterAll(async () => {
     for (const key of Object.keys(ENV)) delete process.env[key];
+    await withGoogleClient(api, null);
     await db.close();
     await api.close();
   });
@@ -89,7 +89,7 @@ describe("Google Calendar connection", () => {
     const url = await startConnect();
     expect(`${url.origin}${url.pathname}`).toBe(GOOGLE_AUTH_URL);
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
-      client_id: ENV.GOOGLE_CLIENT_ID,
+      client_id: CLIENT.clientId,
       redirect_uri: "https://storm.test/api/google/callback",
       response_type: "code",
       scope: "openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.readonly",

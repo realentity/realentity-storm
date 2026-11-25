@@ -29,8 +29,10 @@ test("Settings opens on AI; each tab is a page of its own; the old #email and #g
   await expect(page).toHaveURL(/\/settings\/email$/);
   await expect(page.getByTestId("email-accounts")).toBeVisible();
   // Back from Google's consent screen with an old address: the outcome in the query is kept.
+  // (the Google page says so, then takes it out of the address)
   await page.goto("/settings?google=connected#google");
-  await expect(page).toHaveURL(/\/settings\/google\?google=connected$/);
+  await expect(page.getByText("Google connected")).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/google$/);
   await expect(page.getByTestId("google-accounts")).toBeVisible();
   await page.goto("/settings/nothing-here");
   await expect(page).toHaveURL(/\/settings\/ai$/);
@@ -89,4 +91,80 @@ test("Telegram: the morning brief switched off and on again on its page", async 
   await expect(page.getByTestId("morning-brief")).not.toBeChecked();
   await page.getByTestId("morning-brief").click();
   await expect(page.getByTestId("morning-brief")).toBeChecked();
+});
+
+// M63: the Storm bot, the hooks address, Google's OAuth client and the run limits in Settings, not .env.
+test("Telegram: the bot is set up with its token, chat and webhook secret, and the code; the hooks address is saved", async ({ page }) => {
+  await page.goto("/settings/telegram");
+  await expect(page.getByTestId("telegram-not-set-up")).toBeVisible();
+  await page.getByTestId("telegram-edit").click();
+  const dialog = page.getByRole("dialog");
+  // A first secret is generated unless one is pasted; the code is asked for.
+  await expect(dialog.getByTestId("telegram-webhook-generate")).toBeChecked();
+  await expect(dialog.getByTestId("telegram-code")).toBeVisible();
+  await dialog.getByTestId("telegram-token").fill(`123456:${"a".repeat(35)}`);
+  await dialog.getByTestId("telegram-chat").fill("4242");
+  await expect(dialog.getByTestId("telegram-save")).toBeDisabled();
+  await dialog.getByTestId("telegram-webhook-paste").check({ force: true }); // Tabler's label covers the radio
+  await dialog.getByTestId("telegram-webhook-secret").fill("too-short");
+  await dialog.getByTestId("telegram-code").fill("123456");
+  await expect(dialog.getByTestId("telegram-save")).toBeDisabled();
+  await dialog.getByTestId("telegram-webhook-secret").fill("s".repeat(40));
+  await expect(dialog.getByTestId("telegram-save")).toBeEnabled();
+  // Registering offers the hooks address + /telegram once it is set.
+  await dialog.getByTestId("telegram-register").check();
+  await expect(dialog.getByTestId("telegram-register-url")).toHaveValue("");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  const hooks = page.getByTestId("hooks-address");
+  await hooks.getByLabel("Hooks address").fill("https://hooks.example.com/hooks/");
+  await hooks.getByRole("button", { name: "Save" }).click();
+  await expect(hooks.getByLabel("Hooks address")).toHaveValue("https://hooks.example.com/hooks");
+  await page.getByTestId("telegram-edit").click();
+  await page.getByRole("dialog").getByTestId("telegram-register").check();
+  await expect(page.getByRole("dialog").getByTestId("telegram-register-url")).toHaveValue("https://hooks.example.com/hooks/telegram");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await hooks.getByLabel("Hooks address").fill("");
+  await hooks.getByRole("button", { name: "Save" }).click();
+  await expect(hooks.getByLabel("Hooks address")).toHaveValue("");
+});
+
+test("Google: the OAuth client is set up above the accounts, with its secret and the code", async ({ page }) => {
+  await page.goto("/settings/google");
+  const client = page.getByTestId("google-client");
+  await expect(client.getByTestId("google-client-not-set")).toBeVisible();
+  await expect(client).toContainText("/api/google/callback");
+  await expect(page.getByTestId("google-setup")).toContainText("OAuth client above");
+  await client.getByTestId("google-client-edit").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByTestId("google-client-id").fill("123-abc.apps.googleusercontent.com");
+  await expect(dialog.getByTestId("google-client-save")).toBeDisabled();
+  await dialog.getByTestId("google-client-secret").fill("GOCSPX-made-up-secret");
+  await expect(dialog.getByTestId("google-client-save")).toBeDisabled();
+  await dialog.getByTestId("google-client-code").fill("12345");
+  await expect(dialog.getByTestId("google-client-save")).toBeDisabled();
+  await dialog.getByTestId("google-client-code").fill("123456");
+  await expect(dialog.getByTestId("google-client-save")).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+});
+
+test("Runs & browser: the run limits saved, and back to their defaults", async ({ page }) => {
+  await page.goto("/settings/runs");
+  const limits = page.getByTestId("run-limits");
+  await expect(limits.getByLabel("Keep run files")).toHaveValue("90");
+  await expect(limits.getByLabel("Wait in the live view")).toHaveValue("30");
+  await expect(limits.getByLabel("Largest download")).toHaveValue("25");
+  await limits.getByLabel("Wait in the live view").fill("0");
+  await expect(limits.getByRole("button", { name: "Save" })).toBeDisabled();
+  await limits.getByLabel("Wait in the live view").fill("10");
+  await limits.getByLabel("Largest download").fill("50");
+  await limits.getByRole("button", { name: "Save" }).click();
+  await page.reload();
+  await expect(page.getByTestId("run-limits").getByLabel("Wait in the live view")).toHaveValue("10");
+  await expect(page.getByTestId("run-limits").getByLabel("Largest download")).toHaveValue("50");
+  await page.getByTestId("run-limits").getByLabel("Wait in the live view").fill("30");
+  await page.getByTestId("run-limits").getByLabel("Largest download").fill("25");
+  await page.getByTestId("run-limits").getByRole("button", { name: "Save" }).click();
+  await page.reload();
+  await expect(page.getByTestId("run-limits").getByLabel("Largest download")).toHaveValue("25");
 });

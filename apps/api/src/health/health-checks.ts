@@ -1,7 +1,6 @@
-import { type HealthCheck } from "@realentity/storm-db";
-import { sendTelegram, type HealthCheckView, type HealthReport, type HealthView, type ServerEnv } from "@realentity/storm-shared";
-import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
-import { SERVER_ENV } from "../config/server-env";
+import { Integrations, type HealthCheck } from "@realentity/storm-db";
+import { sendTelegram, type HealthCheckView, type HealthReport, type HealthView } from "@realentity/storm-shared";
+import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { WorkerWatchdog } from "./worker-watchdog";
 
@@ -22,9 +21,10 @@ export class HealthChecks implements OnApplicationBootstrap, OnApplicationShutdo
   constructor(
     private readonly prisma: PrismaService,
     private readonly watchdog: WorkerWatchdog,
-    @Inject(SERVER_ENV) env: ServerEnv,
+    integrations: Integrations,
   ) {
-    this.alert = (text) => sendTelegram({ botToken: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID }, text);
+    // M63: the Storm bot of Settings → Telegram, looked up at each alert.
+    this.alert = (text) => sendTelegram(() => integrations.telegram(), text);
   }
 
   onApplicationBootstrap(): void {
