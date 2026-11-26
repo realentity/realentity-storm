@@ -5,7 +5,7 @@ import { exampleYaml } from "@realentity/storm-shared/example-files";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
-import { ExecutorRegistry } from "../src/runner/step-executor";
+import { ExecutorRegistry, type StepContext } from "../src/runner/step-executor";
 import { DedupeStep, SaveStep } from "../src/steps/data-steps";
 import { ReadStep } from "../src/steps/entity-steps";
 import { MapStep } from "../src/steps/map-alert-steps";
@@ -44,6 +44,7 @@ describe("examples/apps/newsletter.yaml", () => {
   let userId: string;
   let appId: string;
   let inbox: ReturnType<typeof email>[];
+  let fetched: { url: string; ownHost: boolean }[];
   let write: Counting;
   let send: Counting;
   let runner: PipelineRunner;
@@ -61,6 +62,14 @@ describe("examples/apps/newsletter.yaml", () => {
     for (const [email, name] of [["ana@mail.example", "Ana"], ["bo@mail.example", "Bo"], ["cy@mail.example", "Cy"]]) {
       await db.client.dataEntity.create({ data: { appId, type: "Subscriber", key: email, value: { email }, mine: { name } } });
     }
+    for (const [url, name, paused] of [
+      ["https://github.blog/feed/", "GitHub blog", false],
+      ["https://broken.example/feed", "Broken", false],
+      ["https://quiet.example/feed", "Quiet", true],
+    ] as const) {
+      await db.client.dataEntity.create({ data: { appId, type: "Feed", key: url, value: { url }, mine: { name, paused } } });
+    }
+    fetched = [];
     inbox = [
       email(1, "me@mail.example", "Fwd: A good read on queues #link", "---------- Forwarded message ---------\nSee https://blog.example/queues for the details."),
       email(2, "shop@mail.example", "Weekly deals", "Deals at https://shop.example/deals"),
@@ -78,15 +87,23 @@ describe("examples/apps/newsletter.yaml", () => {
         new MapStep(),
         new DedupeStep(db.client),
         new Counting("email.fetch", () => ({ messages: inbox })),
-        new Counting("http.fetch", () => ({
-          items: [
-            { title: "Release radar", url: "https://github.blog/radar", published: hoursAgo(30), summary: "What shipped.", id: "1", source: "github.blog" },
-            { title: "Old news", url: "https://github.blog/old", published: hoursAgo(24 * 20), summary: "Old.", id: "2", source: "github.blog" },
-          ],
-          json: null,
-          text: "",
-          documents: [],
-        })),
+        // M59-T6: each of your Feeds read on its own, as its url; a broken one fails alone.
+        {
+          type: "http.fetch",
+          execute: (input: Record<string, unknown>, context: StepContext) => {
+            fetched.push({ url: input.url as string, ownHost: context.ownHost === true });
+            if (input.url === "https://broken.example/feed") return Promise.reject(new Error("https://broken.example/feed answered 500"));
+            return Promise.resolve({
+              items: [
+                { title: "Release radar", url: "https://github.blog/radar", published: hoursAgo(30), summary: "What shipped.", id: "1", source: "github.blog" },
+                { title: "Old news", url: "https://github.blog/old", published: hoursAgo(24 * 20), summary: "Old.", id: "2", source: "github.blog" },
+              ],
+              json: null,
+              text: "",
+              documents: [],
+            });
+          },
+        },
         write,
         send,
       ]),
@@ -140,6 +157,11 @@ describe("examples/apps/newsletter.yaml", () => {
       "https://github.blog/radar": expect.objectContaining({ stage: "new", title: "Release radar", source: "github.blog" }) as unknown,
     });
     expect(Object.keys(await rows("Unsubscribed"))).toEqual(["bo@mail.example"]);
+    // M59-T6: your Feeds, not the paused one, each read on its own host (you typed it): no allowedDomains needed.
+    expect(fetched).toEqual([
+      { url: "https://broken.example/feed", ownHost: true },
+      { url: "https://github.blog/feed/", ownHost: true },
+    ]);
 
     await decide(await start("collect-links"));
     expect(Object.keys(await rows("Link"))).toHaveLength(2);

@@ -103,6 +103,7 @@ export class PipelineCompiler {
       provenance: [],
     };
     const privateHosts: string[] = [];
+    const ownHosts: string[] = [];
     const app = definition.app && context.app?.name === definition.app ? context.app : undefined;
     if (definition.app && !app) errors.push({ path: "app", message: `there is no App named "${definition.app}"` });
     checkAppTrigger(definition.trigger, app, Boolean(definition.app), errors);
@@ -158,6 +159,7 @@ export class PipelineCompiler {
       for (const contract of stepDefinition.entities ?? []) checkContract(stepDefinition, contract, step.with, definition.app, app, path, errors);
       if (stepDefinition.sideEffect) this.collectTargets(scope, known, policy, errors);
       if (stepDefinition.checks && this.checkAddress(scope, stepDefinition.checks, known, errors)) privateHosts.push(step.id);
+      if (stepDefinition.ownAddress && this.isOwnAddress(scope, stepDefinition.ownAddress, known)) ownHosts.push(step.id);
       known.set(step.id, { definition: stepDefinition, forEach: scope.forEach, ...entities });
     });
 
@@ -174,6 +176,7 @@ export class PipelineCompiler {
     if (errors.length > 0) return { ok: false, errors };
 
     if (privateHosts.length > 0) policy.privateHosts = privateHosts;
+    if (ownHosts.length > 0) policy.ownHosts = ownHosts;
     policy.allowedDomains = unique(policy.allowedDomains);
     policy.allowedRecipients = unique(policy.allowedRecipients);
     const needs = collectNeeds(definition, app, errors);
@@ -402,6 +405,16 @@ export class PipelineCompiler {
     if (this.isMineField(whole, scope, known)) return true;
     errors.push({ path: at, message: `{{${whole}}} isn't a field of mine: ${why}` });
     return false;
+  }
+
+  /**
+   * M59-T6: a read's address (http.fetch's url) that is exactly a field of mine of an App entity, as a check's may be:
+   * its host is then read though not in allowedDomains. Anything else is read as before, on allowedDomains only.
+   */
+  private isOwnAddress(scope: Scope, field: string, known: Map<string, CompiledStepInfo>): boolean {
+    const value = scope.step.with[field];
+    const whole = typeof value === "string" ? WHOLE_REFERENCE.exec(value)?.[1]?.trim() : undefined;
+    return whole !== undefined && this.isMineField(whole, scope, known);
   }
 
   /** {{item.x}} over data.read's items, or {{trigger.item.x}}: x is a field of mine of that type. */

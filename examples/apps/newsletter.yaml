@@ -23,6 +23,15 @@ types:
       email: { type: email, required: true }
       name: { type: text, required: true, help: "How the email greets them" }
       since: { type: date, label: Subscribed }
+  # A feed (RSS or Atom) links are collected from: written by you. Its site needs no allowedDomains: you typed it.
+  Feed:
+    mine: true
+    key: url
+    title: name
+    fields:
+      url: { type: url, required: true, help: "The feed's address, e.g. https://blog.example/feed.xml" }
+      name: { type: text, required: true }
+      paused: { type: yesno, help: "Not read until you untick it" }
   # A link seen this week, and whether an issue used it: written by collect-links and newsletter-issue.
   Link:
     key: url
@@ -94,34 +103,39 @@ pages:
     menu: { label: Unsubscribed, icon: news }
     columns: [email, at]
     sort: -at
+  - list: Feed
+    menu: { label: Feeds, icon: news }
+    add: true
+    columns: [name, url, paused]
+    sort: name
 
 pipelines:
   collect-links:
     # Every three hours, the Newsletter App's new emails and its feeds: an email with #link in its subject (one you
     # forward or send to yourself) gives its first link, a feed its items of the last week; the ones not seen before
     # are new Links. A reply whose first line says "unsubscribe" keeps its sender out of later issues (Unsubscribed).
-    # Nothing is sent. Your feeds go in `urls`, and their sites in allowedDomains.
+    # Nothing is sent. Your feeds are your Feeds (not paused), each read on its own; one that fails doesn't stop the
+    # others.
     name: Collect links
     description: Links from the emails you forward with #link and from your feeds, kept for Friday's issue.
     trigger: { schedule: "0 */3 * * *" }
-    policy:
-      allowedDomains: [github.blog, blog.rust-lang.org]
     steps:
       - id: fetch
         type: email.fetch
         with: { limit: 100, sinceDays: 7 }
+      - id: feedList
+        type: data.read
+        with: { type: Feed, where: [{ field: paused, op: neq, value: true }], sort: name, limit: 25 }
       - id: feeds
         type: http.fetch
-        with:
-          urls:
-            - https://github.blog/feed/
-            - https://blog.rust-lang.org/feed.xml
-          maxItems: 50
+        forEach: "{{feedList.items}}"
+        onError: continue
+        with: { url: "{{item.url}}", maxItems: 50 }
       # The forwarded emails' links and the feeds' items of the last week, as Links.
       - id: candidates
         type: data.map
         with:
-          from: { messages: "{{fetch.messages}}", feeds: "{{feeds.items}}" }
+          from: { messages: "{{fetch.messages}}", feeds: "{{feeds}}" }
           expression: |-
             (
               $since := $toMillis($now()) - 7 * 24 * 60 * 60 * 1000;
@@ -131,7 +145,7 @@ pipelines:
                 $url ? { "url": $url, "title": $title != "" ? $title : $url, "source": "email", "found": date,
                          "summary": $substring($trim(text), 0, 600) }
               );
-              $read := feeds[$exists(url) and $exists(published) and $toMillis(published) > $since].{
+              $read := feeds.items[$exists(url) and $exists(published) and $toMillis(published) > $since].{
                 "url": url, "title": title, "source": source, "found": published, "summary": $substring(summary, 0, 600)
               };
               [$forwarded, $read]

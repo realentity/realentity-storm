@@ -237,6 +237,23 @@ describe("M13: inputs without a browser and change detection", () => {
       await expect(refused(fetchStep, feeds.url("/to-elsewhere"), ["feeds.test"])).rejects.toThrow("evil.test isn't in the pipeline's allowedDomains");
       expect(feeds.requests.map((r) => r.path)).toEqual(["/to-metadata", "/to-elsewhere"]);
     });
+
+    // M59-T6: a url you typed (a Feed's: policy.ownHosts) is read on its own host; still never a private address,
+    // and a redirect elsewhere still needs allowedDomains
+    it("reads a url of mine outside allowedDomains, only on its host and only at a public address", async () => {
+      const own = (step: HttpFetchStep, url: string) => step.execute(fetchInput({ url }), { ...context([]), ownHost: true });
+      const read = (await own(fetchStep, feeds.url("/releases.atom"))) as { items: unknown[] };
+      expect(read.items.length).toBeGreaterThan(0);
+      await expect(own(fetchStep, feeds.url("/to-elsewhere"))).rejects.toThrow("evil.test isn't in the pipeline's allowedDomains");
+      await expect(own(strict(), feeds.url("/page"))).rejects.toThrow("feeds.test resolves to a private or local address (127.0.0.1)");
+      await expect(own(strict(), "http://inner.test/")).rejects.toThrow("resolves to a private or local address (10.0.0.5)");
+      // Not one of mine: refused as before.
+      await expect(refused(fetchStep, feeds.url("/releases.atom"), [])).rejects.toThrow("feeds.test isn't in the pipeline's allowedDomains");
+      // `urls` are written in the pipeline: never widened.
+      await expect(fetchStep.execute(fetchInput({ urls: [feeds.url("/releases.atom")] }), { ...context([]), ownHost: true })).rejects.toThrow(
+        "feeds.test isn't in the pipeline's allowedDomains",
+      );
+    });
   });
 
   describe("M13-I2: data.save into a collection", () => {
