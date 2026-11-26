@@ -335,6 +335,100 @@ describe("Apps (M30)", () => {
     ok(compiler.compile({ name: "Score", steps: [{ id: "score", type: "llm.score", with: { items: [], against: "x", outcomes: true } }] }));
   });
 
+  // M66-I1: another App's type through `uses:`: read only, only its declared fields, never a target
+  describe("a use of another App's type (M66)", () => {
+    const report = AppDefinitionSchema.parse(
+      parseYaml(`
+name: Report
+types:
+  Expense:
+    key: id
+    fields: { id: { type: text }, total: { type: money } }
+uses:
+  Bill:
+    from: { app: Bills, type: Bill }
+    fields: [issuer, amount, dueDate, contact.email]
+`),
+    );
+    const pipeline = (steps: object[]) => ({ name: "Report · Month", app: "Report", steps });
+    const read = (extra: object = {}) => ({ id: "bills", type: "data.read", with: { type: "Bill", ...extra } });
+
+    it("reads it with data.read: its declared fields in where, sort and the items", () => {
+      const result = ok(
+        compiler.compile(
+          pipeline([
+            read({ where: [{ field: "amount", op: "gt", value: 0 }], sort: "-dueDate" }),
+            { id: "sum", type: "data.map", with: { from: "{{bills.items}}", expression: "$sum(amount)" } },
+            { id: "each", type: "data.map", forEach: "{{bills.items}}", with: { from: "{{item.contact.email}}", expression: "$" } },
+          ]),
+          { app: report },
+        ),
+      );
+      expect(result.definition.steps.map((s) => s.type)).toEqual(["data.read", "data.map", "data.map"]);
+      ok(compiler.compile(pipeline([read({ sort: "@firstSeen" })]), { app: report }));
+    });
+
+    it("refuses a field it doesn't name, writing it, deduplicating against it, and an unknown name", () => {
+      const why = "Bill reads only the fields its use names (issuer, amount, dueDate, contact.email)";
+      expect(errorsOf(compiler.compile(pipeline([read({ where: [{ field: "note", op: "eq", value: "x" }], sort: "vat" })]), { app: report }))).toEqual([
+        `steps[0].with.where[0].field: ${why}: add "note" there to use it`,
+        `steps[0].with.sort: ${why}: add "vat" there to use it`,
+      ]);
+      const each = { id: "x", type: "data.map", forEach: "{{bills.items}}", with: { from: "{{item.note}}", expression: "$" } };
+      expect(errorsOf(compiler.compile(pipeline([read(), each]), { app: report }))).toEqual([
+        expect.stringMatching(/^steps\[1\]\.with\.from: \{\{item\.note\}\}: .*has no field "note"/),
+      ]);
+      expect(errorsOf(compiler.compile(pipeline([{ id: "save", type: "data.save", with: { type: "Bill", items: [] } }]), { app: report }))).toEqual([
+        "steps[0].with.type: Bill is Bills's Bill (uses:): this App only reads it, with data.read",
+      ]);
+      expect(
+        errorsOf(compiler.compile(pipeline([{ id: "d", type: "data.dedupe", with: { from: [], key: "issuer", againstType: "Bill" } }]), { app: report })),
+      ).toEqual(["steps[0].with.againstType: Bill is Bills's Bill (uses:): this App only reads it, with data.read"]);
+      expect(errorsOf(compiler.compile(pipeline([read({ type: "Bills" })]), { app: report }))).toEqual([
+        'steps[0].with.type: "Report" has no type "Bills" (types: Expense; uses: Bill)',
+      ]);
+      const name = { id: "name", type: "data.map", with: { from: "amount", expression: "$" } };
+      expect(errorsOf(compiler.compile(pipeline([name, read({ where: [{ field: "{{name.value}}", op: "eq", value: 1 }] })]), { app: report }))).toEqual([
+        "steps[1].with.where[0].field: names a field of the type as it is, not through a reference",
+      ]);
+    });
+
+    it("isn't watched: an entity trigger on a use is about a type of the App's own", () => {
+      const watch = { name: "Report · Paid", app: "Report", trigger: { on: "entity.changed", type: "Bill" }, steps: [{ id: "tell", type: "notify.telegram", with: { text: "x" } }] };
+      expect(errorsOf(compiler.compile(watch, { app: report }))).toEqual(['trigger.type: "Report" has no type "Bill" (types: Expense)']);
+    });
+
+    it("an App's changes name a use added, changed or removed", () => {
+      const without = AppDefinitionSchema.parse({ ...report, uses: undefined });
+      const changed = AppDefinitionSchema.parse({ ...report, uses: { Bill: { ...report.uses!.Bill, fields: ["issuer"] } } });
+      expect(diffApps(without, report)).toEqual(["use Bill added (Bills › Bill)"]);
+      expect(diffApps(report, changed)).toEqual(["use Bill changed"]);
+      expect(diffApps(report, without)).toEqual(["use Bill removed"]);
+    });
+
+    it("its fields are never a recipient or a check's address", () => {
+      const send = {
+        id: "send",
+        type: "email.send",
+        forEach: "{{bills.items}}",
+        with: { to: "{{item.contact.email}}", subject: "Paid?", body: "Is it paid?" },
+      };
+      expect(errorsOf(compiler.compile(pipeline([read(), send]), { app: report }))).toEqual([
+        "steps[1].with.to: {{item.contact.email}} can't be a target: Bill comes from another App (uses:), and what it holds isn't a target here",
+      ]);
+      const check = { id: "check", type: "http.check", forEach: "{{bills.items}}", with: { url: "{{item.issuer}}" } };
+      expect(errorsOf(compiler.compile(pipeline([read(), check]), { app: report }))).toEqual([
+        expect.stringMatching(/^steps\[1\]\.with\.url: \{\{item\.issuer\}\} isn't a field of mine/),
+      ]);
+    });
+  });
+
+  // M59-T3: a contract held only `when` its input is given: an App named but not there is said once
+  it("a contract with when, in a pipeline whose App isn't there: only that the App isn't", () => {
+    const score = { name: "S", app: "Gone", steps: [{ id: "s", type: "llm.score", with: { items: [], against: "x", outcomes: true } }] };
+    expect(errorsOf(compiler.compile(score))).toEqual(['app: there is no App named "Gone"']);
+  });
+
   // M59-T2: an application form for any type; only a `job` moves the App's Job
   it("checks the form steps' Job only for a job", () => {
     const tenders = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/tenders.yaml")));

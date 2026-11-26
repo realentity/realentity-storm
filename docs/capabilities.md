@@ -443,13 +443,18 @@ uses:
   App of that name has that type with the fields; otherwise the App's page (**Data it reads from other Apps**) offers
   every type of your other Apps that fits, and the App's checklist waits for it. Renaming the App it comes from keeps
   it; deleting that App, or removing one of the fields, leaves it to choose again.
-- **Only the named fields** are read (with the key, the title and the stage), and never an encrypted, credential, file
-  or image field: such a type doesn't fit.
-- **Reads only:** a change to another App's entity goes through that App's own pipelines.
+- **Only the named fields** are read; name the key or the stage's field too when you need them. Never an encrypted,
+  credential, file or image field: such a type doesn't fit.
+- **Reads only:** `data.read { type: Bill }` reads it, `where` and `sort` on its named fields. A change to another
+  App's entity goes through that App's own pipelines: `data.save` and `data.dedupe` refuse a use.
+- **Not chosen yet, or no longer fitting** (a field removed or made encrypted in the other App): `data.read` fails,
+  saying so, and reads nothing.
+- **Not a target:** what a use holds isn't a recipient, an address or a check's address in this App, whoever wrote it
+  there.
 - **Its name** can't be one of the App's own types: when the App has a `Bill` of its own, call the use `HomeBill`.
 
-Where several Apps' types appear together, a type is shown as *App › Type*. For now a use is declared and chosen;
-`data.read`, page sources and refs reading it come next.
+Where several Apps' types appear together, a type is shown as *App › Type*. Page sources and refs through a use come
+next; for now pipelines read it.
 
 ---
 
@@ -595,7 +600,8 @@ Saves items and says what changed since the last save.
 ```
 
 #### `data.read`
-Reads entities of a type of the pipeline's App (§2.5) as items, your (`mine`) fields included.
+Reads entities of a type of the pipeline's App (§2.5) as items, your (`mine`) fields included. Or another App's type
+the App uses (`uses:`, §2.5): from the App you chose for it, only the fields the use names, never a target.
 - In: `type`, `where` (as `data.filter`, on the type's fields), `sort` (`"-salary"`, `"@firstSeen"`), `limit` [100],
   `removed` [false: the removed ones instead].
 - Out: `items` (typed by the type: `{{item.salary}}` is checked), `count` (matching, before `limit`).

@@ -17,9 +17,11 @@ import {
   matchesAll,
   readAppSource,
   sealedAt,
+  useProblems,
   valueAt,
   withTextLists,
   type AppDefinition,
+  type AppUse,
   type Condition,
   type DataType,
   type SealedValue,
@@ -37,6 +39,14 @@ export async function appType(
   context: StepContext,
   typeName: string,
 ): Promise<{ appId: string; app: AppDefinition; type: DataType }> {
+  const { appId, app } = await pipelineApp(prisma, context, typeName);
+  const type = Object.hasOwn(app.types, typeName) ? app.types[typeName] : undefined;
+  if (!type) throw new Error(`"${app.name}" has no type "${typeName}"`);
+  return { appId, app, type };
+}
+
+/** The pipeline's App as its current version says. */
+async function pipelineApp(prisma: PrismaClient, context: StepContext, typeName: string): Promise<{ appId: string; app: AppDefinition }> {
   if (!context.app) throw new Error(`${typeName} is an App's type, and this pipeline has no app:`);
   // M39-T3: by the id its version was saved with, so a renamed App is still found; by name before M39.
   const row = context.appId
@@ -44,10 +54,48 @@ export async function appType(
     : await prisma.app.findUnique({ where: { userId_name: { userId: context.userId, name: context.app } } });
   const version = row?.currentVersionId ? await prisma.appVersion.findUnique({ where: { appVersionId: row.currentVersionId } }) : null;
   if (!row || !version) throw new Error(`There is no App named "${context.app}"`);
-  const app = readAppSource(version.source);
-  const type = Object.hasOwn(app.types, typeName) ? app.types[typeName] : undefined;
-  if (!type) throw new Error(`"${app.name}" has no type "${typeName}"`);
-  return { appId: row.appId, app, type };
+  return { appId: row.appId, app: readAppSource(version.source) };
+}
+
+/**
+ * M66: a use of another App's type (`uses:`), as it is filled now: the user's App chosen for it (by id), its type,
+ * and only if it still fits. Never another user's App; never one not chosen.
+ */
+async function usedType(
+  prisma: PrismaClient,
+  context: StepContext,
+  appId: string,
+  app: AppDefinition,
+  name: string,
+  use: AppUse,
+): Promise<{ appId: string; typeName: string; type: DataType }> {
+  const chosen = await prisma.appUse.findUnique({ where: { appId_name: { appId, name } } });
+  if (!chosen) throw new Error(`${name} isn't chosen yet: choose which of your Apps it comes from, on ${app.name}'s page`);
+  const owner = await prisma.app.findFirst({ where: { appId: chosen.sourceAppId, userId: context.userId } });
+  const version = owner?.currentVersionId ? await prisma.appVersion.findUnique({ where: { appVersionId: owner.currentVersionId } }) : null;
+  if (!owner || !version) throw new Error(`${name} isn't chosen yet: choose which of your Apps it comes from, on ${app.name}'s page`);
+  const definition = readAppSource(version.source);
+  const type = Object.hasOwn(definition.types, chosen.sourceType) ? definition.types[chosen.sourceType] : undefined;
+  const problems = type ? useProblems(use, type) : [`it has no type ${chosen.sourceType} any more`];
+  if (!type || problems.length > 0) throw new Error(`${owner.name} › ${chosen.sourceType} no longer fits ${name}: ${problems.join("; ")}. Choose again on ${app.name}'s page`);
+  return { appId: owner.appId, typeName: chosen.sourceType, type };
+}
+
+/** M66: only a use's declared fields of an entity, at their paths. */
+function declaredOnly(item: Item, fields: readonly string[]): Item {
+  const out: Item = {};
+  for (const path of fields) {
+    const value = valueAt(item, path);
+    if (value === undefined) continue;
+    const segments = path.split(".");
+    let current = out;
+    for (const segment of segments.slice(0, -1)) {
+      if (!current[segment] || typeof current[segment] !== "object") current[segment] = {};
+      current = current[segment] as Item;
+    }
+    current[segments.at(-1)!] = value;
+  }
+  return out;
 }
 
 interface SaveEntitiesInput {
@@ -247,7 +295,13 @@ export class ReadStep implements StepExecutor {
       limit,
       removed,
     } = input as { type: string; where?: Condition[]; sort?: string; limit: number; removed: boolean };
-    const { appId, type } = await appType(this.prisma, context, typeName);
+    const own = await pipelineApp(this.prisma, context, typeName);
+    // M66: another App's type this App uses: read where it is kept, only its declared fields.
+    const use = Object.hasOwn(own.app.uses ?? {}, typeName) ? own.app.uses![typeName] : undefined;
+    if (use) return this.readUse(context, own, typeName, use, { where, sort, limit, removed });
+    const { appId } = own;
+    const type = Object.hasOwn(own.app.types, typeName) ? own.app.types[typeName] : undefined;
+    if (!type) throw new Error(`"${own.app.name}" has no type "${typeName}"`);
     const rows = await this.prisma.dataEntity.findMany({
       where: { appId, type: typeName, removedAt: removed ? { not: null } : null },
       orderBy: { firstSeenAt: "desc" },
@@ -256,7 +310,7 @@ export class ReadStep implements StepExecutor {
     // M52: an encrypted field as its sealed value (a handle), only when it is this entity's.
     const sealed = encryptedFields(type);
     const credentials = credentialFields(type);
-    let entities = rows.map((row) => ({
+    const entities = rows.map((row) => ({
       row,
       item: this.withCredentials(
         inPlace(withTextLists(type, entityItem(row.value, row.mine, stageOf(type, row.stage))), sealed, (field) =>
@@ -266,17 +320,28 @@ export class ReadStep implements StepExecutor {
         (field) => credentialAt(appId, typeName, row.key, field),
       ),
     }));
-    // M65: a list of text matches its values without case unless it is caseSensitive (a tag "Home" is "home").
-    const caseless = caselessFields(type);
-    if (where) entities = entities.filter(({ item }) => matchesAll(item, where, { caseless }));
-    if (sort) {
-      const by = sort.replace(/^-/, "");
-      const desc = sort.startsWith("-");
-      const valueOf = (e: (typeof entities)[number]): unknown =>
-        by === "@firstSeen" ? e.row.firstSeenAt.toISOString() : by === "@lastSeen" ? e.row.lastSeenAt.toISOString() : valueAt(e.item, by);
-      entities.sort((a, b) => order(valueOf(a), valueOf(b), desc));
-    }
-    return { items: entities.slice(0, limit).map((e) => e.item), count: entities.length };
+    return narrowed(entities, type, { where, sort, limit });
+  }
+
+  /**
+   * M66: a use read from the App chosen for it: its entities with only the declared fields (none encrypted, a
+   * credential or a file: such a type doesn't fit), filtered and sorted on them as the App's own are.
+   */
+  private async readUse(
+    context: StepContext,
+    own: { appId: string; app: AppDefinition },
+    name: string,
+    use: AppUse,
+    query: { where?: Condition[]; sort?: string; limit: number; removed: boolean },
+  ): Promise<unknown> {
+    const { appId, typeName, type } = await usedType(this.prisma, context, own.appId, own.app, name, use);
+    const rows = await this.prisma.dataEntity.findMany({
+      where: { appId, type: typeName, removedAt: query.removed ? { not: null } : null },
+      orderBy: { firstSeenAt: "desc" },
+      take: READ_MAX,
+    });
+    const entities = rows.map((row) => ({ row, item: declaredOnly(withTextLists(type, entityItem(row.value, row.mine, stageOf(type, row.stage))), use.fields) }));
+    return narrowed(entities, type, query);
   }
 
   /**
@@ -295,6 +360,25 @@ export class ReadStep implements StepExecutor {
     }
     return item;
   }
+}
+
+/** data.read's `where`, `sort` and `limit` over the entities read; `count` before the limit. */
+function narrowed(
+  read: { row: { firstSeenAt: Date; lastSeenAt: Date }; item: Item }[],
+  type: DataType,
+  query: { where?: Condition[]; sort?: string; limit: number },
+): { items: Item[]; count: number } {
+  // M65: a list of text matches its values without case unless it is caseSensitive (a tag "Home" is "home").
+  const caseless = caselessFields(type);
+  const entities = query.where ? read.filter(({ item }) => matchesAll(item, query.where!, { caseless })) : [...read];
+  if (query.sort) {
+    const by = query.sort.replace(/^-/, "");
+    const desc = query.sort.startsWith("-");
+    const valueOf = (e: (typeof entities)[number]): unknown =>
+      by === "@firstSeen" ? e.row.firstSeenAt.toISOString() : by === "@lastSeen" ? e.row.lastSeenAt.toISOString() : valueAt(e.item, by);
+    entities.sort((a, b) => order(valueOf(a), valueOf(b), desc));
+  }
+  return { items: entities.slice(0, query.limit).map((e) => e.item), count: entities.length };
 }
 
 /** Numbers as numbers, the rest as text; a missing value last either way. */
