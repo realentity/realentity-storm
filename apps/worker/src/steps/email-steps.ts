@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { type PrismaClient } from "@realentity/storm-db";
 import { embeddingsSource, type Embeddings, type EmbeddingsSource, type LlmClient, type ModelRouter } from "@realentity/storm-llm";
+import { type FileRef } from "@realentity/storm-shared";
 import { isNoReplyAddress, unanswerable, type EmailMessage } from "@realentity/storm-steps";
 import { z } from "zod";
-import { mailWho, NoEmailAccountError, TOPICS_ACCOUNT, type MailConnector } from "../mail/mail-connector";
+import { mailWho, NoEmailAccountError, TOPICS_ACCOUNT, type MailConnector, type OutgoingAttachment } from "../mail/mail-connector";
+import { type AppFileStore } from "./app-file-steps";
 import { topicMailboxes } from "../sources/topic-mailboxes";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
@@ -218,27 +221,48 @@ export function replySubject(subject: string): string {
   return /^(re|aw|отн)\s*:/i.test(trimmed) ? trimmed : `Re: ${trimmed || "(no subject)"}`;
 }
 
-/** email.send: exactly the approved payload; a reply in the thread when `inReplyTo` is set. */
+/**
+ * email.send: exactly the approved payload; a reply in the thread when `inReplyTo` is set. M59-T1: its attachments are
+ * files of the pipeline's App, each the one approved (its name, type and size; its content as it was kept).
+ */
 export class EmailSendStep implements StepExecutor {
   readonly type = "email.send";
 
-  constructor(private readonly mail: MailConnector) {}
+  constructor(
+    private readonly mail: MailConnector,
+    private readonly files?: { prisma: PrismaClient; store: AppFileStore },
+  ) {}
 
-  execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { to, subject, body, inReplyTo, references, account } = input as {
+  async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
+    const { to, subject, body, inReplyTo, references, attachments, account } = input as {
       to: string;
       subject: string;
       body: string;
       inReplyTo?: string;
       references?: string[];
+      attachments?: FileRef[];
       account?: string | null;
     };
     // Never a reply to an address nobody reads, whatever the pipeline says (the user's own address: the connector refuses).
-    if (inReplyTo && isNoReplyAddress(to))
-      return Promise.reject(new Error(`Not sent: ${to} is a no-reply address, nobody reads replies to it`));
+    if (inReplyTo && isNoReplyAddress(to)) throw new Error(`Not sent: ${to} is a no-reply address, nobody reads replies to it`);
     // The thread is the original's references plus the message replied to (RFC 5322 §3.6.4).
     const thread = inReplyTo ? [...(references ?? []).filter((id) => id !== inReplyTo), inReplyTo] : references;
-    return this.mail.send(mailWho(context, account), { to, subject, body, inReplyTo, references: thread });
+    const files = attachments?.length ? await this.attached(attachments, context) : undefined;
+    return this.mail.send(mailWho(context, account), { to, subject, body, inReplyTo, references: thread, ...(files ? { attachments: files } : {}) });
+  }
+
+  /** Each file as approved, read from the pipeline's App; one changed or gone since sends nothing. */
+  private async attached(refs: FileRef[], context: StepContext): Promise<OutgoingAttachment[]> {
+    if (!this.files) throw new Error("Not sent: an App's files aren't available here to attach");
+    const files: OutgoingAttachment[] = [];
+    for (const ref of refs) {
+      const { row, content } = await this.files.store.read(this.files.prisma, context, ref);
+      const sha256 = createHash("sha256").update(content).digest("hex");
+      if (row.filename !== ref.name || row.size !== ref.size || row.mime !== ref.mime || sha256 !== row.sha256)
+        throw new Error(`Not sent: the attachment ${ref.name} isn't the file approved (it changed since)`);
+      files.push({ filename: row.filename, contentType: row.mime, content });
+    }
+    return files;
   }
 }
 
@@ -250,6 +274,8 @@ export interface EmailStepDependencies {
   learning?: StepLearning;
   /** Drafts' passages closest to the email (M43-T4); without them, by its words. */
   embeddings?: Embeddings | EmbeddingsSource | null;
+  /** M59-T1: an App's files, for email.send's attachments. */
+  appFiles?: AppFileStore;
 }
 
 export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
@@ -261,6 +287,6 @@ export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
     new DraftFollowUpStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
     new BillReadStep(deps.mail, deps.llm, deps.router, deps.learning),
     new BillSaveStep(deps.prisma),
-    new EmailSendStep(deps.mail),
+    new EmailSendStep(deps.mail, deps.appFiles ? { prisma: deps.prisma, store: deps.appFiles } : undefined),
   ];
 }

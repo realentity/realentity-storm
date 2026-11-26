@@ -182,6 +182,10 @@ export class ImapSmtpConnector implements MailConnector {
         text: mail.body,
         ...(mail.inReplyTo ? { inReplyTo: mail.inReplyTo } : {}),
         ...(mail.references?.length ? { references: mail.references } : {}),
+        // M59-T1: the content given, never a path or a URL for nodemailer to read.
+        ...(mail.attachments?.length
+          ? { attachments: mail.attachments.map((a) => ({ filename: a.filename, contentType: a.contentType, content: a.content })) }
+          : {}),
       });
       const accepted = (info.accepted as (string | { address: string })[]).map((a) => (typeof a === "string" ? a : a.address));
       return { messageId: String(info.messageId), accepted, from: login.user };

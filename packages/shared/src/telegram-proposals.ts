@@ -70,11 +70,22 @@ export function decidedMessage(proposal: ProposalForTelegram, outcome: string): 
 /** An email's sender first and its fields without the account's id; any other payload as it is. */
 function shownText(proposal: ProposalForTelegram): string {
   if (proposal.from === undefined) return payloadText(proposal.payload);
-  const { account: _account, ...rest } = proposal.payload;
+  const { account: _account, attachments, ...rest } = proposal.payload;
   const from = proposal.from
     ? `From: ${proposal.from.address}${proposal.from.label ? ` (${proposal.from.label})` : ""}`
     : "From: no email account to send it from (Settings → Email accounts)";
-  return `${from}\n${payloadText(rest)}`;
+  return `${from}\n${payloadText(rest)}${attachedText(attachments)}`;
+}
+
+/** M59-T1: an email's attachments, an App's files, by name and size. */
+function attachedText(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return "";
+  const names = value.map((file: unknown) => {
+    const { name, size } = (file ?? {}) as { name?: unknown; size?: unknown };
+    const kb = typeof size === "number" ? ` (${size < 1_048_576 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1_048_576).toFixed(1)} MB`})` : "";
+    return `• ${typeof name === "string" ? name : "a file"}${kb}`;
+  });
+  return `\nAttachments:\n${names.join("\n")}`;
 }
 
 /** Every field, as it will be sent: text as it is, anything else as JSON. */

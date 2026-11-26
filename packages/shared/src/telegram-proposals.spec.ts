@@ -19,6 +19,15 @@ describe("a proposal on the Storm bot", () => {
     );
   });
 
+  it("an email's attachments by name and size, after the message (M59-T1)", () => {
+    const attachments = [
+      { id: "00000000-0000-4000-8000-0000000000f1", name: "receipt.pdf", mime: "application/pdf", size: 20_480 },
+      { id: "00000000-0000-4000-8000-0000000000f2", name: "photo.jpg", mime: "image/jpeg", size: 2_400_000 },
+    ];
+    const { text } = proposalMessage({ ...EMAIL, payload: { ...EMAIL.payload, attachments }, from: { address: "me@work.example", label: null } }, { approvals: true });
+    expect(text).toMatch(/body: Hello\nAttachments:\n• receipt\.pdf \(20 KB\)\n• photo\.jpg \(2\.3 MB\)$/);
+  });
+
   it("an email without an account to send it from says so", () => {
     expect(proposalMessage({ ...EMAIL, from: null }, { approvals: true }).text).toContain("From: no email account to send it from");
   });

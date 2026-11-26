@@ -74,6 +74,8 @@ test.describe("proposals", () => {
               subject: "Re: Launch plan",
               inReplyTo: "<b@client.example>",
               references: ["<a@client.example>", "<b@client.example>"],
+              // M59-T1: a file of an App, as an entity's file field holds it (never sent: the test rejects it).
+              attachments: [{ id: "00000000-0000-4000-8000-0000000000f1", name: "launch-plan.pdf", mime: "application/pdf", size: 245_760 }],
             },
           },
         ],
@@ -91,6 +93,9 @@ test.describe("proposals", () => {
     const thread = email.getByTestId("email-thread");
     await expect(thread).toContainText("A reply in the same thread (2 earlier messages)");
     await expect(thread).not.toHaveAttribute("open");
+    // Its attachment by name and size, not as JSON; the editor shows it too, not to edit.
+    await expect(email.getByTestId("email-attachments")).toContainText("1 attachment");
+    await expect(email.getByTestId("email-attachment")).toHaveText("launch-plan.pdf (240 KB)");
 
     // Edited: the subject, marked; Act's confirmation shows the email it will send.
     await page.getByTestId("edit-payload").click();

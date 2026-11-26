@@ -5,7 +5,7 @@ import { emptyUsage, ModelRouter, type LlmClient, type LlmFile, type LlmUsage, t
 import { entityItem, readAppSource } from "@realentity/storm-shared";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -14,7 +14,8 @@ import { recordFile, storeFile } from "@realentity/storm-files";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry } from "../src/runner/step-executor";
 import { AppFileStore, FileKeepStep } from "../src/steps/app-file-steps";
-import { type MailConnector } from "../src/mail/mail-connector";
+import { type MailConnector, type OutgoingMail } from "../src/mail/mail-connector";
+import { EmailSendStep } from "../src/steps/email-steps";
 import { SaveStep } from "../src/steps/data-steps";
 import { ReadStep } from "../src/steps/entity-steps";
 import { ExtractStep } from "../src/steps/llm-steps";
@@ -194,17 +195,27 @@ describe("Tasks and Papers", () => {
       return actions.start(versionId, { trigger: "event", triggerData: { app: "Papers", appId, type: "Paper", key, item, action: "Claim warranty" } });
     };
 
-    it("a warranty claim goes to the merchant you chose, after you Act; without one, nothing and why", async () => {
+    /** A paper's document, kept for it. */
+    const documentOf = async (appId: string, key: string, name: string, content: Buffer) => {
+      const document = await recordFile(db.client, appId, "Paper", "document", await storeFile(root, content, name, "file"));
+      await db.client.appFile.update({ where: { appFileId: document.id }, data: { key } });
+      return document;
+    };
+    const pdf = (text: string) => Buffer.from(`%PDF-1.4\n% ${text}\n%%EOF\n`);
+
+    it("a warranty claim goes to the merchant you chose, its receipt attached, after you Act; without one, nothing and why", async () => {
       const { appId, definition } = await install("apps/papers.yaml");
       await add(appId, "Merchant", "Northwind", { name: "Northwind", email: "service@northwind.example" });
-      await add(appId, "Paper", "p1", { title: "Washing machine", kind: "receipt", merchant: "Northwind Appliances", date: "2026-11-10", warrantyUntil: "2028-11-10", seller: "Northwind" });
+      const document = await documentOf(appId, "p1", "receipt.pdf", pdf("washing machine"));
+      await add(appId, "Paper", "p1", { title: "Washing machine", kind: "receipt", merchant: "Northwind Appliances", date: "2026-11-10", warrantyUntil: "2028-11-10", seller: "Northwind", document });
       await add(appId, "Paper", "p2", { title: "Kettle", kind: "receipt" });
 
       const runId = await press("warranty-claim.yaml", appId, definition, "p1");
       expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
       expect(generate.calls[0]).toMatchObject({ context: { paper: { title: "Washing machine" }, merchant: { email: "service@northwind.example" } } });
       const [gate] = await proposals(runId);
-      expect(gate.originalPayload).toMatchObject({ to: "service@northwind.example", subject: "Warranty claim: Washing machine" });
+      // M59-T1: the receipt, shown at the gate by its name and size.
+      expect(gate.originalPayload).toMatchObject({ to: "service@northwind.example", subject: "Warranty claim: Washing machine", attachments: [document] });
       await approve(gate);
       await finish(runId);
       expect(send.calls).toEqual([expect.objectContaining({ to: "service@northwind.example", body: "Dear Northwind, the washing machine stopped spinning." })]);
@@ -255,10 +266,13 @@ describe("Tasks and Papers", () => {
       const thisMonth = new Date().toISOString().slice(0, 7);
       const first = new Date(`${thisMonth}-01T00:00:00Z`);
       const last = new Date(first.getTime() - 86_400_000).toISOString().slice(0, 7);
-      await add(appId, "Paper", "e1", { title: "Laptop", kind: "invoice", merchant: "Contoso", amount: 1200, currency: "EUR", date: `${last}-03`, category: "equipment" });
+      // M59-T1: the laptop's invoice and the lunch's receipt kept; the train ticket has no document.
+      const invoice = await documentOf(appId, "e1", "laptop-invoice.pdf", pdf("laptop"));
+      const lunch = await documentOf(appId, "e4", "lunch.pdf", pdf("lunch"));
+      await add(appId, "Paper", "e1", { title: "Laptop", kind: "invoice", merchant: "Contoso", amount: 1200, currency: "EUR", date: `${last}-03`, category: "equipment", document: invoice });
       await add(appId, "Paper", "e2", { title: "Train", kind: "receipt", merchant: "Rail", amount: 35.5, currency: "EUR", date: `${last}-12`, category: "travel" });
       await add(appId, "Paper", "e3", { title: "Groceries", kind: "receipt", amount: 80, currency: "EUR", date: `${last}-15`, category: "personal" });
-      await add(appId, "Paper", "e4", { title: "Lunch", kind: "receipt", merchant: "Cafe", amount: 20, currency: "EUR", date: `${last}-20`, category: "meals" });
+      await add(appId, "Paper", "e4", { title: "Lunch", kind: "receipt", merchant: "Cafe", amount: 20, currency: "EUR", date: `${last}-20`, category: "meals", document: lunch });
       await add(appId, "Paper", "e5", { title: "Monitor", kind: "invoice", amount: 300, currency: "EUR", date: `${thisMonth}-01` });
       await add(appId, "Paper", "e6", { title: "Phone", kind: "warranty", amount: 600, currency: "EUR", date: `${last}-05` });
       const versionId = await createVersion(db.client, userId, read("expense-report.yaml"), compiler, { app: definition });
@@ -278,10 +292,56 @@ describe("Tasks and Papers", () => {
         to: "books@accounting.example",
         subject: `Expenses for ${label}`,
         body: expect.stringContaining(`${last}-03  Contoso  equipment  1,200.00 EUR\n${last}-12  Rail  travel  35.50 EUR\n\nTotal: 1,235.50 EUR`) as unknown,
+        // The kept papers' documents: not the lunch's, unticked.
+        attachments: [invoice],
       });
       await approve(mail);
       await finish(runId);
       expect(send.calls).toHaveLength(1);
+    });
+
+    // M59-T1: email.send itself: the approved files as they were kept, only the pipeline's App's.
+    it("sends the receipt as it was kept; a file changed since, or another App's, sends nothing", async () => {
+      const sent: OutgoingMail[] = [];
+      const mail = {
+        send: (_who: unknown, message: OutgoingMail) => (sent.push(message), Promise.resolve({ messageId: "<m2@example.com>", accepted: [message.to], from: "me@example.com" })),
+      } as unknown as MailConnector;
+      const sending = new PipelineRunner(
+        db.client,
+        defaultCatalog(),
+        new ExecutorRegistry([new ReadStep(db.client), new MapStep(), generate, new EmailSendStep(mail, { prisma: db.client, store: new AppFileStore(root) }), telegram]),
+      );
+      const { appId, definition } = await install("apps/papers.yaml");
+      await add(appId, "Merchant", "Northwind", { name: "Northwind", email: "service@northwind.example" });
+      const content = pdf("washing machine");
+      const document = await documentOf(appId, "p1", "receipt.pdf", content);
+      await add(appId, "Paper", "p1", { title: "Washing machine", kind: "receipt", seller: "Northwind", document });
+      const versionId = await createVersion(db.client, userId, read("warranty-claim.yaml"), compiler, { app: definition });
+      const entity = await db.client.dataEntity.findUniqueOrThrow({ where: { appId_type_key: { appId, type: "Paper", key: "p1" } } });
+      const claim = async (edit?: (p: Record<string, unknown>) => Record<string, unknown>) => {
+        const runId = await sending.start(versionId, { trigger: "event", triggerData: { app: "Papers", appId, type: "Paper", key: "p1", item: entityItem(entity.value, entity.mine), action: "Claim warranty" } });
+        expect(await sending.advance(runId)).toBe("WAITING_FOR_USER");
+        await approve((await proposals(runId))[0], edit);
+        const status = await sending.advance(runId);
+        const failed = await db.client.step.findFirst({ where: { runId, stepKey: "send", error: { not: null } }, select: { error: true } });
+        return { status, error: failed?.error ?? null };
+      };
+
+      expect(await claim()).toEqual({ status: "DONE", error: null });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].attachments).toEqual([{ filename: "receipt.pdf", contentType: "application/pdf", content }]);
+
+      // Another App's file named instead (an edit at the gate): not found in this App, nothing sent.
+      const other = await db.client.app.create({ data: { userId, name: "Elsewhere" } });
+      const foreign = await recordFile(db.client, other.appId, "Paper", "document", await storeFile(root, pdf("not yours"), "other.pdf", "file"));
+      await db.client.appFile.update({ where: { appFileId: foreign.id }, data: { key: "x1" } });
+      expect(await claim((p) => ({ ...p, attachments: [foreign] }))).toEqual({ status: "FAILED", error: expect.stringContaining(`No file ${foreign.id} in this pipeline's App`) as unknown });
+
+      // The kept file changed on disk since it was approved: nothing sent.
+      const row = await db.client.appFile.findUniqueOrThrow({ where: { appFileId: document.id } });
+      await writeFile(join(root, row.path), pdf("something else, same length"));
+      expect(await claim()).toEqual({ status: "FAILED", error: expect.stringContaining("the attachment receipt.pdf isn't the file approved") as unknown });
+      expect(sent).toHaveLength(1);
     });
   });
 

@@ -76,6 +76,14 @@ export interface OutgoingMail {
   body: string;
   inReplyTo?: string;
   references?: string[];
+  /** M59-T1: files of an App, as approved. */
+  attachments?: OutgoingAttachment[];
+}
+
+export interface OutgoingAttachment {
+  filename: string;
+  contentType: string;
+  content: Buffer;
 }
 
 export interface SentMail {
