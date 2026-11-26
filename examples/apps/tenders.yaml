@@ -129,12 +129,18 @@ pipelines:
             buyer: who buys or funds it
             deadline: the deadline to apply, a date
             budget: its budget or value, a number only
-            score: how well it fits us, 0 to 100, a number only
-            why: why that score, in one or two sentences
+      # Each call scored 0 to 100 against your Profile, with the reason.
+      - id: rate
+        type: llm.score
+        when: "{{about.value}}"
+        with:
+          items: "{{fresh.items}}"
+          against: "{{about.value}}"
+          instruction: An open tender or grant call; how well it fits us, as we say who we are.
       - id: scored
         type: data.map
         with:
-          from: { fresh: "{{fresh.items}}", read: "{{read}}" }
+          from: { fresh: "{{fresh.items}}", read: "{{read}}", rated: "{{rate.scored}}" }
           expression: |-
             [$map(fresh, function($t, $i) {(
               $v := read[$i].values;
@@ -143,8 +149,8 @@ pipelines:
                 "buyer": $v.buyer ? $v.buyer : $t.buyer,
                 "deadline": $v.deadline ? $v.deadline,
                 "budget": $number1($v.budget),
-                "score": $number1($v.score),
-                "why": $v.why
+                "score": rated[$i].score,
+                "why": rated[$i].scoreReason
               }])
             )})^(>score)]
       - id: save

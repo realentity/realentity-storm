@@ -155,7 +155,7 @@ export class PipelineCompiler {
 
       this.checkInputs(scope, known, errors);
       const entities = this.checkEntitySteps(scope, Boolean(definition.app), known, errors);
-      for (const contract of stepDefinition.entities ?? []) checkContract(stepDefinition, contract, definition.app, app, path, errors);
+      for (const contract of stepDefinition.entities ?? []) checkContract(stepDefinition, contract, step.with, definition.app, app, path, errors);
       if (stepDefinition.sideEffect) this.collectTargets(scope, known, policy, errors);
       if (stepDefinition.checks && this.checkAddress(scope, stepDefinition.checks, known, errors)) privateHosts.push(step.id);
       known.set(step.id, { definition: stepDefinition, forEach: scope.forEach, ...entities });
@@ -610,29 +610,32 @@ export class PipelineCompiler {
 function checkContract(
   step: StepDefinition,
   contract: EntityContract,
+  input: Record<string, unknown>,
   appName: string | undefined,
   app: AppDefinition | undefined,
   path: string,
   errors: CompileIssue[],
 ): void {
-  const at = `${path}.type`;
-  const verb = contract.mine ? "reads" : "writes";
+  if (contract.when && input[contract.when] !== true) return;
+  const at = contract.when ? `${path}.with.${contract.when}` : `${path}.type`;
+  const who = contract.when ? `${step.type} with ${contract.when}: true` : step.type;
+  const verb = contract.mine || contract.when ? "reads" : "writes";
   if (!appName && contract.optional) return;
   if (!appName) {
     errors.push({
       path: at,
-      message: `${step.type} ${verb} ${contract.type} entities: say which App with \`app:\` (one with a ${contract.type} type)`,
+      message: `${who} ${verb} ${contract.type} entities: say which App with \`app:\` (one with a ${contract.type} type)`,
     });
     return;
   }
   if (!app) return; // the missing App is already said
   const type = entityTypeOf(app, contract.type);
   if (!type) {
-    errors.push({ path: at, message: `${step.type} ${verb} ${contract.type} entities, and "${app.name}" has no type ${contract.type}` });
+    errors.push({ path: at, message: `${who} ${verb} ${contract.type} entities, and "${app.name}" has no type ${contract.type}` });
     return;
   }
   const problems = contractProblems(type, contract);
-  if (problems.length > 0) errors.push({ path: at, message: `${step.type} ${verb} ${contract.type} entities: ${problems.join("; ")}` });
+  if (problems.length > 0) errors.push({ path: at, message: `${who} ${verb} ${contract.type} entities: ${problems.join("; ")}` });
 }
 
 /** entity.changed (M30) watches a type of the pipeline's own App. */

@@ -169,8 +169,11 @@ export class ScoreStep extends LlmStep {
    */
   private async outcomes(userId: string, context?: StepContext): Promise<string> {
     if (!this.prisma) return "";
-    const job = context ? await jobAppOf(this.prisma, context) : null;
-    if (job) return jobOutcomesOf(this.prisma, job);
+    // In an App, its Jobs (none without a Job type); the old applications only outside one.
+    if (context?.app) {
+      const job = await jobAppOf(this.prisma, context);
+      return job ? jobOutcomesOf(this.prisma, job) : "";
+    }
     const silentSince = new Date(Date.now() - NO_ANSWER_DAYS * 86_400_000);
     const applications = await this.prisma.application.findMany({
       where: {
