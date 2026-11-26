@@ -37,6 +37,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";
 import { BindingsService } from "../bindings/bindings.service";
+import { AppUsesService } from "./app-uses.service";
 import { AppFilesService } from "./app-files.service";
 import { pipelinesByApp } from "./app-pipelines";
 import { AppImportsService } from "./app-imports.service";
@@ -58,6 +59,7 @@ export class AppsService {
     private readonly files: AppFilesService,
     private readonly bindings: BindingsService,
     private readonly keys: SealKeys,
+    private readonly uses: AppUsesService,
   ) {}
 
   /** The App a pipeline names (`app:`), for the compiler; nothing for a pipeline outside any App. */
@@ -375,6 +377,8 @@ export class AppsService {
     );
     // M50: a slot one of the user's credentials alone fits is filled; the others wait for the user.
     await this.bindings.fillWhereOneFits(userId, { appId }, definition.needs ?? {});
+    // M66: its uses filled by the App and type they name, and other Apps' uses by this one.
+    await this.uses.fillWhereNamed(userId, appId, null);
     return this.get(userId, appId);
   }
 
@@ -415,6 +419,7 @@ export class AppsService {
     );
     await this.bindings.carryOver({ appId }, readAppSource(current.source).needs ?? {}, definition.needs ?? {});
     await this.bindings.fillWhereOneFits(userId, { appId }, definition.needs ?? {});
+    await this.uses.fillWhereNamed(userId, appId, previous);
     return this.get(userId, appId);
   }
 

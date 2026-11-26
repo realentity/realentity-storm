@@ -427,6 +427,30 @@ a pipeline you have. Files with an App and its pipelines as documents with `---`
 Pipelines that depend on each other belong in the same App file, linked by their keys. A link to another App's pipeline
 uses its saved name, and Storm holds it by id once both exist. A standalone pipeline is one that connects to nothing.
 
+**Another App's data (M66).** A type belongs to the App that defines it: only that App changes its fields and stages,
+and only its pipelines write it. Another App may read it by declaring it under `uses:`, at the top of its file, under a
+name of its own:
+
+```yaml
+uses:
+  Bill:                                   # this App's name for it
+    from: { app: Bills, type: Bill }      # the App and type it is, as written in the file
+    fields: [issuer, amount, currency, dueDate, month]
+    help: Your bills, for the monthly expense report
+```
+
+- **Which App fills it** is your choice, kept by id: on install, the App and type `from` names fill it when exactly one
+  App of that name has that type with the fields; otherwise the App's page (**Data it reads from other Apps**) offers
+  every type of your other Apps that fits, and the App's checklist waits for it. Renaming the App it comes from keeps
+  it; deleting that App, or removing one of the fields, leaves it to choose again.
+- **Only the named fields** are read (with the key, the title and the stage), and never an encrypted, credential, file
+  or image field: such a type doesn't fit.
+- **Reads only:** a change to another App's entity goes through that App's own pipelines.
+- **Its name** can't be one of the App's own types: when the App has a `Bill` of its own, call the use `HomeBill`.
+
+Where several Apps' types appear together, a type is shown as *App › Type*. For now a use is declared and chosen;
+`data.read`, page sources and refs reading it come next.
+
 ---
 
 ### 2.6 Credentials and settings: slots, never names (M50)

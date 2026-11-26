@@ -66,6 +66,8 @@ import {
   type CreateCredentialRequest,
   type CreateRuleRequest,
   type CredentialView,
+  type AppUsesRequest,
+  type AppUseView,
   type BindingsRequest,
   type BindingView,
   type DocumentView,
@@ -316,6 +318,9 @@ export const api = {
     /** M50: the App install's slots, shared by its pipelines. */
     bindings: (appId: string) => request<BindingView[]>("GET", `/apps/${appId}/bindings`),
     setBindings: (appId: string, body: BindingsRequest) => request<BindingView[]>("PUT", `/apps/${appId}/bindings`, body),
+    /** M66: its uses of other Apps' types, and which of my Apps fills each. */
+    uses: (appId: string) => request<AppUseView[]>("GET", `/apps/${appId}/uses`),
+    setUses: (appId: string, body: AppUsesRequest) => request<AppUseView[]>("PUT", `/apps/${appId}/uses`, body),
     /** The App itself (`remove` is an entity's); refused while pipelines belong to it. */
     removeApp: (appId: string) => request<void>("DELETE", `/apps/${appId}`),
     /** The App with its pipelines. */
