@@ -7,6 +7,8 @@ import { AppFilesService } from "./app-files.service";
 import { AppImportsService } from "./app-imports.service";
 import { AppPagesController } from "./app-pages.controller";
 import { AppPagesService } from "./app-pages.service";
+import { AppUsesController } from "./app-uses.controller";
+import { AppUsesService } from "./app-uses.service";
 import { AppsController } from "./apps.controller";
 import { AppsService } from "./apps.service";
 import { EntityActionsService } from "./entity-actions.service";
@@ -14,8 +16,8 @@ import { EntityActionsService } from "./entity-actions.service";
 @Module({
   imports: [RunsModule, BindingsModule],
   // AppPagesController first: its /apps/menu before AppsController's /apps/:appId.
-  controllers: [AppPagesController, AppsController, AppFilesController],
-  providers: [AppsService, AppPagesService, EntityActionsService, AppImportsService, AppFilesService, sealKeysProvider],
-  exports: [AppsService],
+  controllers: [AppPagesController, AppsController, AppFilesController, AppUsesController],
+  providers: [AppsService, AppPagesService, EntityActionsService, AppImportsService, AppFilesService, AppUsesService, sealKeysProvider],
+  exports: [AppsService, AppUsesService],
 })
 export class AppsModule {}

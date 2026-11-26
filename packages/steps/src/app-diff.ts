@@ -42,6 +42,13 @@ export function diffApps(before: AppDefinition, after: AppDefinition): string[] 
     if (!(slot in needsBefore)) lines.push(`slot ${slot} added (${need.kind})`);
     else if (canonicalJson(needsBefore[slot]) !== canonicalJson(need)) lines.push(`slot ${slot} changed`);
   }
+  // M66: the other Apps' types it reads.
+  const [usesBefore, usesAfter] = [before.uses ?? {}, after.uses ?? {}];
+  for (const name of Object.keys(usesBefore)) if (!(name in usesAfter)) lines.push(`use ${name} removed`);
+  for (const [name, use] of Object.entries(usesAfter)) {
+    if (!(name in usesBefore)) lines.push(`use ${name} added (${use.from.app} › ${use.from.type})`);
+    else if (canonicalJson(usesBefore[name]) !== canonicalJson(use)) lines.push(`use ${name} changed`);
+  }
   return lines;
 }
 

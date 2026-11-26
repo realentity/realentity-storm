@@ -10,6 +10,7 @@ import {
 } from "@realentity/storm-shared";
 import { Integrations } from "@realentity/storm-db";
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { AppUsesService } from "../apps/app-uses.service";
 import { AppsService } from "../apps/apps.service";
 import { BindingsService } from "../bindings/bindings.service";
 import { SERVER_ENV } from "../config/server-env";
@@ -29,6 +30,7 @@ export class ExamplesService {
     @Inject(SERVER_ENV) private readonly env: ServerEnv,
     private readonly bindings: BindingsService,
     private readonly integrations: Integrations,
+    private readonly uses: AppUsesService,
   ) {}
 
   async setup(userId: string): Promise<SetupView> {
@@ -78,7 +80,7 @@ export class ExamplesService {
       items.push({ label: need.label, done: needMet(need, setup, entities), ...where(need, appId), ...problem });
     }
     const detail = await this.apps.get(userId, appId);
-    items.push(...(await this.emptySlotItems(userId, appId, detail.pipelines)));
+    items.push(...(await this.emptySlotItems(userId, appId, detail.pipelines)), ...(await this.useItems(userId, appId)));
     for (const { pipelineId, name, enabled, runsOnItsOwn } of detail.pipelines) {
       const tried = (await this.prisma.client.run.count({ where: { pipelineVersion: { pipelineId } } })) > 0;
       items.push({ label: `Try "${name}": a dry run, which sends and saves nothing`, done: tried, link: `/pipelines/${pipelineId}` });
@@ -86,6 +88,16 @@ export class ExamplesService {
       if (runsOnItsOwn) items.push({ label: `Switch "${name}" on`, done: enabled, link: `/pipelines/${pipelineId}` });
     }
     return { example: example.id, items, done: items.every((i) => i.done) };
+  }
+
+  /** M66: each use of another App's type: which of my Apps fills it, and whether it still fits. */
+  private async useItems(userId: string, appId: string): Promise<ChecklistView["items"]> {
+    return (await this.uses.of(userId, appId)).map((use) => {
+      const label = use.use.help ? `Choose where "${use.name}" comes from: ${use.use.help}` : `Choose where "${use.name}" comes from`;
+      const stale = use.source && use.problems.length > 0;
+      const note = stale ? { note: `${use.source!.app} › ${use.source!.type} no longer fits: ${use.problems.join("; ")}` } : {};
+      return { label, done: use.source !== null && !stale, link: `/apps/${appId}#uses`, ...note };
+    });
   }
 
   /**

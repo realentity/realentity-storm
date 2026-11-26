@@ -957,9 +957,33 @@ model App {
   builderChats BuilderChat[]
   files        AppFile[]
   bindings     Binding[]
+  /// M66: the other Apps' types it uses, and which App fills each.
+  uses         AppUse[] @relation("AppUses")
+  /// M66: the uses its types fill in other Apps.
+  usedBy       AppUse[] @relation("AppUsedBy")
 
   @@unique([userId, name])
   @@map("Apps")
+}
+
+/// M66: which of the user's Apps fills a use of another App's type (`uses:` in the App's YAML), by id: chosen at
+/// install or in the App's settings. Its type by name, as the owner names it. The owner deleted: the row goes, and the
+/// use is unfilled again.
+model AppUse {
+  appUseId    String   @id @default(uuid()) @db.Uuid
+  appId       String   @db.Uuid
+  app         App      @relation("AppUses", fields: [appId], references: [appId], onDelete: Cascade)
+  /// The use's local name in the App (`uses: { Bill: ... }`).
+  name        String
+  sourceAppId String   @db.Uuid
+  sourceApp   App      @relation("AppUsedBy", fields: [sourceAppId], references: [appId], onDelete: Cascade)
+  sourceType  String
+  dateCreated DateTime @default(now())
+  dateUpdated DateTime @updatedAt
+
+  @@unique([appId, name])
+  @@index([sourceAppId])
+  @@map("AppUses")
 }
 
 /// M46: a file or image of an entity's field, uploaded on its form; the entity holds { id, name, mime, size }.

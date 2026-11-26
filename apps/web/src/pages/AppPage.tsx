@@ -1,5 +1,6 @@
 import { entityValueAt, type AppPipelineView, type DataType, type EntityView } from "@realentity/storm-shared";
 import { NeedsCard } from "../components/NeedsCard";
+import { UsesCard } from "../components/UsesCard";
 import { IconAlertTriangle, IconMessage, IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -94,6 +95,9 @@ export function AppPage() {
           load={() => api.apps.bindings(appId)}
           save={(body) => api.apps.setBindings(appId, body)}
         />
+      </div>
+      <div className="mb-3">
+        <UsesCard load={() => api.apps.uses(appId)} save={(body) => api.apps.setUses(appId, body)} />
       </div>
       {data.imports.map((i) => (
         <div key={i.collection ?? i.from} className="alert alert-info d-flex align-items-center gap-3" data-testid="app-import">

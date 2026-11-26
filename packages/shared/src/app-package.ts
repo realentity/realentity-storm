@@ -48,6 +48,8 @@ const AppPackageSchema = z
     }),
     types: z.unknown(),
     pages: z.unknown().optional(),
+    /** M66: other Apps' types it reads; checked as the App's own. */
+    uses: z.unknown().optional(),
     pipelines: z.record(z.string().regex(PIPELINE_KEY, 'a key, e.g. "sync": a small letter, then letters and digits'), PackagePipelineSchema).optional(),
   })
   .strict();

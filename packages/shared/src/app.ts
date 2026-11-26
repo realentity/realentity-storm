@@ -712,6 +712,49 @@ export type ReportPage = z.output<typeof ReportPageSchema>;
 export const AppPageSchema = z.union([ListPageSchema, ViewPageSchema, FormPageSchema, ReportPageSchema]);
 export type AppPage = z.output<typeof AppPageSchema>;
 
+/**
+ * M66: another App's type this App reads, under a local name (`uses: { Bill: { from: { app: Bills, type: Bill },
+ * fields: [...] } }`). `from` is as written in the file; which of the user's Apps fills it is chosen at install and
+ * kept by id (an AppUse). Only the named fields are read, with the key, the title and the stage; never encrypted,
+ * credential or file fields. Reads only: a change goes through the owner App's pipelines.
+ */
+export const AppUseSchema = z
+  .object({
+    from: z
+      .object({
+        app: z.string().trim().regex(APP_NAME, "an App's name"),
+        type: z.string().regex(TYPE_NAME, 'a type name, e.g. "Bill"'),
+      })
+      .strict(),
+    fields: z
+      .array(z.string().regex(ENTITY_FIELD, 'a field name, e.g. "amount"'))
+      .min(1, "at least one field")
+      .max(60)
+      .refine((fields) => new Set(fields).size === fields.length, "a field is named once"),
+    /** Why it is used, shown where the user chooses which App fills it. */
+    help: z.string().trim().min(1).max(500).optional(),
+  })
+  .strict();
+export type AppUse = z.output<typeof AppUseSchema>;
+
+/** M66: the field kinds a use can't read: what is sealed or kept as a file stays in its App. */
+const UNUSABLE_KINDS: readonly FieldKind[] = ["credential", "file", "image"];
+
+/**
+ * M66: what keeps another App's type from filling a use: a declared field it lacks, or one that can't be read from
+ * another App (encrypted, a credential, a file or an image). Empty: it fits.
+ */
+export function useProblems(use: Pick<AppUse, "fields">, type: DataType): string[] {
+  const problems: string[] = [];
+  for (const name of use.fields) {
+    const field = Object.hasOwn(type.fields, name) ? type.fields[name] : undefined;
+    if (!field) problems.push(`it has no field "${name}"`);
+    else if (field.encrypted) problems.push(`${name} is encrypted`);
+    else if (UNUSABLE_KINDS.includes(field.type)) problems.push(`${name} is a ${field.type}`);
+  }
+  return problems;
+}
+
 export const AppDefinitionSchema = z
   .object({
     name: z.string().trim().regex(APP_NAME, "letters, digits, spaces, . _ - (max 60)"),
@@ -725,9 +768,21 @@ export const AppDefinitionSchema = z
     pages: z.array(AppPageSchema).max(40).default([]),
     /** M50: credentials and settings its pipelines share, by slot; each install of the App fills its own. */
     needs: NeedsSchema.optional(),
+    /** M66: other Apps' types it reads, by a local name; each install chooses which App fills each. */
+    uses: z
+      .record(z.string().regex(TYPE_NAME, 'a name, e.g. "Bill": a capital letter, then letters and digits'), AppUseSchema)
+      .refine((uses) => Object.keys(uses).length <= 10, "at most 10")
+      .optional(),
   })
   .strict()
-  .superRefine((app, ctx) => checkPages(app, (path, message) => ctx.addIssue({ code: "custom", path, message })));
+  .superRefine((app, ctx) => {
+    const issue = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
+    // M66: a use's name is how the App's pipelines and pages call it: never one of its own types.
+    for (const name of Object.keys(app.uses ?? {})) {
+      if (Object.hasOwn(app.types, name)) issue(["uses", name], `"${name}" is a type of this App: give the use another name (e.g. ${app.uses![name].from.app.replace(/[^A-Za-z0-9]/g, "")}${name})`);
+    }
+    checkPages(app, issue);
+  });
 export type AppDefinition = z.output<typeof AppDefinitionSchema>;
 
 const FILTER_KINDS: readonly FieldKind[] = ["enum", "yesno", "ref"];
@@ -1318,6 +1373,34 @@ export interface AppImportResult {
 export interface AppRefs {
   pipelines: Record<string, string>;
 }
+
+/** M66: one of the user's Apps' types, as what fills a use. */
+export interface AppUseSourceView {
+  appId: string;
+  /** The App's name now. */
+  app: string;
+  type: string;
+}
+
+/** M66: a use of another App's type, and which of the user's Apps fills it. */
+export interface AppUseView {
+  /** Its local name in the App. */
+  name: string;
+  use: AppUse;
+  /** What fills it; null: not chosen yet (its pipelines can't read it). */
+  source: AppUseSourceView | null;
+  /** Why what fills it no longer fits (a field removed or encrypted since); empty: it fits. */
+  problems: string[];
+  /** The user's other Apps' types that fit it: the one `from` names first. */
+  fits: AppUseSourceView[];
+}
+
+/** M66: `{ Bill: { appId, type } }` fills a use; null clears it. */
+export const AppUsesRequestSchema = z.record(
+  z.string().regex(TYPE_NAME),
+  z.object({ appId: z.uuid(), type: z.string().regex(TYPE_NAME) }).strict().nullable(),
+);
+export type AppUsesRequest = z.infer<typeof AppUsesRequestSchema>;
 
 export interface AppDetailView extends AppSummaryView {
   definition: AppDefinition;
