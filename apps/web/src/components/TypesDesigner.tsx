@@ -27,6 +27,11 @@ import { Help } from "./Help";
 /** A change to the App's YAML, made by one of the designer's edits. */
 export type DesignerEdit = (source: string) => string;
 
+/** M65: what a list holds, as the designer's choice says; "" any values. */
+function listOf(value: string): "ref" | "text" | undefined {
+  return value === "ref" || value === "text" ? value : undefined;
+}
+
 const KEY_KINDS = new Set(["text", "url", "email", "number"]);
 
 /**
@@ -398,7 +403,52 @@ function TypeTable({
                         ))}
                       </select>
                     )}
-                    {def.type === "ref" && (
+                    {def.type === "list" && (
+                      <select
+                        className="form-select form-select-sm"
+                        value={text(def.of)}
+                        disabled={!editable}
+                        onChange={(e) => onEdit((s) => setField(s, name, field, { of: listOf(e.target.value) }))}
+                        aria-label={`${name}.${field} holds`}
+                        title={HELP.fieldListOf}
+                        data-testid="field-list-of"
+                      >
+                        <option value="">any values</option>
+                        <option value="text">text (tags)</option>
+                        <option value="ref">entities (refs)</option>
+                      </select>
+                    )}
+                    {def.type === "list" && def.of === "text" && (
+                      <div className="d-flex gap-3 mt-1">
+                        <label className="form-check form-check-inline mb-0 me-0">
+                          <input
+                            type="checkbox"
+                            title={HELP.fieldUnique}
+                            className="form-check-input"
+                            checked={def.unique !== false}
+                            disabled={!editable}
+                            onChange={(e) => onEdit((s) => setField(s, name, field, { unique: e.target.checked }))}
+                            aria-label={`${name}.${field} unique`}
+                            data-testid="field-unique"
+                          />
+                          <span className="form-check-label">unique</span>
+                        </label>
+                        <label className="form-check form-check-inline mb-0 me-0">
+                          <input
+                            type="checkbox"
+                            title={HELP.fieldCaseSensitive}
+                            className="form-check-input"
+                            checked={def.caseSensitive === true}
+                            disabled={!editable}
+                            onChange={(e) => onEdit((s) => setField(s, name, field, { caseSensitive: e.target.checked }))}
+                            aria-label={`${name}.${field} case-sensitive`}
+                            data-testid="field-case-sensitive"
+                          />
+                          <span className="form-check-label">case-sensitive</span>
+                        </label>
+                      </div>
+                    )}
+                    {(def.type === "ref" || (def.type === "list" && def.of === "ref")) && (
                       <select
                         className="form-select form-select-sm"
                         value={text(def.to)}

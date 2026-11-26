@@ -22,6 +22,10 @@ export interface FieldPatch {
   encrypted?: boolean;
   /** M55: a ref's type. */
   to?: string;
+  /** M56: what a list holds, refs (`to`); M65: or text, with `unique` (default true) and `caseSensitive`. */
+  of?: "ref" | "text";
+  unique?: boolean;
+  caseSensitive?: boolean;
   /** M55: a line under its input. */
   help?: string;
 }
@@ -45,6 +49,8 @@ export function renameType(source: string, from: string, to: string): string {
     for (const page of pagesOf(document, from)) {
       for (const kind of ["list", "view", "form"]) if (page.has(kind)) page.set(kind, to);
     }
+    // M65: a page's sources of it.
+    for (const { source } of sourcesOf(document, from)) source.set("from", to);
   });
 }
 
@@ -52,6 +58,7 @@ export function renameType(source: string, from: string, to: string): string {
 export function removeType(source: string, name: string): string {
   return editAppSource(source, (document) => {
     document.deleteIn(["types", name]);
+    for (const { page, name: source } of sourcesOf(document, name)) dropSource(page, source);
     const pages = document.get("pages", true);
     if (!isSeq(pages)) return;
     pages.items = pages.items.filter((page) => !(isMap(page) && ["list", "view", "form"].some((kind) => page.get(kind) === name)));
@@ -96,12 +103,13 @@ export function setField(source: string, type: string, name: string, patch: Fiel
     if (next.type !== "money") delete next.currency;
     if (next.type !== "text" && next.type !== "longtext") delete next.encrypted;
     // M56: a list of refs keeps its type, as a ref does; `match` goes with it.
-    const pointing = next.type === "ref" || (next.type === "list" && field.get("of") === "ref");
+    const of = next.type === "list" ? next.of : undefined;
+    const pointing = next.type === "ref" || of === "ref";
     if (!pointing) {
       delete next.to;
       field.delete("match");
     }
-    if (next.type !== "list") field.delete("of");
+    setListOptions(field, of, next);
     for (const property of ["type", "label", "required", "mine", "values", "currency", "encrypted", "to", "help"] as const) {
       const value = next[property];
       if (value === undefined || value === false || value === "") field.delete(property);
@@ -112,6 +120,17 @@ export function setField(source: string, type: string, name: string, patch: Fiel
       } else field.set(property, value);
     }
   });
+}
+
+/** M65: a list's `of`, and a list of text's options written only when not their defaults (unique, not case-sensitive). */
+function setListOptions(field: YAMLMap, of: unknown, next: Record<string, unknown>): void {
+  if (of === "ref" || of === "text") field.set("of", of);
+  else field.delete("of");
+  const text = of === "text";
+  if (text && next.unique === false) field.set("unique", false);
+  else field.delete("unique");
+  if (text && next.caseSensitive === true) field.set("caseSensitive", true);
+  else field.delete("caseSensitive");
 }
 
 /** The field renamed in place, and wherever the App uses it: its type's key and title, currencies, its type's pages. */
@@ -126,6 +145,8 @@ export function renameField(source: string, type: string, from: string, to: stri
     if (isMap(fields))
       for (const pair of fields.items) if (isMap(pair.value) && pair.value.get("currency") === from) pair.value.set("currency", to);
     for (const page of pagesOf(document, type)) renameOnPage(page, from, to);
+    // M65: the sources of the type, on any page.
+    for (const { source } of sourcesOf(document, type)) renameInSource(source, from, to);
   });
 }
 
@@ -134,7 +155,54 @@ export function removeField(source: string, type: string, name: string): string 
   return editAppSource(source, (document) => {
     document.deleteIn(["types", type, "fields", name]);
     for (const page of pagesOf(document, type)) removeFromPage(page, name);
+    // M65: a source counting it goes (its controls then use their own values); one naming it otherwise loses that.
+    for (const { page, name: source, source: node } of sourcesOf(document, type)) {
+      if (node.get("distinct") === name) dropSource(page, source);
+      else removeFromSource(node, name);
+    }
   });
+}
+
+function renameInSource(source: YAMLMap, from: string, to: string): void {
+  for (const key of ["distinct", "id", "display"]) if (source.get(key) === from) source.set(key, to);
+  const sort = source.get("sort");
+  if (sort === from || sort === `-${from}`) source.set("sort", String(sort).replace(from, to));
+  const where = source.get("where", true);
+  if (isSeq(where)) for (const condition of where.items) if (isMap(condition) && condition.get("field") === from) condition.set("field", to);
+}
+
+function removeFromSource(source: YAMLMap, name: string): void {
+  for (const key of ["id", "display"]) if (source.get(key) === name) source.delete(key);
+  const sort = source.get("sort");
+  if (sort === name || sort === `-${name}`) source.delete("sort");
+  const where = source.get("where", true);
+  if (!isSeq(where)) return;
+  where.items = where.items.filter((condition) => !(isMap(condition) && condition.get("field") === name));
+  if (where.items.length === 0) source.delete("where");
+}
+
+/** M65: the list pages' sources that read a type, on any page (a source may read another of the App's types). */
+function sourcesOf(document: Document, type: string): { page: YAMLMap; name: string; source: YAMLMap }[] {
+  const pages = document.get("pages", true);
+  if (!isSeq(pages)) return [];
+  return pages.items.flatMap((page) => {
+    const sources = isMap(page) ? page.get("sources", true) : undefined;
+    if (!isMap(page) || !isMap(sources)) return [];
+    return sources.items.flatMap((pair) =>
+      isScalar(pair.key) && isMap(pair.value) && pair.value.get("from") === type ? [{ page, name: String(pair.key.value), source: pair.value }] : [],
+    );
+  });
+}
+
+/** M65: a page's source removed; its controls take their own values instead. */
+function dropSource(page: YAMLMap, name: string): void {
+  const sources = page.get("sources", true);
+  if (isMap(sources)) {
+    sources.delete(name);
+    if (sources.items.length === 0) page.delete("sources");
+  }
+  const controls = page.get("controls", true);
+  if (isSeq(controls)) for (const control of controls.items) if (isMap(control) && control.get("source") === name) control.delete("source");
 }
 
 /** A type's fields a line each, as the templates are written: id: { type: text, required: true } */
@@ -187,6 +255,9 @@ function renameOnPage(page: YAMLMap, from: string, to: string): void {
   if (isSeq(sections)) for (const section of sections.items) if (isMap(section)) inList(section.get("fields", true));
   const actions = page.get("actions", true);
   if (isSeq(actions)) for (const action of actions.items) if (isMap(action)) conditions(action.get("when", true));
+  // M65: a filter's control.
+  const controls = page.get("controls", true);
+  if (isSeq(controls)) for (const control of controls.items) if (isMap(control) && control.get("filters") === from) control.set("filters", to);
 }
 
 function removeFromPage(page: YAMLMap, name: string): void {
@@ -204,6 +275,12 @@ function removeFromPage(page: YAMLMap, name: string): void {
   const group = page.get("group", true);
   if (isMap(group) && group.get("by") === name) page.delete("group");
   else if (isMap(group)) without(group, "totals");
+  // M65: a control filtering by it.
+  const controls = page.get("controls", true);
+  if (isSeq(controls)) {
+    controls.items = controls.items.filter((control) => !(isMap(control) && control.get("filters") === name));
+    if (controls.items.length === 0) page.delete("controls");
+  }
   const sections = page.get("sections", true);
   if (isSeq(sections)) {
     for (const section of sections.items) if (isMap(section)) without(section, "fields");
