@@ -36,9 +36,15 @@ export interface DriveChange {
   file?: DriveFile;
 }
 
-/** What Storm reads in a folder: Google Docs and Slides (exported), PDFs and text files. */
+/** What Storm reads in a folder: Google Docs and Slides (exported), PDFs, text files; M59-T4: Word documents (.docx). */
 export function readableDriveFile(file: Pick<DriveFile, "name" | "mimeType">): boolean {
-  return file.mimeType in EXPORTS || file.mimeType === "application/pdf" || file.mimeType.startsWith("text/") || isTextFile(file.name);
+  return (
+    file.mimeType in EXPORTS ||
+    file.mimeType === "application/pdf" ||
+    file.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.mimeType.startsWith("text/") ||
+    isTextFile(file.name)
+  );
 }
 
 /**

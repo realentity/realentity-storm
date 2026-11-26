@@ -1123,7 +1123,7 @@ once its files are indexed, so a failed index is read again next time.
 
 #### `drive.changes`
 The files changed in your topics' Google Drive sources (on the Topics page: a folder by its link, and optionally a path
-like `Specs/**`) since each was last indexed: Google Docs (exported as Markdown), Slides, PDFs and text files, in the
+like `Specs/**`) since each was last indexed: Google Docs (exported as Markdown), Slides, PDFs, Word documents and text files, in the
 folder or its subfolders. Each folder is read through the Google account chosen for it when it was added (else your
 default one), which must allow Drive (read-only; Settings shows it, [google-setup.md](google-setup.md)). Seeing that nothing changed is one call to Drive's changes list, no LLM, however
 many folders; the first read lists the folder. A file deleted, binned or moved out of the folder is `removed`; a
@@ -1133,7 +1133,7 @@ renamed one is `modified` under its new path. It only reads: `topic.index` moves
   type), `sources` (each source read), `problems` (Google not connected, Drive not allowed, a folder not found).
 
 #### `topic.attachments`
-The readable attachments (PDFs, text files) of emails linked to a topic become its sources, by reference: the email, its
+The readable attachments (PDFs, Word documents, text files) of emails linked to a topic become its sources, by reference: the email, its
 mailbox and UID, and the file's name, never a copy. Their passages are indexed like a repository's files, for drafts to
 quote ("api-spec.md, attached to Maria: The API spec"). An attachment never changes: it is read once, and again only
 after a rebuild on the Topics page. Give it the inbox's triaged emails with `mailbox` where they were read: a UID means
@@ -1463,7 +1463,7 @@ as soon as a file is chosen, so this is always behind a gate.
 
 #### `file.read`
 Reads the text of a stored document (Documents page, e.g. `cv-main`), of a file `browser.download` kept, or of an
-entity's file of the pipeline's App (`file: "{{item.receipt}}"`, M46). Text files as they are, PDFs' text (an image:
+entity's file of the pipeline's App (`file: "{{item.receipt}}"`, M46). Text files as they are, PDFs' and Word documents' (.docx, M59-T4: the body's paragraphs, a table row a line) text (an image:
 `llm.extract`'s `files`). Its output also binds the document by content, so `browser.upload` sends exactly the version
 you approved.
 - In: `document`, `artifact` or `file`, `maxChars` [20000].
