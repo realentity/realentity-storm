@@ -7,6 +7,7 @@ import { hostOf, SendGuard } from "../browser/agent-page";
 import { type ArtifactStore } from "../browser/artifact-store";
 import { type DocumentStore } from "../browser/document-store";
 import { type AppFileStore } from "./app-file-steps";
+import { docxText, isDocx } from "./docx";
 import { Quarantine } from "../browser/quarantine";
 import { settingOf, type Setting } from "../runner/setting";
 import { NO_ATTENTION, RunStopped, type StepContext, type StepExecutor } from "../runner/step-executor";
@@ -195,11 +196,15 @@ export class FileReadStep implements StepExecutor {
   }
 }
 
-/** Text files as they are; PDFs' text layer (a scan without one reads as nothing). Other types can't be read. */
+/**
+ * Text files as they are; PDFs' text layer (a scan without one reads as nothing); M59-T4: a Word document's (.docx).
+ * Other types can't be read.
+ */
 export async function textOf(mime: string, content: Buffer, filename: string): Promise<string> {
   if (mime.startsWith("text/") || /\.(txt|md|csv|json)$/i.test(filename)) return content.toString("utf8");
   if (mime === "application/pdf" || content.subarray(0, 5).toString("latin1") === "%PDF-") return pdfText(content);
-  throw new Error(`${filename} is a ${mime} file: only text files and PDFs can be read`);
+  if (isDocx(mime, filename, content)) return docxText(content, filename);
+  throw new Error(`${filename} is a ${mime} file: only text files, PDFs and Word documents (.docx) can be read`);
 }
 
 /** Runs in a child Node process: the PDF on stdin, its text on stdout. */

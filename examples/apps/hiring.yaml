@@ -74,7 +74,7 @@ pages:
 pipelines:
   applications:
     # On working days at 17:00, the Hiring App's new emails: an application for one of your open Roles has its CV kept
-    # (PDF or text is read; other files are kept unread) and is scored against the role, and is a new Candidate. Then
+    # (PDF, Word or text is read; other files are kept unread) and is scored against the role, and is a new Candidate. Then
     # the day's applicants wait for you, the best first: pick who to invite. Each invitation is drafted and waits at
     # the gate with the others; a kind no to everyone else waits as another batch (untick one to hold it back). Each
     # one sent moves its Candidate: invited, or rejected. Replies go in the applicant's thread, to their address.
@@ -110,7 +110,7 @@ pipelines:
         type: file.keep
         forEach: "{{triage.kept}}"
         with: { type: Candidate, field: cv, message: "{{item}}", max: 3 }
-      # The CV: the first PDF or text file kept (file.read reads only these), else the first file.
+      # The CV: the first PDF, Word document (.docx) or text file kept (file.read reads only these), else the first file.
       - id: cvFile
         type: data.map
         forEach: "{{triage.kept}}"
@@ -118,7 +118,7 @@ pipelines:
           from: "{{keep.files}}"
           expression: |-
             (
-              $readable := $[mime = "application/pdf" or $substring(mime, 0, 5) = "text/"][0];
+              $readable := $[mime = "application/pdf" or mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or $substring(mime, 0, 5) = "text/"][0];
               $readable ? { "file": $readable, "readable": "yes" } : $[0] ? { "file": $[0] }
             )
       # Each applicant kept as a new Candidate, with the CV attached (file.read reads an attached file).

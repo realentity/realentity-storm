@@ -8,6 +8,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArtifactStore } from "../src/browser/artifact-store";
+import { writeZip } from "../src/browser/page-secrets";
 import { type MailAttachment, type MailConnector } from "../src/mail/mail-connector";
 import { PipelineRunner } from "../src/runner/pipeline-runner";
 import { ExecutorRegistry } from "../src/runner/step-executor";
@@ -176,6 +177,25 @@ describe("examples/apps/hiring.yaml", () => {
     const after = await candidates();
     expect(after["<1@mail.example>"]).toMatchObject({ stage: "invited", cv: { name: "ana-cv.pdf" } });
     expect(after["<2@mail.example>"]).toMatchObject({ stage: "rejected" });
+  });
+
+  // M59-T4: a CV in Word is read too, not only kept.
+  it("a Word CV (.docx) is kept and read for the score", async () => {
+    const xml = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:t>Bo Berg</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">Four years of Node.js </w:t></w:r><w:r><w:t>&amp; PostgreSQL.</w:t></w:r></w:p>
+</w:body></w:document>`;
+    const cv = writeZip([
+      { name: "[Content_Types].xml", data: Buffer.from("<Types/>") },
+      { name: "word/document.xml", data: Buffer.from(xml) },
+    ]);
+    inbox = [{ ...email(2, "bo@mail.example", "Bo Berg", "Job application"), attachments: [{ filename: "bo-cv.docx", contentType: "application/octet-stream", size: cv.length }] }];
+    attachments = new Map([[2, [{ filename: "bo-cv.docx", contentType: "application/octet-stream", content: cv }]]]);
+    const runId = await run();
+    expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
+    expect((extract.calls[0].content as { cv: string }).cv).toBe("Bo Berg\nFour years of Node.js & PostgreSQL.");
+    expect((await candidates())["<2@mail.example>"]).toMatchObject({
+      cv: { name: "bo-cv.docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    });
   });
 
   it("a no you untick isn't sent, and its applicant stays new", async () => {

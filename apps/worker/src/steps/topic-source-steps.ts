@@ -437,7 +437,9 @@ export function readableAttachment(a: { filename: string | null; contentType: st
   return (
     a.contentType === "application/pdf" ||
     a.contentType.startsWith("text/") ||
-    /\.(pdf|txt|md|markdown|adoc|rst|csv)$/i.test(a.filename ?? "")
+    // M59-T4: a Word document (.docx) too.
+    a.contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    /\.(pdf|txt|md|markdown|adoc|rst|csv|docx)$/i.test(a.filename ?? "")
   );
 }
 

@@ -1202,7 +1202,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "topic.attachments",
     description:
-      "The readable attachments (PDFs, text files) of emails linked to a topic become its sources, by reference (the " +
+      "The readable attachments (PDFs, Word documents, text files) of emails linked to a topic become its sources, by reference (the " +
       "email, its mailbox and UID, the file's name: never a copy), and their passages are indexed for drafts to quote " +
       "(M43, docs/design.md §8.1). An attachment never changes: it is read once, again only after a rebuild on the " +
       "Topics page. `mailbox` must be the one `messages` were read from (email.fetch's; a UID means something only " +
@@ -1224,7 +1224,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "The files changed in the user's topics' Google Drive sources (M43-T2, docs/design.md §8.1): a folder and its " +
       "subfolders, read through the user's Google connection (read-only Drive access, allowed at the sign-in in " +
-      "Settings). Google Docs (as Markdown), Slides, PDFs and text files under the source's path. Seeing that nothing " +
+      "Settings). Google Docs (as Markdown), Slides, PDFs, Word documents (.docx) and text files under the source's path. Seeing that nothing " +
       "changed is one call to Drive's changes list, no LLM; the first read lists the folder. A file deleted, trashed or " +
       "moved out of the folder is removed. Reads only: topic.index indexes them and moves each source on.",
     sideEffect: false,
@@ -1738,7 +1738,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Reads the text of one of the user's stored documents (`document`, e.g. cv-main), of a file browser.download " +
       "kept (`artifact`), or of an entity's file of the pipeline's App (`file`: {{item.receipt}}, M46): text files as " +
-      "they are, PDFs' text (an image: llm.extract's files). Its output also binds a document by content for " +
+      "they are, PDFs' and Word documents' (.docx) text (an image: llm.extract's files). Its output also binds a document by content for " +
       "browser.upload.",
     sideEffect: false,
     saasSafe: true,

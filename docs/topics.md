@@ -111,14 +111,14 @@ A topic can point to where its documents live. Storm links them and never keeps 
   own, which that organization may have to approve. A topic can have several sources, each with its own token.
 - **A Google Drive folder.** Add it under **Sources → Google Drive folder** by its link (open the folder in Drive and
   copy the address). Storm reads it with its subfolders: Google Docs (as Markdown, so their headings split the
-  passages), Slides, PDFs and text files; **Files** narrows it (`Specs/**`, `**/*.pdf`). It is read through one of your
+  passages), Slides, PDFs, Word documents (.docx) and text files; **Files** narrows it (`Specs/**`, `**/*.pdf`). It is read through one of your
   Google accounts (the one chosen in the folder's form, else the default), which must allow Drive (read-only):
   Settings → Google shows whether it does, and [google-setup.md](google-setup.md)
   says how. Every upkeep run asks Drive what changed in your Drive since the last one, which is one call when nothing
   did, and reads only the files that changed under the folder. A file deleted, binned or moved out of the folder loses
   its passages; a renamed or moved one keeps its place by its id. A folder moved into the source's folder is read at
   the next **Rebuild**. A draft cites a Drive file by its path and folder, such as `Specs/API, in the Drive folder Orion`.
-- **Email attachments.** PDFs and text files attached to a topic's email are added by themselves.
+- **Email attachments.** PDFs, Word documents and text files attached to a topic's email are added by themselves.
 
 Documents are split into passages at their headings and kept in an index, so a draft can quote the passage closest to
 the email it answers. The draft cites the passage's file and commit, such as `docs/adr/0012-database.md @ a1b2c3d`. A
