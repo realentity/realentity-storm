@@ -1,6 +1,8 @@
 import { type DataEntity } from "@realentity/storm-db";
 import {
   actionApplies,
+  caselessFields,
+  isTextList,
   CHART_SERIES,
   checkAppSource,
   PREVIEW_ROWS,
@@ -397,21 +399,57 @@ function listOf(
   matching.sort((a, b) => compare(fieldOf(a, page.sort.by), fieldOf(b, page.sort.by), page.sort.desc));
 
   let groups: EntityGroup[] | null = null;
+  let shown = matching;
   if (page.group) {
     const { by, period } = page.group;
-    const valueOf = (row: ViewRow) => groupValue(fieldOf(row, by.field), period);
-    const order = groupOrder(definition, page, matching.map(valueOf));
-    groups = order.map((value) =>
-      groupOf(
-        page,
-        value,
-        matching.filter((row) => valueOf(row) === value),
-      ),
-    );
-    // Rows by group, each group in the page's sort (a stable sort keeps it).
-    matching.sort((a, b) => order.indexOf(valueOf(a)) - order.indexOf(valueOf(b)));
+    const byField = dataType?.fields[by.field];
+    if (byField && isTextList(byField)) {
+      // M65-T8: a list field's groups: a row under each of its values (a task under each tag), one without under "No …".
+      const spelling = listSpellings(dataType, by.field, matching);
+      const valuesOf = (row: ViewRow): (string | null)[] => {
+        const values = [...new Set(listTexts(fieldOf(row, by.field)).map((v) => spelling(v)))];
+        return values.length > 0 ? values : [null];
+      };
+      const placed = matching.flatMap((row) => valuesOf(row).map((group) => ({ ...row, group })));
+      const order = groupOrder(definition, page, placed.map((r) => r.group));
+      groups = order.map((value) => ({
+        ...groupOf(
+          page,
+          value,
+          placed.filter((row) => row.group === value),
+        ),
+        ...(value === null ? { label: `No ${by.label.toLowerCase()}` } : {}),
+      }));
+      placed.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
+      shown = placed;
+    } else {
+      const valueOf = (row: ViewRow) => groupValue(fieldOf(row, by.field), period);
+      const order = groupOrder(definition, page, matching.map(valueOf));
+      groups = order.map((value) =>
+        groupOf(
+          page,
+          value,
+          matching.filter((row) => valueOf(row) === value),
+        ),
+      );
+      // Rows by group, each group in the page's sort (a stable sort keeps it).
+      matching.sort((a, b) => order.indexOf(valueOf(a)) - order.indexOf(valueOf(b)));
+    }
   }
-  return { page, rows: matching.slice(query.offset, query.offset + query.limit), total: matching.length, counts, groups, sources };
+  return { page, rows: shown.slice(query.offset, query.offset + query.limit), total: shown.length, counts, groups, sources };
+}
+
+/** A list's values as text. */
+function listTexts(value: unknown): string[] {
+  return (Array.isArray(value) ? value : [value]).map(text).filter((v): v is string => v !== null && v !== "");
+}
+
+/** M65-T8: a list of text matched without case groups its spellings as one: the first one seen names it. */
+function listSpellings(type: DataType | undefined, field: string, rows: ViewRow[]): (value: string) => string {
+  if (!type || !caselessFields(type).has(field)) return (value) => value;
+  const first = new Map<string, string>();
+  for (const row of rows) for (const value of listTexts(fieldOf(row, field))) if (!first.has(value.toLowerCase())) first.set(value.toLowerCase(), value);
+  return (value) => first.get(value.toLowerCase()) ?? value;
 }
 
 /** An entity as a row: what pipelines wrote, with the user's fields over it, and its stage. */

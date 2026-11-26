@@ -163,6 +163,8 @@ export interface ViewRow {
   removedAt: string | null;
   /** M56: an App's ref fields by what they point at: its title (a list of refs: theirs, in order), as shown. */
   titles?: Record<string, string>;
+  /** M65-T8: in a list grouped by a list of text, the group this row is shown under (a row in each of its values'). */
+  group?: string | null;
 }
 
 /** A column's value: a field of the row's value by dotted path, or @key / @firstSeen / @lastSeen. */

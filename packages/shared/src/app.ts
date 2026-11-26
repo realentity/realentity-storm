@@ -732,7 +732,7 @@ export type AppDefinition = z.output<typeof AppDefinitionSchema>;
 
 const FILTER_KINDS: readonly FieldKind[] = ["enum", "yesno", "ref"];
 // M56: a ref is searched by what it points at's title.
-const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", "enum", "ref"];
+const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", "enum", "ref", "list"];
 const TOTAL_KINDS: readonly FieldKind[] = ["number", "money"];
 const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
 /** M65: a list page also filters by a list's values and a date's day or range. */
@@ -837,6 +837,9 @@ function checkPages(
       for (const [name, source] of Object.entries(page.sources ?? {})) checkSource(app, source, [...at, "sources", name], issue);
       page.search?.forEach((f, j) => {
         field(f, [...at, "search", j], SEARCH_KINDS, "search looks in text fields");
+        // M65: a list of text (tags) too, as the default search does; not a list of anything else.
+        const listed = type.fields[f];
+        if (listed?.type === "list" && !isTextList(listed)) issue([...at, "search", j], `search looks in text fields: "${f}" is a list, not of text`);
         if (type.fields[f]?.encrypted) issue([...at, "search", j], `${typeName}.${f} is encrypted: it can't be searched`);
       });
       if (page.sort) shown(page.sort.replace(/^-/, ""), [...at, "sort"], "sorted by");
