@@ -89,7 +89,8 @@ const CREDENTIAL = /\{\{\s*cred:([a-z0-9][a-z0-9_-]{0,39})\s*\}\}/g;
  * http.fetch (docs/design.md §2.3, M13-T1): GET without a browser, cookies or credentials. Only hosts on the pipeline's
  * allowedDomains, and only public addresses: the name is resolved here and the connection goes to the address checked
  * (no second lookup to rebind); every redirect is checked again. Feeds become items, JSON stays data, HTML becomes text.
- * With an ETag or Last-Modified from the last read, an unchanged address (304) gives what was read then.
+ * With an ETag or Last-Modified from the last read, an unchanged address (304) gives what was read then. M59-T6: a `url`
+ * that is a field of mine (a Feed's url the user typed) is read on its host as well, still only at a public address.
  *
  * M29-T5: `headers` and `query` may hold {{cred:name}} (an API key). The vault opens it only for the address's host,
  * and every redirect must stay on the credential's hosts; such a read is never cached, and the key is masked in what
@@ -110,7 +111,9 @@ export class HttpFetchStep implements StepExecutor {
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { url, urls, headers = {}, query = {}, itemsAt, maxItems, maxKb, timeoutSeconds } = input as unknown as FetchInput;
     if (!url === !urls) throw new Error("http.fetch reads `url` or `urls`: give one of them");
-    const allowed = context.allowedDomains ?? [];
+    // M59-T6: a url the user typed (a field of mine: policy.ownHosts) is read on its own host too, public addresses only.
+    const own = context.ownHost === true && url ? [new URL(url).hostname.toLowerCase()] : [];
+    const allowed = [...(context.allowedDomains ?? []), ...own];
     const documents: Document[] = [];
     await transformsReady();
     for (const address of urls ?? [url!]) {

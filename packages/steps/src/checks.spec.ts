@@ -61,3 +61,29 @@ describe("checks (M47)", () => {
     ]);
   });
 });
+
+// M59-T6: http.fetch reads a Feed's url you typed on its host, as a check reads a Monitor's
+describe("an address of mine to read (M59-T6)", () => {
+  const newsletter = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/newsletter.yaml")));
+  const fetch = (url: string, extra: object[], forEach?: string) =>
+    compiler.compile(
+      { name: "P", app: "Newsletter", steps: [...extra, { id: "feeds", type: "http.fetch", ...(forEach ? { forEach } : {}), with: { url } }] },
+      { app: newsletter },
+    );
+
+  it("marks a read of your Feeds' urls; collect-links needs no allowedDomains for them", () => {
+    const collect = ok(compiler.compile(parseYaml(exampleYaml("collect-links.yaml")), { app: newsletter }));
+    expect(collect.policy.ownHosts).toEqual(["feeds"]);
+    expect(collect.policy.allowedDomains).toEqual([]);
+    expect(ok(fetch("{{item.url}}", [{ id: "read", type: "data.read", with: { type: "Feed" } }], "{{read.items}}")).policy.ownHosts).toEqual(["feeds"]);
+  });
+
+  it("anything else is read as before, on allowedDomains only", () => {
+    // A Link's url is written by pipelines (from emails and feeds): not mine.
+    expect(ok(fetch("{{item.url}}", [{ id: "read", type: "data.read", with: { type: "Link" } }], "{{read.items}}")).policy.ownHosts).toBeUndefined();
+    // Built from a field of mine: not exactly it.
+    expect(ok(fetch("{{item.url}}?x=1", [{ id: "read", type: "data.read", with: { type: "Feed" } }], "{{read.items}}")).policy.ownHosts).toBeUndefined();
+    const mail = { id: "mail", type: "email.fetch", with: { mailbox: "INBOX" } };
+    expect(ok(fetch("{{item.text}}", [mail], "{{mail.messages}}")).policy.ownHosts).toBeUndefined();
+  });
+});

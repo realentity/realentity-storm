@@ -45,6 +45,11 @@ export interface StepContext {
    */
   privateHosts?: boolean;
   /**
+   * M59-T6: this read's `url` is a field of mine (the compiler said so, policy.ownHosts): its host may be read though not
+   * in allowedDomains, at a public address only.
+   */
+  ownHost?: boolean;
+  /**
    * Something happened that may start other pipelines (M12-T1): a recipe broke, an application moved, an email was
    * labelled. Never throws; does nothing in a dry run.
    */

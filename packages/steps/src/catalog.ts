@@ -78,6 +78,11 @@ export interface StepDefinition {
    */
   checks?: string;
   /**
+   * M59-T6: the input field that is an address to read, which may be a field of mine of an App entity (a Feed's url the
+   * user typed, as `checks`): then its host is read though not in allowedDomains, at a public address only.
+   */
+  ownAddress?: string;
+  /**
    * The entity types it writes or reads, which its pipeline's App must have (M33): that key, these fields of these
    * kinds, these states when it sets the stage. The App may have more fields; the compiler checks these are there.
    */
@@ -728,10 +733,13 @@ export const CORE_STEPS: StepDefinition[] = [
       "`text`. Only hosts in policy.allowedDomains, never private or CGNAT/Tailscale addresses. Unchanged since the last read " +
       "(ETag / Last-Modified), it reuses what it read then. An API key goes in `headers` or `query` as {{cred:name}} " +
       "(a stored credential): it is sent only to the hosts the credential allows, also after a redirect. An App's " +
-      "credential field (or encrypted one) from data.read goes there too, as {{owner.value.token}}, opened only as it is sent.",
+      "credential field (or encrypted one) from data.read goes there too, as {{owner.value.token}}, opened only as it is sent. " +
+      "A `url` that is a field of mine of an App entity (a Feed's url the user typed: {{item.url}} over data.read's " +
+      "items) is read though its host isn't in allowedDomains, still never at a private address.",
     sideEffect: false,
     saasSafe: true,
     reads: ["url", "urls"],
+    ownAddress: "url",
     primary: ["url"],
     acceptsCredentials: ["headers", "query"],
     // M57: an App's credential field (or an encrypted one), opened only as it is sent.

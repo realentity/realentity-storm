@@ -773,6 +773,7 @@ export class PipelineRunner {
       emailAccounts: state.bindings.emailAccounts,
       googleAccounts: state.bindings.googleAccounts,
       privateHosts: state.policy.privateHosts?.includes(row.stepKey) ?? false,
+      ownHost: state.policy.ownHosts?.includes(row.stepKey) ?? false,
       emit: (event, data) => this.emitEvent(state, event, data),
       attention: this.takeovers
         ? this.takeovers.for({

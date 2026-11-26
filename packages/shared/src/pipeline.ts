@@ -279,6 +279,11 @@ export interface CompiledPolicy {
    * user typed: only these may reach a private, LAN or Tailscale address. Set by the compiler alone.
    */
   privateHosts?: string[];
+  /**
+   * M59-T6: the ids of the reads (http.fetch) whose address is a field of mine of an App entity (a Feed's url the user
+   * typed): its host may be read though not in allowedDomains, still only at a public address. Set by the compiler alone.
+   */
+  ownHosts?: string[];
 }
 
 export type TargetKind = "domain" | "recipient";
