@@ -110,3 +110,56 @@ steps:
   await expect(rows.nth(0)).toContainText("Alpha");
   await expect(page.getByLabel("Search")).toHaveValue("");
 });
+
+// M65-I3 (tags typed and saved), M65-T8: tags typed one per line, cleaned on save; a list grouped by them, a task
+// under each of its tags, one without under "No tag".
+test("tags typed on the form are saved as a list; the list groups a task under each of its tags", async ({ page }) => {
+  const name = unique("Chores");
+  const created = await page.request.post("/api/apps", {
+    data: {
+      source: `name: ${name}
+types:
+  Task:
+    key: id
+    title: title
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      tag: { type: list, of: text }
+pages:
+  - list: Task
+    add: true
+    columns: [title, { field: tag, control: chips }]
+    group: { by: tag }
+    sort: title
+  - form: Task
+    fields: [title, tag]
+`,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const appId = ((await created.json()) as { appId: string }).appId;
+  const add = async (title: string, tags: string) => {
+    await page.goto(`/a/${appId}/Task`);
+    await page.getByTestId("add-entity").click();
+    const form = page.getByTestId("add-form");
+    await form.getByLabel("Title").fill(title);
+    await form.getByLabel("Tag").fill(tags);
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  };
+  await add("Buy milk", "errands\n Home \n\nhome");
+  await expect(page.getByTestId("entity-fields")).toContainText(/errands.*Home/);
+  await add("Call the plumber", "home");
+  await add("Read", "");
+
+  await page.goto(`/a/${appId}/Task`);
+  const groups = page.getByTestId("entity-group");
+  await expect(groups).toHaveCount(3);
+  await expect(groups.nth(0)).toHaveText(/errands\s*1/);
+  await expect(groups.nth(1)).toHaveText(/Home\s*2/);
+  await expect(groups.nth(2)).toHaveText(/No tag\s*1/);
+  const rows = page.getByTestId("entity-row");
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0).getByTestId("value-chips")).toHaveText(/errands\s*Home/);
+});

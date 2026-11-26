@@ -5,8 +5,8 @@ app:
   description: Notes to keep, with a photo if you like, newest first
   icon: bookmark
   summary: >-
-    Notes to keep, each with a photo if you like, newest first and searchable; added on its list, or
-    with /memo on Telegram (a photo with /memo as its caption).
+    Notes to keep, each with a photo and tags if you like, newest first and searchable, by tag or by the day on a
+    calendar; added on its list, or with /memo on Telegram (#words are its tags; a photo with /memo as its caption).
   setup:
     - { kind: telegram, label: "Telegram, for /memo (the page works without it)" }
 types:
@@ -18,17 +18,26 @@ types:
       title: { type: text, required: true }
       text: { type: longtext }
       photo: { type: image }
+      # M65: tags, typed one per line on the form or as #words on Telegram; matched without case.
+      tags: { type: list, of: text }
 pages:
   - list: Memo
     menu: { label: Memos, icon: bookmark }
     add: true
-    columns: [photo, title, "@firstSeen"]
-    search: [title, text]
+    columns: [photo, title, { field: tags, control: chips }, "@firstSeen"]
+    # The tags in use with their counts, and the days memos were kept on, for the calendar beside the list.
+    sources:
+      tags: { from: Memo, distinct: tags }
+      days: { from: Memo, distinct: "@firstSeen", by: day }
+    controls:
+      - { control: chips, source: tags, filters: tags, multiple: true }
+      - { control: calendar, source: days, filters: "@firstSeen" }
+    search: [title, text, tags]
     sort: -@firstSeen
   - view: Memo
-    fields: [title, text, photo]
+    fields: [title, text, photo, tags]
   - form: Memo
-    fields: [title, text, photo]
+    fields: [title, text, photo, tags]
 
 pipelines:
   memo-from-telegram:
@@ -37,7 +46,7 @@ pipelines:
     # the bot's menu. No LLM.
     name: From Telegram
     description: /memo on Telegram keeps a memo, with a photo sent with it.
-    trigger: { on: telegram.command, command: memo, description: "Keep a note: /memo text, or a photo with /memo as its caption" }
+    trigger: { on: telegram.command, command: memo, description: "Keep a note: /memo text #tag, or a photo with /memo as its caption" }
     steps:
       - id: photo
         type: file.keep
@@ -46,14 +55,20 @@ pipelines:
         type: data.map
         with:
           from: { text: "{{trigger.text}}", sentAt: "{{trigger.sentAt}}", photo: "{{photo.first}}" }
-          # The first line is its title; a photo alone is named by its day.
+          # The first line is its title, without its #tags (all tags: as written); a photo alone is named by its day.
+          # Every #word is a tag.
           expression: |-
             (
-              $first := $trim($split(text, "\n")[0]);
+              $tag := /#([^\s#.,;:!?()]+)/;
+              $tags := [$match(text, $tag).groups[0]];
+              $line := $trim($split(text, "\n")[0]);
+              $bare := $trim($replace($replace($line, /#[^\s#.,;:!?()]+[.,;:!?]*/, ""), /\s+/, " "));
+              $first := $bare ? $bare : $line;
               $first or photo ? {
                 "title": $first ? $substring($first, 0, 80) : "Photo of " & $substring(sentAt, 0, 10),
                 "text": text ? text : undefined,
-                "photo": photo
+                "photo": photo,
+                "tags": $count($tags) > 0 ? $tags : undefined
               }
             )
       - id: save

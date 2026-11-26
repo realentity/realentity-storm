@@ -75,6 +75,8 @@ describe("controls (M65)", () => {
       'pages.0.controls.0.filters: "kind" is filtered already (by filters or an earlier control)',
     ]);
     expect(problems({ controls: [{ control: "buttons", source: "memos", filters: "tags" }] })).toEqual([]);
+    // M65-T7: a list of text searched when named, as by default.
+    expect(problems({ search: ["title", "tags"] })).toEqual([]);
   });
 
   it("resolves the filters with their controls: the page's filters (or the defaults) first, then its controls", () => {

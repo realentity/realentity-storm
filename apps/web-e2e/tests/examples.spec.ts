@@ -138,10 +138,12 @@ test("Tasks, Memos and Papers: installed from the gallery, one of each added on 
     async (form) => {
       await form.getByLabel("Title").fill("Renew the passport");
       await form.getByLabel("Due").fill("2026-12-01");
-      await form.getByLabel("Tag").selectOption("errands");
+      // M65-T8: tags typed, one per line.
+      await form.getByLabel("Tag").fill("errands\ntravel");
     },
     "Renew the passport",
   );
+  await expect(page.getByTestId("entity-fields")).toContainText(/errands.*travel/);
   await page.getByTestId("stage-move").filter({ hasText: "done" }).click();
   await expect(page.getByTestId("stage-value")).toHaveText("done");
 
@@ -155,9 +157,15 @@ test("Tasks, Memos and Papers: installed from the gallery, one of each added on 
       await form.getByLabel("Text").fill("Network: Cottage, password on the router's back.");
       await form.getByLabel("Photo").setInputFiles({ name: "router.png", mimeType: "image/png", buffer: png });
       await expect(form.getByTestId("file-photo").getByRole("link", { name: "router.png" })).toBeVisible();
+      await form.getByLabel("Tags").fill("cottage");
     },
     "Wi-Fi at the cottage",
   );
+  // M65-T7: its list: the tag as a chip, the tag's chip and the day on the calendar beside it.
+  await page.goto(`/a/${memos}/Memo`);
+  await expect(page.getByTestId("entity-row").getByTestId("value-chips")).toHaveText("cottage");
+  await expect(page.getByTestId("filter-tags").locator('[data-value="cottage"]')).toContainText("1");
+  await expect(page.getByTestId("filter-@firstSeen").getByTestId("calendar-month")).toBeVisible();
 
   const papers = await install("papers");
   await add(

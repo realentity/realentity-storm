@@ -266,6 +266,44 @@ steps:
     await agent.get(`/api/apps/${appId}/pages/Bill?filter=${encodeURIComponent('{"due":"yesterday"}')}`).expect(400);
   });
 
+  // M65-T8: grouped by a list of text, a row under each of its values; spellings of one value without case as one.
+  it("groups by a list of text: a row under each of its values, the ones without under No …", async () => {
+    const source = `
+name: Chores
+icon: list
+types:
+  Task:
+    key: id
+    title: title
+    fields:
+      id: { type: text, required: true }
+      title: { type: text, required: true }
+      tag: { type: list, of: text }
+pages:
+  - list: Task
+    group: { by: tag }
+    sort: title
+`;
+    const chores = ((await agent.post("/api/apps").send({ source }).expect(201)).body as AppDetailView).appId;
+    const task = (id: string, title: string, tag?: unknown) => ({ appId: chores, type: "Task", key: id, value: { id, title, ...(tag === undefined ? {} : { tag }) } as Prisma.InputJsonObject });
+    await db.client.dataEntity.createMany({
+      data: [task("a", "Buy milk", ["errands", "Home"]), task("b", "Call the plumber", "home"), task("c", "Read")],
+    });
+    const view = (await agent.get(`/api/apps/${chores}/pages/Task`).expect(200)).body as AppListView;
+    expect(view.groups?.map((g) => [g.value, g.label, g.count])).toEqual([
+      ["errands", "errands", 1],
+      ["Home", "Home", 2],
+      [null, "No tag", 1],
+    ]);
+    expect(view.rows.map((r) => [r.key, r.group])).toEqual([
+      ["a", "errands"],
+      ["a", "Home"],
+      ["b", "Home"],
+      ["c", null],
+    ]);
+    expect(view.total).toBe(4);
+  });
+
   it("an entity's page: its fields as the view says, its history by its key", async () => {
     const view = (await agent.get(`/api/apps/${appId}/pages/Bill/e1`).expect(200)).body as AppEntityView;
     expect(view).toMatchObject({ app: "Bills", type: "Bill", list: { label: "My bills", title: "payee" }, row: { key: "e1" } });

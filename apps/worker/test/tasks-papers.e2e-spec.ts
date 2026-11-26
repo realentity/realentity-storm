@@ -314,12 +314,27 @@ describe("Tasks and Papers", () => {
       expect(telegram.calls.map((c) => c.text)).toEqual(["Added: Renew the passport"]);
     });
 
+    it("examples/apps/tasks.yaml: /task with #tags: tagged, the title without them, a tag once (M65-T8)", async () => {
+      const appId = await runCommand("task-from-telegram.yaml", "apps/tasks.yaml", command("task", "Buy milk #errands #Home, #home"));
+      expect(await only(appId, "Task")).toMatchObject({ title: "Buy milk", tag: ["errands", "Home"] });
+    });
+
     it("examples/apps/memos.yaml: a photo with /memo kept with its text; the photo downloaded from the bot", async () => {
       const appId = await runCommand("memo-from-telegram.yaml", "apps/memos.yaml", command("memo", "Wi-Fi at the cottage", sentPhoto));
       const memo = await only(appId, "Memo");
       expect(memo).toMatchObject({ title: "Wi-Fi at the cottage", text: "Wi-Fi at the cottage", photo: { name: "photo-1763109000.jpg", mime: "image/jpeg", size: photo.length } });
       expect(downloads).toEqual(["https://api.telegram.org/bot<token>/getFile", "https://api.telegram.org/file/bot<token>/photos/file_7.jpg"]);
       expect(telegram.calls.map((c) => c.text)).toEqual(["Kept: Wi-Fi at the cottage"]);
+    });
+
+    it("examples/apps/memos.yaml: /memo with #tags, on any line: tagged, the title without them (M65-T7)", async () => {
+      const appId = await runCommand("memo-from-telegram.yaml", "apps/memos.yaml", command("memo", "Gate code #cottage\n4711, ask at the #вила"));
+      expect(await only(appId, "Memo")).toMatchObject({ title: "Gate code", text: "Gate code #cottage\n4711, ask at the #вила", tags: ["cottage", "вила"] });
+    });
+
+    it("examples/apps/memos.yaml: /memo with only a #tag: the title as written", async () => {
+      const appId = await runCommand("memo-from-telegram.yaml", "apps/memos.yaml", command("memo", "#idea"));
+      expect(await only(appId, "Memo")).toMatchObject({ title: "#idea", tags: ["idea"] });
     });
 
     it("examples/apps/papers.yaml: a photo with /paper becomes a paper with its document", async () => {

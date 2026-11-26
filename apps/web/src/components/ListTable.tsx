@@ -93,7 +93,7 @@ export function ListTable({
             const first = group && (i === 0 || groupOf(groups!, rows[i - 1], page.group!.by.field, page.group!.period) !== group);
             const link = rowLink(row);
             return (
-              <Fragment key={row.key}>
+              <Fragment key={row.group === undefined ? row.key : `${row.key}\n${row.group ?? ""}`}>
                 {first && (
                   <tr className="bg-secondary-lt" data-testid="entity-group">
                     <td colSpan={page.columns.length + 1}>
@@ -178,7 +178,8 @@ function DesignHeading({ column, page, design }: Readonly<{ column: PageColumn; 
 }
 
 function groupOf(groups: EntityGroup[], row: ViewRow, field: string, period: "month" | "year" | null): EntityGroup | null {
-  const value = groupValue(fieldOf(row, field), period);
+  // M65-T8: a row under one of its list's values says which.
+  const value = row.group !== undefined ? row.group : groupValue(fieldOf(row, field), period);
   return groups.find((g) => g.value === value) ?? null;
 }
 

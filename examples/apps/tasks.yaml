@@ -6,7 +6,7 @@ app:
   description: What you have to do, by due date, open until done
   icon: list
   summary: >-
-    What you have to do, added on its list or with /task on Telegram, with a due date and a tag, open
+    What you have to do, added on its list or with /task on Telegram, with a due date and tags (#words on Telegram), in groups by tag, open
     until you mark it done; every morning the ones due today or overdue on Telegram. No LLM.
   setup:
     - { kind: telegram, label: "Telegram, for /task and the morning list" }
@@ -26,14 +26,25 @@ types:
       title: { type: text, required: true }
       notes: { type: longtext }
       due: { type: date }
-      tag: { type: enum, values: [home, work, errands, health, money] }
+      # M65: a task's tags (still "Tag"), one per line on the form or as #words on Telegram; a tag from before, one
+      # value, reads as a one-item list.
+      tag: { type: list, of: text }
 pages:
   - list: Task
     menu: { label: Tasks, icon: list }
     add: true
-    columns: [title, { field: due, due: { days: 1, unless: { state: done } } }, tag, state]
-    filters: [state, tag]
-    search: [title, notes]
+    columns: [title, { field: due, due: { days: 1, unless: { state: done } } }, { field: tag, control: chips }, state]
+    filters: [state]
+    # The tags in use, and the days tasks are due on, for the calendar beside the list.
+    sources:
+      tags: { from: Task, distinct: tag }
+      dueDays: { from: Task, distinct: due, by: day }
+    controls:
+      - { control: chips, source: tags, filters: tag, multiple: true }
+      - { control: calendar, source: dueDays, filters: due }
+    # A task under each of its tags; one without under "No tag".
+    group: { by: tag }
+    search: [title, notes, tag]
     sort: due
     moves: true
   - view: Task
@@ -77,15 +88,26 @@ pipelines:
     # /task Renew the passport on the Storm bot adds a task to the Tasks App,
     # and says so. Switch it on to have /task in the bot's menu. No LLM.
     name: From Telegram
-    description: /task Buy milk on Telegram adds a task.
-    trigger: { on: telegram.command, command: task, description: "Add a task: /task Buy milk" }
+    description: /task Buy milk #errands on Telegram adds a task, tagged.
+    trigger: { on: telegram.command, command: task, description: "Add a task: /task Buy milk #errands" }
     steps:
       - id: task
         type: data.map
         with:
           from: { text: "{{trigger.text}}" }
-          # The first line is the task; nothing after /task asks what.
-          expression: '$trim($split(text, "\n")[0]) ? { "title": $substring($trim($split(text, "\n")[0]), 0, 200) }'
+          # The first line is the task, without its #tags (all tags: as written); nothing after /task asks what.
+          # Every #word is a tag.
+          expression: |-
+            (
+              $tag := /#([^\s#.,;:!?()]+)/;
+              $tags := [$match(text, $tag).groups[0]];
+              $line := $trim($split(text, "\n")[0]);
+              $bare := $trim($replace($replace($line, /#[^\s#.,;:!?()]+[.,;:!?]*/, ""), /\s+/, " "));
+              $line ? {
+                "title": $substring($bare ? $bare : $line, 0, 200),
+                "tag": $count($tags) > 0 ? $tags : undefined
+              }
+            )
       - id: save
         type: data.save
         with: { type: Task, items: "{{task.items}}" }
