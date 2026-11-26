@@ -275,13 +275,26 @@ date's or a time's days), or entities as items (data.read's `where` and `sort`, 
 the key and the title). On the page's own type, a source counts what the page's other filters and search leave.
 A source can't read another App's types, nor an encrypted field.
 
+**Controls (M65).** How a field is drawn is a control, built into Storm. A column reads a value as text (the
+default; a list's values comma-separated), or a list's or an enum's values as `chips`. A filter in `filters:` is a
+dropdown, a date's a date input. A page's `controls:` draw a filter another way, its choices from one of the page's
+sources (default: the filter's own values): `dropdown`, `buttons` or `chips` for an enum, a yes/no, a ref or a
+list; `date` or `calendar` for a date (a month with the days that have entities marked: a day click filters by it,
+a second click clears). `multiple: true` picks several, any of them matching (not a date's). A calendar's source
+counts days (`by: day`); the others' count values or list items. A field is filtered once: by `filters` or by one
+control. The filters and the search are kept in the list's link (`?f.tags=home&f.due=2026-11-25&q=rent`), so a link
+opens the list already filtered.
+
 ```yaml
   - list: Memo
-    filters: [tags, "@firstSeen"]
+    columns: [title, { field: tags, control: chips }]
     sources:
       tags: { from: Memo, distinct: tags }                    # each tag in use, with a count
       days: { from: Memo, distinct: "@firstSeen", by: day }   # a count per day a memo was added
       open: { from: Task, where: [{ field: done, op: eq, value: false }], sort: due }
+    controls:
+      - { control: chips, source: tags, filters: tags, multiple: true }
+      - { control: calendar, source: days, filters: "@firstSeen" }
 ```
 
 **Stages, forms and buttons (M32).** A type may have a stage: where an entity is (new, favorite, applied…), moved

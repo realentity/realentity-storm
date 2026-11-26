@@ -457,6 +457,36 @@ export const PageSourceSchema = z.union([
 export type PageSource = z.output<typeof PageSourceSchema>;
 
 /**
+ * M65: controls, how a field is drawn, built into Storm (never an App's own React). A column reads a value: as text,
+ * or a list's or an enum's as chips. A filter control picks what narrows the list: a dropdown, buttons or chips of
+ * values; a date input or a calendar (a month with its days marked) of days.
+ */
+export const READ_CONTROLS = ["text", "chips"] as const;
+export type ReadControl = (typeof READ_CONTROLS)[number];
+export const FILTER_CONTROLS = ["dropdown", "buttons", "chips", "calendar", "date"] as const;
+export type FilterControl = (typeof FILTER_CONTROLS)[number];
+
+/** M65: the filter controls of a kind, its default first: a date's days, anything else's values. */
+export function filterControlsOf(kind: FieldKind | undefined): readonly FilterControl[] {
+  return kind === "date" || kind === "datetime" ? ["date", "calendar"] : ["dropdown", "buttons", "chips"];
+}
+
+/**
+ * M65: a filter drawn by a control, its choices from one of the page's sources (default: the filter's own values),
+ * e.g. { control: buttons, source: tags, filters: tags }; `multiple`: several picked, any of them matching.
+ */
+const PageControlSchema = z
+  .object({
+    control: z.enum(FILTER_CONTROLS),
+    filters: PageField,
+    source: z.string().regex(SOURCE_NAME, 'a source of the page, e.g. "tags"').optional(),
+    multiple: z.boolean().default(false),
+    label: z.string().trim().min(1).max(40).optional(),
+  })
+  .strict();
+export type PageControl = z.output<typeof PageControlSchema>;
+
+/**
  * A type's list page (M31): in the menu under Pages, its columns, filters, search, sort and groups with totals. A
  * field's format comes from its kind. Anything left out has a default from the type's fields.
  */
@@ -473,6 +503,8 @@ export const ListPageSchema = z
             .object({
               field: PageField,
               label: z.string().trim().min(1).max(40).optional(),
+              /** M65: how the value is shown: text (default), or a list's or an enum's values as chips. */
+              control: z.enum(READ_CONTROLS).optional(),
               /** A date field (M33): a badge when it is past, today or within `days`, unless the entity is as `unless` says. */
               due: z.object({ days: z.number().int().min(0).max(60).default(3), unless: Conditions.optional() }).strict().optional(),
             })
@@ -492,6 +524,8 @@ export const ListPageSchema = z
       .record(z.string().regex(SOURCE_NAME, 'a name, e.g. "tags"'), PageSourceSchema)
       .refine((sources) => Object.keys(sources).length <= 6, "6 sources at most")
       .optional(),
+    /** M65: filters drawn by a control, besides `filters` (each a dropdown or a date input). */
+    controls: z.array(PageControlSchema).max(6).optional(),
     /** Fields the search box looks in; default: the text fields. */
     search: z.array(z.string().regex(ENTITY_FIELD)).min(1).max(10).optional(),
     sort: PageSort.optional(),
@@ -704,7 +738,9 @@ const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
 /** M65: a list page also filters by a list's values and a date's day or range. */
 const LIST_FILTER_KINDS: readonly FieldKind[] = [...FILTER_KINDS, "list", "date", "datetime"];
 /** M65: what a source counts the distinct values of. */
-const DISTINCT_KINDS: readonly FieldKind[] = ["text", "email", "number", "enum", "yesno", "list", "ref", "date", "datetime"];
+/** M65: what a column shows as chips. */
+const CHIP_KINDS: readonly FieldKind[] = ["list", "enum"];
+const DISTINCT_KINDS: readonly FieldKind[] =["text", "email", "number", "enum", "yesno", "list", "ref", "date", "datetime"];
 
 /** Pages only on the App's types, and only on their fields, each used as its kind allows. */
 function checkPages(
@@ -792,7 +828,10 @@ function checkPages(
         field(c.field, [...at, "columns", j], c.due ? PERIOD_KINDS : undefined, "a due badge is on a date field");
         if (type.fields[c.field]?.encrypted) issue([...at, "columns", j], `${typeName}.${c.field} is encrypted: it can't be a column`);
         for (const name of Object.keys(c.due?.unless ?? {})) field(name, [...at, "columns", j, "due", "unless", name]);
+        const kind = kindOf(c.field);
+        if (c.control === "chips" && kind && !CHIP_KINDS.includes(kind)) issue([...at, "columns", j, "control"], `chips show a list's or an enum's values: "${c.field}" is ${kind}`);
       });
+      checkControls(page, typeName, at, kindOf, issue);
       if (page.moves && !type.stages) issue([...at, "moves"], `${typeName} has no stages to move`);
       page.filters?.forEach((f, j) => field(f, [...at, "filters", j], LIST_FILTER_KINDS, "a filter is an enum, a yes/no, a ref, a list or a date field"));
       for (const [name, source] of Object.entries(page.sources ?? {})) checkSource(app, source, [...at, "sources", name], issue);
@@ -862,6 +901,39 @@ export function pageKind(page: AppPage): ["list" | "view" | "form" | "report", s
   if ("view" in page) return ["view", page.view];
   if ("form" in page) return ["form", page.form];
   return ["report", page.report];
+}
+
+/**
+ * M65: a list's filter controls: each on a field a filter may be, by a control of its kind, once per field (with
+ * `filters` too); its source one of the page's, of days for a calendar and of values or items for the others.
+ */
+function checkControls(
+  page: ListPage,
+  typeName: string,
+  at: (string | number)[],
+  kindOf: (field: string) => FieldKind | undefined,
+  issue: (path: (string | number)[], message: string) => void,
+): void {
+  const filtered = new Set(page.filters ?? []);
+  page.controls?.forEach((c, j) => {
+    const path = [...at, "controls", j];
+    const kind = kindOf(c.filters);
+    if (!kind) issue([...path, "filters"], `${typeName} has no field "${c.filters}"`);
+    else if (!LIST_FILTER_KINDS.includes(kind)) issue([...path, "filters"], `a filter is an enum, a yes/no, a ref, a list or a date field: "${c.filters}" is ${kind}`);
+    else if (!filterControlsOf(kind).includes(c.control))
+      issue([...path, "control"], `a ${kind} field is filtered by ${filterControlsOf(kind).join(", ")}, not ${c.control}`);
+    if (filtered.has(c.filters)) issue([...path, "filters"], `"${c.filters}" is filtered already (by filters or an earlier control)`);
+    filtered.add(c.filters);
+    const days = c.control === "calendar" || c.control === "date";
+    if (c.multiple && days) issue([...path, "multiple"], `a ${c.control} picks one day`);
+    if (c.source === undefined) return;
+    const source = page.sources && Object.hasOwn(page.sources, c.source) ? page.sources[c.source] : undefined;
+    const byDay = source !== undefined && "distinct" in source && source.by === "day";
+    if (!source) issue([...path, "source"], `there is no source "${c.source}" on this page (sources: ${Object.keys(page.sources ?? {}).join(", ") || "none"})`);
+    else if (c.control === "date") issue([...path, "source"], "a date input picks any day: it takes no source");
+    else if (c.control === "calendar" && !byDay) issue([...path, "source"], "a calendar marks days: its source is { from, distinct: <a date field>, by: day }");
+    else if (c.control !== "calendar" && byDay) issue([...path, "source"], `a source of days is for a calendar, not ${c.control}`);
+  });
 }
 
 /** A report's measures each count one thing, on the type's fields and states; its shares and columns name its tiles. */
