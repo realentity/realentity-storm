@@ -25,6 +25,7 @@ describe("examples/apps/tenders.yaml", () => {
   let userId: string;
   let appId: string;
   let extract: Counting;
+  let score: Counting;
   let mapForm: Counting;
   let fill: Counting;
   let runner: PipelineRunner;
@@ -57,12 +58,22 @@ describe("examples/apps/tenders.yaml", () => {
     }));
     extract = new Counting("llm.extract", (input) => {
       const { title } = input.content as { title: string };
-      const fit: Record<string, Record<string, string>> = {
-        "City portal rebuild": { buyer: "City of Example", deadline: "2026-12-15", budget: "120 000 EUR", score: "88", why: "Web software for a city." },
-        "Office printers": { buyer: "Ministry", deadline: "", budget: "", score: "5/100", why: "Hardware." },
-        "Digital services grant": { buyer: "Grants Agency", deadline: "2027-01-31", budget: "50,000", score: "64", why: "Web services, smaller." },
+      const read: Record<string, Record<string, string>> = {
+        "City portal rebuild": { buyer: "City of Example", deadline: "2026-12-15", budget: "120 000 EUR" },
+        "Office printers": { buyer: "Ministry", deadline: "", budget: "" },
+        "Digital services grant": { buyer: "Grants Agency", deadline: "2027-01-31", budget: "50,000" },
       };
-      return { values: fit[title], missing: [], found: true };
+      return { values: read[title], missing: [], found: true };
+    });
+    // M59-T3: llm.score, as ScoreStep answers: each item with its score and reason, in order.
+    score = new Counting("llm.score", (input) => {
+      const fit: Record<string, [number, string]> = {
+        "City portal rebuild": [88, "Web software for a city."],
+        "Office printers": [5, "Hardware."],
+        "Digital services grant": [64, "Web services, smaller."],
+      };
+      const scored = (input.items as { title: string }[]).map((item) => ({ ...item, score: fit[item.title][0], scoreReason: fit[item.title][1] }));
+      return { scored, top: [...scored].sort((a, b) => b.score - a.score) };
     });
     // The portal's form is found and filled; the grant's isn't (nothing to send).
     mapForm = new Counting("browser.agent", (input) => {
@@ -83,7 +94,7 @@ describe("examples/apps/tenders.yaml", () => {
     runner = new PipelineRunner(
       db.client,
       defaultCatalog(),
-      new ExecutorRegistry([new ReadStep(db.client), new SaveStep(db.client), new MapStep(), new DedupeStep(db.client), new FilterStep(), portal, feed, extract, mapForm, fill]),
+      new ExecutorRegistry([new ReadStep(db.client), new SaveStep(db.client), new MapStep(), new DedupeStep(db.client), new FilterStep(), portal, feed, extract, score, mapForm, fill]),
     );
   });
 
@@ -122,9 +133,14 @@ describe("examples/apps/tenders.yaml", () => {
   it("new calls scored against your profile and kept; the ones worth a look offered, the best first; the picked one's form filled for you to submit", async () => {
     const runId = await run();
     expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
-    expect(extract.calls[0].instruction).toBe("An open tender or grant call. Who we are:\nWe are Acme Studio: Web software for public bodies.\nNot for us: Hardware.");
+    const about = "We are Acme Studio: Web software for public bodies.\nNot for us: Hardware.";
+    expect(extract.calls[0].instruction).toBe(`An open tender or grant call. Who we are:\n${about}`);
+    // M59-T3: one llm.score over the new calls, against the profile.
+    expect(score.calls).toHaveLength(1);
+    expect(score.calls[0].against).toBe(about);
+    expect((score.calls[0].items as { title: string }[]).map((i) => i.title)).toEqual(["City portal rebuild", "Office printers", "Digital services grant"]);
     expect(await tenders()).toMatchObject({
-      "https://tenders.example/t/1": { stage: "new", buyer: "City of Example", deadline: "2026-12-15", budget: 120000, score: 88 },
+      "https://tenders.example/t/1": { stage: "new", buyer: "City of Example", deadline: "2026-12-15", budget: 120000, score: 88, why: "Web software for a city." },
       "https://tenders.example/t/2": { stage: "new", score: 5 },
       "https://grants.example/c/9": { stage: "new", buyer: "Grants Agency", budget: 50000, score: 64, source: "grants.example" },
     });
@@ -155,9 +171,11 @@ describe("examples/apps/tenders.yaml", () => {
     expect(fill.calls).toEqual([]);
   });
 
-  it("no profile: nothing is scored", async () => {
+  it("no profile: nothing is scored, nor kept (scored once there is one)", async () => {
     await db.client.dataEntity.deleteMany({ where: { appId, type: "Profile" } });
     await decide(await run(), []);
     expect(extract.calls).toEqual([]);
+    expect(score.calls).toEqual([]);
+    expect(await tenders()).toEqual({});
   });
 });

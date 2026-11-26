@@ -55,6 +55,7 @@ describe("examples/apps/hiring.yaml", () => {
   let inbox: ReturnType<typeof email>[];
   let attachments: Map<number, MailAttachment[]>;
   let extract: Counting;
+  let score: Counting;
   let send: Counting;
   let runner: PipelineRunner;
 
@@ -93,12 +94,17 @@ describe("examples/apps/hiring.yaml", () => {
         results: messages.map((m, index) => ({ index, label: applying(m) ? "application" : "skip", reason: "" })),
       };
     });
-    // Ana's CV fits the role; Bo sent no CV and fits no role.
+    // Ana's CV fits the role; Bo sent no CV and applies for no open role.
     extract = new Counting("llm.extract", (input) => {
       const { cv } = input.content as { cv?: string };
       return cv?.includes("Node.js")
-        ? { values: { name: "Ana Petrova", role: "Backend developer", score: "82", why: "Six years of Node.js.", summary: "Backend, Node.js" }, missing: [], found: true }
-        : { values: { name: "Bo Berg", role: "Designer", score: "15/100", why: "No CV.", summary: "" }, missing: ["summary"], found: false };
+        ? { values: { name: "Ana Petrova", role: "Backend developer", summary: "Backend, Node.js" }, missing: [], found: true }
+        : { values: { name: "Bo Berg", role: "Designer", summary: "" }, missing: ["summary"], found: false };
+    });
+    // M59-T3: llm.score, as ScoreStep answers: the applicant with its score and reason.
+    score = new Counting("llm.score", (input) => {
+      const scored = (input.items as Record<string, unknown>[]).map((item) => ({ ...item, score: 82, scoreReason: "Six years of Node.js." }));
+      return { scored, top: scored };
     });
     send = new Counting("email.send", (input) => ({ messageId: `<sent-${send.calls.length}@mail.example>`, accepted: [input.to], from: "jobs@mail.example" }));
     runner = new PipelineRunner(
@@ -113,6 +119,7 @@ describe("examples/apps/hiring.yaml", () => {
         new Counting("email.fetch", () => ({ messages: inbox })),
         classify,
         extract,
+        score,
         new Counting("llm.generate", () => ({ text: "Thank you for applying: could we talk next week?" })),
         send,
       ]),
@@ -160,10 +167,16 @@ describe("examples/apps/hiring.yaml", () => {
     expect((extract.calls[0].content as { cv: string }).cv).toContain("Six years of Node.js");
     expect(extract.calls[0].instruction).toContain('Role "Backend developer": Node.js services, PostgreSQL.\nMust have: 3 years of Node.js');
     expect(extract.calls[0].instruction).not.toContain("Old role");
+    // M59-T3: llm.score for Ana, against the open roles, from her email and CV; Bo applies for no open role: not asked.
+    expect(score.calls).toHaveLength(1);
+    expect(score.calls[0].against).toContain('Role "Backend developer": Node.js services, PostgreSQL.');
+    expect(score.calls[0].items).toEqual([
+      { role: "Backend developer", email: "Hello, I'd like to apply. My CV is attached.", cv: expect.stringContaining("Six years of Node.js") as unknown },
+    ]);
 
     const listed = await candidates();
-    expect(listed["<1@mail.example>"]).toMatchObject({ stage: "new", name: "Ana Petrova", role: "Backend developer", score: 82, cv: { name: "ana-cv.pdf" } });
-    expect(listed["<2@mail.example>"]).toMatchObject({ stage: "new", name: "Bo Berg", score: 15 });
+    expect(listed["<1@mail.example>"]).toMatchObject({ stage: "new", name: "Ana Petrova", role: "Backend developer", score: 82, why: "Six years of Node.js.", cv: { name: "ana-cv.pdf" } });
+    expect(listed["<2@mail.example>"]).toMatchObject({ stage: "new", name: "Bo Berg", score: 0, why: "Applies for no open role." });
     expect((listed["<2@mail.example>"] as { role?: string }).role).toBeUndefined();
     const [review] = await db.client.proposal.findMany({ where: { runId, stepKey: "shortlist" } });
     expect((review.originalPayload as { items: { email: string }[] }).items.map((i) => i.email)).toEqual(["ana@mail.example", "bo@mail.example"]);

@@ -98,6 +98,11 @@ export interface EntityContract {
    * when its pipeline names an App.
    */
   optional?: boolean;
+  /**
+   * M59-T3: the contract holds only with this yes/no input true, and the step then only reads the type (llm.score's
+   * `outcomes`, from the App's Jobs); without it the step works in any App.
+   */
+  when?: string;
 }
 
 /** bill.save's Bill (M33): the type a Bills App gives it. */
@@ -909,8 +914,8 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "llm.score",
-    entities: [JOB_ENTITY],
-    description: "Scores each item 0–100 against `against` (a profile or criteria text); `top` keeps the best N.",
+    entities: [{ ...JOB_ENTITY, when: "outcomes" }],
+    description: "Scores each item 0–100 against `against` (a profile, a role, any criteria text); `top` keeps the best N.",
     sideEffect: false,
     llm: true,
     llmOutput: true,

@@ -159,26 +159,43 @@ pipelines:
           fields:
             name: the applicant's full name
             role: the role they apply for, its name exactly as in my list; empty when none fits
-            score: how well they fit that role, 0 to 100, a number only; 0 when no role fits
-            why: why that score, in one or two sentences, their strengths and gaps against what the role needs
             summary: their experience in at most three short lines
+      # Each applicant scored 0 to 100 against the role they apply for, from their email and CV (one at a time: a CV
+      # is long). One applying for no role of mine is scored 0 without asking.
+      - id: application
+        type: data.map
+        forEach: "{{triage.kept}}"
+        with:
+          from: { read: "{{read.values}}", cv: "{{cv.text}}", email: "{{item.text}}", roles: "{{roles.items}}" }
+          expression: |-
+            read.role in roles.name ? { "role": read.role, "email": email, "cv": cv }
+      - id: score
+        type: llm.score
+        forEach: "{{triage.kept}}"
+        when: "{{application.value}}"
+        with:
+          items: ["{{application.value}}"]
+          against: "My open roles:\n\n{{rolesText.value}}"
+          instruction: >-
+            An applicant for the role named in `role`: score how well they fit that role, from their email and CV,
+            against what it needs; say their strengths and gaps in the reason.
       # Each applicant, the best first: what is kept, and what the replies need (their address and thread).
       - id: applicants
         type: data.map
         with:
-          from: { kept: "{{triage.kept}}", read: "{{read}}", found: "{{found.items}}", roles: "{{roles.items}}" }
+          from: { kept: "{{triage.kept}}", read: "{{read}}", scores: "{{score}}", found: "{{found.items}}", roles: "{{roles.items}}" }
           expression: |-
             [$map(kept, function($m, $i) {(
               $v := read[$i].values;
               $role := $v.role in $$.roles.name ? $v.role;
-              $score := $match($v.score, /[0-9]+(\.[0-9]+)?/)[0].match;
+              $scored := $role ? scores[$i].scored[0];
               {
                 "id": $m.messageId,
                 "name": $v.name ? $v.name : ($m.fromName ? $m.fromName : $m.from),
                 "email": $m.from,
                 "role": $role,
-                "score": $score ? $number($score) : 0,
-                "why": $v.why,
+                "score": $scored ? $scored.score : 0,
+                "why": $scored ? $scored.scoreReason : "Applies for no open role.",
                 "summary": $v.summary,
                 "cv": found[$i].cv,
                 "appliedAt": $m.date,

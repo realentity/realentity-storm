@@ -58,6 +58,18 @@ describe("an App's map (M37-T4)", () => {
     expect(map.triggers.map((t) => t.id)).toEqual(["trigger:b"]);
   });
 
+  // M59-T3: llm.score reads the App's Jobs only with outcomes: true
+  it("draws a contract with `when` only when its input is true", () => {
+    const jobs = app("job-search.yaml");
+    const contracts = (type: string) => (type === "llm.score" ? [{ type: "Job", when: "outcomes" }] : []);
+    const calibrated = pipeline("c", "Calibrated", "manual", [["llm.score", { outcomes: true }]]);
+    const plain = pipeline("p", "Plain", "manual", [["llm.score", { outcomes: false }], ["llm.score"]]);
+    const edges = appMap(jobs, [calibrated, plain], {}, contracts).edges;
+    expect(edges.filter((e) => e.kind !== "starts" && (e.from.startsWith("pipeline:") || e.to.startsWith("pipeline:")))).toEqual([
+      { from: "type:Job", to: "pipeline:c", kind: "reads" },
+    ]);
+  });
+
   it("says each trigger plainly", () => {
     expect(triggerLabel("manual")).toBe("by hand");
     expect(triggerLabel({ webhook: "token" })).toBe("a call from the Internet");

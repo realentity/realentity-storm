@@ -305,6 +305,36 @@ describe("Apps (M30)", () => {
     ]);
   });
 
+  // M59-T3: llm.score scores any items in any App; only `outcomes: true` reads the App's Jobs
+  it("checks llm.score's Job only with outcomes", () => {
+    const hiring = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/hiring.yaml")));
+    const jobSearch = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/job-search.yaml")));
+    const score = (app: string | undefined, outcomes?: boolean) => ({
+      name: "Score",
+      ...(app ? { app } : {}),
+      steps: [
+        { id: "read", type: "data.read", with: { type: "Candidate" } },
+        { id: "score", type: "llm.score", with: { items: "{{read.items}}", against: "A backend developer", ...(outcomes === undefined ? {} : { outcomes }) } },
+      ],
+    });
+    ok(compiler.compile(score("Hiring"), { app: hiring }));
+    ok(compiler.compile(score("Hiring", false), { app: hiring }));
+    expect(errorsOf(compiler.compile(score("Hiring", true), { app: hiring }))).toEqual([
+      'steps[1].with.outcomes: llm.score with outcomes: true reads Job entities, and "Hiring" has no type Job',
+    ]);
+    const jobs = (outcomes: boolean) => ({
+      name: "Score",
+      app: "Job Search",
+      steps: [
+        { id: "read", type: "data.read", with: { type: "Job" } },
+        { id: "score", type: "llm.score", with: { items: "{{read.items}}", against: "Staff roles", outcomes } },
+      ],
+    });
+    ok(compiler.compile(jobs(true), { app: jobSearch }));
+    // Outside an App: the old applications' outcomes.
+    ok(compiler.compile({ name: "Score", steps: [{ id: "score", type: "llm.score", with: { items: [], against: "x", outcomes: true } }] }));
+  });
+
   // M33: price.watch reads Products of mine and writes Offers
   it("checks price.watch's Product and Offer, and reads a shop line", () => {
     const prices = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/prices.yaml")));

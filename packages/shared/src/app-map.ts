@@ -36,7 +36,8 @@ export interface AppMapPipeline {
 }
 
 /** What a step type writes or reads of an App, from its contracts (bill.save writes Bill; price.watch reads Product). */
-export type ContractsOf = (stepType: string) => { type: string; mine?: boolean }[];
+/** `when`: the step reads the type only with that yes/no input true (llm.score's `outcomes`). */
+export type ContractsOf = (stepType: string) => { type: string; mine?: boolean; when?: string }[];
 
 /** A pipeline's trigger, said as the map says it; null for those drawn as an arrow (an entity's change or button). */
 export function triggerLabel(trigger: Trigger): string | null {
@@ -97,7 +98,9 @@ export function appMap(
       }
       for (const contract of contractsOf(step.type)) {
         if (!types.includes(contract.type)) continue;
-        if (contract.mine) edge(`type:${contract.type}`, id, "reads");
+        if (contract.when) {
+          if (step.with?.[contract.when] === true) edge(`type:${contract.type}`, id, "reads");
+        } else if (contract.mine) edge(`type:${contract.type}`, id, "reads");
         else edge(id, `type:${contract.type}`, "writes");
       }
     }
