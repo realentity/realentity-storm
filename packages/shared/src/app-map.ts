@@ -35,9 +35,12 @@ export interface AppMapPipeline {
   definition: Pick<CompiledDefinition, "trigger" | "steps">;
 }
 
-/** What a step type writes or reads of an App, from its contracts (bill.save writes Bill; price.watch reads Product). */
-/** `when`: the step reads the type only with that yes/no input true (llm.score's `outcomes`). */
-export type ContractsOf = (stepType: string) => { type: string; mine?: boolean; when?: string }[];
+/**
+ * What a step type writes or reads of an App, from its contracts (bill.save writes Bill; price.watch reads Product).
+ * `reads`: only read, though not a type of mine; `when`: only with that input given (llm.score's `outcomes`,
+ * browser.mapForm's `job`: M59-T3).
+ */
+export type ContractsOf = (stepType: string) => { type: string; mine?: boolean; reads?: boolean; when?: string }[];
 
 /** A pipeline's trigger, said as the map says it; null for those drawn as an arrow (an entity's change or button). */
 export function triggerLabel(trigger: Trigger): string | null {
@@ -63,6 +66,11 @@ export function triggerLabel(trigger: Trigger): string | null {
     case "telegram.command":
       return `/${trigger.command} on Telegram`;
   }
+}
+
+/** An input that makes a contract with `when` hold (the steps' contractInputGiven). */
+function given(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false && value !== "";
 }
 
 export function appMap(
@@ -98,9 +106,8 @@ export function appMap(
       }
       for (const contract of contractsOf(step.type)) {
         if (!types.includes(contract.type)) continue;
-        if (contract.when) {
-          if (step.with?.[contract.when] === true) edge(`type:${contract.type}`, id, "reads");
-        } else if (contract.mine) edge(`type:${contract.type}`, id, "reads");
+        if (contract.when && !given(step.with?.[contract.when])) continue;
+        if (contract.mine || contract.reads) edge(`type:${contract.type}`, id, "reads");
         else edge(id, `type:${contract.type}`, "writes");
       }
     }

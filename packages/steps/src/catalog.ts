@@ -99,10 +99,17 @@ export interface EntityContract {
    */
   optional?: boolean;
   /**
-   * M59-T3: the contract holds only with this yes/no input true, and the step then only reads the type (llm.score's
-   * `outcomes`, from the App's Jobs); without it the step works in any App.
+   * M59-T3: the contract holds only with this input given (true, or any value but false or empty): llm.score's
+   * `outcomes`, browser.mapForm's `job`. Without it the step works in any App.
    */
   when?: string;
+  /** The step only reads the type, though it isn't a type of mine (llm.score's outcomes, from the App's Jobs). */
+  reads?: boolean;
+}
+
+/** M59-T3: an input that makes a contract with `when` hold. */
+export function contractInputGiven(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false && value !== "";
 }
 
 /** bill.save's Bill (M33): the type a Bills App gives it. */
@@ -914,7 +921,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "llm.score",
-    entities: [{ ...JOB_ENTITY, when: "outcomes" }],
+    entities: [{ ...JOB_ENTITY, when: "outcomes", reads: true }],
     description: "Scores each item 0–100 against `against` (a profile, a role, any criteria text); `top` keeps the best N.",
     sideEffect: false,
     llm: true,
@@ -1650,12 +1657,12 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.mapForm",
-    entities: [JOB_ENTITY],
+    entities: [{ ...JOB_ENTITY, when: "job" }],
     description:
-      "Opens an application form (following the page's Apply button when the form isn't there) and reads every field, " +
-      "typing and attaching nothing. Proposes each value from the user's profile (Settings) and writes free-text answers " +
-      "following `message`; attaches the stored document `cv` to the CV field. Its output is the payload for " +
-      "browser.fillAndSubmit, which the user sees and edits at the gate.",
+      "Opens an application form (a job's, a tender's, a grant's: following the page's Apply button when the form isn't " +
+      "there) and reads every field, typing and attaching nothing. Proposes each value from the user's profile (Settings) " +
+      "and writes free-text answers following `message`, about `about`; attaches the stored `document` to the form's file " +
+      "field. Its output is the payload for browser.fillAndSubmit, which the user sees and edits at the gate.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -1664,9 +1671,14 @@ export const CORE_STEPS: StepDefinition[] = [
     input: z.object({
       url: z.url({ protocol: /^https?$/ }),
       headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
-      cv: DocumentName.optional().describe('the stored document for the CV / résumé field, e.g. "cv-main"'),
-      message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer)"),
-      job: z.record(z.string(), z.unknown()).optional().describe("the posting (title, company, url), for the answers and Applications"),
+      document: DocumentName.optional().describe('the stored document for the form\'s file field (a CV, a company profile), e.g. "cv-main"'),
+      cv: DocumentName.optional().describe("the same as document, its older name (a CV / résumé field first)"),
+      message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer or buyer)"),
+      about: z.record(z.string(), z.unknown()).optional().describe("what the form applies for (a call, an offer), for the answers"),
+      job: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("a job posting (title, company, url): for the answers, and its Job (Job Search) or Application is prepared"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1679,7 +1691,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.fillAndSubmit",
-    entities: [JOB_ENTITY],
+    entities: [{ ...JOB_ENTITY, when: "job" }],
     description:
       "Fills an application form with exactly the approved fields and files and submits it, in the live browser. " +
       "Before typing it reads the form again: a field that changed, a new required field or another address pauses " +
@@ -1694,7 +1706,7 @@ export const CORE_STEPS: StepDefinition[] = [
       fields: z.array(FormFieldSchema),
       files: z.array(FormFileSchema).default([]),
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
-      job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
+      job: z.string().optional().describe("a job posting's url: its Job (Job Search) is applied, or its Application submitted"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1793,6 +1805,7 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.agent",
+    entities: [{ ...JOB_ENTITY, when: "job" }],
     description:
       "An LLM works the page towards `goal` (find the apply button and fill the form, read something) on a site " +
       "without a recipe, from the page's accessibility outline: navigate, click, type, select, tick, attach one of " +
@@ -1811,7 +1824,10 @@ export const CORE_STEPS: StepDefinition[] = [
       headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
       documents: z.array(DocumentName).max(5).default([]).describe('stored documents it may attach, e.g. ["cv-main"]'),
       message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer)"),
-      job: z.record(z.string(), z.unknown()).optional().describe("the posting (title, company, url), for the answers and Applications"),
+      job: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("a job posting (title, company, url): for the answers, and its Job (Job Search) or Application is prepared"),
       maxActions: z.number().int().min(1).max(50).default(25),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
@@ -1832,6 +1848,7 @@ export const CORE_STEPS: StepDefinition[] = [
       "Repeats an approved browser.agent run exactly, without an LLM, in the live browser, and presses its final " +
       "button. An element that is no longer there, or a page off the allowed sites, pauses the run for the user with " +
       "nothing sent. With stopBeforeSubmit the user presses the final button.",
+    entities: [{ ...JOB_ENTITY, when: "job" }],
     sideEffect: true,
     targets: { url: "domain" },
     headed: true,
@@ -1842,7 +1859,7 @@ export const CORE_STEPS: StepDefinition[] = [
       files: z.array(FormFileSchema).default([]),
       submit: ElementTargetSchema,
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
-      job: z.string().optional().describe("the posting's url: its Application is marked submitted"),
+      job: z.string().optional().describe("a job posting's url: its Job (Job Search) is applied, or its Application submitted"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({

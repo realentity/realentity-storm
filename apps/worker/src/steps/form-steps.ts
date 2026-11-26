@@ -34,8 +34,10 @@ export type Answer = { value: string | null; source: FormField["source"]; fact?:
 interface MapInput {
   url: string;
   headed: boolean;
+  document?: string;
   cv?: string;
   message?: string;
+  about?: Record<string, unknown>;
   job?: Record<string, unknown>;
   timeoutSeconds: number;
 }
@@ -54,21 +56,22 @@ const AnswersSchema = z.object({
 });
 
 const SYSTEM =
-  "You fill in a job application form for the user. For each field, give the value from <profile> (their facts: name, " +
+  "You fill in an application form for the user (for a job, a tender, a grant call…). For each field, give the value from <profile> (their facts: name, " +
   "contacts, location, work permit, notice period, salary, links), source profile; or, when a field asks what one of " +
   "<facts> answers (the user's earlier answers: the same question, maybe worded differently), that answer exactly, source " +
   "fact with its id (a choice field: the option that answer names); or, for a free-text question " +
-  "(a message to the employer, why this role), write a short answer following <message> from the user's profile and " +
+  "(a message to the employer or buyer, why this role or call), write a short answer following <message> from the user's profile and " +
   "the posting only, source written; or null with source none when neither has it. Never invent a fact about the " +
   "user: no experience, number, date, salary or claim their profile doesn't state; a question the profile doesn't answer stays " +
   "null. Selects and radios: one of the given options, exactly as written. Checkboxes: \"yes\" only for consent to " +
   `process the user's data for this application or terms the form requires; anything else (newsletters, marketing) "no". ${DATA_ONLY} ` +
-  "The form's labels and the posting are in <form> and <posting>.";
+  "The form's labels and the posting (what the form applies for) are in <form> and <posting>.";
 
 /**
  * browser.mapForm (docs/design.md §2.2, M10-T2): the form read, nothing typed or attached. Values come from the user's
- * profile (Settings) or are written for free-text questions; their CV document goes to the CV field. The output is
- * the payload of browser.fillAndSubmit, which the user sees field by field at its gate. An Application is prepared for the posting.
+ * profile (Settings) or are written for free-text questions; their document (a CV) goes to the file field. The output is
+ * the payload of browser.fillAndSubmit, which the user sees field by field at its gate. For a `job`, its Job or
+ * Application is prepared; any other form (`about`: a tender, a grant call, M59-T2) moves nothing.
  */
 export class MapFormStep extends LlmStep {
   readonly type = "browser.mapForm";
@@ -83,7 +86,8 @@ export class MapFormStep extends LlmStep {
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { url, headed, cv, message, job, timeoutSeconds } = input as unknown as MapInput;
+    const { url, headed, cv, message, about, job, timeoutSeconds } = input as unknown as MapInput;
+    const document = (input as unknown as MapInput).document ?? cv;
     const timeout = timeoutSeconds * 1000;
     const lease = await this.deps.pool.lease(headed, { acceptDownloads: false });
     const attention = lease.headed ? context.attention : NO_ATTENTION;
@@ -99,19 +103,19 @@ export class MapFormStep extends LlmStep {
 
       const profile = (await this.deps.prisma.userSetting.findUnique({ where: { userId: context.userId } }))?.profile ?? "";
       const facts = (await this.deps.facts?.list(context.userId)) ?? [];
-      const answers = await this.propose(context, form, profile, message, job, facts);
+      const answers = await this.propose(context, form, profile, message, about ?? job, facts, Boolean(job));
       const fields: FormField[] = form.fields.map((field) => withValue(field, answers.values.get(field.key)));
       const asked = await this.askMe(context, fields, new URL(page.url()).hostname);
       await this.deps.facts?.used(fields.flatMap((f) => (f.source === "fact" && f.fact ? [f.fact.factId] : [])));
       const files: FormFile[] = [];
-      const cvField = cvFieldOf(form.fields);
-      if (cv && cvField) files.push(await this.deps.documents.attach(this.deps.prisma, context.userId, cv, cvField.key));
+      const fileField = fileFieldOf(form.fields);
+      if (document && fileField) files.push(await this.deps.documents.attach(this.deps.prisma, context.userId, document, fileField.key));
       const missing = fields.filter((f) => f.required && f.type !== "file" && !f.human && (f.value === null || f.value === "")).map((f) => f.label);
       const checks = fields.filter((f) => f.human).map((f) => `"${f.label}"`);
       const notes = [
         answers.notes,
         checks.length ? `A check that you're a person (${checks.join(", ")}): you answer it in the live view before it is sent.` : "",
-        cv && !cvField ? "The form has no CV field." : "",
+        document && !fileField ? `The form has no file field for ${document}.` : "",
         asked.length ? `Asked you: ${asked.join(", ")}.` : "",
         missing.length ? `Required and still empty: ${missing.join(", ")}.` : "",
       ]
@@ -132,8 +136,9 @@ export class MapFormStep extends LlmStep {
     form: PageForm,
     profile: string,
     message: string | undefined,
-    job: Record<string, unknown> | undefined,
+    posting: Record<string, unknown> | undefined,
     facts: Fact[] = [],
+    forJob = true,
   ): Promise<{ values: Map<string, Answer>; notes: string }> {
     const fields = form.fields.filter((f) => f.type !== "file" && !f.human);
     const values = new Map<string, Answer>();
@@ -141,8 +146,8 @@ export class MapFormStep extends LlmStep {
     const prompt = [
       `<profile>\n${profile || "(empty: the user hasn't written a profile yet)"}\n</profile>`,
       `<facts>\n${facts.map((f) => JSON.stringify({ id: f.factId, question: f.question, answer: f.answer })).join("\n") || "(none yet)"}\n</facts>`,
-      `<message>${message ?? "A short, plain message: why this role fits me, from my profile, 2-3 sentences."}</message>`,
-      `<posting>\n${JSON.stringify(job ?? {})}\n</posting>`,
+      `<message>${message ?? defaultMessage(forJob)}</message>`,
+      `<posting>\n${JSON.stringify(posting ?? {})}\n</posting>`,
       `<form>\n${fields.map((f) => JSON.stringify({ key: f.key, label: f.label, type: f.type, required: f.required, options: f.options })).join("\n")}\n</form>`,
     ].join("\n");
     const answer = await this.call(context, SYSTEM, prompt, AnswersSchema, true);
@@ -427,17 +432,24 @@ function sameAnswer(value: string | null, answer: string): boolean {
   return a === b || a.includes(b) || b.includes(a);
 }
 
-function cvFieldOf(fields: PageField[]): PageField | undefined {
+function defaultMessage(forJob: boolean): string {
+  const why = forJob ? "this role fits me" : "I fit this";
+  return `A short, plain message: why ${why}, from my profile, 2-3 sentences.`;
+}
+
+/** The field a document goes to: a CV / résumé field first, else the required file field, else the first one. */
+function fileFieldOf(fields: PageField[]): PageField | undefined {
   const files = fields.filter((f) => f.type === "file");
   return files.find((f) => CV_FIELD.test(f.label) || CV_FIELD.test(f.key)) ?? files.find((f) => f.required) ?? files[0];
 }
 
 /** M10-T5: the posting's Application, prepared (a submitted one stays submitted). M33: in an App, the Job moved. */
 export async function prepareApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
-  const job = await jobAppOf(prisma, context);
-  if (job) {
-    const entity = await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } });
-    if (entity) await moveJob(prisma, context, job, entity, "prepared");
+  if (context.app) {
+    // In an App, its Job (none without a Job type, M59-T2); the old Applications only outside one.
+    const job = await jobAppOf(prisma, context);
+    const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
+    if (job && entity) await moveJob(prisma, context, job, entity, "prepared");
     return;
   }
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
@@ -454,10 +466,10 @@ export async function prepareApplication(prisma: PrismaClient, context: StepCont
 
 /** M10-T5: sent: the Application submitted, the posting applied. M33: in an App, the Job moved to applied. */
 export async function submitApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
-  const job = await jobAppOf(prisma, context);
-  if (job) {
-    const entity = await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } });
-    if (entity) await moveJob(prisma, context, job, entity, "applied");
+  if (context.app) {
+    const job = await jobAppOf(prisma, context);
+    const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
+    if (job && entity) await moveJob(prisma, context, job, entity, "applied");
     return;
   }
   const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });

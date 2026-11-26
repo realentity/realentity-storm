@@ -125,10 +125,10 @@ export interface StepTypeView {
   /** Inputs shown on its card though not required (http.fetch's url). */
   primary: string[];
   /**
-   * M40-T2: the App types it writes (or reads, a type of mine) by its contracts: bill.save writes Bill. `when`: it reads
-   * the type only with that yes/no input true (llm.score's `outcomes`, M59-T3).
+   * M40-T2: the App types it writes (or reads, a type of mine) by its contracts: bill.save writes Bill. M59-T3: `reads`,
+   * only read though not mine; `when`, only with that input given (llm.score's `outcomes`, browser.mapForm's `job`).
    */
-  entities: { type: string; mine: boolean; when?: string }[];
+  entities: { type: string; mine: boolean; reads?: boolean; when?: string }[];
 }
 
 /** M36-T4: what {{trigger}} holds, by event, and for a webhook: for the step builder's data picker. */
