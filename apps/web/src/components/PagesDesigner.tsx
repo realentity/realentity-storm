@@ -28,6 +28,7 @@ import { Issues } from "./AppIssues";
 import { Help } from "./Help";
 import { type TableDesign } from "./ListTable";
 import { PagePreview } from "./PagePreview";
+import { ControlsDesigner } from "./ControlsDesigner";
 import { CommitInput, type DesignerEdit } from "./TypesDesigner";
 
 /**
@@ -192,7 +193,16 @@ function TypePages({
   const controlled = new Set(
     (Array.isArray(rawList.controls) ? rawList.controls : []).map((c) => text(asObject(c).filters)).filter((f): f is string => Boolean(f)),
   );
-  const rawColumns: unknown[] =Array.isArray(rawList.columns) ? rawList.columns : list.columns.map((c) => c.field);
+  const rawColumns: unknown[] = Array.isArray(rawList.columns) ? rawList.columns : list.columns.map((c) => c.field);
+  // M65: a list's or a choice field's column shown as chips.
+  const chipKinds = list.columns.filter((c) => ["list", "enum"].includes(def.fields[c.field]?.type ?? "")).map((c) => option(c.field));
+  const withChips = (columns: unknown[], names: string[]) =>
+    columns.map((c): unknown => {
+      const rest: Record<string, unknown> = { ...(typeof c === "string" ? { field: c } : asObject(c)) };
+      delete rest.control;
+      if (names.includes(text(rest.field))) rest.control = "chips";
+      return Object.keys(rest).length === 1 ? rest.field : rest;
+    });
   const dates = list.columns.filter((c) => dateKinds.has(def.fields[c.field]?.type ?? "")).map((c) => option(c.field));
   // What a badge or a total may be "only when": a value of an enum or yes/no field.
   const conditions: Condition[] = fields.flatMap(([name, f]): Condition[] => {
@@ -322,9 +332,22 @@ function TypePages({
               />
             </Row>
           )}
+          {chipKinds.length > 0 && (
+            <Row label="As chips" help={HELP.pageChips}>
+              <Checks
+                options={chipKinds}
+                value={list.columns.filter((c) => c.control === "chips").map((c) => c.field)}
+                editable={editable}
+                onChange={(names) => set("list", "columns", withChips(rawColumns, names))}
+                none=""
+                testId="page-chips"
+              />
+            </Row>
+          )}
           <Row label="Filters" help={HELP.pageFilters}>
             <Checks
-              options={of("enum", "yesno")}
+              // M65: a list's values and a date's day too; a field a control draws is under Controls.
+              options={[...of("enum", "yesno", "ref", "list", "date", "datetime"), ...seen].filter((o) => !controlled.has(o.name))}
               // M65: a filter drawn by one of the page's controls is the controls', not these.
               value={list.filters.filter((f) => !controlled.has(f.field)).map((f) => f.field)}
               editable={editable}
@@ -333,6 +356,16 @@ function TypePages({
               testId="page-filters"
             />
           </Row>
+          <ControlsDesigner
+            app={definition}
+            type={type}
+            rawSources={rawList.sources}
+            rawControls={rawList.controls}
+            // Only a written filter: a default one gives way to a control.
+            filters={Array.isArray(rawList.filters) ? rawList.filters.map((f) => text(f)) : []}
+            editable={editable}
+            onEdit={onEdit}
+          />
           <Row label="Search in" help={HELP.pageSearch}>
             <Checks
               options={of("text", "longtext", "enum", "email", "url")}

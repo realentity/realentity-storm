@@ -522,6 +522,81 @@ async function unexplained(scope: Locator): Promise<string[]> {
   );
 }
 
+// M65-T6: a list field's options on the Types tab; a page's chips, controls and sources on the Pages tab, as saved
+test("the designer sets a list of text's options, and a list page's chips, controls and sources", async ({ page }) => {
+  const name = unique("Jottings");
+  await page.goto("/apps/new");
+  await page.getByTestId("start-empty").click();
+  await page.getByTestId("tab-yaml").click();
+  await page.getByTestId("app-source").fill(`name: ${name}
+types:
+  Memo:
+    key: id
+    title: title
+    mine: true
+    fields:
+      id: { type: text, auto: true }
+      title: { type: text, required: true }
+      tags: { type: list }
+      kind: { type: enum, values: [idea, note] }
+      due: { type: date }
+`);
+  await page.getByTestId("tab-types").click();
+  const row = page.getByTestId("field-row").filter({ has: page.locator('input[value="tags"]') });
+  await row.getByTestId("field-list-of").selectOption("text");
+  await expect(row.getByTestId("field-unique")).toBeChecked();
+  await row.getByTestId("field-case-sensitive").check();
+  expect(await yaml(page)).toContain("tags: { type: list, of: text, caseSensitive: true }");
+  await row.getByTestId("field-case-sensitive").uncheck();
+  expect(await yaml(page)).toContain("tags: { type: list, of: text }");
+
+  await page.getByTestId("tab-pages").click();
+  const list = page.locator('[data-testid="type-pages"][data-type="Memo"]').getByTestId("page-list");
+  await list.getByTestId("page-columns-add").selectOption("tags");
+  await list.getByTestId("page-chips").locator('[data-field="tags"]').check();
+  // Each control added as its kind is usually drawn, with a source of its own where it counts: a list's values, a date's days.
+  await list.getByTestId("page-controls-add").selectOption("tags");
+  await list.getByTestId("page-controls-add").selectOption("due");
+  await list.getByTestId("page-controls-add").selectOption("kind");
+  await expect(list.getByTestId("page-control")).toHaveCount(3);
+  await list.locator('[data-testid="page-control"][data-field="kind"]').getByTestId("page-control-kind").selectOption("chips");
+  await list.getByTestId("page-sources-add").selectOption("kind");
+  await list.locator('[data-testid="page-control"][data-field="kind"]').getByTestId("page-control-source").selectOption("kind");
+  // A calendar turned into a date input leaves its source of days; back to a calendar, it takes it again.
+  const due = list.locator('[data-testid="page-control"][data-field="due"]');
+  await due.getByTestId("page-control-kind").selectOption("date");
+  await expect(due.getByTestId("page-control-source")).toHaveCount(0);
+  await due.getByTestId("page-control-kind").selectOption("calendar");
+  await expect(due.getByTestId("page-control-source")).toHaveValue("dueDays");
+  expect(await unexplained(page.getByTestId("pages-tab"))).toEqual([]);
+
+  const source = await yaml(page);
+  expect(source).toContain(`    columns: [title, id, kind, due, { field: tags, control: chips }]
+    sources:
+      tags: { from: Memo, distinct: tags }
+      dueDays: { from: Memo, distinct: due, by: day }
+      kind: { from: Memo, distinct: kind }
+    controls:
+      - { control: chips, source: tags, filters: tags, multiple: true }
+      - { control: calendar, source: dueDays, filters: due }
+      - { control: chips, source: kind, filters: kind }
+`);
+  expect(checkAppSource(source).errors).toEqual([]);
+
+  // A source removed: its control picks from the field's own values.
+  await page.getByTestId("tab-pages").click();
+  await list.locator('[data-testid="page-source"][data-source="kind"]').getByRole("button", { name: "Remove the source kind" }).click();
+  expect(await yaml(page)).toContain("      - { control: chips, filters: kind }\n");
+
+  await page.getByTestId("save-app").click();
+  await page.waitForURL(/\/apps\/[0-9a-f-]{36}$/);
+  const appId = page.url().split("/apps/")[1];
+  await page.goto(`/a/${appId}/Memo`);
+  await expect(page.getByTestId("filter-tags")).toBeVisible();
+  await expect(page.getByTestId("filter-due").getByTestId("calendar-month")).toBeVisible();
+  await expect(page.getByTestId("filter-kind").getByRole("button", { name: "idea" })).toBeVisible();
+});
+
 // M38-E2: every control of the designer and the cards says what it is for
 test("every control of the App designer and the step cards has its help", async ({ page }) => {
   await page.goto("/apps/new");

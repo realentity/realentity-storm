@@ -11,7 +11,7 @@ export type PageKind = "list" | "view" | "form";
 
 /** What is written first on each kind of page, in this order. */
 const ORDER: Record<PageKind, string[]> = {
-  list: ["list", "menu", "columns", "filters", "search", "sort", "group", "removed", "actions", "moves", "chart"],
+  list: ["list", "menu", "columns", "filters", "sources", "controls", "search", "sort", "group", "removed", "actions", "moves", "chart"],
   view: ["view", "fields", "sections", "history", "actions"],
   form: ["form", "fields"],
 };
@@ -29,7 +29,8 @@ export function setPageProperty(source: string, kind: PageKind, type: string, pr
     // A view has its fields or its sections, not both.
     if (kind === "view" && (property === "fields" || property === "sections")) page.delete(property === "fields" ? "sections" : "fields");
     const node = document.createNode(value) as Node;
-    flowStyle(node, property === "sections");
+    // M65: a source and a control a line each, as sections are.
+    flowStyle(node, property === "sections" || property === "sources" || property === "controls");
     if (page.has(property)) {
       keepComment(page.get(property, true), node);
       page.set(property, node);
@@ -100,9 +101,11 @@ function addPageNode(document: Document, kind: PageKind, type: string): YAMLMap 
   return node;
 }
 
-/** Lists and maps on one line (what is in them with them); sections (`block`) a line each. */
+/** Lists and maps on one line (what is in them with them); sections, sources and controls (`block`) a line each. */
 function flowStyle(node: Node, block: boolean): void {
   if (block && isSeq(node)) {
     for (const item of node.items) if (isSeq(item) || isMap(item)) item.flow = true;
+  } else if (block && isMap(node)) {
+    for (const pair of node.items) if (isSeq(pair.value) || isMap(pair.value)) pair.value.flow = true;
   } else if (isSeq(node) || isMap(node)) node.flow = true;
 }

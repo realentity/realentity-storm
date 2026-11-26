@@ -25,6 +25,10 @@ export const HELP = {
   fieldEncrypted:
     "Encrypted: kept sealed in the database like a credential, never shown again (a token, a password to send elsewhere). Pipelines see ***; only http.request sends it.",
   fieldValues: "The choices it can be, separated by commas. They are also its filter's values.",
+  fieldListOf:
+    "What the list holds: any values (as pipelines write them), text such as tags (one per line on the form, filtered by each), or entities of a type (picked on the form).",
+  fieldUnique: "Each value once: a value typed again is dropped, the first spelling kept.",
+  fieldCaseSensitive: "Home and home are different values, when saved, filtered and searched. Off: they are the same.",
   fieldCurrency: "The text field that holds its currency (EUR, USD). Totals are summed per currency.",
   newField: "A new field's name: a letter, then letters, digits, _ or -.",
   newFieldKind: "The new field's kind; it can be changed afterwards.",
@@ -45,7 +49,12 @@ export const HELP = {
   pageColumns: "The columns of the list, in order: move them with the arrows, add one from the list. At most 8.",
   pageDue: "A date column's badge: overdue, today, or in N days; not shown while the entity is as 'unless' says (paid).",
   pageDueDays: "How many days before the date the badge shows.",
-  pageFilters: "Choice and yes/no fields to filter the list by, above it.",
+  pageFilters: "Fields to filter the list by, above it, each a dropdown (a date's: a date input). A field a control draws is under Controls.",
+  pageChips: "Columns of a list's or a choice field's values shown as chips, not as text.",
+  pageControls:
+    "Filters drawn another way: buttons, chips, a dropdown (several picked, any matching), or a date's calendar (a day click filters, again clears). Their choices come from a source, else the field's own values.",
+  pageSources:
+    "What the controls pick from: the values of a field in use, with how many have each (a date's by day, for a calendar). A source of entities (where, sort) is written in the YAML.",
   pageSearch: "The fields the list's search box looks in.",
   pageSort: "The order of the list.",
   pageGroup: "Rows in groups by this field, each with its count and totals; a date by its month or year.",

@@ -736,11 +736,11 @@ const SEARCH_KINDS: readonly FieldKind[] = ["text", "longtext", "email", "url", 
 const TOTAL_KINDS: readonly FieldKind[] = ["number", "money"];
 const PERIOD_KINDS: readonly FieldKind[] = ["date", "datetime"];
 /** M65: a list page also filters by a list's values and a date's day or range. */
-const LIST_FILTER_KINDS: readonly FieldKind[] = [...FILTER_KINDS, "list", "date", "datetime"];
-/** M65: what a source counts the distinct values of. */
+export const LIST_FILTER_KINDS: readonly FieldKind[] = [...FILTER_KINDS, "list", "date", "datetime"];
 /** M65: what a column shows as chips. */
-const CHIP_KINDS: readonly FieldKind[] = ["list", "enum"];
-const DISTINCT_KINDS: readonly FieldKind[] =["text", "email", "number", "enum", "yesno", "list", "ref", "date", "datetime"];
+export const CHIP_KINDS: readonly FieldKind[] = ["list", "enum"];
+/** M65: what a source counts the distinct values of. */
+export const DISTINCT_KINDS: readonly FieldKind[] = ["text", "email", "number", "enum", "yesno", "list", "ref", "date", "datetime"];
 
 /** Pages only on the App's types, and only on their fields, each used as its kind allows. */
 function checkPages(
