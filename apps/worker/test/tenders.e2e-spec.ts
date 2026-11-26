@@ -75,22 +75,18 @@ describe("examples/apps/tenders.yaml", () => {
       const scored = (input.items as { title: string }[]).map((item) => ({ ...item, score: fit[item.title][0], scoreReason: fit[item.title][1] }));
       return { scored, top: [...scored].sort((a, b) => b.score - a.score) };
     });
-    // The portal's form is found and filled; the grant's isn't (nothing to send).
-    mapForm = new Counting("browser.agent", (input) => {
-      const found = (input.url as string).startsWith("https://tenders.example/");
-      const button = { css: "button.send", role: "button", name: "Submit application" };
+    // M59-T2: the portal's form is found and read; the grant has none online (apply by post): that item fails alone.
+    mapForm = new Counting("browser.mapForm", (input) => {
+      if (!(input.url as string).startsWith("https://tenders.example/")) throw new Error(`No application form on ${input.url as string} (nor behind an Apply button)`);
       return {
-        url: input.url,
-        outcome: found ? "ready" : "done",
-        answer: found ? "The form is filled." : "No application form: the call says to apply by post.",
-        actions: found ? [{ kind: "type", target: { css: "#company", role: "textbox", name: "Company" }, value: "Acme Studio", source: "profile" }] : [],
-        files: found ? [{ key: "#profile", document: "company-profile", documentId: "6f1d9a52-7a3c-4a5e-9f0e-2b8c1d4e5f60", sha256: SHA, filename: "profile.pdf" }] : [],
-        submit: found ? button : null,
-        pageUrl: `${input.url as string}/apply`,
+        formUrl: `${input.url as string}/apply`,
+        fields: [{ key: "#company", label: "Company", type: "text", required: true, value: "Acme Studio", source: "profile" }],
+        files: [{ key: "#profile", document: "company-profile", documentId: "6f1d9a52-7a3c-4a5e-9f0e-2b8c1d4e5f60", sha256: SHA, filename: "profile.pdf" }],
+        submit: "Submit application",
         notes: "",
       };
     });
-    fill = new Counting("browser.submit", (input) => ({ submitted: true, url: input.url as string, confirmation: "Thank you." }));
+    fill = new Counting("browser.fillAndSubmit", (input) => ({ submitted: true, url: input.url as string, confirmation: "Thank you." }));
     runner = new PipelineRunner(
       db.client,
       defaultCatalog(),
@@ -148,19 +144,23 @@ describe("examples/apps/tenders.yaml", () => {
     expect((review.originalPayload as { items: { url: string }[] }).items.map((i) => i.url)).toEqual(["https://tenders.example/t/1", "https://grants.example/c/9"]);
 
     await decide(runId, ["https://tenders.example/t/1"]);
-    expect(mapForm.calls.map((c) => [c.url, c.documents])).toEqual([["https://tenders.example/t/1", ["company-profile"]]]);
+    expect(mapForm.calls).toHaveLength(1);
+    expect(mapForm.calls[0]).toMatchObject({ url: "https://tenders.example/t/1", document: "company-profile", about: { call: { title: "City portal rebuild" }, us: about } });
+    expect(mapForm.calls[0].job).toBeUndefined();
     expect(fill.calls).toHaveLength(1);
-    expect(fill.calls[0]).toMatchObject({ url: "https://tenders.example/t/1", stopBeforeSubmit: true, submit: { name: "Submit application" } });
+    expect(fill.calls[0]).toMatchObject({ url: "https://tenders.example/t/1/apply", stopBeforeSubmit: true, fields: [{ key: "#company", value: "Acme Studio" }], files: [{ document: "company-profile" }] });
     const after = await tenders();
     expect(after["https://tenders.example/t/1"]).toMatchObject({ stage: "prepared", score: 88 });
     expect(after["https://grants.example/c/9"]).toMatchObject({ stage: "new" });
   });
 
-  it("a call whose form isn't found: nothing waits to be sent, it stays new", async () => {
-    await decide(await run(), ["https://grants.example/c/9"]);
-    expect(mapForm.calls).toHaveLength(1);
-    expect(fill.calls).toEqual([]);
-    expect((await tenders())["https://grants.example/c/9"]).toMatchObject({ stage: "new" });
+  it("a call whose form isn't found: nothing waits to be sent, it stays new; the others go on", async () => {
+    await decide(await run(), ["https://grants.example/c/9", "https://tenders.example/t/1"]);
+    expect(mapForm.calls).toHaveLength(2);
+    expect(fill.calls.map((c) => c.url)).toEqual(["https://tenders.example/t/1/apply"]);
+    const after = await tenders();
+    expect(after["https://grants.example/c/9"]).toMatchObject({ stage: "new" });
+    expect(after["https://tenders.example/t/1"]).toMatchObject({ stage: "prepared" });
   });
 
   it("the next day: the calls seen before aren't scored again", async () => {

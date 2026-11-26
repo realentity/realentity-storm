@@ -195,6 +195,33 @@ ${extra}`;
     expect(proposal.targets).toEqual([{ field: "url", kind: "domain", value: "ats.localhost", basis: "static", isNew: false }]);
   });
 
+  // M59-T2: a form for anything else (a tender, a grant call): what it applies for is `about`, its file a `document`
+  it("M59-T2: a form for a call, not a job: `about` for the answers, `document` attached, no Application prepared", async () => {
+    const source = `name: Apply for a call
+policy: { allowedDomains: [ats.localhost] }
+steps:
+  - id: map
+    type: browser.mapForm
+    with:
+      url: "${postingUrl()}"
+      document: cv-main
+      about: { title: City portal rebuild, buyer: City of Example }
+  - id: apply
+    type: browser.fillAndSubmit
+    with:
+      url: "{{map.formUrl}}"
+      fields: "{{map.fields}}"
+      files: "{{map.files}}"
+`;
+    const { proposal } = await toGate(source);
+    const payload = proposal.originalPayload as { files: FormFile[] };
+    expect(payload.files).toEqual([expect.objectContaining({ key: "#cv", document: "cv-main" })]);
+    expect(llm.prompts[0]).toContain('"title":"City portal rebuild"');
+    expect(llm.prompts[0]).toContain("why I fit this");
+    expect(posted()).toEqual([]);
+    expect(await db.client.application.count()).toBe(0);
+  });
+
   it("a form on the posting page, like dev.bg's: the person check is the user's to answer, the honeypot stays empty, an AJAX send counts", async () => {
     const source = APPLY().replace(`url: "${postingUrl()}"\n      cv`, `url: "${sites.url("ats", "/jobs/8")}"\n      cv`);
     const { runId, proposal } = await toGate(source);

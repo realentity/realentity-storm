@@ -76,17 +76,17 @@ pipelines:
     # Every working day at 07:00, the Tenders App's sources: the portal's open calls (its recipe, as
     # "tenders.example/search": set the categories here) and a feed of grant calls; only the ones not kept before, each
     # scored 0 to 100 against your Profile and kept as a Tender. The ones scored 50 or more come to you: pick the ones
-    # to apply to. Each one's form is found and filled from your profile (Settings) and your stored document
-    # "company-profile" (browser.agent, which sends nothing), and waits at the gate; approved, it is filled again in the
-    # live browser and you press the final button yourself. Then the Tender is prepared. A form it couldn't find is
-    # left for you (still new).
+    # to apply to. Each one's form is found and read, its values proposed from your profile (Settings) and your stored
+    # document "company-profile" (browser.mapForm, which sends nothing), and waits at the gate field by field; approved,
+    # it is filled in the live browser and you press the final button yourself. Then the Tender is prepared. A form it
+    # couldn't find is left for you (still new).
     name: Tenders
     description: New tenders and grants scored against your profile; you pick, their forms are filled for you to submit.
     trigger: { schedule: "0 7 * * 1-5" }
     policy:
       allowedDomains: [tenders.example, grants.example]
     limits:
-      browser.submit: 5/day
+      browser.fillAndSubmit: 5/day
     steps:
       - id: portal
         type: browser.extract
@@ -163,27 +163,25 @@ pipelines:
         type: gate.review
         when: "{{worth.items}}"
         with: { items: "{{worth.items}}", title: "New tenders worth a look: pick the ones to apply to" }
-      # The form found and filled from your profile by browser.agent (mapForm is Job Search's); it sends nothing.
+      # Each call's form found (behind its Apply link too) and read, every value proposed from your profile and the
+      # company profile attached; it types and sends nothing. A call with no form online fails alone, left for you.
       - id: form
-        type: browser.agent
+        type: browser.mapForm
         forEach: "{{shortlist.selected}}"
+        onError: continue
         with:
           url: "{{item.url}}"
-          goal: >-
-            Find this call's application form (follow its Apply or Submit a proposal link) and fill it from my
-            profile; attach the company profile where a document is asked for.
-          documents: [company-profile]
+          about: { call: "{{item}}", us: "{{about.value}}" }
+          document: company-profile
           message: Why we fit this call and how we would do the work, from our profile only, 3-4 sentences.
-          maxActions: 30
+      # The values you approved (and edited) at the gate, typed in the live browser; you press the final button.
       - id: apply
-        type: browser.submit
+        type: browser.fillAndSubmit
         forEach: "{{shortlist.selected}}"
-        when: "{{form.submit}}"
         with:
-          url: "{{form.url}}"
-          actions: "{{form.actions}}"
+          url: "{{form.formUrl}}"
+          fields: "{{form.fields}}"
           files: "{{form.files}}"
-          submit: "{{form.submit}}"
           stopBeforeSubmit: true
       - id: filled
         type: data.map

@@ -30,7 +30,7 @@ import {
 } from "@realentity/storm-shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
-import { defaultCatalog, type EntityContract, type StepCatalog, type StepDefinition } from "./catalog";
+import { contractInputGiven, defaultCatalog, type EntityContract, type StepCatalog, type StepDefinition } from "./catalog";
 import { triggerDataSchema, triggerTargetIssue } from "./triggers";
 import { contractProblems } from "./domain-entities";
 import { entityTypeInfo, entityTypeOf } from "./entity-types";
@@ -616,10 +616,10 @@ function checkContract(
   path: string,
   errors: CompileIssue[],
 ): void {
-  if (contract.when && input[contract.when] !== true) return;
+  if (contract.when && !contractInputGiven(input[contract.when])) return;
   const at = contract.when ? `${path}.with.${contract.when}` : `${path}.type`;
-  const who = contract.when ? `${step.type} with ${contract.when}: true` : step.type;
-  const verb = contract.mine || contract.when ? "reads" : "writes";
+  const who = contract.when ? `${step.type} with ${contract.when}` : step.type;
+  const verb = contract.mine || contract.reads ? "reads" : "writes";
   if (!appName && contract.optional) return;
   if (!appName) {
     errors.push({

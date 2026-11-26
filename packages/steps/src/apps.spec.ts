@@ -320,7 +320,7 @@ describe("Apps (M30)", () => {
     ok(compiler.compile(score("Hiring"), { app: hiring }));
     ok(compiler.compile(score("Hiring", false), { app: hiring }));
     expect(errorsOf(compiler.compile(score("Hiring", true), { app: hiring }))).toEqual([
-      'steps[1].with.outcomes: llm.score with outcomes: true reads Job entities, and "Hiring" has no type Job',
+      'steps[1].with.outcomes: llm.score with outcomes reads Job entities, and "Hiring" has no type Job',
     ]);
     const jobs = (outcomes: boolean) => ({
       name: "Score",
@@ -333,6 +333,24 @@ describe("Apps (M30)", () => {
     ok(compiler.compile(jobs(true), { app: jobSearch }));
     // Outside an App: the old applications' outcomes.
     ok(compiler.compile({ name: "Score", steps: [{ id: "score", type: "llm.score", with: { items: [], against: "x", outcomes: true } }] }));
+  });
+
+  // M59-T2: an application form for any type; only a `job` moves the App's Job
+  it("checks the form steps' Job only for a job", () => {
+    const tenders = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/tenders.yaml")));
+    const form = (input: Record<string, unknown>) => ({
+      name: "Apply",
+      app: "Tenders",
+      policy: { allowedDomains: ["tenders.example"] },
+      steps: [
+        { id: "read", type: "data.read", with: { type: "Tender" } },
+        { id: "form", type: "browser.mapForm", forEach: "{{read.items}}", with: { url: "{{item.url}}", ...input } },
+      ],
+    });
+    ok(compiler.compile(form({ about: "{{item}}", document: "company-profile" }), { app: tenders }));
+    expect(errorsOf(compiler.compile(form({ job: "{{item}}" }), { app: tenders }))).toEqual([
+      'steps[1].with.job: browser.mapForm with job writes Job entities, and "Tenders" has no type Job',
+    ]);
   });
 
   // M33: price.watch reads Products of mine and writes Offers

@@ -343,9 +343,10 @@ How to work:
   short numbered questions first. Where a sensible default exists, use it and say so instead of asking.
 - When something the user asks for can't be built from the catalog (no step for it yet), say plainly what is missing.
   Never imitate a missing capability with other steps.
-- Application forms go map → gate → act: browser.mapForm reads the form and proposes the values (the user's CV
-  document attached by name), browser.fillAndSubmit sends exactly what the user approves; its url comes from
-  {{map.formUrl}}, both iterate over the same items.
+- Application forms (a job's, a tender's, a grant call's) go map → gate → act: browser.mapForm reads the form and
+  proposes the values (a stored document, the CV, attached by name), browser.fillAndSubmit sends exactly what the user
+  approves; its url comes from {{map.formUrl}}, both iterate over the same items. "job" is only for job postings;
+  anything else is "about".
 - A form mapForm can't read (behind dialogs, custom widgets, several pages), or a site without a recipe: browser.agent
   works it towards a goal and sends nothing; browser.submit repeats its approved actions and sends, with url
   "{{agent.url}}", actions, files and submit from the agent's output, over the same items. Keep maxActions low.

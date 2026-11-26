@@ -58,15 +58,18 @@ describe("an App's map (M37-T4)", () => {
     expect(map.triggers.map((t) => t.id)).toEqual(["trigger:b"]);
   });
 
-  // M59-T3: llm.score reads the App's Jobs only with outcomes: true
-  it("draws a contract with `when` only when its input is true", () => {
+  // M59-T3: llm.score reads the App's Jobs only with outcomes: true; browser.mapForm moves one only for a job
+  it("draws a contract with `when` only when its input is given", () => {
     const jobs = app("job-search.yaml");
-    const contracts = (type: string) => (type === "llm.score" ? [{ type: "Job", when: "outcomes" }] : []);
+    const contracts = (type: string) =>
+      type === "llm.score" ? [{ type: "Job", when: "outcomes", reads: true }] : type === "browser.mapForm" ? [{ type: "Job", when: "job" }] : [];
     const calibrated = pipeline("c", "Calibrated", "manual", [["llm.score", { outcomes: true }]]);
-    const plain = pipeline("p", "Plain", "manual", [["llm.score", { outcomes: false }], ["llm.score"]]);
-    const edges = appMap(jobs, [calibrated, plain], {}, contracts).edges;
+    const plain = pipeline("p", "Plain", "manual", [["llm.score", { outcomes: false }], ["llm.score"], ["browser.mapForm", { about: "{{item}}" }]]);
+    const apply = pipeline("a", "Apply", "manual", [["browser.mapForm", { job: "{{item}}" }]]);
+    const edges = appMap(jobs, [calibrated, plain, apply], {}, contracts).edges;
     expect(edges.filter((e) => e.kind !== "starts" && (e.from.startsWith("pipeline:") || e.to.startsWith("pipeline:")))).toEqual([
       { from: "type:Job", to: "pipeline:c", kind: "reads" },
+      { from: "pipeline:a", to: "type:Job", kind: "writes" },
     ]);
   });
 

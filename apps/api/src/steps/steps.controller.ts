@@ -29,7 +29,7 @@ export class StepsController {
       targets: { ...(step.targets ?? {}) },
       pageFields: [...(step.pageFields ?? [])],
       primary: [...(step.primary ?? [])],
-      entities: (step.entities ?? []).map((e) => ({ type: e.type, mine: e.mine ?? false, ...(e.when ? { when: e.when } : {}) })),
+      entities: (step.entities ?? []).map((e) => ({ type: e.type, mine: e.mine ?? false, ...(e.reads ? { reads: true } : {}), ...(e.when ? { when: e.when } : {}) })),
       credentials: Array.isArray(step.acceptsCredentials)
         ? [...(step.acceptsCredentials as readonly string[])]
         : step.acceptsCredentials === true,
