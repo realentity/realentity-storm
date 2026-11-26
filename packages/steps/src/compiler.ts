@@ -1,6 +1,7 @@
 import {
   ACCOUNT_STEPS,
   type AppDefinition,
+  type AppUse,
   addedByHand,
   CRED_REFERENCE,
   SETTING_REFERENCE,
@@ -298,11 +299,16 @@ export class PipelineCompiler {
       return {};
     }
     if (!scope.app) return {}; // the missing App is already said
+    // M66: another App's type this App uses: data.read only.
+    const use = Object.hasOwn(scope.app.uses ?? {}, typeName) ? scope.app.uses![typeName] : undefined;
+    if (use) return checkUseRead(scope, typeName, use, errors);
     const type = entityTypeOf(scope.app, typeName);
     if (!type) {
+      const uses = Object.keys(scope.app.uses ?? {});
+      const listed = uses.length ? "; uses: " + uses.join(", ") : "";
       errors.push({
         path: `${at}.type`,
-        message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")})`,
+        message: `"${scope.app.name}" has no type "${typeName}" (types: ${Object.keys(scope.app.types).join(", ")}${listed})`,
       });
       return {};
     }
@@ -651,6 +657,59 @@ function checkContract(
   if (problems.length > 0) errors.push({ path: at, message: `${who} ${verb} ${contract.type} entities: ${problems.join("; ")}` });
 }
 
+/**
+ * M66: a use of another App's type, in data.read: only its declared fields in `where` and `sort`, and its items are
+ * only those fields. Their kinds are the chosen App's, known only when it runs, so they are typed as unknown: the
+ * pipeline compiles the same before and after the use is filled. Never a target or a check's address (a field the
+ * user typed there isn't one here yet), never written (data.save) nor deduplicated against.
+ */
+function checkUseRead(
+  scope: Scope,
+  typeName: string,
+  use: AppUse,
+  errors: CompileIssue[],
+): Pick<CompiledStepInfo, "output" | "untrusted" | "entityType"> {
+  const { step, path } = scope;
+  const at = `${path}.with`;
+  if (step.type !== "data.read") {
+    const where = step.type === "data.dedupe" ? `${at}.againstType` : `${at}.type`;
+    errors.push({ path: where, message: `${typeName} is ${use.from.app}'s ${use.from.type} (uses:): this App only reads it, with data.read` });
+    return {};
+  }
+  const declared = (field: unknown, where: string, extra: string[] = []) => {
+    if (typeof field === "string" && referencesIn(field).length > 0) {
+      errors.push({ path: where, message: "names a field of the type as it is, not through a reference" });
+      return;
+    }
+    if (typeof field !== "string" || extra.includes(field) || use.fields.includes(field)) return;
+    errors.push({ path: where, message: `${typeName} reads only the fields its use names (${use.fields.join(", ")}): add "${field}" there to use it` });
+  };
+  if (Array.isArray(step.with.where)) {
+    step.with.where.forEach((condition, i) => {
+      if (condition && typeof condition === "object") declared((condition as { field?: unknown }).field, `${at}.where[${i}].field`);
+    });
+  }
+  if (typeof step.with.sort === "string") declared(step.with.sort.replace(/^-/, ""), `${at}.sort`, ["@firstSeen", "@lastSeen"]);
+  const root: { kind: "object"; fields: Record<string, TypeInfo> } = { kind: "object", fields: {} };
+  for (const name of use.fields) {
+    let current = root;
+    const segments = name.split(".");
+    for (const segment of segments.slice(0, -1)) {
+      let next = current.fields[segment];
+      if (next?.kind !== "object") {
+        next = { kind: "object", fields: {} };
+        current.fields[segment] = next;
+      }
+      current = next;
+    }
+    current.fields[segments.at(-1)!] = UNKNOWN;
+  }
+  return {
+    output: { kind: "object", fields: { items: { kind: "array", element: root }, count: { kind: "number" } } },
+    untrusted: typeName,
+  };
+}
+
 /** entity.changed (M30) watches a type of the pipeline's own App. */
 function checkAppTrigger(trigger: Trigger, app: AppDefinition | undefined, inApp: boolean, errors: CompileIssue[]): void {
   if (!isEventTrigger(trigger) || (trigger.on !== "entity.changed" && trigger.on !== "entity.action")) return;
@@ -710,9 +769,11 @@ function entityTargetIssue(value: unknown, scope: Scope, known: Map<string, Comp
   const root = source.split(".")[0] ?? "";
   const step = root === "item" ? scope.forEach?.split(".")[0] : root;
   const untrusted = step ? known.get(step)?.untrusted : undefined;
-  return untrusted
-    ? `{{${source}}} can't be a target: ${untrusted} is written by pipelines, from what pages, feeds or emails said; only a type of mine can be`
-    : null;
+  if (!untrusted) return null;
+  // M66: another App's type: what it holds isn't a target here, whoever wrote it there.
+  if (scope.app?.uses && Object.hasOwn(scope.app.uses, untrusted))
+    return `{{${source}}} can't be a target: ${untrusted} comes from another App (uses:), and what it holds isn't a target here`;
+  return `{{${source}}} can't be a target: ${untrusted} is written by pipelines, from what pages, feeds or emails said; only a type of mine can be`;
 }
 
 /**
