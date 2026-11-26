@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   addedByHand,
   addFieldNames,
+  caselessFields,
   formFieldNames,
   isRefField,
   isTextList,
@@ -10,8 +11,11 @@ import {
   type DataType,
   type EntityActionDef,
   type FieldKind,
+  type FilterControl,
   type FormPage,
+  filterControlsOf,
   type ListPage,
+  type PageControl,
   type PageSource,
   type ViewPage,
 } from "./app";
@@ -47,6 +51,8 @@ export interface PageColumn {
   as: ViewFormat;
   /** money: the field holding its currency. */
   currency?: string;
+  /** M65: a list's or an enum's values as chips (default: as text). */
+  control?: "chips";
   /** A date shown with a badge when it is near (M33). */
   due?: { days: number; unless?: Record<string, string | boolean | string[]> };
 }
@@ -65,6 +71,14 @@ export interface PageFilter {
   ref?: string;
   /** M65: how it matches: equals (enum, yes/no, ref), contains (a list's values), on a day or in a range (a date). */
   match: "equals" | "contains" | "day";
+  /** M65: how it is picked: a dropdown (a date's: a date input) by default, or as the page's `controls` say. */
+  control: FilterControl;
+  /** M65: several values picked, any of them matching. */
+  multiple: boolean;
+  /** M65: the page's source its choices (a calendar's marked days) come from; null: its own `values`. */
+  source: string | null;
+  /** M65: a list of text that isn't caseSensitive: "Home" is "home" (the spelling shown is the first seen). */
+  caseless: boolean;
 }
 
 /** A field on a form (M32): its input from its kind. */
@@ -206,12 +220,18 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
     .filter((name) => name === title || fits([name, type.fields[name]]))
     .slice(0, 6);
   const columns = page?.columns
-    ? page.columns.map((c) => (typeof c === "string" ? column(type, c) : { ...column(type, c.field, c.label), ...(c.due ? { due: c.due } : {}) }))
+    ? page.columns.map((c) =>
+        typeof c === "string"
+          ? column(type, c)
+          : { ...column(type, c.field, c.label), ...(c.due ? { due: c.due } : {}), ...(c.control === "chips" ? { control: "chips" as const } : {}) },
+      )
     : defaultColumns.map((name) => column(type, name));
+  const controls = page?.controls ?? [];
+  // M65: a field drawn by a control isn't a default filter as well.
   const filterFields =
     page?.filters ??
     entries
-      .filter(([, f]) => f.type === "enum" || f.type === "yesno")
+      .filter(([name, f]) => (f.type === "enum" || f.type === "yesno") && !controls.some((c) => c.filters === name))
       .map(([n]) => n)
       .slice(0, 4);
   const sort = page?.sort ?? "-@firstSeen";
@@ -227,7 +247,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
     title,
     link,
     columns,
-    filters: filterFields.map((field) => pageFilter(type, field)),
+    filters: [...filterFields.map((field) => pageFilter(type, field)), ...controls.map((c) => pageFilter(type, c.filters, c))],
     sources: page?.sources ?? {},
     search:
       page?.search ??
@@ -253,10 +273,11 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
  * A filter's values: an enum's, yes and no; M55: a ref's are its type's entities, filled in by the api; M65: a list's
  * are the values in use (the api), a date has none (a day or a range is picked).
  */
-function pageFilter(type: DataType, field: string): PageFilter {
+function pageFilter(type: DataType, field: string, control?: PageControl): PageFilter {
   const f = type.fields[field];
   const kind = kindOfField(type, field);
   const match = filterMatch(kind);
+  const drawn = { control: control?.control ?? filterControlsOf(kind)[0], multiple: control?.multiple ?? false, source: control?.source ?? null, caseless: caselessFields(type).has(field) };
   let values: { value: string; label: string }[] = [];
   if (f?.type === "enum") values = (f.values ?? []).map((value) => ({ value, label: value }));
   else if (kind === "yesno")
@@ -264,7 +285,7 @@ function pageFilter(type: DataType, field: string): PageFilter {
       { value: "true", label: "Yes" },
       { value: "false", label: "No" },
     ];
-  return { field, label: fieldLabel(type, field), values, match, ...(f?.type === "ref" && f.to ? { ref: f.to } : {}) };
+  return { field, label: control?.label ?? fieldLabel(type, field), values, match, ...drawn, ...(f?.type === "ref" && f.to ? { ref: f.to } : {}) };
 }
 
 /** M55: what points at the type's entities, as its view page lists them. */

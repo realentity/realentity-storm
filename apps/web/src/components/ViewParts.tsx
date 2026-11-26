@@ -21,7 +21,8 @@ export function ViewValue({
   inLink,
 }: {
   row: ViewRow;
-  column: ViewColumn;
+  /** M65: `control: chips` draws a list's (an enum's) values as chips. */
+  column: ViewColumn & { control?: "chips" };
   full?: boolean;
   /** Inside a link already (a row's title): no link of its own. */ inLink?: boolean;
 }) {
@@ -30,6 +31,18 @@ export function ViewValue({
   // M56: a ref as what it points at is named.
   const title = row.titles?.[column.field];
   if (title !== undefined) return <>{title}</>;
+  if (column.control === "chips") {
+    const values = (Array.isArray(value) ? value : [value]).map(asText).filter((v) => v !== "");
+    return (
+      <span className="d-inline-flex flex-wrap gap-1" data-testid="value-chips">
+        {values.map((v, i) => (
+          <span key={`${i}:${v}`} className="badge bg-azure-lt">
+            {v}
+          </span>
+        ))}
+      </span>
+    );
+  }
   switch (column.as) {
     case "number": {
       const n = toNumber(value);

@@ -189,7 +189,10 @@ function TypePages({
     set("list", "group", next.by ? next : undefined);
   };
   // The columns as they are written, else as the default gives them: a due badge is set on one of them.
-  const rawColumns: unknown[] = Array.isArray(rawList.columns) ? rawList.columns : list.columns.map((c) => c.field);
+  const controlled = new Set(
+    (Array.isArray(rawList.controls) ? rawList.controls : []).map((c) => text(asObject(c).filters)).filter((f): f is string => Boolean(f)),
+  );
+  const rawColumns: unknown[] =Array.isArray(rawList.columns) ? rawList.columns : list.columns.map((c) => c.field);
   const dates = list.columns.filter((c) => dateKinds.has(def.fields[c.field]?.type ?? "")).map((c) => option(c.field));
   // What a badge or a total may be "only when": a value of an enum or yes/no field.
   const conditions: Condition[] = fields.flatMap(([name, f]): Condition[] => {
@@ -322,7 +325,8 @@ function TypePages({
           <Row label="Filters" help={HELP.pageFilters}>
             <Checks
               options={of("enum", "yesno")}
-              value={list.filters.map((f) => f.field)}
+              // M65: a filter drawn by one of the page's controls is the controls', not these.
+              value={list.filters.filter((f) => !controlled.has(f.field)).map((f) => f.field)}
               editable={editable}
               onChange={(names) => set("list", "filters", names)}
               none="No choice or yes/no fields to filter by."

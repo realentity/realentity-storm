@@ -48,12 +48,15 @@ describe("an App's pages (M31)", () => {
       { field: "status", label: "Status", as: "badge" },
       { field: "paid", label: "Paid", as: "yesno" },
     ]);
+    const DROPDOWN = { control: "dropdown", multiple: false, source: null, caseless: false };
     expect(list.filters).toEqual([
-      { field: "status", label: "Status", match: "equals", values: ["due", "paid", "late"].map((v) => ({ value: v, label: v })) },
+      // M65: each a dropdown by default, one value, its own values.
+      { field: "status", label: "Status", match: "equals", ...DROPDOWN, values: ["due", "paid", "late"].map((v) => ({ value: v, label: v })) },
       {
         field: "paid",
         label: "Paid",
         match: "equals",
+        ...DROPDOWN,
         values: [
           { value: "true", label: "Yes" },
           { value: "false", label: "No" },
