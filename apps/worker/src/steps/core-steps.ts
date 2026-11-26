@@ -126,6 +126,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
       router: deps.router,
       learning: deps.learning,
       embeddings: deps.embeddings,
+      appFiles: deps.appFiles,
     }),
     ...(deps.browser ? browserSteps(deps, deps.browser) : []),
     ...(deps.browser && "documents" in deps.browser

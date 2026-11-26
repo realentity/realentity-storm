@@ -6,14 +6,15 @@
 # go to the Merchant you set on the paper (Write to): an address you wrote, never one read from a paper. A contract
 # is told on Telegram before its notice runs out (contract-watch, contract-reminder). On the 1st, last month's
 # receipts and invoices go to your accountant (expense-report), the ones you pick, after you Act.
+# M59-T1: the claim attaches the paper's document, the expense report each paper's.
 app:
   name: Papers
   description: Receipts, invoices, warranties and contracts, read for you, with their dates
   icon: receipt
   summary: >-
     Receipts, invoices, warranties and contracts with their photo or PDF, read for you: the merchant, the
-    amount and the dates. A warranty's end in your calendar and a claim on a button; a reminder before a
-    contract's notice runs out; last month's expenses to your accountant.
+    amount and the dates. A warranty's end in your calendar, a claim with its receipt on a button; a reminder
+    before a contract's notice runs out; last month's expenses and documents to your accountant.
   setup:
     - { kind: llm, label: "The LLM, to read the papers" }
     - { kind: google-calendar, label: "Google Calendar, for warranties" }
@@ -174,8 +175,8 @@ pipelines:
   warranty-claim:
     # From a receipt's or warranty's button in the Papers App: a claim under its warranty, sent to the Merchant you set
     # on it (Write to) after you Act at the gate, where you edit it: what is wrong comes from its notes, or is left for
-    # you to fill in. A paper without a Merchant sends nothing and says so. Storm can't attach the receipt: the claim
-    # offers to send it.
+    # you to fill in. A paper without a Merchant sends nothing and says so. The paper's document (the receipt) goes
+    # with it, shown at the gate.
     name: Warranty claim
     description: A claim under a paper's warranty, to its merchant, sent after you approve it.
     trigger: { on: entity.action, type: Paper }
@@ -193,8 +194,8 @@ pipelines:
             A short, polite warranty claim to the merchant, in the language of their name and notes (English when
             unsure): what I bought (the paper's title) and when, what I paid, that it is under warranty until its date,
             and what is wrong, from the paper's notes; when the notes don't say, write the line "[What is wrong]" for me
-            to fill in. Ask whether they repair or replace it and how to send it; offer to send the receipt. No subject
-            line, no other text.
+            to fill in. Ask whether they repair or replace it and how to send it. Say the receipt is attached when
+            the paper has a document. No subject line, no other text.
           context: { paper: "{{trigger.item}}", merchant: "{{item}}" }
       - id: send
         type: email.send
@@ -203,6 +204,8 @@ pipelines:
           to: "{{item.email}}"
           subject: "Warranty claim: {{trigger.item.title}}"
           body: "{{draft.text}}"
+          # M59-T1: the receipt; a paper without a document sends the claim alone.
+          attachments: "{{trigger.item.document}}"
       - id: nobody
         type: data.map
         with:
@@ -317,8 +320,8 @@ pipelines:
   expense-report:
     # On the 1st of every month, and from the Papers list's button: last month's receipts and invoices (not the ones
     # in the personal category), listed for you to untick what isn't an expense, then one email with each of them and
-    # the totals per currency to your accountant (a setting), after you Act. Storm can't attach the documents: the
-    # email says they follow.
+    # the totals per currency to your accountant (a setting), after you Act, with their documents attached (at most 20
+    # and 18 MB together: more stops the run before the gate, and says so).
     name: Expense report
     description: Last month's receipts and invoices to your accountant, the ones you pick, after you approve it.
     trigger: { schedule: "0 8 1 * *" }
@@ -373,8 +376,14 @@ pipelines:
               $count($ps) > 0 ? "Hello,\n\nMy expenses for " & month & ", " & $count($ps) & " receipts and invoices:\n\n"
                 & $join($map($ps, $line), "\n")
                 & ($sums ? "\n\nTotal: " & $join($each($sums, function($v, $k) { $formatNumber($v, "#,##0.00") & " " & $k }), ", ") : "")
-                & "\n\nThe documents follow in a separate email. Tell me if you need anything else.\n"
+                & "\n\nThe documents are attached. Tell me if you need anything else.\n"
             )
+      # M59-T1: the papers' documents, the ones without one left out.
+      - id: documents
+        type: data.map
+        with:
+          from: { papers: "{{pick.selected}}" }
+          expression: "[papers.document]"
       - id: send
         type: email.send
         when: "{{report.value}}"
@@ -382,3 +391,4 @@ pipelines:
           to: "{{setting.accountant}}"
           subject: "Expenses for {{month.value.label}}"
           body: "{{report.value}}"
+          attachments: "{{documents.items}}"

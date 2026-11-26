@@ -1,5 +1,6 @@
 import { type ProposalView } from "@realentity/storm-shared";
-import { EMAIL_LABELS, emailFields, threadLength } from "../lib/email-payload";
+import { IconPaperclip } from "@tabler/icons-react";
+import { EMAIL_LABELS, emailFields, fileSize, threadLength, type AttachedFile } from "../lib/email-payload";
 import { Json } from "./ui";
 
 const label = (field: string) => EMAIL_LABELS[field] ?? field;
@@ -26,6 +27,26 @@ function FromHeader({ from }: Readonly<{ from: ProposalView["from"] }>) {
           <span className="text-danger">No email account to send it from: add one in Settings → Email accounts</span>
         )}
       </dd>
+    </div>
+  );
+}
+
+/** M59-T1: the App's files the email attaches, by name and size; only these go, as they were kept. */
+function Attachments({ files }: Readonly<{ files: AttachedFile[] }>) {
+  if (files.length === 0) return null;
+  return (
+    <div className="mt-3" data-testid="email-attachments">
+      <div className="fw-bold small mb-1">
+        <IconPaperclip size={14} className="me-1" aria-hidden />
+        {files.length === 1 ? "1 attachment" : `${files.length} attachments`}
+      </div>
+      <ul className="list-unstyled mb-0">
+        {files.map((file, i) => (
+          <li key={i} data-testid="email-attachment">
+            {file.name} <span className="text-secondary small">({fileSize(file.size)})</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -65,6 +86,7 @@ export function EmailView({
           {text(payload.body)}
         </div>
       )}
+      <Attachments files={fields.attachments} />
       {fields.other.map((field) => (
         <div key={field} className="mt-3">
           <div className="fw-bold small mb-1">
@@ -161,6 +183,7 @@ export function EmailEditor({
         </div>
       ))}
       {fields.body && box(fields.body, false)}
+      <Attachments files={fields.attachments} />
       {fields.other.map((field) => box(field, typeof original[field] !== "string"))}
       {fields.thread.length > 0 && (
         <details open={fields.thread.some((field) => invalid.includes(field)) || undefined}>

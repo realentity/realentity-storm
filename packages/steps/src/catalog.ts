@@ -279,6 +279,29 @@ export const TelegramFileSchema = z.object({
 /** M46: a stored file as an entity holds it (FileRef). */
 const FILE_REF_SCHEMA = z.object({ id: z.string(), name: z.string(), mime: z.string(), size: z.number() });
 
+/** M59-T1: an email's attachments at most: as many, and as large together (what mail servers take, base64 added). */
+export const MAX_ATTACHMENTS = 20;
+export const MAX_ATTACHMENTS_BYTES = 18 * 1_048_576;
+
+/**
+ * M59-T1: email.send's attachments, entity files of the pipeline's App: one file field ({{trigger.item.document}}) or
+ * a list of them ({{pick.selected.document}}), lists in it flattened; an entity without one (null) leaves nothing.
+ * None at all: no `attachments` in the payload.
+ */
+const Attachments = z.preprocess(
+  (value) => {
+    if (value === undefined) return undefined;
+    const files = (Array.isArray(value) ? value.flat() : [value]).filter((f) => f !== null && f !== undefined && f !== "");
+    return files.length > 0 ? files : undefined;
+  },
+  z
+    .array(FILE_REF_SCHEMA)
+    .max(MAX_ATTACHMENTS, `at most ${MAX_ATTACHMENTS} attachments`)
+    .refine((files) => files.reduce((sum, f) => sum + f.size, 0) <= MAX_ATTACHMENTS_BYTES, `attachments are at most ${MAX_ATTACHMENTS_BYTES / 1_048_576} MB together`)
+    .optional()
+    .describe("an entity's file field ({{trigger.item.document}}) or a list of them"),
+).optional();
+
 const Messages = z.array(EmailMessageSchema).describe("list of emails");
 
 /**
@@ -1405,7 +1428,10 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Sends an email from one of the user's email accounts (SMTP); with `inReplyTo` (and the original's `references`) a reply in " +
       "the same thread: the message replied to is added to the references. A reply goes from the account the email came to: " +
-      "account {{item.message.account}} (or the item's own `account`).",
+      "account {{item.message.account}} (or the item's own `account`). `attachments` (M59-T1): files kept in the " +
+      "pipeline's App, an entity's file field or a list of them (a receipt: {{trigger.item.document}}; the papers picked: " +
+      "{{pick.selected.document}}), at most 20 and 18 MB together; the gate shows them by name and size, and only " +
+      "those files go.",
     sideEffect: true,
     targets: { to: "recipient" },
     saasSafe: true,
@@ -1415,6 +1441,7 @@ export const CORE_STEPS: StepDefinition[] = [
       body: z.string().min(1).max(100_000),
       inReplyTo: z.string().optional(),
       references: z.array(z.string()).max(100).optional(),
+      attachments: Attachments,
       account: EmailAccount,
     }),
     output: z.object({ messageId: z.string(), accepted: z.array(z.string()), from: z.string().describe("the address it went from") }),
