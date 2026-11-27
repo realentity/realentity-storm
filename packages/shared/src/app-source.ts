@@ -1,7 +1,7 @@
 import { type RenameView } from "./pipeline-api";
 import { isMap, isScalar, isSeq, LineCounter, parseDocument, type Document } from "yaml";
 import { z } from "zod";
-import { AppDefinitionSchema, type AppDefinition, type AppIssue } from "./app";
+import { AppDefinitionSchema, type AppDefinition, type AppIssue, type AppUsedByView } from "./app";
 
 /**
  * M35: an App's YAML as the designer sees it. The designer changes the document, never a copy of its data, so the
@@ -184,6 +184,8 @@ export interface AppCheckView {
   changes: string[];
   /** M39-T5: the draft renames the App: its pipelines, which follow the new name. */
   renamed?: RenameView;
+  /** M66-T4: other Apps' uses of its types the draft would no longer fit (a type or field renamed or removed): Save asks first. */
+  usedBy: AppUsedByView[];
 }
 
 /** A replaced node keeps the comment on its line. */

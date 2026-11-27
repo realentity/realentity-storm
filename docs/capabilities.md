@@ -443,6 +443,10 @@ uses:
   App of that name has that type with the fields; otherwise the App's page (**Data it reads from other Apps**) offers
   every type of your other Apps that fits, and the App's checklist waits for it. Renaming the App it comes from keeps
   it; deleting that App, or removing one of the fields, leaves it to choose again.
+- **The App it comes from says so first:** its design's check lists the Apps that read a type or field a change
+  renames, removes or encrypts (*Report reads its Bill (issuer, amount): it has no field "amount"*), and Save asks
+  before going ahead; deleting it lists the Apps that read it. The map of an App that uses another's type draws the
+  use beside its types, with where it comes from and what reads it.
 - **Only the named fields** are read; name the key or the stage's field too when you need them. Never an encrypted,
   credential, file or image field: such a type doesn't fit.
 - **Reads only:** `data.read { type: Bill }` reads it, `where` and `sort` on its named fields. A change to another

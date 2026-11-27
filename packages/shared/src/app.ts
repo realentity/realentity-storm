@@ -1494,8 +1494,23 @@ export const AppUsesRequestSchema = z.record(
 );
 export type AppUsesRequest = z.infer<typeof AppUsesRequestSchema>;
 
+/**
+ * M66-T4: another App's use of one of this App's types: which App, its name for it, the type, the fields it reads;
+ * in a draft's check, why the draft would no longer fit it.
+ */
+export interface AppUsedByView {
+  appId: string;
+  app: string;
+  use: string;
+  type: string;
+  fields: string[];
+  problems?: string[];
+}
+
 export interface AppDetailView extends AppSummaryView {
   definition: AppDefinition;
+  /** M66-T4: the other Apps that read its types (`uses:`, this App chosen for them). */
+  usedBy: AppUsedByView[];
   imports: AppImportView[];
   /** The definition as YAML, for the editor. */
   source: string;

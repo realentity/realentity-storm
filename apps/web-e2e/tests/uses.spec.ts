@@ -139,3 +139,59 @@ uses:
   await expect(ref.locator("option")).toHaveText(["points at…", "a Expense", "a Bill (from another App)"]);
   await expect(ref.locator("option:checked")).toHaveText("a Bill (from another App)");
 });
+
+// M66-T4: the owner's side: a change others read asks first; deleting it names who reads it; the map draws a use
+test("the App others read: Save asks when a change breaks their use; Delete names them; the reader's map draws the use", async ({ page }) => {
+  const bills = unique("Bills");
+  const create = async (source: string) => {
+    const created = await page.request.post("/api/apps", { data: { source } });
+    expect(created.status(), await created.text()).toBe(201);
+    return ((await created.json()) as { appId: string }).appId;
+  };
+  const source = `name: ${bills}
+types:
+  Bill:
+    key: billKey
+    fields:
+      billKey: { type: text }
+      issuer: { type: text }
+      amount: { type: money }
+`;
+  const billsId = await create(source);
+  const report = unique("Report");
+  const reportId = await create(`name: ${report}
+types:
+  Expense:
+    key: id
+    fields: { id: { type: text } }
+uses:
+  Bill:
+    from: { app: ${bills}, type: Bill }
+    fields: [issuer, amount]
+`);
+
+  await page.goto(`/apps/${billsId}/edit`);
+  await page.getByTestId("tab-yaml").click();
+  await page.getByTestId("app-source").fill(source.replace("      amount: { type: money }\n", ""));
+  await expect(page.getByTestId("used-by")).toContainText(`${report} reads its Bill (issuer, amount): it has no field "amount"`);
+  await page.getByTestId("save-app").click();
+  await expect(page.getByText("Other Apps read what this changes")).toBeVisible();
+  await page.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page).toHaveURL(new RegExp(`/apps/${billsId}/edit`));
+  await page.getByTestId("save-app").click();
+  await page.getByTestId("save-anyway").click();
+  await expect(page).toHaveURL(new RegExp(`/apps/${billsId}$`));
+
+  // The reader shows its use needs attention, and draws it on its map.
+  await page.goto(`/apps/${reportId}`);
+  await expect(page.getByTestId("uses-card")).toContainText('it has no field "amount"');
+  await expect(page.locator('[data-testid="map-node"][data-id="use:Bill"]')).toContainText(`from ${bills} › Bill`);
+
+  await page.goto(`/apps/${billsId}`);
+  await page.getByTestId("delete-app").click();
+  await expect(page.getByTestId("delete-used-by")).toContainText(`${report} reads its Bill (issuer, amount)`);
+  await page.getByRole("button", { name: "Delete it anyway" }).click();
+  await expect(page).toHaveURL(/\/apps$/);
+  await page.goto(`/apps/${reportId}`);
+  await expect(page.getByTestId("uses-missing")).toHaveText("1 to choose");
+});

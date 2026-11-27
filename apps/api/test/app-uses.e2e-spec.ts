@@ -1,5 +1,5 @@
 import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
-import { type AppDetailView, type AppUseView, type ChecklistView } from "@realentity/storm-shared";
+import { type AppCheckView, type AppDetailView, type AppMapView, type AppUseView, type ChecklistView } from "@realentity/storm-shared";
 import type request from "supertest";
 import { createTestApp, type TestApp } from "./support/test-app";
 
@@ -179,6 +179,43 @@ describe("an App's uses of other Apps' types (M66)", () => {
     expect((await uses(again))[0].fits).toEqual([{ appId: household, app: "Household", type: "Payment" }]);
     await agent.put(`/api/apps/${again}/uses`).send({ Bill: { appId: household, type: "Payment" } }).expect(200);
     expect(await uses(again)).toEqual([expect.objectContaining({ source: { appId: household, app: "Household", type: "Payment" }, problems: [] })]);
+  });
+
+  // M66-T4: the owner's side
+  it("the owner lists the Apps that read it; its draft's check names the uses it would no longer fit, and why; the map draws a use", async () => {
+    const bills = await install(BILLS("Bills"));
+    const report = await install(REPORT());
+    const notes = await install(REPORT("Notes", "[issuer]"));
+    const detail = (await agent.get(`/api/apps/${bills}`).expect(200)).body as AppDetailView;
+    expect(detail.usedBy).toEqual([
+      { appId: notes, app: "Notes", use: "Bill", type: "Bill", fields: ["issuer"] },
+      { appId: report, app: "Report", use: "Bill", type: "Bill", fields: ["issuer", "amount", "dueDate"] },
+    ]);
+    expect(((await agent.get(`/api/apps/${report}`).expect(200)).body as AppDetailView).usedBy).toEqual([]);
+
+    const check = async (source: string) => ((await agent.post("/api/apps/check").send({ source, appId: bills }).expect(201)).body as AppCheckView).usedBy;
+    // A change they don't read: nothing to say.
+    expect(await check(BILLS("Bills", "\n      vat: { type: money }"))).toEqual([]);
+    expect(await check(BILLS("Bills").replace("      dueDate: { type: date }\n", ""))).toEqual([
+      { appId: report, app: "Report", use: "Bill", type: "Bill", fields: ["issuer", "amount", "dueDate"], problems: ['it has no field "dueDate"'] },
+    ]);
+    expect((await check(BILLS("Bills").replace("issuer: { type: text }", "issuer: { type: text, encrypted: true }"))).map((u) => [u.app, u.problems])).toEqual([
+      ["Notes", ["issuer is encrypted"]],
+      ["Report", ["issuer is encrypted"]],
+    ]);
+    expect((await check(BILLS("Bills").replace("  Bill:", "  Invoice:"))).map((u) => [u.app, u.problems])).toEqual([
+      ["Notes", ["it would have no type Bill"]],
+      ["Report", ["it would have no type Bill"]],
+    ]);
+    // A new App's draft: no one reads it yet.
+    expect(((await agent.post("/api/apps/check").send({ source: BILLS("Other bills") }).expect(201)).body as AppCheckView).usedBy).toEqual([]);
+
+    // Saved anyway: the App that reads it shows the use needs attention.
+    await agent.put(`/api/apps/${bills}`).send({ source: BILLS("Bills").replace("  Bill:", "  Invoice:") }).expect(200);
+    expect((await uses(report))[0].problems).toEqual(["Bills has no type Bill any more"]);
+
+    const map = (await agent.get(`/api/apps/${report}/map`).expect(200)).body as AppMapView;
+    expect(map.uses).toEqual([{ id: "use:Bill", use: "Bill", label: "Bill", detail: "from Bills › Bill" }]);
   });
 
   it("an App installed from an example lists each use on its checklist until it is filled", async () => {

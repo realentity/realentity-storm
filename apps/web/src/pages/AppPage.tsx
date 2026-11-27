@@ -75,11 +75,25 @@ export function AppPage() {
               what="App"
               name={data.name}
               consequences={
-                data.pipelines.length > 0
-                  ? `Its pipelines (${data.pipelines.map((p) => p.name).join(", ")}) go with it, with every run of them, and its versions and the ${entities} entities it keeps. To keep a pipeline, move it to another App first.`
-                  : `Its versions and the ${entities} entities it keeps go with it.`
+                <>
+                  {data.pipelines.length > 0
+                    ? `Its pipelines (${data.pipelines.map((p) => p.name).join(", ")}) go with it, with every run of them, and its versions and the ${entities} entities it keeps. To keep a pipeline, move it to another App first.`
+                    : `Its versions and the ${entities} entities it keeps go with it.`}
+                  {data.usedBy.length > 0 && (
+                    <div className="mt-2" data-testid="delete-used-by">
+                      Other Apps read its data; each will have to choose where it comes from again:
+                      <ul className="mb-0 mt-1">
+                        {data.usedBy.map((u) => (
+                          <li key={`${u.appId}:${u.use}`}>
+                            <Link to={`/apps/${u.appId}`}>{u.app}</Link> reads its {u.type} ({u.fields.join(", ")})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               }
-              confirm={data.pipelines.length > 0 ? `Delete the App and its ${pipelines}` : undefined}
+              confirm={data.pipelines.length > 0 ? `Delete the App and its ${pipelines}` : data.usedBy.length > 0 ? "Delete it anyway" : undefined}
               onDelete={() => api.apps.uninstall(appId)}
               then="/apps"
             />

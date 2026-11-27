@@ -13,7 +13,7 @@ import { type CompiledDefinition, type Trigger } from "./pipeline";
 export type AppMapEdgeKind = "starts" | "writes" | "reads" | "watches" | "shows";
 
 export interface AppMapNode {
-  /** trigger:<pipelineId>, pipeline:<pipelineId>, type:<name>, list:<type>, view:<type>. */
+  /** trigger:<pipelineId>, pipeline:<pipelineId>, type:<name>, use:<name>, list:<type>, view:<type>. */
   id: string;
   label: string;
   /** A second line: a pipeline's trigger, a type's count. */
@@ -24,6 +24,8 @@ export interface AppMapView {
   triggers: AppMapNode[];
   pipelines: (AppMapNode & { pipelineId: string; enabled: boolean })[];
   types: (AppMapNode & { type: string; entities: number })[];
+  /** M66-T4: another App's types it reads (`uses:`), drawn by its types: what reads each. */
+  uses: (AppMapNode & { use: string })[];
   pages: (AppMapNode & { type: string; kind: "list" | "view" | "report" })[];
   edges: { from: string; to: string; kind: AppMapEdgeKind; label?: string }[];
 }
@@ -78,8 +80,11 @@ export function appMap(
   pipelines: AppMapPipeline[],
   entities: Record<string, number>,
   contractsOf: ContractsOf,
+  /** M66-T4: each use, by the App and type chosen for it ("Bills › Bill"); null: not chosen yet. */
+  chosen: Record<string, string | null> = {},
 ): AppMapView {
   const types = Object.keys(app.types);
+  const uses = Object.keys(app.uses ?? {});
   const edges: AppMapView["edges"] = [];
   const edge = (from: string, to: string, kind: AppMapEdgeKind, label?: string) => {
     if (!edges.some((e) => e.from === from && e.to === to && e.kind === kind)) edges.push({ from, to, kind, ...(label ? { label } : {}) });
@@ -104,6 +109,7 @@ export function appMap(
         if (step.type === "data.save") edge(id, `type:${named}`, "writes");
         if (step.type === "data.read") edge(`type:${named}`, id, "reads");
       }
+      if (named && uses.includes(named) && step.type === "data.read") edge(`use:${named}`, id, "reads");
       for (const contract of contractsOf(step.type)) {
         if (!types.includes(contract.type)) continue;
         if (contract.when && !given(step.with?.[contract.when])) continue;
@@ -145,6 +151,13 @@ export function appMap(
     edge(`type:${type}`, `list:${type}`, "shows");
     edge(`type:${type}`, `view:${type}`, "shows");
   }
+  // M66-T4: a list's sources of a use; a type's ref to one.
+  for (const page of app.pages) {
+    if (!("list" in page) || !types.includes(page.list)) continue;
+    for (const source of Object.values(page.sources ?? {})) if (uses.includes(source.from)) edge(`use:${source.from}`, `list:${page.list}`, "shows");
+  }
+  for (const type of types)
+    for (const field of Object.values(app.types[type].fields)) if (field.to && uses.includes(field.to)) edge(`use:${field.to}`, `type:${type}`, "reads", "a ref");
   for (const report of reportPagesOf(app)) {
     if (!types.includes(report.type)) continue;
     pages.push({ id: `report:${report.type}`, type: report.type, kind: "report", label: report.label, detail: "report, in the menu" });
@@ -167,6 +180,7 @@ export function appMap(
       entities: entities[type] ?? 0,
       detail: `${entities[type] ?? 0} kept${app.types[type].mine ? " · mine" : addedByHand(app, type) ? " · added by hand too" : ""}`,
     })),
+    uses: uses.map((use) => ({ id: `use:${use}`, use, label: use, detail: chosen[use] ? `from ${chosen[use]}` : "not chosen yet" })),
     pages,
     edges,
   };
