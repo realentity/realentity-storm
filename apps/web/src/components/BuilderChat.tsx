@@ -12,6 +12,7 @@ import { useAction, useLoad } from "../lib/use-load";
 import { CompileErrors, DiffList, PlanView, StepGraphView } from "./PlanView";
 import { ErrorAlert, Loading } from "./ui";
 import { AppProposal } from "./AppProposal";
+import { BriefCard } from "./BriefCard";
 
 interface BuilderChatProps {
   /** null: no chat yet; one is created with the first message. */
@@ -148,6 +149,7 @@ function Message({
   if (message.role === "user") return <UserBubble text={message.text} />;
   return (
     <div className="d-flex flex-column gap-2" data-testid="builder-answer">
+      {message.brief && <BriefCard brief={message.brief} />}
       {message.text && <div className="text-pre-line">{message.text}</div>}
       {message.error && <div className="alert alert-danger mb-0">{message.error}</div>}
       {message.compileErrors && <CompileErrors errors={message.compileErrors} title="The builder's last proposal doesn't compile" />}

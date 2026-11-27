@@ -17,6 +17,12 @@ export class ScriptedChat implements LlmChat {
     return this;
   }
 
+  /** Puts these answers before the ones scripted already. */
+  first(...replies: Reply[]): this {
+    this.script = [...replies, ...this.script];
+    return this;
+  }
+
   send(request: ChatRequest): Promise<ChatResponse> {
     this.requests.push({ ...request, messages: structuredClone(request.messages) });
     const next = this.script.shift();
@@ -85,4 +91,15 @@ export function userText(request: ChatRequest): string {
   const users = request.messages.filter((m) => m.role === "user" && m.content.some((b) => b.type === "text"));
   const block = users.at(-1)?.content.find((b) => b.type === "text");
   return typeof block?.text === "string" ? block.text : "";
+}
+
+/** M70-T2: a brief the builder states before it proposes a new idea. */
+export const BRIEF = {
+  summary: "Drafts a reply to each recruiter who writes to me, for me to approve.",
+  pipelines: [{ name: "Recruiter replies", trigger: "every 15 minutes", does: "reads new email, keeps recruiters', drafts a reply", waitsForMe: "each reply", sends: "the reply, to the sender" }],
+};
+
+/** The builder states the brief and asks: the turn before a new idea is proposed (M70-T1). */
+export function stateBrief(brief: unknown = BRIEF): Reply[] {
+  return [callTools({ name: "state_brief", input: brief }), say("That's what I'd build: agreed?")];
 }

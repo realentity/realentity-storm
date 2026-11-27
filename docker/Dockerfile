@@ -24,6 +24,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 FROM base AS api
 WORKDIR /app
 COPY --from=build --chown=node:node /out/api .
+# M70-T3: the example Apps, for the builder to look up (and start from).
+COPY --from=build --chown=node:node /repo/examples ./examples
 ENV NODE_ENV=production API_HOST=0.0.0.0 API_PORT=3000
 USER node
 EXPOSE 3000

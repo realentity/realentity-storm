@@ -1394,7 +1394,8 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Reads bills out of `messages` (M23): for each email, its text and the text of its PDF attachments go to the " +
       "LLM, which says whether it is a bill (an amount the user has to pay) and reads issuer, amount, currency, due date, " +
-      "period and reference. Emails that aren't bills are dropped. Nothing is paid or saved: bill.save keeps them.",
+      "period and reference. Emails that aren't bills are dropped. Nothing is paid or saved: bill.save keeps them. Each " +
+      "email is read whole, its PDFs too: put email.classify first (a \"bill\" label kept) so only the likely bills are read.",
     sideEffect: false,
     llm: true,
     llmOutput: true,

@@ -10,7 +10,7 @@ import { z } from "zod";
 import { TelegramBot } from "../src/telegram/telegram-bot";
 import { TELEGRAM_CHAT_IDLE_MS } from "../src/telegram/telegram-builder";
 import { TELEGRAM_FETCH } from "../src/telegram/telegram-notices";
-import { propose, say, ScriptedChat } from "./support/scripted-chat";
+import { propose, say, ScriptedChat, stateBrief } from "./support/scripted-chat";
 import { freeName } from "./support/names";
 import { createTestApp, withTelegram, type TestApp } from "./support/test-app";
 
@@ -530,10 +530,26 @@ describe("M12: the Storm bot and webhooks", () => {
     }
     const button = (call: Call, text: string) => buttonsOf(call).find((b) => b.text === text)?.callback_data;
     const chats = () => db.client.builderChat.findMany({ orderBy: { dateCreated: "asc" }, include: { messages: true } });
+    /** M70-T1: a new idea is said back first (a brief); the answers scripted already come after it. */
+    async function briefed(): Promise<Call> {
+      llm.first(...stateBrief());
+      return talk("I have an idea.");
+    }
 
     // M21-I1
     it("a sentence gets the builder's answer and proposal; Save makes v1, Turn on enables it", async () => {
       llm.answer(propose(MORNING, "Says hi every morning"), say("Here it is: a hi at 8 every morning."));
+      // M70-T2: the brief, a card on the Builder page, comes as lines before the question; nothing to save yet.
+      const brief = await briefed();
+      expect(String(brief.body.text).split("\n")).toEqual([
+        "What I'll make: Drafts a reply to each recruiter who writes to me, for me to approve.",
+        "Pipeline Recruiter replies, every 15 minutes: reads new email, keeps recruiters', drafts a reply (waits for you: each reply; sends: the reply, to the sender)",
+        "",
+        "That's what I'd build: agreed?",
+        "",
+        "(/new starts over)",
+      ]);
+      expect(buttonsOf(brief).map((b) => b.text)).toEqual(["Open in Storm"]);
       const reply = await talk("Say hi to me every morning at 8");
 
       expect(sent("sendChatAction").length).toBeGreaterThan(0);
@@ -565,6 +581,7 @@ describe("M12: the Storm bot and webhooks", () => {
 
     it("Dry run makes the proposal a draft and starts a dry run", async () => {
       llm.answer(propose(MORNING), say("Try it."));
+      await briefed();
       const reply = await talk("Say hi every morning");
       await telegram(press(button(reply, "Dry run")!)).expect(200);
       expect(answer()).toBe("Dry run started");
@@ -615,6 +632,7 @@ describe("M12: the Storm bot and webhooks", () => {
       expect(calls).toEqual([]);
 
       llm.answer(propose(MORNING, "First"), say("One."));
+      await briefed();
       const first = await talk("Say hi every morning");
       llm.answer(propose({ ...MORNING, name: "Evening hi" }, "Second"), say("Two."));
       const second = await talk("No, in the evening");
@@ -636,6 +654,7 @@ describe("M12: the Storm bot and webhooks", () => {
       await agent.post("/api/apps").send({ source }).expect(201);
       try {
         llm.answer(propose({ ...MORNING, app: "Ops tg" }), say("Here it is."));
+        await briefed();
         await telegram(press(button(await talk("Say hi every morning"), "Save")!)).expect(200);
         const hi = sent().at(-1)!;
         expect(hi.body.text).toBe("Saved: Morning hi v1. It is off: Turn on to run it on the schedule 0 8 * * * (Europe/Sofia).");
@@ -649,6 +668,7 @@ describe("M12: the Storm bot and webhooks", () => {
         };
         await telegram(message("/new")).expect(200);
         llm.answer(propose(checks), say("Here it is."));
+        await briefed();
         await telegram(press(button(await talk("Check my database every hour"), "Save")!)).expect(200);
         const check = sent().at(-1)!;
         expect(check.body.text).toBe('Saved: Checks v1. It needs "The database to check": choose it on its page.');

@@ -1,3 +1,4 @@
+import { ExampleLookups } from "./example-lookups";
 import { Prisma, type BuilderChat, type BuilderMessage } from "@realentity/storm-db";
 import { Integrations } from "@realentity/storm-db";
 import { ModelRouter, type ChatMessage, type LlmChat, type LlmUsage } from "@realentity/storm-llm";
@@ -11,6 +12,8 @@ import {
   type BuilderDryRunResponse,
   type BuilderMessageRequest,
   type BuilderMessageView,
+  type BuilderBrief,
+  BuilderBriefSchema,
   type BuilderProposalStatus,
   type BuilderProposalView,
   type CompiledDefinition,
@@ -28,7 +31,7 @@ import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 import { RunsService } from "../runs/runs.service";
-import { Builder, tokensOf, type BuilderRuns } from "./builder";
+import { Builder, tokensOf, type BuilderRuns, type DraftApp } from "./builder";
 import { runData, runList } from "./run-data";
 
 /** The builder's LLM: the model servers of Settings → AI, looked up at each call (M62). */
@@ -47,6 +50,8 @@ interface StoredAppProposal {
   appSource: string;
   pipelines: CompiledDefinition[];
   savedAppId: string | null;
+  /** M70-T4: what changed since the chat's last proposal of it; null (or missing, before M70): the first one. */
+  changedSince?: string[] | null;
 }
 
 interface StoredProposal {
@@ -69,6 +74,8 @@ interface StoredProposal {
 export class BuilderService {
   /** Chats with a turn in progress: one at a time per chat. */
   private readonly busy = new Set<string>();
+  /** M70-T3: the example Apps the builder may look up. */
+  private readonly examples = new ExampleLookups();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -300,6 +307,20 @@ export class BuilderService {
       tokensLeft: (await this.tokenCap(userId)) - chat.tokensUsed,
       apps: appsList,
       ...(about ? { appPipelines: about.pipelines } : {}),
+      // M70-T4: the chat's open App proposal, changed in place by the next one.
+      draft: draftOf(earlier),
+      // M70-T3: the examples, and the user's Apps whole.
+      lookups: {
+        examples: () => this.examples.list(),
+        example: (id) => this.examples.read(id),
+        app: async (name) => {
+          const found = await this.apps.byName(userId, name);
+          const app = found && (await this.apps.forBuilder(userId, found.appId));
+          return app && `${app.source}${app.pipelines.map((p) => `
+---
+${definitionToSource(p)}`).join("")}`;
+        },
+      },
       draftType: async (runId, stepKey) => {
         if (!/^[0-9a-f-]{36}$/i.test(runId)) return null;
         const draft = await this.apps.draftType(userId, { runId, stepKey }).catch(() => null);
@@ -324,6 +345,7 @@ export class BuilderService {
       appSource: result.appProposal.source,
       pipelines: result.appProposal.pipelines.map((p) => p.definition),
       savedAppId: null,
+      changedSince: result.appProposal.changedSince,
     };
     const ok = result.transcript !== null;
     await this.prisma.client.$transaction(async (tx) => {
@@ -509,11 +531,31 @@ function messageView(message: BuilderMessage, current: CompiledDefinition | null
     text: message.text,
     proposal,
     appProposal,
+    brief: message.role === "assistant" ? briefOf(message.transcript as ChatMessage[] | null) : null,
     compileErrors: (message.compileErrors as CompileIssue[] | null) ?? null,
     error: message.error,
     costUsd: usageOf(message)?.costUsd ?? null,
     dateCreated: message.dateCreated.toISOString(),
   };
+}
+
+/** M70-T4: the chat's open App proposal (not saved), as the next proposal changes it. */
+function draftOf(messages: BuilderMessage[]): DraftApp | null {
+  const open = messages
+    .map((m) => m.proposal as unknown as StoredAppProposal | null)
+    .filter((p): p is StoredAppProposal => p?.kind === "app" && p.status === "open")
+    .at(-1);
+  return open ? { app: readAppSource(open.appSource), source: open.appSource, pipelines: open.pipelines } : null;
+}
+
+/** M70-T2: the brief the builder stated in a turn (its last one), as it is kept in the turn's transcript. */
+function briefOf(transcript: ChatMessage[] | null): BuilderBrief | null {
+  const uses = (transcript ?? []).flatMap((m) => (m.role === "assistant" ? m.content : [])).filter((b) => b.type === "tool_use" && b.name === "state_brief");
+  for (const use of uses.reverse()) {
+    const parsed = BuilderBriefSchema.safeParse((use as { input?: unknown }).input);
+    if (parsed.success) return parsed.data;
+  }
+  return null;
 }
 
 /** An App proposal against the user's Apps and pipelines as they are now: another version may have been saved since. */
@@ -533,6 +575,7 @@ function appProposalView(stored: StoredAppProposal, apps: AppDefinition[], pipel
         changes: open && before ? diffDefinitions(before, definition).summary.split("\n").filter(Boolean) : [],
       };
     }),
+    changedSince: stored.changedSince ?? null,
     savedAppId: stored.savedAppId,
   };
 }

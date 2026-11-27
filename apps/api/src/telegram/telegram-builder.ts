@@ -1,4 +1,4 @@
-import { emptySlots, type BuilderChatView, type BuilderMessageView, type CompiledDefinition, type ServerEnv, type TelegramMessage, TELEGRAM_MAX_TEXT, type Trigger } from "@realentity/storm-shared";
+import { emptySlots, type BuilderBrief, type BuilderChatView, type BuilderMessageView, type CompiledDefinition, type ServerEnv, type TelegramMessage, TELEGRAM_MAX_TEXT, type Trigger } from "@realentity/storm-shared";
 import { Inject, Injectable } from "@nestjs/common";
 import { BuilderService } from "../builder/builder.service";
 import { SERVER_ENV } from "../config/server-env";
@@ -124,6 +124,8 @@ export class TelegramBuilder {
   private answer(chat: BuilderChatView, message: BuilderMessageView): TelegramMessage {
     const parts: string[] = [];
     if (message.error) parts.push(`The builder failed: ${message.error}`);
+    // M70-T2: the brief, which the Builder page shows as a card, said here in lines before the answer that asks about it.
+    if (message.brief) parts.push(briefText(message.brief));
     if (message.text.trim()) parts.push(message.text.trim());
     if (message.compileErrors?.length) {
       parts.push(`Its last attempt didn't compile:\n${message.compileErrors.map((e) => `• ${e.path ? `${e.path}: ` : ""}${e.message}`).join("\n")}`);
@@ -166,6 +168,22 @@ export function proposalText(summary: string, definition: CompiledDefinition, wa
     ...steps,
     ...(warnings.length ? ["Warnings:", ...warnings.map((w) => `• ${w}`)] : []),
   ].join("\n");
+}
+
+/** M70-T2: what the builder will make, in lines: the App and its types, each pipeline, what I set up, what it can't do. */
+export function briefText(brief: BuilderBrief): string {
+  const lines = [`What I'll make: ${brief.summary}`];
+  if (brief.app) {
+    lines.push(`App: ${brief.app.name}`);
+    for (const type of brief.app.types) lines.push(`• ${type.name}: ${type.about}${type.fields.length ? ` (${type.fields.join(", ")})` : ""}`);
+  }
+  for (const p of brief.pipelines) {
+    const more = [p.waitsForMe && `waits for you: ${p.waitsForMe}`, p.sends && `sends: ${p.sends}`].filter(Boolean).join("; ");
+    lines.push(`Pipeline ${p.name}, ${p.trigger}: ${p.does}${more ? ` (${more})` : ""}`);
+  }
+  if (brief.setup.length) lines.push(`You set up: ${brief.setup.join("; ")}`);
+  if (brief.cannot.length) lines.push(`Storm can't: ${brief.cannot.join("; ")}`);
+  return lines.join("\n");
 }
 
 function triggerText(trigger: Trigger): string {

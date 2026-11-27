@@ -81,6 +81,21 @@ export function AppProposal({
             save={(body) => api.apps.setBindings(proposal.savedAppId!, body)}
           />
         )}
+        {/* M70-T4: changed in place: what this one changes against the chat's last proposal of it. */}
+        {proposal.changedSince && (
+          <div data-testid="app-proposal-since">
+            <div className="fw-bold mb-1">Changed since the last proposal</div>
+            {proposal.changedSince.length === 0 ? (
+              <div className="small text-secondary">Nothing</div>
+            ) : (
+              <ul className="small mb-0 ps-3">
+                {proposal.changedSince.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <Part title={`App: ${proposal.app.name}`} isNew={proposal.app.isNew} changes={proposal.app.changes} source={proposal.app.source} />
         {proposal.pipelines.map((p) => (
           <Part key={p.name} title={`Pipeline: ${p.name}`} isNew={p.isNew} changes={p.changes} source={p.source} />

@@ -15,7 +15,8 @@ import {
 } from "@realentity/storm-steps";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Builder, type TurnResult } from "../src/builder/builder";
+import { Builder, type DraftApp, type TurnResult } from "../src/builder/builder";
+import { ExampleLookups } from "../src/builder/example-lookups";
 
 /**
  * M7-V1, M67-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
@@ -25,7 +26,8 @@ import { Builder, type TurnResult } from "../src/builder/builder";
  * (evals/builder-cases.json), and the result must be equivalent in what matters (@realentity/storm-steps'
  * appDifferences, pipelineDifferences). Also: an edit in a pipeline's chat changes only what was asked (M7-T3), and a
  * request the catalog can't serve yet is answered with what is missing instead of a pipeline (M7-T2).
- * --list prints the cases and the capability matrix (M67-T4) without calling the model.
+ * --list prints the cases and the capability matrix (M67-T4) without calling the model; --rescore <results file>
+ * judges a run's saved answers again by the rules as they are now, without calling it either.
  * Writes evals/results/<date>-builder.json (kept out of the repository).
  */
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
@@ -107,6 +109,8 @@ async function main(): Promise<void> {
   const runs = Number(flag("--runs") ?? 1);
   const cases = loadCases().filter((c) => !only || only.some((o) => c.name.toLowerCase().includes(o) || c.file?.includes(o)));
   const { covered, gaps } = matrix(loadCases());
+  const saved = flag("--rescore");
+  if (saved) return rescore(saved);
   if (args.includes("--list")) {
     for (const c of cases) console.log(`${c.name}${c.file ? ` (${c.file})` : ""}`);
     console.log(`\n${cases.length} cases. Capabilities no case uses (${gaps.length}): ${gaps.join(", ") || "none"}`);
@@ -167,44 +171,46 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
   const history: ChatMessage[] = [];
   const turns: TurnResult[] = [];
   let usage = emptyUsage();
+  // M70-T3: the examples it may look up, not the one this case rebuilds: the eval measures building, not copying.
+  const examples = new ExampleLookups(c.file?.startsWith("apps/") ? [c.file.replace(/^apps\/|\.yaml$/g, "")] : []);
+  const lookups = { examples: () => examples.list(), example: (id: string) => examples.read(id), app: () => Promise.resolve(null) };
   const say = async (text: string, showCurrent: boolean) => {
     const shown = showCurrent && current ? `<current_pipeline version="1" id="eval">\n${definitionToSource(current)}</current_pipeline>\n\n` : "";
     const recipes = showCurrent ? `<saved_recipes>\n${c.recipes ?? "none yet"}\n</saved_recipes>\n\n` : "";
     const user: ChatMessage = { role: "user", content: [{ type: "text", text: `${shown}${recipes}${text}` }] };
-    const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [] });
+    const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [], lookups, draft });
     usage = addUsage(usage, turn.usage);
     if (turn.transcript) history.push(user, ...turn.transcript);
     turns.push(turn);
+    // M70-T4: the chat's open App proposal, changed in place by the next one.
+    if (turn.appProposal) draft = { app: turn.appProposal.app, source: turn.appProposal.source, pipelines: turn.appProposal.pipelines.map((p) => p.definition) };
     return turn;
   };
+  let draft: DraftApp | null = null;
 
   let turn = await say(c.description, true);
   // Asking back and saying back what it will build are fine (M7-T2, M70); the simulated user answers until it proposes,
   // within maxTurns. Not for the missing-capability case: there it must say what is missing, not build around it.
-  for (let reply = 1; reply < maxTurns && !turn.proposal && !turn.appProposal && !turn.error && (c.file || c.current); reply++) {
+  let reply = 1;
+  for (; reply < maxTurns && !turn.proposal && !turn.appProposal && !turn.error && (c.file || c.current); reply++) {
     turn = await say(simulatedUser(c, reply), false);
   }
-
-  const problems: string[] = [];
-  if (turn.error) problems.push(`error: ${turn.error}`);
-  const proposed = turn.proposal?.compiled.definition ?? null;
-  if (c.file?.startsWith("apps/")) {
-    if (!turn.appProposal) problems.push(proposed ? "proposed a pipeline, not an App" : "no App proposed");
-    else problems.push(...appDifferences(exampleApp(c.file), { app: turn.appProposal.app, pipelines: turn.appProposal.pipelines.map((p) => p.definition) }, catalog));
-  } else if (c.file) {
-    if (!proposed) problems.push("no proposal");
-    else problems.push(...pipelineDifferences(examplePipeline(c.file), proposed, catalog));
-  } else if (current) {
-    if (!proposed) problems.push("no proposal");
-    else {
-      const changes = diffDefinitions(current, proposed).changes;
-      const expected = [{ kind: "pipeline", field: "trigger", before: current.trigger, after: { schedule: "*/30 * * * *", tz: "Europe/Sofia" } }];
-      if (JSON.stringify(changes) !== JSON.stringify(expected)) problems.push(`changes: ${JSON.stringify(changes)}`);
-    }
-  } else {
-    if (proposed || turn.appProposal) problems.push("proposed something");
-    if (!/download|file|attach|invoice/i.test(turns.map((t) => t.text).join(" "))) problems.push("didn't say what is missing");
+  // M70-T4: an App may come in parts: while it proposes more, it is asked for the rest; its last proposal is compared.
+  let app = turn.appProposal;
+  for (; app && c.file?.startsWith("apps/") && reply < maxTurns + 2; reply++) {
+    const next = await say("Go on: propose what is still missing, or say it is complete.", false);
+    if (!next.appProposal || next.error) break;
+    app = next.appProposal;
+    turn = next;
   }
+
+  const problems = judge(c, {
+    error: turn.error,
+    proposed: turn.proposal?.compiled.definition ?? null,
+    app: turn.appProposal && { app: turn.appProposal.app, pipelines: turn.appProposal.pipelines.map((p) => p.definition) },
+    // Said in the answer, or in the brief's "cannot" (M70-T2).
+    said: turns.map((t) => [t.text, ...(t.brief?.cannot ?? [])].join(" ")).join(" "),
+  });
   return {
     problems,
     usage,
@@ -212,10 +218,83 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
       text: t.text,
       proposal: t.proposal && definitionToSource(t.proposal.compiled.definition),
       appProposal: t.appProposal && { source: t.appProposal.source, pipelines: t.appProposal.pipelines.map((p) => definitionToSource(p.definition)) },
+      brief: t.brief,
       compileErrors: t.compileErrors,
       costUsd: t.usage.costUsd,
     })),
   };
+}
+
+/** What a case's run is judged on: its last proposal (a pipeline or an App), its error, and what it said. */
+interface Outcome {
+  error: string | null;
+  proposed: CompiledDefinition | null;
+  app: AppWithPipelines | null;
+  said: string;
+}
+
+/** What differs from what the case expects. */
+function judge(c: Case, outcome: Outcome): string[] {
+  const { error, proposed, app } = outcome;
+  const problems: string[] = [];
+  if (error) problems.push(`error: ${error}`);
+  if (c.file?.startsWith("apps/")) {
+    if (!app) problems.push(proposed ? "proposed a pipeline, not an App" : "no App proposed");
+    else problems.push(...appDifferences(exampleApp(c.file), app, catalog));
+  } else if (c.file) {
+    if (!proposed) problems.push("no proposal");
+    else problems.push(...pipelineDifferences(examplePipeline(c.file), proposed, catalog));
+  } else if (c.current) {
+    const current = examplePipeline(c.current);
+    if (!proposed) problems.push("no proposal");
+    else {
+      const changes = diffDefinitions(current, proposed).changes;
+      const expected = [{ kind: "pipeline", field: "trigger", before: current.trigger, after: { schedule: "*/30 * * * *", tz: "Europe/Sofia" } }];
+      if (JSON.stringify(changes) !== JSON.stringify(expected)) problems.push(`changes: ${JSON.stringify(changes)}`);
+    }
+  } else {
+    if (proposed || app) problems.push("proposed something");
+    if (!/download|file|attach|invoice/i.test(outcome.said)) problems.push("didn't say what is missing");
+  }
+  return problems;
+}
+
+/** A turn as the results file keeps it. */
+interface SavedTurn {
+  text: string;
+  proposal: string | null;
+  appProposal: { source: string; pipelines: string[] } | null;
+  brief: { cannot?: string[] } | null;
+}
+
+/**
+ * M67-V1: --rescore <results file>: each run's saved answers judged again by the eval's rules as they are now, without
+ * calling the model (a change of the rules costs nothing to try). Its last App proposal, or its last pipeline's.
+ */
+function rescore(file: string): void {
+  const saved = JSON.parse(readFileSync(resolve(file), "utf8")) as { results: { name: string; run: number; problems: string[]; turns: SavedTurn[] }[] };
+  const cases = loadCases();
+  let passing = 0;
+  for (const r of saved.results) {
+    const c = cases.find((k) => k.name === r.name);
+    if (!c) {
+      console.log(`SKIP ${r.name}: no such case now`);
+      continue;
+    }
+    const lastApp = r.turns.findLast((t) => t.appProposal)?.appProposal ?? null;
+    const lastPipeline = r.turns.findLast((t) => t.proposal)?.proposal ?? null;
+    const app = lastApp ? readAppSource(lastApp.source) : null;
+    const problems = judge(c, {
+      // The model's error, as the run said it (it isn't in the turns).
+      error: r.problems.find((p) => p.startsWith("error: "))?.slice("error: ".length) ?? null,
+      proposed: lastApp || !lastPipeline ? null : compiled(lastPipeline),
+      app: app && lastApp ? { app, pipelines: lastApp.pipelines.map((p) => compiled(p, app)) } : null,
+      said: r.turns.map((t) => [t.text, ...(t.brief?.cannot ?? [])].join(" ")).join(" "),
+    });
+    if (problems.length === 0) passing++;
+    console.log(`${problems.length === 0 ? "PASS" : "FAIL"} ${r.name}${problems.length === 0 ? "" : `\n  ${problems.join("\n  ")}`}`);
+  }
+  console.log(`\n${passing}/${saved.results.length} runs pass, re-scored from ${file}`);
 }
 
 if (require.main === module) {

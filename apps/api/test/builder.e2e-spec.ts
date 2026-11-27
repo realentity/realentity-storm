@@ -3,7 +3,7 @@ import { type BuilderChatView, type BuilderDryRunResponse, type PipelineDetailVi
 import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
 import { MAX_CALLS_PER_TURN } from "../src/builder/builder";
-import { callTools, propose, say, ScriptedChat, toolResults, userText } from "./support/scripted-chat";
+import { BRIEF, callTools, propose, say, ScriptedChat, stateBrief, toolResults, userText } from "./support/scripted-chat";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 /** The M4 pipeline, as the builder would propose it: no gate before email.send (the compiler adds it). */
@@ -56,6 +56,14 @@ describe("builder chat", () => {
     (await agent.post("/api/builder/chats").send({ pipelineId }).expect(201)).body as BuilderChatView;
   const send = async (chatId: string, text: string, suggestionId?: string) =>
     (await agent.post(`/api/builder/chats/${chatId}/messages`).send({ text, suggestionId }).expect(200)).body as BuilderChatView;
+  /** M70-T1: a new chat whose builder has stated its brief: the next message answers it, and it may propose. */
+  const briefedChat = async () => {
+    const chat = await newChat();
+    llm.first(...stateBrief());
+    await send(chat.chatId, "I have an idea.");
+    llm.requests.length = 0;
+    return chat;
+  };
   const lastProposal = (chat: BuilderChatView) => chat.messages.filter((m) => m.proposal).at(-1)!;
   const createPipeline = async (definition: unknown) =>
     (
@@ -68,13 +76,13 @@ describe("builder chat", () => {
   it("M7-U1: a proposal that doesn't compile goes back to the builder; what it fixes is shown with plan and policy", async () => {
     const broken = { ...replies(), steps: [{ id: "fetch", type: "email.fetch", with: { folder: "INBOX" } }] };
     llm.answer(propose(broken), propose(replies()), say("Every 15 minutes it drafts replies to recruiters."));
-    const chat = await newChat();
+    const chat = await briefedChat();
     const answered = await send(chat.chatId, "Draft replies to recruiters every 15 minutes.");
 
     const [sentBack] = toolResults(llm.requests[1]);
     expect(sentBack).toMatchObject({ is_error: true });
     expect(sentBack.content).toContain("steps[0].with.folder: unknown parameter for email.fetch");
-    const reply = answered.messages[1];
+    const reply = answered.messages[3];
     expect(reply).toMatchObject({ role: "assistant", text: "Every 15 minutes it drafts replies to recruiters.", compileErrors: null });
     expect(reply.proposal).toMatchObject({
       status: "open",
@@ -82,13 +90,13 @@ describe("builder chat", () => {
       policy: { provenance: [expect.objectContaining({ source: "item.from" })] },
     });
     expect(reply.proposal!.source).toContain("name: Recruiter replies");
-    expect(answered.costUsd).toBeCloseTo(0.03);
+    expect(answered.costUsd).toBeCloseTo(0.05); // the brief's turn too
   });
 
   it("M7-U1: when the builder gives up on a broken proposal, the chat shows the compile errors and nothing to save", async () => {
     llm.answer(propose({ name: "x", steps: [{ id: "a", type: "llm.generate", with: {} }] }), say("I couldn't make it compile."));
-    const chat = await send((await newChat()).chatId, "Write me a poem");
-    const reply = chat.messages[1];
+    const chat = await send((await briefedChat()).chatId, "Write me a poem");
+    const reply = chat.messages[3];
     expect(reply.proposal).toBeNull();
     expect(reply.compileErrors).toEqual([{ path: "steps[0].with.instruction", message: "is required" }]);
     await agent.post(`/api/builder/chats/${chat.chatId}/messages/${reply.messageId}/save`).expect(404);
@@ -100,10 +108,10 @@ describe("builder chat", () => {
       propose({ name: "x", steps: [{ id: "tell", type: "notify.telegram", with: { text: "hi", chatId: "123" } }] }),
       say("Neither works."),
     );
-    const chat = await send((await newChat()).chatId, "Run a shell command");
+    const chat = await send((await briefedChat()).chatId, "Run a shell command");
     expect(toolResults(llm.requests[1])[0].content).toContain('unknown step type "shell.exec"');
     expect(toolResults(llm.requests[2])[0].content).toContain("steps[0].with.chatId: unknown parameter for notify.telegram");
-    expect(chat.messages[1].proposal).toBeNull();
+    expect(chat.messages[3].proposal).toBeNull();
     expect(await db.client.pipeline.count()).toBe(0);
 
     // What it builds from: every catalog step with its parameters, nothing else.
@@ -111,12 +119,12 @@ describe("builder chat", () => {
     expect(system).toContain("## email.send");
     expect(system).toContain("to: string (email)");
     expect(system).not.toContain("shell");
-    expect(tools.map((t) => t.name)).toEqual(["propose_pipeline", "propose_app", "draft_type", "list_runs", "read_run"]);
+    expect(tools.map((t) => t.name)).toEqual(["propose_pipeline", "propose_app", "state_brief", "draft_type", "list_examples", "read_example", "read_app", "list_runs", "read_run"]);
   });
 
   it("M7-S2: a builder-made pipeline still gets the gate before its side effect; saving it makes v1 of a new pipeline", async () => {
     llm.answer(propose(replies()), say("Done."));
-    const chat = await send((await newChat()).chatId, "Draft replies to recruiters");
+    const chat = await send((await briefedChat()).chatId, "Draft replies to recruiters");
     const proposal = lastProposal(chat);
     expect(proposal.proposal!.definition.steps.map((s) => [s.id, s.autoInserted ?? false])).toEqual([
       ["fetch", false],
@@ -198,13 +206,54 @@ describe("builder chat", () => {
     expect(userText(llm.last)).toMatch(/^<current_pipeline version="2"/);
   });
 
+  // M70-T1, T2: a new idea is said back before it is proposed; a change to what exists is made as asked
+  it("a new idea: no proposal before a brief; the brief is shown in the chat; after the user's answer it proposes", async () => {
+    llm.answer(propose(replies()), say("Here it is."));
+    const chat = await newChat();
+    const first = await send(chat.chatId, "Draft replies to recruiters every 15 minutes.");
+    expect(toolResults(llm.requests[1])[0]).toMatchObject({ is_error: true, content: expect.stringContaining("Not yet: this is a new idea. Say what you will make with state_brief first") as unknown });
+    expect(first.messages[1]).toMatchObject({ proposal: null, brief: null });
+
+    // Stated and proposed in the same turn: the brief is shown, the proposal still waits for the answer.
+    llm.answer(callTools({ name: "state_brief", input: BRIEF }, { name: "propose_pipeline", input: { summary: "x", pipeline: replies() } }), say("Agreed?"));
+    const briefed = await send(chat.chatId, "Go on.");
+    expect(briefed.messages[3]).toMatchObject({ proposal: null, brief: { summary: BRIEF.summary, setup: [], cannot: [] } });
+    expect(toolResults(llm.last)[1]).toMatchObject({ is_error: true });
+    expect(toolResults(llm.last)[0]).toMatchObject({ content: expect.stringContaining("Stop here") as unknown });
+
+    llm.answer(propose(replies()), say("Proposed."));
+    const agreed = await send(chat.chatId, "Agreed.");
+    expect(agreed.messages[5].proposal).toMatchObject({ status: "open" });
+    expect(agreed.messages[3].brief).not.toBeNull();
+    expect(agreed.messages[5].brief).toBeNull();
+
+    // A brief that doesn't hold goes back to the builder.
+    llm.answer(callTools({ name: "state_brief", input: { pipelines: [] } }), say("Hmm."));
+    await send(chat.chatId, "And?");
+    expect(toolResults(llm.requests.at(-1)!)[0]).toMatchObject({ is_error: true, content: expect.stringContaining("summary") as unknown });
+  });
+
+  it("a change to a pipeline that exists, or to an editor's draft, needs no brief", async () => {
+    const pipeline = await createPipeline(replies());
+    const chat = await newChat(pipeline.pipelineId);
+    llm.answer(propose(replies(undefined, "Work")), say("It reads Work now."));
+    expect(lastProposal(await send(chat.chatId, "Read Work instead.")).proposal).toMatchObject({ status: "open" });
+    const draft = await newChat();
+    llm.answer(propose(replies()), say("Done."));
+    await agent
+      .post(`/api/builder/chats/${draft.chatId}/messages`)
+      .send({ text: "Tidy this", editor: { source: "name: Recruiter replies\nsteps: []\n" } })
+      .expect(200);
+    expect(toolResults(llm.requests.at(-1)!)[0]).toMatchObject({ content: expect.stringContaining("Compiled.") as unknown });
+  });
+
   it("a new proposal supersedes the open one before it", async () => {
     llm.answer(propose(replies("First")), say("One."), propose(replies("Second")), say("Two."));
-    const chat = await newChat();
+    const chat = await briefedChat();
     await send(chat.chatId, "Draft replies");
     const after = await send(chat.chatId, "Change the instruction");
     expect(after.messages.filter((m) => m.proposal).map((m) => m.proposal!.status)).toEqual(["superseded", "open"]);
-    await agent.post(`/api/builder/chats/${chat.chatId}/messages/${after.messages[1].messageId}/save`).expect(409);
+    await agent.post(`/api/builder/chats/${chat.chatId}/messages/${after.messages[3].messageId}/save`).expect(409);
   });
 
   it("M7-T4: 'why did it skip X?' is answered from this pipeline's runs, shortened and marked as data", async () => {
@@ -366,14 +415,14 @@ describe("builder chat", () => {
 
   it("a proposal for a new pipeline can be dry-run first: the draft and the chat then belong to a pipeline, saved as v1", async () => {
     llm.answer(propose(replies()), say("Done."));
-    const chat = await send((await newChat()).chatId, "Draft replies");
+    const chat = await send((await briefedChat()).chatId, "Draft replies");
     const messageId = lastProposal(chat).messageId;
     const dry = (await agent.post(`/api/builder/chats/${chat.chatId}/messages/${messageId}/dry-run`).expect(202))
       .body as BuilderDryRunResponse;
     expect(dry.run).toMatchObject({ dryRun: true, status: "QUEUED", version: 1 });
     expect(dry.chat.pipelineId).toBe(dry.run.pipelineId);
     expect((await agent.get(`/api/builder/chats?pipelineId=${dry.run.pipelineId}`).expect(200)).body).toEqual([
-      expect.objectContaining({ chatId: chat.chatId, title: "Draft replies" }),
+      expect.objectContaining({ chatId: chat.chatId, title: "I have an idea." }),
     ]);
 
     await agent.post(`/api/builder/chats/${chat.chatId}/messages/${messageId}/save`).expect(200);

@@ -35,6 +35,51 @@ export const BuilderMessageSchema = z
   .strict();
 export type BuilderMessageRequest = z.infer<typeof BuilderMessageSchema>;
 
+/**
+ * M70-T2: what the builder says it will make, before it proposes a new idea: the App with its types and the fields that
+ * matter, each pipeline (what starts it, what it does, what waits for me, what it sends), what I set up after, and what
+ * Storm can't do of what I asked. I agree or change it; then it proposes. It stays in the chat as what was agreed.
+ */
+export const BuilderBriefSchema = z
+  .object({
+    summary: z.string().trim().min(1).max(500).describe("One or two sentences: what it is for."),
+    app: z
+      .object({
+        name: z.string().trim().min(1).max(60),
+        types: z
+          .array(
+            z
+              .object({
+                name: z.string().trim().min(1).max(40),
+                about: z.string().trim().min(1).max(300).describe("What one is, what identifies it, its stages if it has any."),
+                fields: z.array(z.string().trim().min(1).max(120)).max(30).describe("The fields that matter, in words: which ones I type."),
+              })
+              .strict(),
+          )
+          .max(20),
+      })
+      .strict()
+      .optional()
+      .describe("Left out for a pipeline without an App."),
+    pipelines: z
+      .array(
+        z
+          .object({
+            name: z.string().trim().min(1).max(80),
+            trigger: z.string().trim().min(1).max(200).describe("What starts it, in words: every day at 7:00, when a Bill is saved, a button."),
+            does: z.string().trim().min(1).max(600).describe("What it reads and does, in order."),
+            waitsForMe: z.string().trim().max(300).optional().describe("What waits for my approval before it happens."),
+            sends: z.string().trim().max(300).optional().describe("What it sends or changes outside, and to whom (where the address comes from)."),
+          })
+          .strict(),
+      )
+      .max(10),
+    setup: z.array(z.string().trim().min(1).max(200)).max(10).default([]).describe("What I set up after saving: an account, a credential, a setting."),
+    cannot: z.array(z.string().trim().min(1).max(300)).max(10).default([]).describe("What of what I asked Storm can't do, said plainly."),
+  })
+  .strict();
+export type BuilderBrief = z.output<typeof BuilderBriefSchema>;
+
 /** open: can be saved; saved: became a version; superseded: a later proposal in the chat replaced it. */
 export type BuilderProposalStatus = "open" | "saved" | "superseded";
 
@@ -62,6 +107,8 @@ export interface AppProposalView {
   summary: string;
   app: { name: string; source: string; isNew: boolean; changes: string[] };
   pipelines: { name: string; source: string; isNew: boolean; changes: string[] }[];
+  /** M70-T4: what changed since the chat's last proposal of it (changed in place); null: the first one. */
+  changedSince: string[] | null;
   /** Once saved: the App's id. */
   savedAppId: string | null;
 }
@@ -73,6 +120,8 @@ export interface BuilderMessageView {
   proposal: BuilderProposalView | null;
   /** M34: an App and its pipelines proposed together. */
   appProposal: AppProposalView | null;
+  /** M70-T2: what it said it will make, before proposing a new idea. */
+  brief: BuilderBrief | null;
   /** The builder's last attempt didn't compile (M7-U1): what the compiler said. */
   compileErrors: CompileIssue[] | null;
   /** The turn failed (API error, token cap, refusal). */
