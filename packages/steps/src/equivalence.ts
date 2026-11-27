@@ -10,6 +10,7 @@ import {
   type CompiledDefinition,
 } from "@realentity/storm-shared";
 import { type StepCatalog } from "./catalog";
+import { rawReferencesIn } from "./compiler";
 
 /**
  * M67-T1 (M7-V1's, grown to Apps): what makes what the builder proposed equivalent to a hand-written example, for the
@@ -128,7 +129,7 @@ function usesOf(app: AppDefinition): string[] {
 function shape(definition: CompiledDefinition, catalog: StepCatalog) {
   const typeOf = new Map(definition.steps.map((s) => [s.id, s.type]));
   const refs = (value: unknown): string[] =>
-    [...JSON.stringify(value ?? null).matchAll(/\{\{([^}]*)\}\}/g)].map(([, ref]) => ref.trim().replace(/^([a-zA-Z0-9_]+)/, (id: string) => typeOf.get(id) ?? id));
+    rawReferencesIn(value).map((ref) => ref.replace(/^\w+/, (id: string) => typeOf.get(id) ?? id));
   const slots: Record<string, number> = {};
   for (const step of definition.steps)
     for (const ref of refs(step.with)) {
