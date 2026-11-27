@@ -300,6 +300,44 @@ describe("Tasks and Papers", () => {
       expect(send.calls).toHaveLength(1);
     });
 
+    // M66-T5: with a Bills App chosen for Papers' use of Bill, last month's bills are listed with the papers
+    it("with your Bills App chosen, last month's bills are listed with the papers, in the email and its totals", async () => {
+      const { appId, definition } = await install("apps/papers.yaml");
+      const bills = await install("apps/bills.yaml");
+      const thisMonth = new Date().toISOString().slice(0, 7);
+      const last = new Date(new Date(`${thisMonth}-01T00:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 7);
+      const bill = (key: string, value: Record<string, string | number>, stage: string) =>
+        db.client.dataEntity.create({ data: { appId: bills.appId, type: "Bill", key, value: { billKey: key, ...value }, stage } });
+      await bill("power", { issuer: "Power Co", amount: 82.4, currency: "EUR", month: `${last}-01`, dueDate: `${last}-20`, reference: "PW-11" }, "paid");
+      await bill("water", { issuer: "Water Co", amount: 21, currency: "EUR", month: `${last}-01` }, "due");
+      await bill("next", { issuer: "Power Co", amount: 90, currency: "EUR", month: `${thisMonth}-01` }, "due");
+      await add(appId, "Paper", "e1", { title: "Laptop", kind: "invoice", merchant: "Contoso", amount: 1200, currency: "EUR", date: `${last}-03`, category: "equipment" });
+      await db.client.appUse.create({ data: { appId, name: "Bill", sourceAppId: bills.appId, sourceType: "Bill" } });
+      const versionId = await createVersion(db.client, userId, read("expense-report.yaml"), compiler, { app: definition });
+      await bindSlots(db.client, versionId, {}, { accountant: "books@accounting.example" });
+
+      const runId = await actions.start(versionId, { trigger: "manual" });
+      expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
+      const [review] = await proposals(runId);
+      const offered = (review.originalPayload as { items: Record<string, unknown>[] }).items;
+      // Last month's bills only, by their date (the due date, else the month), and only what the use declares of them.
+      expect(offered.map((p) => [p.title, p.date])).toEqual([
+        ["Water Co", `${last}-01`],
+        ["Laptop", `${last}-03`],
+        ["Power Co", `${last}-20`],
+      ]);
+      expect(JSON.stringify(offered)).not.toContain("PW-11");
+      await approve(review);
+      expect(await actions.advance(runId)).toBe("WAITING_FOR_USER");
+      const [, mail] = await proposals(runId);
+      expect(mail.originalPayload).toMatchObject({
+        body: expect.stringContaining(
+          `My expenses for ${new Date(`${last}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })}, 3 in all:\n\n` +
+            `${last}-01  Water Co  bill  21.00 EUR\n${last}-03  Contoso  equipment  1,200.00 EUR\n${last}-20  Power Co  bill  82.40 EUR\n\nTotal: 1,303.40 EUR`,
+        ) as unknown,
+      });
+    });
+
     // M59-T1: email.send itself: the approved files as they were kept, only the pipeline's App's.
     it("sends the receipt as it was kept; a file changed since, or another App's, sends nothing", async () => {
       const sent: OutgoingMail[] = [];

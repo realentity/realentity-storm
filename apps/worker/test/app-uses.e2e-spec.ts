@@ -99,8 +99,19 @@ describe("data.read through a use (M66)", () => {
   const choose = (sourceAppId: string, sourceType = "Bill") =>
     db.client.appUse.create({ data: { appId: reportId, name: "Bill", sourceAppId, sourceType } });
 
-  it("not chosen yet: refused, saying where to choose it", async () => {
+  it("not chosen yet: refused, saying where to choose it; an optional use reads nothing instead, until it no longer fits", async () => {
     await expect(read()).rejects.toThrow("Bill isn't chosen yet: choose which of your Apps it comes from, on Report's page");
+    const version = await db.client.appVersion.create({
+      data: { appId: reportId, version: 2, definition: {}, source: REPORT.replace("fields: [issuer, amount, dueDate, status, note]", "fields: [issuer, amount]\n    optional: true") },
+    });
+    await db.client.app.update({ where: { appId: reportId }, data: { currentVersionId: version.appVersionId } });
+    expect(await read()).toEqual({ items: [], count: 0 });
+    // Chosen, then no longer fitting: a mistake to fix, so it stops.
+    await choose(billsId);
+    expect((await read()).count).toBe(2);
+    const owner = await db.client.appVersion.create({ data: { appId: billsId, version: 2, definition: {}, source: BILLS.replace("      amount: { type: money }\n", "") } });
+    await db.client.app.update({ where: { appId: billsId }, data: { currentVersionId: owner.appVersionId } });
+    await expect(read()).rejects.toThrow('Bills › Bill no longer fits Bill: it has no field "amount"');
   });
 
   it("reads the chosen App's entities with only the declared fields, my fields and the stage among them", async () => {
@@ -157,6 +168,19 @@ describe("data.read through a use (M66)", () => {
     await bill(home, "rent-11", { issuer: "Landlord", amount: 600, dueDate: "2026-11-01" }, "due");
     await choose(home);
     expect((await read()).items.map((i) => i.issuer)).toEqual(["Landlord"]);
+  });
+
+  it("the chosen App deleted: not chosen any more; pointed at another App's type of another name, reads that", async () => {
+    await choose(billsId);
+    await db.client.app.delete({ where: { appId: billsId } });
+    await expect(read()).rejects.toThrow("Bill isn't chosen yet");
+
+    const home = await app(BILLS.replace("name: Bills", "name: Household").replace("  Bill:", "  Payment:"));
+    await db.client.dataEntity.create({ data: { appId: home, type: "Payment", key: "rent-11", value: { billKey: "rent-11", issuer: "Landlord", amount: 600, dueDate: "2026-11-01" }, stage: "due" } });
+    // Its other types' rows, with the same fields, aren't read.
+    await db.client.dataEntity.create({ data: { appId: home, type: "Bill", key: "x", value: { billKey: "x", issuer: "Not this", amount: 1 }, stage: "due" } });
+    await choose(home, "Payment");
+    expect((await read()).items).toEqual([{ issuer: "Landlord", amount: 600, dueDate: "2026-11-01", status: "due" }]);
   });
 
   it("the chosen App no longer fits (a field removed, made encrypted) or its type gone: refused, nothing read", async () => {

@@ -93,10 +93,13 @@ export class ExamplesService {
   /** M66: each use of another App's type: which of my Apps fills it, and whether it still fits. */
   private async useItems(userId: string, appId: string): Promise<ChecklistView["items"]> {
     return (await this.uses.of(userId, appId)).map((use) => {
-      const label = use.use.help ? `Choose where "${use.name}" comes from: ${use.use.help}` : `Choose where "${use.name}" comes from`;
+      const what = use.use.help ? `Choose where "${use.name}" comes from: ${use.use.help}` : `Choose where "${use.name}" comes from`;
+      const label = use.use.optional ? `${what} (optional)` : what;
       const stale = use.source && use.problems.length > 0;
       const note = stale ? { note: `${use.source!.app} › ${use.source!.type} no longer fits: ${use.problems.join("; ")}` } : {};
-      return { label, done: use.source !== null && !stale, link: `/apps/${appId}#uses`, ...note };
+      // An optional one not chosen doesn't hold the App back.
+      const done = use.source === null ? use.use.optional === true : !stale;
+      return { label, done, link: `/apps/${appId}#uses`, ...note };
     });
   }
 

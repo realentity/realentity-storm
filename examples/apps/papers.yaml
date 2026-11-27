@@ -7,6 +7,7 @@
 # is told on Telegram before its notice runs out (contract-watch, contract-reminder). On the 1st, last month's
 # receipts and invoices go to your accountant (expense-report), the ones you pick, after you Act.
 # M59-T1: the claim attaches the paper's document, the expense report each paper's.
+# M66: with a Bills App (uses: Bill, optional), the expense report lists last month's bills too.
 app:
   name: Papers
   description: Receipts, invoices, warranties and contracts, read for you, with their dates
@@ -72,6 +73,14 @@ pages:
     search: [name, email, notes]
   - form: Merchant
     fields: [name, email, notes]
+# M66: your bills, from your Bills App when you have one: the expense report lists the month's bills too. Papers works
+# without it; choose which App they come from on Papers' page.
+uses:
+  Bill:
+    from: { app: Bills, type: Bill }
+    fields: [issuer, amount, currency, dueDate, month, status]
+    help: Your bills, listed in the monthly expense report with the receipts and invoices
+    optional: true
 
 pipelines:
   read-paper:
@@ -319,9 +328,10 @@ pipelines:
 
   expense-report:
     # On the 1st of every month, and from the Papers list's button: last month's receipts and invoices (not the ones
-    # in the personal category), listed for you to untick what isn't an expense, then one email with each of them and
-    # the totals per currency to your accountant (a setting), after you Act, with their documents attached (at most 20
-    # and 18 MB together: more stops the run before the gate, and says so).
+    # in the personal category) and, with a Bills App, last month's bills, listed for you to untick what isn't an
+    # expense, then one email with each of them and the totals per currency to your accountant (a setting), after you
+    # Act, with the papers' documents attached (at most 20 and 18 MB together: more stops the run before the gate, and
+    # says so).
     name: Expense report
     description: Last month's receipts and invoices to your accountant, the ones you pick, after you approve it.
     trigger: { schedule: "0 8 1 * *" }
@@ -351,11 +361,25 @@ pipelines:
             - { field: date, op: lt, value: "{{month.value.to}}" }
           sort: date
           limit: 500
+      # M66: last month's bills from your Bills App (none without one), as the papers are listed.
+      - id: bills
+        type: data.read
+        with:
+          type: Bill
+          where:
+            - { field: month, op: gte, value: "{{month.value.from}}" }
+            - { field: month, op: lt, value: "{{month.value.to}}" }
+          limit: 200
       - id: business
         type: data.map
         with:
-          from: "{{papers.items}}"
-          expression: '$[$not(category = "personal")]'
+          from: { papers: "{{papers.items}}", bills: "{{bills.items}}" }
+          expression: |-
+            [$append(
+              papers[$not(category = "personal")],
+              bills.{ "title": issuer, "merchant": issuer, "kind": "bill", "category": "bill", "amount": amount,
+                      "currency": currency, "date": dueDate ? dueDate : month }
+            )^(date)]
       - id: pick
         type: gate.review
         when: "{{business.items}}"
@@ -373,7 +397,7 @@ pipelines:
                   & ($exists($p.amount) ? $formatNumber($p.amount, "#,##0.00") & " " & $p.currency : "no amount")
               };
               $sums := $ps[$exists(amount) and $exists(currency)]{ currency: $sum(amount) };
-              $count($ps) > 0 ? "Hello,\n\nMy expenses for " & month & ", " & $count($ps) & " receipts and invoices:\n\n"
+              $count($ps) > 0 ? "Hello,\n\nMy expenses for " & month & ", " & $count($ps) & " in all:\n\n"
                 & $join($map($ps, $line), "\n")
                 & ($sums ? "\n\nTotal: " & $join($each($sums, function($v, $k) { $formatNumber($v, "#,##0.00") & " " & $k }), ", ") : "")
                 & "\n\nThe documents are attached. Tell me if you need anything else.\n"

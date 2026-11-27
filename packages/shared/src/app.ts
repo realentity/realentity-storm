@@ -733,6 +733,11 @@ export const AppUseSchema = z
       .refine((fields) => new Set(fields).size === fields.length, "a field is named once"),
     /** Why it is used, shown where the user chooses which App fills it. */
     help: z.string().trim().min(1).max(500).optional(),
+    /**
+     * The App works without it (Papers without a Bills App): not chosen, data.read gives no items and the checklist
+     * doesn't wait for it. Chosen and no longer fitting still stops, as a mistake to fix.
+     */
+    optional: z.boolean().optional(),
   })
   .strict();
 export type AppUse = z.output<typeof AppUseSchema>;

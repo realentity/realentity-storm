@@ -68,12 +68,17 @@ async function usedType(
   app: AppDefinition,
   name: string,
   use: AppUse,
-): Promise<{ appId: string; typeName: string; type: DataType }> {
+): Promise<{ appId: string; typeName: string; type: DataType } | null> {
+  const notChosen = () => {
+    // An optional use not chosen reads nothing: the App works without it.
+    if (use.optional) return null;
+    throw new Error(`${name} isn't chosen yet: choose which of your Apps it comes from, on ${app.name}'s page`);
+  };
   const chosen = await prisma.appUse.findUnique({ where: { appId_name: { appId, name } } });
-  if (!chosen) throw new Error(`${name} isn't chosen yet: choose which of your Apps it comes from, on ${app.name}'s page`);
+  if (!chosen) return notChosen();
   const owner = await prisma.app.findFirst({ where: { appId: chosen.sourceAppId, userId: context.userId } });
   const version = owner?.currentVersionId ? await prisma.appVersion.findUnique({ where: { appVersionId: owner.currentVersionId } }) : null;
-  if (!owner || !version) throw new Error(`${name} isn't chosen yet: choose which of your Apps it comes from, on ${app.name}'s page`);
+  if (!owner || !version) return notChosen();
   const definition = readAppSource(version.source);
   const type = Object.hasOwn(definition.types, chosen.sourceType) ? definition.types[chosen.sourceType] : undefined;
   const problems = type ? useProblems(use, type) : [`it has no type ${chosen.sourceType} any more`];
@@ -334,7 +339,9 @@ export class ReadStep implements StepExecutor {
     use: AppUse,
     query: { where?: Condition[]; sort?: string; limit: number; removed: boolean },
   ): Promise<unknown> {
-    const { appId, typeName, type } = await usedType(this.prisma, context, own.appId, own.app, name, use);
+    const used = await usedType(this.prisma, context, own.appId, own.app, name, use);
+    if (!used) return { items: [], count: 0 };
+    const { appId, typeName, type } = used;
     const rows = await this.prisma.dataEntity.findMany({
       where: { appId, type: typeName, removedAt: query.removed ? { not: null } : null },
       orderBy: { firstSeenAt: "desc" },
