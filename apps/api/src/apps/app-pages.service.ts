@@ -5,6 +5,7 @@ import {
   isTextList,
   CHART_SERIES,
   checkAppSource,
+  declaredOnly,
   PREVIEW_ROWS,
   sampleRows,
   entityItem,
@@ -29,6 +30,7 @@ import {
   sourceItems,
   type SourceView,
   type AppDefinition,
+  type AppUseChoiceView,
   type AppEntityView,
   type AppReportView,
   type AppListQueryParsed,
@@ -48,6 +50,7 @@ import {
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { nothingOn, pipelinesByApp } from "./app-pipelines";
+import { AppUsesService, type ChosenUse } from "./app-uses.service";
 
 /** A list reads at most this many entities of its type, the newest first; filtered, sorted and grouped in memory. */
 const MAX_ROWS = 5000;
@@ -58,7 +61,10 @@ const MAX_ROWS = 5000;
  */
 @Injectable()
 export class AppPagesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uses: AppUsesService,
+  ) {}
 
   /**
    * Every App for the launcher, by name: its lists that go in the menu (its types in the order they are written), then
@@ -138,17 +144,26 @@ export class AppPagesService {
   async list(userId: string, appId: string, type: string, query: AppListQueryParsed): Promise<AppListView> {
     const { header, definition } = await this.header(userId, appId, type);
     const rows = await this.withTitles(userId, appId, definition, type, await this.rows(appId, definition, type));
-    // M65: the rows of the other types the page's sources read (of this App only).
+    // M65: the rows of the other types the page's sources read; M66: of a use, the chosen App's (none until chosen).
     const read = new Map<string, ViewRow[]>([[type, rows]]);
-    for (const source of Object.values(listPageOf(definition, type).sources)) {
-      if (!read.has(source.from) && Object.hasOwn(definition.types, source.from)) {
-        read.set(source.from, await this.withTitles(userId, appId, definition, source.from, await this.rows(appId, definition, source.from)));
+    const sourced = new Map<string, SourceOf>();
+    const sources = Object.values(listPageOf(definition, type).sources);
+    const used = sources.some((s) => !Object.hasOwn(definition.types, s.from)) ? await this.uses.chosen(userId, appId, definition) : new Map<string, ChosenUse>();
+    for (const source of sources) {
+      if (sourced.has(source.from)) continue;
+      const use = used.get(source.from);
+      if (Object.hasOwn(definition.types, source.from)) {
+        sourced.set(source.from, { type: definition.types[source.from], title: listPageOf(definition, source.from).title });
+        if (!read.has(source.from)) read.set(source.from, await this.withTitles(userId, appId, definition, source.from, await this.rows(appId, definition, source.from)));
+      } else if (use) {
+        sourced.set(source.from, { type: use.type, title: use.title });
+        read.set(source.from, await this.useRows(use));
       }
     }
-    const listed = listOf(definition, type, rows, query, (from) => read.get(from) ?? []);
+    const listed = listOf(definition, type, rows, query, (from) => read.get(from) ?? [], (from) => sourced.get(from));
     const chart = listed.page.chart ? await this.chart(userId, listed.page.chart.history, rows, listed.page.title) : null;
     // M55: a ref filter's values are the entities of its type.
-    const filters = await this.withRefValues(appId, definition, listed.page.filters);
+    const filters = await this.withRefValues(userId, appId, definition, listed.page.filters);
     return { ...header, ...listed, page: { ...listed.page, filters }, chart };
   }
 
@@ -170,8 +185,13 @@ export class AppPagesService {
     }
     const sample = rows.length === 0;
     if (sample) rows = sampleRows(request.type, definition.types[request.type]);
-    const listed = listOf(definition, request.type, rows, { tab: "current", filter: {}, offset: 0, limit: PREVIEW_ROWS }, (from) =>
-      from === request.type ? rows : [],
+    const listed = listOf(
+      definition,
+      request.type,
+      rows,
+      { tab: "current", filter: {}, offset: 0, limit: PREVIEW_ROWS },
+      (from) => (from === request.type ? rows : []),
+      (from) => (Object.hasOwn(definition.types, from) ? { type: definition.types[from], title: listPageOf(definition, from).title } : undefined),
     );
     const first = listed.rows[0];
     return {
@@ -188,6 +208,27 @@ export class AppPagesService {
       take: MAX_ROWS,
     });
     return entities.map((e) => rowOf(e, definition.types[type]));
+  }
+
+  /** M66: a use's rows: the chosen App's entities of its type that are there, with only the declared fields. */
+  private async useRows(use: ChosenUse): Promise<ViewRow[]> {
+    const entities = await this.prisma.client.dataEntity.findMany({
+      where: { appId: use.appId, type: use.typeName, removedAt: null },
+      orderBy: { firstSeenAt: "desc" },
+      take: MAX_ROWS,
+    });
+    return entities.map((e) => {
+      const row = rowOf(e, use.type);
+      return { ...row, value: declaredOnly(row.value, use.fields) };
+    });
+  }
+
+  /** M66: a ref's choices through a use: the chosen App's entities, by key, named by their title; none until chosen. */
+  async useChoices(userId: string, appId: string, name: string): Promise<AppUseChoiceView[]> {
+    const { definition } = await this.current(userId, appId);
+    if (!definition.uses || !Object.hasOwn(definition.uses, name)) throw new NotFoundException(`"${definition.name}" has no use "${name}"`);
+    const use = (await this.uses.chosen(userId, appId, definition)).get(name);
+    return use ? choicesOf(await this.useRows(use), use.title) : [];
   }
 
   /** M33 (M29-T8's, for an App): every key's values, the CHART_SERIES with the highest latest value, named by their entity. */
@@ -218,7 +259,7 @@ export class AppPagesService {
     const page = {
       ...viewed,
       related: await Promise.all(
-        viewed.related.map(async (r) => ({ ...r, filters: await this.withRefValues(appId, definition, r.filters) })),
+        viewed.related.map(async (r) => ({ ...r, filters: await this.withRefValues(userId, appId, definition, r.filters) })),
       ),
     };
     const list = listPageOf(definition, type);
@@ -271,17 +312,20 @@ export class AppPagesService {
     return found;
   }
 
-  /** M55: a ref filter's values: the entities of its type, by key, named by their title. */
-  private async withRefValues(appId: string, definition: AppDefinition, filters: PageFilter[]): Promise<PageFilter[]> {
+  /** M55: a ref filter's values: the entities of its type, by key, named by their title; M66: of a use, the chosen App's. */
+  private async withRefValues(userId: string, appId: string, definition: AppDefinition, filters: PageFilter[]): Promise<PageFilter[]> {
+    const uses = definition.uses ?? {};
+    const used = filters.some((f) => f.ref && Object.hasOwn(uses, f.ref)) ? await this.uses.chosen(userId, appId, definition) : new Map<string, ChosenUse>();
     return Promise.all(
       filters.map(async (f) => {
-        if (!f.ref || !Object.hasOwn(definition.types, f.ref)) return f;
-        const title = listPageOf(definition, f.ref).title;
+        if (!f.ref) return f;
+        if (Object.hasOwn(uses, f.ref)) {
+          const use = used.get(f.ref);
+          return { ...f, values: use ? choicesOf(await this.useRows(use), use.title) : [] };
+        }
+        if (!Object.hasOwn(definition.types, f.ref)) return f;
         const rows = (await this.rows(appId, definition, f.ref)).filter((r) => !r.removedAt);
-        const values = rows
-          .map((r) => ({ value: r.key, label: text(fieldOf(r, title)) ?? r.key }))
-          .sort((a, b) => a.label.localeCompare(b.label));
-        return { ...f, values };
+        return { ...f, values: choicesOf(rows, listPageOf(definition, f.ref).title) };
       }),
     );
   }
@@ -292,7 +336,8 @@ export class AppPagesService {
    */
   private async withTitles(userId: string, appId: string, definition: AppDefinition, type: string, rows: ViewRow[]): Promise<ViewRow[]> {
     const fields = Object.entries(definition.types[type].fields);
-    const refs = fields.filter(([, f]) => isRefField(f) && f.to && Object.hasOwn(definition.types, f.to));
+    const uses = definition.uses ?? {};
+    const refs = fields.filter(([, f]) => isRefField(f) && f.to && (Object.hasOwn(definition.types, f.to) || Object.hasOwn(uses, f.to)));
     // M57: a credential field by the credential's name.
     const credentials = fields.filter(([, f]) => f.type === "credential").map(([name]) => name);
     if (refs.length === 0 && credentials.length === 0) return rows;
@@ -306,7 +351,14 @@ export class AppPagesService {
           )
         : new Map<string, string>();
     const titles = new Map<string, Map<string, string>>();
+    // M66: a ref to a use is named by the chosen App's entity (none until chosen: its key is shown).
+    const used = refs.some(([, f]) => Object.hasOwn(uses, f.to!)) ? await this.uses.chosen(userId, appId, definition) : new Map<string, ChosenUse>();
     for (const to of new Set(refs.map(([, f]) => f.to!))) {
+      if (Object.hasOwn(uses, to)) {
+        const use = used.get(to);
+        titles.set(to, new Map(use ? choicesOf(await this.useRows(use), use.title).map((c) => [c.value, c.label]) : []));
+        continue;
+      }
       const title = listPageOf(definition, to).title;
       const theirs = await this.rows(appId, definition, to);
       titles.set(to, new Map(theirs.filter((r) => !r.removedAt).map((r) => [r.key, text(fieldOf(r, title)) ?? r.key])));
@@ -328,27 +380,39 @@ export class AppPagesService {
   }
 
   private async header(userId: string, appId: string, type: string): Promise<{ header: AppPageHeader; definition: AppDefinition }> {
+    const { version, definition } = await this.current(userId, appId);
+    if (!Object.hasOwn(definition.types, type)) throw new NotFoundException(`"${definition.name}" has no type "${type}"`);
+    return { header: { appId, app: definition.name, version, type }, definition };
+  }
+
+  /** The user's App as its current version says. */
+  private async current(userId: string, appId: string): Promise<{ version: number; definition: AppDefinition }> {
     const app = await this.prisma.client.app.findFirst({ where: { appId, userId } });
     const version = app?.currentVersionId
       ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
       : null;
     if (!app || !version) throw new NotFoundException();
-    const definition = readAppSource(version.source);
-    if (!Object.hasOwn(definition.types, type)) throw new NotFoundException(`"${definition.name}" has no type "${type}"`);
-    return { header: { appId, app: definition.name, version: version.version, type }, definition };
+    return { version: version.version, definition: readAppSource(version.source) };
   }
+}
+
+/** M65: what a page's source reads: its type (M66: a use's, narrowed to its fields) and the field that is its title. */
+interface SourceOf {
+  type: DataType;
+  title: string;
 }
 
 /**
  * A type's rows as its list page shows them: the tab's, filtered, searched, sorted, in groups with totals, then paged;
- * M65: with what its sources return (`rowsOf`: a type's rows, of this App).
+ * M65: with what its sources return (`rowsOf`: a source's rows; `sourceOf`: its type, none for a use not chosen).
  */
 function listOf(
   definition: AppDefinition,
   type: string,
   rows: ViewRow[],
   query: AppListQueryParsed,
-  rowsOf: (type: string) => ViewRow[],
+  rowsOf: (from: string) => ViewRow[],
+  sourceOf: (from: string) => SourceOf | undefined,
 ): Omit<AppListView, keyof AppPageHeader | "chart"> {
   const resolved = listPageOf(definition, type);
   const dataType = definition.types[type];
@@ -386,13 +450,14 @@ function listOf(
   };
   const sources = Object.fromEntries(
     Object.entries(resolved.sources).map(([name, source]): [string, SourceView] => {
-      const from = definition.types[source.from];
+      const of = sourceOf(source.from);
       if ("distinct" in source) {
+        if (!of) return [name, { kind: "values", field: source.distinct, values: [] }];
         // On the page's own type, what the other filters and the search leave (a tag's count among the days picked).
         const over = source.from === type ? searched.filter((row) => passes(row, source.distinct)) : rowsOf(source.from).filter((r) => !r.removedAt);
-        return [name, { kind: "values", field: source.distinct, values: distinctValues(from, source.distinct, source.by === "day", over, zone) }];
+        return [name, { kind: "values", field: source.distinct, values: distinctValues(of.type, source.distinct, source.by === "day", over, zone) }];
       }
-      const items = sourceItems(from, source, rowsOf(source.from).filter((r) => !r.removedAt), { title: listPageOf(definition, source.from).title });
+      const items = of ? sourceItems(of.type, source, rowsOf(source.from).filter((r) => !r.removedAt), { title: of.title }) : [];
       return [name, { kind: "items", items }];
     }),
   );
@@ -437,6 +502,14 @@ function listOf(
     }
   }
   return { page, rows: shown.slice(query.offset, query.offset + query.limit), total: shown.length, counts, groups, sources };
+}
+
+/** A ref's choices: the rows by key, named by their title (else the key), by name. */
+function choicesOf(rows: ViewRow[], title: string): AppUseChoiceView[] {
+  return rows
+    .filter((r) => !r.removedAt)
+    .map((r) => ({ value: r.key, label: text(fieldOf(r, title)) ?? r.key }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** A list's values as text. */

@@ -5,6 +5,8 @@ export interface LooseApp {
   name?: string;
   types: [string, LooseType][];
   pages: Record<string, unknown>[];
+  /** M66: its uses of other Apps' types, by name. */
+  uses: string[];
 }
 export interface LooseType {
   key?: unknown;
@@ -51,6 +53,7 @@ export function loose(source: string): LooseApp {
       ];
     }),
     pages: (Array.isArray(root.pages) ? root.pages : []).map(asObject),
+    uses: Object.keys(asObject(root.uses)),
   };
 }
 

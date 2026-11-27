@@ -235,13 +235,16 @@ function useChoices(field: FormField, appId: string | undefined, matching: strin
   const choices = useLoad(
     () =>
       appId && field.ref && !waiting
-        ? api.apps.page(appId, field.ref, { limit: 200, filter: field.match ? JSON.stringify({ [field.match]: matching }) : undefined })
+        ? field.use
+          ? api.apps.useChoices(appId, field.ref)
+          : api.apps
+              .page(appId, field.ref, { limit: 200, filter: field.match ? JSON.stringify({ [field.match]: matching }) : undefined })
+              .then((page) => page.rows.map((r) => ({ value: r.key, label: asText(fieldOf(r, page.page.title) ?? r.key) })))
         : Promise.resolve(null),
-    [appId, field.ref, field.match, matching],
+    [appId, field.ref, field.use, field.match, matching],
   );
-  const options = (choices.data?.rows ?? [])
-    .map((r) => ({ value: r.key, label: asText(fieldOf(r, choices.data!.page.title) ?? r.key) }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  // M66: through a use, the chosen App's entities (none until it is chosen).
+  const options = [...(choices.data ?? [])].sort((a, b) => a.label.localeCompare(b.label));
   const empty = choices.loading ? "…" : waiting ? `Choose its ${field.match} first` : `No ${field.ref} yet`;
   return { options, empty, waiting };
 }

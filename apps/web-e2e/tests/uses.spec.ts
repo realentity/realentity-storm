@@ -80,3 +80,62 @@ uses:
   await expect(page.getByTestId("use-source-Bill").locator("option:checked")).toHaveText("None: it works without it");
   await expect(page.getByTestId("uses-missing")).toHaveCount(0);
 });
+
+// M66-E1 (the pages' half): a ref to another App's type picks among the chosen App's entities, and is named by them
+test("a ref to another App's type: picked among the chosen App's bills on a form, shown by its title", async ({ page }) => {
+  const bills = unique("Bills");
+  const post = async (url: string, data: unknown) => {
+    const created = await page.request.post(url, { data });
+    expect(created.status(), await created.text()).toBe(201);
+    return (await created.json()) as { appId: string };
+  };
+  const { appId: billsId } = await post("/api/apps", {
+    source: `name: ${bills}
+types:
+  Bill:
+    mine: true
+    key: billKey
+    title: issuer
+    fields:
+      billKey: { type: text }
+      issuer: { type: text }
+      account: { type: text }
+`,
+  });
+  await post(`/api/apps/${billsId}/pages/Bill`, { values: { billKey: "power-11", issuer: "Power Co", account: "BG00 1111" } });
+  await post(`/api/apps/${billsId}/pages/Bill`, { values: { billKey: "water-11", issuer: "Water Co", account: "BG00 2222" } });
+  const { appId } = await post("/api/apps", {
+    source: `name: ${unique("Expenses")}
+types:
+  Expense:
+    mine: true
+    key: id
+    fields:
+      id: { type: text }
+      bill: { type: ref, to: Bill }
+uses:
+  Bill:
+    from: { app: ${bills}, type: Bill }
+    fields: [billKey, issuer]
+`,
+  });
+
+  await page.goto(`/a/${appId}/Expense`);
+  await page.getByTestId("add-entity").click();
+  const form = page.getByTestId("add-form");
+  await expect(form.getByTestId("ref-bill").locator("option")).toHaveText(["Choose one…", "Power Co", "Water Co"]);
+  await form.getByLabel("Id").fill("e1");
+  await form.getByTestId("ref-bill").selectOption({ label: "Water Co" });
+  await form.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByTestId("entity-fields")).toContainText("Water Co");
+  await expect(page.getByTestId("entity-fields")).not.toContainText("BG00");
+
+  await page.goto(`/a/${appId}/Expense`);
+  await expect(page.getByTestId("entity-row")).toContainText("Water Co");
+
+  // In the designer, a ref points at its own types or at a use.
+  await page.goto(`/apps/${appId}/edit`);
+  const ref = page.getByTestId("types-tab").getByTestId("field-ref");
+  await expect(ref.locator("option")).toHaveText(["points at…", "a Expense", "a Bill (from another App)"]);
+  await expect(ref.locator("option:checked")).toHaveText("a Bill (from another App)");
+});
