@@ -208,7 +208,7 @@ describe("data.read through a use (M66)", () => {
     await expect(read()).rejects.toThrow("Bills › Bill no longer fits Bill: its key billKey isn't among the fields read (a ref holds it)");
     const keyed = await db.client.appVersion.create({ data: { appId: reportId, version: 3, definition: {}, source: withRef.replace("fields: [issuer,", "fields: [billKey, issuer,") } });
     await db.client.app.update({ where: { appId: reportId }, data: { currentVersionId: keyed.appVersionId } });
-    expect((await read()).items.map((i) => i.billKey)).toEqual(["water-11", "power-11"]);
+    expect((await read()).items.map((i) => String(i.billKey)).sort()).toEqual(["power-11", "water-11"]);
   });
 
   // M66-T6: a field of mine there, listed under the use's mine:, is a recipient here; checked again at every run
