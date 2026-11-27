@@ -63,3 +63,19 @@ test("a proposal from the editor's chat goes onto the cards with its changes mar
   expect(saved.current.definition.description).toBe("Replies to recruiters");
   expect(saved.current.definition.steps[0].with.query).toBe("dotnet Plovdiv");
 });
+
+// M70-T2: a new idea is said back as a brief, shown in the chat, before anything is proposed
+test("a new idea in the chat: the builder says back what it will make, as a brief, and proposes nothing yet", async ({ page }) => {
+  await page.goto("/builder");
+  await page.getByTestId("builder-input").fill("A new idea: tell me when a product I watch gets cheaper.");
+  await page.getByTestId("builder-send").click();
+  const brief = page.getByTestId("builder-brief");
+  await expect(brief).toContainText("What I'll make");
+  await expect(brief.getByTestId("brief-app")).toContainText("The App: Prices");
+  await expect(brief.getByTestId("brief-app")).toContainText("Product: a product you watch, by its page");
+  await expect(brief.getByTestId("brief-pipelines")).toContainText("Watch (every day at 8:00): reads each product's price");
+  await expect(brief.getByTestId("brief-setup")).toContainText("Telegram");
+  await expect(brief.getByTestId("brief-cannot")).toContainText("buying for you");
+  await expect(page.getByTestId("builder-answer").last()).toContainText("agreed?");
+  await expect(page.getByTestId("builder-proposal")).toHaveCount(0);
+});

@@ -2,7 +2,7 @@ import { createPrismaConnection, type PrismaConnection } from "@realentity/storm
 import { type AppDetailView, type AppDriftView, type BuilderChatView, type PipelineDetailView } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
 import type request from "supertest";
-import { callTools, say, ScriptedChat, toolResults, userText } from "./support/scripted-chat";
+import { callTools, say, ScriptedChat, stateBrief, toolResults, userText } from "./support/scripted-chat";
 import { createTestApp, type TestApp } from "./support/test-app";
 
 /** A reading list, as the builder would propose it: the App, and the pipeline that fills it. */
@@ -74,6 +74,14 @@ describe("the builder and Apps", () => {
   const newChat = async (body: object = {}) => (await agent.post("/api/builder/chats").send(body).expect(201)).body as BuilderChatView;
   const send = async (chatId: string, text: string) =>
     (await agent.post(`/api/builder/chats/${chatId}/messages`).send({ text }).expect(200)).body as BuilderChatView;
+  /** M70-T1: a new chat whose builder has stated its brief: the next message answers it, and it may propose. */
+  const briefedChat = async () => {
+    const chat = await newChat();
+    llm.first(...stateBrief({ summary: "A reading list filled from a feed.", app: { name: "Reading list", types: [{ name: "Book", about: "a book", fields: ["title"] }] }, pipelines: [] }));
+    await send(chat.chatId, "I have an idea.");
+    llm.requests.length = 0;
+    return chat;
+  };
 
   it("T1: an App and its pipeline proposed as one change, its mistakes sent back, then saved together", async () => {
     const wrong = {
@@ -81,15 +89,16 @@ describe("the builder and Apps", () => {
       steps: [COLLECT.steps[0], { id: "save", type: "data.save", with: { items: "{{feed.items}}", type: "Books" } }],
     };
     llm.answer(proposeApp(READING, [wrong]), proposeApp(READING, [COLLECT]), say("A reading list, filled from the feed."));
-    const chat = await newChat();
+    const chat = await briefedChat();
     const answered = await send(chat.chatId, "Keep the books from this feed, and where I am with each.");
 
     expect(toolResults(llm.requests[1])[0]).toMatchObject({
       is_error: true,
       content: expect.stringContaining('pipelines[0].steps[1].with.type: "Reading list" has no type "Books"') as unknown,
     });
-    expect(userText(llm.requests[0])).toContain("<apps>\nnone yet\n</apps>");
-    const proposal = answered.messages[1].appProposal!;
+    // Shown once, with the chat's first message (the brief's turn).
+    expect(JSON.stringify(llm.requests[0].messages)).toContain(String.raw`<apps>\nnone yet\n</apps>`);
+    const proposal = answered.messages[3].appProposal!;
     expect(proposal).toMatchObject({
       status: "open",
       summary: "A reading list",
@@ -98,13 +107,13 @@ describe("the builder and Apps", () => {
     });
     expect(proposal.app.source).toContain("Book:");
 
-    const saved = (await agent.post(`/api/builder/chats/${chat.chatId}/messages/${answered.messages[1].messageId}/save-app`).expect(201))
+    const saved = (await agent.post(`/api/builder/chats/${chat.chatId}/messages/${answered.messages[3].messageId}/save-app`).expect(201))
       .body as BuilderChatView;
-    expect(saved.messages[1].appProposal).toMatchObject({ status: "saved", savedAppId: expect.any(String) as unknown });
-    expect(saved.appId).toBe(saved.messages[1].appProposal!.savedAppId);
+    expect(saved.messages[3].appProposal).toMatchObject({ status: "saved", savedAppId: expect.any(String) as unknown });
+    expect(saved.appId).toBe(saved.messages[3].appProposal!.savedAppId);
     const app = (await agent.get(`/api/apps/${saved.appId}`).expect(200)).body as AppDetailView;
     expect(app).toMatchObject({ name: "Reading list", version: 1, pipelines: [{ name: "Book feed" }] });
-    await agent.post(`/api/builder/chats/${chat.chatId}/messages/${answered.messages[1].messageId}/save-app`).expect(409);
+    await agent.post(`/api/builder/chats/${chat.chatId}/messages/${answered.messages[3].messageId}/save-app`).expect(409);
   });
 
   it("T2: a chat about an App sees it and its pipelines; a change that breaks one it leaves alone is refused", async () => {
@@ -176,8 +185,8 @@ describe("the builder and Apps", () => {
       .send({ source: JSON.stringify(READING) })
       .expect(201);
     llm.answer(callTools({ name: "propose_pipeline", input: { summary: "The feed", pipeline: COLLECT } }), say("Done."));
-    const answered = await send((await newChat()).chatId, "Fill my reading list from the feed.");
-    expect(answered.messages[1].proposal?.definition.app).toBe("Reading list");
+    const answered = await send((await briefedChat()).chatId, "Fill my reading list from the feed.");
+    expect(answered.messages[3].proposal?.definition.app).toBe("Reading list");
   });
 
   // M34-T4

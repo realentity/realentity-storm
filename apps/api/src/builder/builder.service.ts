@@ -11,6 +11,8 @@ import {
   type BuilderDryRunResponse,
   type BuilderMessageRequest,
   type BuilderMessageView,
+  type BuilderBrief,
+  BuilderBriefSchema,
   type BuilderProposalStatus,
   type BuilderProposalView,
   type CompiledDefinition,
@@ -509,11 +511,22 @@ function messageView(message: BuilderMessage, current: CompiledDefinition | null
     text: message.text,
     proposal,
     appProposal,
+    brief: message.role === "assistant" ? briefOf(message.transcript as ChatMessage[] | null) : null,
     compileErrors: (message.compileErrors as CompileIssue[] | null) ?? null,
     error: message.error,
     costUsd: usageOf(message)?.costUsd ?? null,
     dateCreated: message.dateCreated.toISOString(),
   };
+}
+
+/** M70-T2: the brief the builder stated in a turn (its last one), as it is kept in the turn's transcript. */
+function briefOf(transcript: ChatMessage[] | null): BuilderBrief | null {
+  const uses = (transcript ?? []).flatMap((m) => (m.role === "assistant" ? m.content : [])).filter((b) => b.type === "tool_use" && b.name === "state_brief");
+  for (const use of uses.reverse()) {
+    const parsed = BuilderBriefSchema.safeParse((use as { input?: unknown }).input);
+    if (parsed.success) return parsed.data;
+  }
+  return null;
 }
 
 /** An App proposal against the user's Apps and pipelines as they are now: another version may have been saved since. */

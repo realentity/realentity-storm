@@ -203,7 +203,9 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
     }
   } else {
     if (proposed || turn.appProposal) problems.push("proposed something");
-    if (!/download|file|attach|invoice/i.test(turns.map((t) => t.text).join(" "))) problems.push("didn't say what is missing");
+    // Said in the answer, or in the brief's "cannot" (M70-T2).
+    const said = turns.map((t) => [t.text, ...(t.brief?.cannot ?? [])].join(" ")).join(" ");
+    if (!/download|file|attach|invoice/i.test(said)) problems.push("didn't say what is missing");
   }
   return {
     problems,
@@ -212,6 +214,7 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
       text: t.text,
       proposal: t.proposal && definitionToSource(t.proposal.compiled.definition),
       appProposal: t.appProposal && { source: t.appProposal.source, pipelines: t.appProposal.pipelines.map((p) => definitionToSource(p.definition)) },
+      brief: t.brief,
       compileErrors: t.compileErrors,
       costUsd: t.usage.costUsd,
     })),

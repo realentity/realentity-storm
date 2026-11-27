@@ -41,7 +41,9 @@ export function pipelineDifferences(expected: CompiledDefinition, actual: Compil
   const [e, a] = [shape(expected, catalog), shape(actual, catalog)];
   same("forEach", e.forEach, a.forEach);
   same("side effects' sources", e.sources, a.sources);
-  same("slots", e.slots, a.slots);
+  // Credentials as the example uses them; its settings at least (one more lets me set what it hard-codes).
+  same("credentials", e.slots.cred ?? 0, a.slots.cred ?? 0);
+  if ((a.slots.setting ?? 0) < (e.slots.setting ?? 0)) problems.push(`settings: expected at least ${e.slots.setting}, got ${a.slots.setting ?? 0}`);
   // Every limit the example has, as it has it; one more is a stricter cap, which is fine.
   const limits = expected.limits ?? {};
   const kept = Object.fromEntries(Object.keys(limits).map((k) => [k, actual.limits?.[k] ?? null]));
@@ -52,7 +54,7 @@ export function pipelineDifferences(expected: CompiledDefinition, actual: Compil
 /**
  * Two Apps are equivalent when they have the same types, each with a key of the same kind, the same `mine` and as many
  * fields of mine of each kind, the same stages (states, initial and moves; the stage field may be named otherwise) and
- * whether it is added by hand; the same reports, slots (by kind) and uses; and
+ * whether it is added by hand; the same reports, credential slots and uses, at least its text settings; and
  * pipelines that pair up, each equivalent to its pair. Fields other than those, pages' layout and wording may differ.
  */
 export function appDifferences(expected: AppWithPipelines, actual: AppWithPipelines, catalog: StepCatalog): string[] {
@@ -64,7 +66,10 @@ export function appDifferences(expected: AppWithPipelines, actual: AppWithPipeli
   same("types", Object.keys(e.types).sort(), Object.keys(a.types).sort());
   for (const name of Object.keys(e.types).filter((t) => Object.hasOwn(a.types, t))) same(name, typeShape(e, name), typeShape(a, name));
   same("reports", reportPagesOf(e).map((r) => r.type).sort(), reportPagesOf(a).map((r) => r.type).sort());
-  same("slots", slotsOf(e), slotsOf(a));
+  // Credential slots as the example has them; its text settings at least (one more lets me set what it hard-codes).
+  same("credential slots", slotsOf(e, "credential"), slotsOf(a, "credential"));
+  const texts = slotsOf(e, "text").length;
+  if (slotsOf(a, "text").length < texts) problems.push(`text settings: expected at least ${texts}, got ${slotsOf(a, "text").length}`);
   same("uses", usesOf(e), usesOf(a));
   same("pipelines", expected.pipelines.length, actual.pipelines.length);
   for (const [want, got] of pair(expected.pipelines, actual.pipelines, catalog)) {
@@ -110,10 +115,10 @@ function typeShape(app: AppDefinition, name: string) {
   };
 }
 
-/** Credential and text slots by kind; an email or Google account slot is the instance's default account otherwise, so either is fine. */
-function slotsOf(app: AppDefinition): string[] {
+/** Its slots of a kind (a credential by its type); an email or Google account slot is the default account otherwise, so either is fine. */
+function slotsOf(app: AppDefinition, kind: "credential" | "text"): string[] {
   return Object.values(app.needs ?? {})
-    .filter((need) => need.kind === "credential" || need.kind === "text")
+    .filter((need) => need.kind === kind)
     .map((need) => (need.kind === "credential" && need.type ? `credential:${need.type}` : need.kind))
     .sort();
 }

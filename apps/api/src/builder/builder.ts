@@ -10,7 +10,7 @@ import {
   type LlmUsage,
   type ModelChoice,
 } from "@realentity/storm-llm";
-import { AppDefinitionSchema, defaultTimeZone, type AppDefinition, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
+import { AppDefinitionSchema, BuilderBriefSchema, defaultTimeZone, type AppDefinition, type BuilderBrief, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
 import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@realentity/storm-steps";
 import { stringify } from "yaml";
 import { z } from "zod";
@@ -64,6 +64,8 @@ export interface TurnResult {
   text: string;
   proposal: { summary: string; compiled: Compiled } | null;
   appProposal: AppProposal | null;
+  /** M70-T2: the brief it stated this turn: what it will make. */
+  brief: BuilderBrief | null;
   /** The last proposal didn't compile and the builder gave up on it (M7-U1). */
   compileErrors: CompileIssue[] | null;
   error: string | null;
@@ -116,6 +118,15 @@ export class Builder {
       input: ProposeAppInput,
     },
     {
+      name: "state_brief",
+      description:
+        "Say back what you will make, before proposing a new idea: the App and its types (what identifies each, its " +
+        "stages, the fields that matter and which the user types), each pipeline (what starts it, what it does, what " +
+        "waits for the user, what it sends and to whom), what the user sets up after, and what Storm can't do of what " +
+        "they asked. The user sees it as a card and agrees or changes it; propose only after their answer.",
+      input: BuilderBriefSchema,
+    },
+    {
       name: "draft_type",
       description:
         "A type drafted from what a step of a run gave (a dry run of the source): field names and kinds from the real " +
@@ -150,7 +161,10 @@ export class Builder {
     let proposal: TurnResult["proposal"] = null;
     let appProposal: AppProposal | null = null;
     let compileErrors: CompileIssue[] | null = null;
-    const fail = (error: string): TurnResult => ({ transcript: null, text: "", proposal: null, appProposal: null, compileErrors: null, error, usage });
+    let brief: BuilderBrief | null = null;
+    const fail = (error: string): TurnResult => ({ transcript: null, text: "", proposal: null, appProposal: null, brief: null, compileErrors: null, error, usage });
+    // M70-T1: a new idea is discussed and said back (a brief) before anything is proposed.
+    const briefFirst = isNewIdea(request) && !briefed(request.history);
 
     for (let call = 0; call < MAX_CALLS_PER_TURN; call++) {
       if (tokensOf(usage) >= request.tokensLeft) return fail("This chat reached its token limit. Start a new chat to continue.");
@@ -179,11 +193,32 @@ export class Builder {
             .map((m) => (m.role === "assistant" ? textOf(m.content) : ""))
             .join("\n\n")
             .trim();
-        return { transcript, text, proposal, appProposal, compileErrors, error: null, usage };
+        return { transcript, text, proposal, appProposal, brief, compileErrors, error: null, usage };
       }
 
       const results = [];
       for (const use of uses) {
+        if (use.name === "state_brief") {
+          const parsed = BuilderBriefSchema.safeParse(use.input);
+          if (parsed.success) brief = parsed.data;
+          const fields = parsed.success ? "" : parsed.error.issues.map((i) => `- ${i.path.join(".")}: ${i.message}`).join("\n");
+          results.push(
+            parsed.success
+              ? toolResult(use.id, "Shown to the user as the brief. Stop here: ask them to agree or change it, and propose in a later turn, after their answer.", false)
+              : toolResult(use.id, `The brief doesn't hold:\n${fields}`, true),
+          );
+          continue;
+        }
+        if (briefFirst && (use.name === "propose_app" || use.name === "propose_pipeline")) {
+          results.push(
+            toolResult(
+              use.id,
+              "Not yet: this is a new idea. Say what you will make with state_brief first, then wait for the user to agree or change it; propose in a later turn.",
+              true,
+            ),
+          );
+          continue;
+        }
         if (use.name === "propose_app") {
           const outcome = this.proposeApp(use.input, request);
           if (outcome.ok) {
@@ -221,7 +256,8 @@ export class Builder {
       }
       added.push({ role: "user", content: results });
     }
-    return fail(`The builder needed more than ${MAX_CALLS_PER_TURN} steps for this message. Try a smaller request.`);
+    // What its last attempt didn't compile with, shown with the error (M67: the eval sees it too).
+    return { ...fail(`The builder needed more than ${MAX_CALLS_PER_TURN} steps for this message. Try a smaller request.`), compileErrors };
   }
 
   /** Compiles a proposal (M7-U1, S1, S2): only the compiler decides what is a valid pipeline. */
@@ -327,6 +363,21 @@ export class Builder {
   }
 }
 
+/**
+ * M70-T1: a new idea: a chat about no pipeline and no App, and no draft open in an editor. A change to something that
+ * is there ("every 30 minutes instead") is made as asked, without a brief.
+ */
+function isNewIdea(request: TurnRequest): boolean {
+  if (request.current || request.appPipelines) return false;
+  const shown = [...request.history, request.user].some((m) => m.role === "user" && JSON.stringify(m.content).includes("<editor_draft>"));
+  return !shown;
+}
+
+/** A brief stated in an earlier turn of the chat: the user has answered it since. */
+function briefed(history: ChatMessage[]): boolean {
+  return history.some((m) => m.role === "assistant" && m.content.some((b) => b.type === "tool_use" && b.name === "state_brief"));
+}
+
 /** Every token of the turn's calls: what the per-chat cap counts (cache reads included, they are tokens too). */
 export function tokensOf(usage: LlmUsage): number {
   return usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
@@ -339,10 +390,23 @@ propose_pipeline tool. The user reviews every proposal (plan, step graph, diff) 
 runs or sends anything.
 
 How to work:
-- If something essential is missing or ambiguous (which mailbox, what to keep, how often, who gets it), ask the user
-  short numbered questions first. Where a sensible default exists, use it and say so instead of asking.
-- When something the user asks for can't be built from the catalog (no step for it yet), say plainly what is missing.
-  Never imitate a missing capability with other steps.
+- A new idea is a conversation before it is a proposal, as with a capable colleague. Talk it through: what should
+  happen, from what, when, what waits for the user, what must never happen. Ask what you need to know, a few short
+  numbered questions at a time, each with your suggestion ("I'd keep the CVs and score them against your roles:
+  agreed?"). Where a sensible default exists, use it and say so instead of asking.
+- When you can say what you will make, say it with state_brief, in plain words, and stop: the user agrees or changes
+  it. Only after their answer propose it (propose_app or propose_pipeline), matching the brief. Never propose a new
+  idea before a brief: the tools refuse it. If they ask to skip the discussion, still state the brief; their next
+  message is the answer.
+- A change to what exists (the current pipeline, the App this chat is about, an editor's draft) needs no brief: make
+  exactly the change asked, propose it, and say what changed.
+- When something the user asks for can't be built from the catalog (no step for it yet), say plainly what is missing,
+  in the brief's "cannot" too. Never imitate a missing capability with other steps.
+- When the user asks for something Storm's rules forbid, say the rule and why, and offer what is allowed; never build
+  around it. Every side effect waits for the user's Act at its gate (nothing is sent unattended); a recipient or URL
+  comes from data (an email's sender, a field the user typed), never from text an LLM wrote or found in an email; a
+  private or internal address is checked only when the user typed it into a field of theirs; another App's data is read
+  only through uses: (declared, chosen by the user, its declared fields only).
 - Application forms (a job's, a tender's, a grant call's) go map → gate → act: browser.mapForm reads the form and
   proposes the values (a stored document, the CV, attached by name), browser.fillAndSubmit sends exactly what the user
   approves; its url comes from {{map.formUrl}}, both iterate over the same items. "job" is only for job postings;

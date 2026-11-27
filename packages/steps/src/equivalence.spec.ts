@@ -90,7 +90,11 @@ describe("the builder's eval: equivalent to an example (M67)", () => {
     const tables = exampleApp("tables").pipelines[0];
     const fewer = structuredClone(tables);
     fewer.steps[0].with = { ...fewer.steps[0].with, connection: "postgresql://reader@db.example/app" };
-    expect(pipelineDifferences(tables, fewer, catalog)).toEqual(['slots: expected {"cred":1}, got {}']);
+    expect(pipelineDifferences(tables, fewer, catalog)).toEqual(["credentials: expected 1, got 0"]);
+    // A setting more (what it hard-coded, made mine to set): fine.
+    const settable = structuredClone(tables);
+    settable.steps[0].with = { ...settable.steps[0].with, sql: "SELECT {{setting.tables}}" };
+    expect(pipelineDifferences(tables, settable, catalog)).toEqual([]);
   });
 
   it("an App: its types, keys, fields of mine, stages, added by hand, reports, slots, uses and pipelines", () => {
@@ -114,7 +118,14 @@ describe("the builder's eval: equivalent to an example (M67)", () => {
     expect(appDifferences(bills, app((raw) => ((raw as unknown as Raw).types.Extra = { key: "id", fields: { id: { type: "text" } } })), catalog)).toEqual([
       expect.stringMatching(/^types: expected \[.*\], got \[.*"Extra".*\]$/),
     ]);
-    expect(appDifferences(bills, app((raw) => (raw.needs = { ...(raw.needs as object), extra: { kind: "text" } })), catalog)).toEqual([expect.stringMatching(/^slots: /)]);
+    // A text setting more is fine; a credential more, or one less, is not.
+    expect(appDifferences(bills, app((raw) => (raw.needs = { ...(raw.needs as object), extra: { kind: "text" } })), catalog)).toEqual([]);
+    expect(appDifferences(bills, app((raw) => (raw.needs = { ...(raw.needs as object), key: { kind: "credential", type: "api_key" } })), catalog)).toEqual([
+      expect.stringMatching(/^credential slots: /),
+    ]);
+    const tables = exampleApp("tables");
+    const fewer2 = { app: AppDefinitionSchema.parse({ ...tables.app, needs: {} }), pipelines: tables.pipelines };
+    expect(appDifferences(tables, fewer2, catalog)).toEqual(['credential slots: expected ["credential:database"], got []']);
     // An email or Google account slot is the default account otherwise: either is fine.
     expect(appDifferences(bills, app((raw) => (raw.needs = { ...(raw.needs as object), mail: { kind: "email" }, google: { kind: "google" } })), catalog)).toEqual([]);
     expect(appDifferences(bills, app((raw) => (raw.uses = { Card: { from: { app: "Cards", type: "Card" }, fields: ["number"] } })), catalog)).toEqual([
