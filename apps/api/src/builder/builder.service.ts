@@ -31,7 +31,7 @@ import { PrismaService } from "../database/prisma.service";
 import { EventsService } from "../events/events.service";
 import { PipelinesService } from "../pipelines/pipelines.service";
 import { RunsService } from "../runs/runs.service";
-import { Builder, tokensOf, type BuilderRuns } from "./builder";
+import { Builder, tokensOf, type BuilderRuns, type DraftApp } from "./builder";
 import { runData, runList } from "./run-data";
 
 /** The builder's LLM: the model servers of Settings → AI, looked up at each call (M62). */
@@ -50,6 +50,8 @@ interface StoredAppProposal {
   appSource: string;
   pipelines: CompiledDefinition[];
   savedAppId: string | null;
+  /** M70-T4: what changed since the chat's last proposal of it; null (or missing, before M70): the first one. */
+  changedSince?: string[] | null;
 }
 
 interface StoredProposal {
@@ -305,6 +307,8 @@ export class BuilderService {
       tokensLeft: (await this.tokenCap(userId)) - chat.tokensUsed,
       apps: appsList,
       ...(about ? { appPipelines: about.pipelines } : {}),
+      // M70-T4: the chat's open App proposal, changed in place by the next one.
+      draft: draftOf(earlier),
       // M70-T3: the examples, and the user's Apps whole.
       lookups: {
         examples: () => this.examples.list(),
@@ -341,6 +345,7 @@ ${definitionToSource(p)}`).join("")}`;
       appSource: result.appProposal.source,
       pipelines: result.appProposal.pipelines.map((p) => p.definition),
       savedAppId: null,
+      changedSince: result.appProposal.changedSince,
     };
     const ok = result.transcript !== null;
     await this.prisma.client.$transaction(async (tx) => {
@@ -534,6 +539,15 @@ function messageView(message: BuilderMessage, current: CompiledDefinition | null
   };
 }
 
+/** M70-T4: the chat's open App proposal (not saved), as the next proposal changes it. */
+function draftOf(messages: BuilderMessage[]): DraftApp | null {
+  const open = messages
+    .map((m) => m.proposal as unknown as StoredAppProposal | null)
+    .filter((p): p is StoredAppProposal => p?.kind === "app" && p.status === "open")
+    .at(-1);
+  return open ? { app: readAppSource(open.appSource), source: open.appSource, pipelines: open.pipelines } : null;
+}
+
 /** M70-T2: the brief the builder stated in a turn (its last one), as it is kept in the turn's transcript. */
 function briefOf(transcript: ChatMessage[] | null): BuilderBrief | null {
   const uses = (transcript ?? []).flatMap((m) => (m.role === "assistant" ? m.content : [])).filter((b) => b.type === "tool_use" && b.name === "state_brief");
@@ -561,6 +575,7 @@ function appProposalView(stored: StoredAppProposal, apps: AppDefinition[], pipel
         changes: open && before ? diffDefinitions(before, definition).summary.split("\n").filter(Boolean) : [],
       };
     }),
+    changedSince: stored.changedSince ?? null,
     savedAppId: stored.savedAppId,
   };
 }

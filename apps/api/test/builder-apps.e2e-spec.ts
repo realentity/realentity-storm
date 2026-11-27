@@ -152,6 +152,43 @@ describe("the builder and Apps", () => {
     expect(((await agent.get(`/api/pipelines/${pipeline.pipelineId}`).expect(200)).body as PipelineDetailView).currentVersion).toBe(1);
   });
 
+  // M70-T4: proposals in parts, changed in place: the App first, then a pipeline, then a change of the App only
+  it("an App proposed in parts: the App, then a pipeline that joins it, then a change that keeps it; each says what changed", async () => {
+    const chat = await briefedChat();
+    llm.answer(proposeApp(READING, []), say("The App first."));
+    const first = (await send(chat.chatId, "Agreed.")).messages.at(-1)!.appProposal!;
+    expect(first).toMatchObject({ status: "open", changedSince: null, pipelines: [] });
+
+    // A pipeline of the proposed App: it joins the proposal, which replaces the first one.
+    llm.answer(callTools({ name: "propose_pipeline", input: { summary: "The feed", pipeline: COLLECT } }), say("Now the feed."));
+    const joined = await send(chat.chatId, "Now fill it from the feed.");
+    const second = joined.messages.at(-1)!;
+    expect(second.proposal).toBeNull();
+    expect(second.appProposal).toMatchObject({ app: { name: "Reading list" }, pipelines: [{ name: COLLECT.name }], changedSince: [`pipeline "${COLLECT.name}" added`] });
+    expect(joined.messages.filter((m) => m.appProposal).map((m) => m.appProposal!.status)).toEqual(["superseded", "open"]);
+
+    // The App changed, its pipeline left out: it stays, checked against the App as it is now.
+    const withIsbn = { ...READING, types: { Book: { ...READING.types.Book, fields: { ...READING.types.Book.fields, isbn: { type: "text" } } } } };
+    llm.answer(proposeApp(withIsbn, [], "An ISBN too"), say("Added."));
+    const third = (await send(chat.chatId, "Keep the ISBN too.")).messages.at(-1)!.appProposal!;
+    expect(third.pipelines.map((p) => p.name)).toEqual([COLLECT.name]);
+    expect(third.changedSince).toEqual([expect.stringMatching(/isbn/)]);
+    expect(toolResults(llm.last)[0].content).toContain("Changed since the last proposal in this chat:");
+
+    // A change that breaks the pipeline proposed before is sent back, naming it.
+    const noBook = { ...READING, types: { Novel: READING.types.Book } };
+    llm.answer(proposeApp(noBook, []), say("Hmm."));
+    await send(chat.chatId, "Call them novels.");
+    expect(toolResults(llm.requests.at(-1)!)[0]).toMatchObject({ is_error: true, content: expect.stringContaining(`"${COLLECT.name}" (proposed before)`) as unknown });
+
+    // Saved: the App and the pipeline it kept, together.
+    const open = (await agent.get(`/api/builder/chats/${chat.chatId}`).expect(200)).body as BuilderChatView;
+    const latest = open.messages.filter((m) => m.appProposal?.status === "open").at(-1)!;
+    const saved = (await agent.post(`/api/builder/chats/${chat.chatId}/messages/${latest.messageId}/save-app`).expect(201)).body as BuilderChatView;
+    expect(saved.appId).not.toBeNull();
+    expect(await db.client.pipeline.count({ where: { userId, name: COLLECT.name } })).toBe(1);
+  });
+
   // M70-T3: the builder looks up the examples and the user's Apps, whole, instead of guessing or making a second one
   it("looks up the examples (a list, one whole) and one of my Apps whole, with its pipelines; an unknown one is said so", async () => {
     await agent.post("/api/apps").send({ source: JSON.stringify(READING) }).expect(201);

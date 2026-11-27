@@ -15,7 +15,7 @@ import {
 } from "@realentity/storm-steps";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Builder, type TurnResult } from "../src/builder/builder";
+import { Builder, type DraftApp, type TurnResult } from "../src/builder/builder";
 import { ExampleLookups } from "../src/builder/example-lookups";
 
 /**
@@ -175,18 +175,30 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
     const shown = showCurrent && current ? `<current_pipeline version="1" id="eval">\n${definitionToSource(current)}</current_pipeline>\n\n` : "";
     const recipes = showCurrent ? `<saved_recipes>\n${c.recipes ?? "none yet"}\n</saved_recipes>\n\n` : "";
     const user: ChatMessage = { role: "user", content: [{ type: "text", text: `${shown}${recipes}${text}` }] };
-    const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [], lookups });
+    const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [], lookups, draft });
     usage = addUsage(usage, turn.usage);
     if (turn.transcript) history.push(user, ...turn.transcript);
     turns.push(turn);
+    // M70-T4: the chat's open App proposal, changed in place by the next one.
+    if (turn.appProposal) draft = { app: turn.appProposal.app, source: turn.appProposal.source, pipelines: turn.appProposal.pipelines.map((p) => p.definition) };
     return turn;
   };
+  let draft: DraftApp | null = null;
 
   let turn = await say(c.description, true);
   // Asking back and saying back what it will build are fine (M7-T2, M70); the simulated user answers until it proposes,
   // within maxTurns. Not for the missing-capability case: there it must say what is missing, not build around it.
-  for (let reply = 1; reply < maxTurns && !turn.proposal && !turn.appProposal && !turn.error && (c.file || c.current); reply++) {
+  let reply = 1;
+  for (; reply < maxTurns && !turn.proposal && !turn.appProposal && !turn.error && (c.file || c.current); reply++) {
     turn = await say(simulatedUser(c, reply), false);
+  }
+  // M70-T4: an App may come in parts: while it proposes more, it is asked for the rest; its last proposal is compared.
+  let app = turn.appProposal;
+  for (; app && c.file?.startsWith("apps/") && reply < maxTurns + 2; reply++) {
+    const next = await say("Go on: propose what is still missing, or say it is complete.", false);
+    if (!next.appProposal || next.error) break;
+    app = next.appProposal;
+    turn = next;
   }
 
   const problems: string[] = [];

@@ -12,7 +12,7 @@ import {
 } from "@realentity/storm-llm";
 import { AppDefinitionSchema, BuilderBriefSchema, defaultTimeZone, type AppDefinition, type BuilderBrief, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
 import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@realentity/storm-steps";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import { z } from "zod";
 
 type Compiled = Extract<CompileResult, { ok: true }>;
@@ -52,6 +52,8 @@ export interface TurnRequest {
   apps: AppDefinition[];
   /** M34: a chat about an App: its pipelines as they are (by name), checked against a proposed version. */
   appPipelines?: CompiledDefinition[];
+  /** M70-T4: the chat's open App proposal (not saved): proposals change it in place, in parts. */
+  draft?: DraftApp | null;
   /** M70-T3: what the builder may look up: the examples, the user's Apps whole. */
   lookups?: BuilderLookups;
   /** M34-T3: a type drafted from a run's step (as the Apps page's Try the source does); null when it has none. */
@@ -65,6 +67,15 @@ export interface AppProposal {
   /** The App as the builder wrote it, as YAML (without the defaults parsing adds). */
   source: string;
   pipelines: Compiled[];
+  /** M70-T4: what changed since the chat's last (unsaved) proposal of this App; null: the first one. */
+  changedSince: string[] | null;
+}
+
+/** M70-T4: the chat's open App proposal, not saved yet: the next proposal changes it in place. */
+export interface DraftApp {
+  app: AppDefinition;
+  source: string;
+  pipelines: CompiledDefinition[];
 }
 
 export interface TurnResult {
@@ -89,11 +100,13 @@ const ProposeInput = z.object({
 });
 const ProposeAppInput = z.object({
   summary: z.string().describe("One line: what the App is for, or what this version changes."),
-  app: z.record(z.string(), z.unknown()).describe("The whole App definition (name, description, icon, types, pages)."),
+  app: z
+    .union([z.record(z.string(), z.unknown()), z.string().transform((text, ctx) => readYamlObject(text, ctx))])
+    .describe("The whole App definition (name, description, icon, types, pages)."),
   pipelines: z
     .array(z.record(z.string(), z.unknown()))
     .max(10)
-    .describe("Its pipelines to add or change, each whole and with app: <the App's name>; leave out the ones that stay as they are."),
+    .describe("Its pipelines to add or change, each whole and with app: <the App's name>; leave out the ones that stay as they are (saved, or proposed earlier in this chat)."),
 });
 const DraftTypeInput = z.object({ runId: z.string(), stepKey: z.string().describe("The step whose items to draft from.") });
 const ReadExampleInput = z.object({ id: z.string().describe("The example's id, as list_examples gives it (hiring, bills).") });
@@ -268,6 +281,21 @@ export class Builder {
           results.push(toolResult(use.id, draft ?? "No items to draft from in that run's step.", draft === null));
           continue;
         }
+        if (use.name === "propose_pipeline" && intoDraft(use.input, request)) {
+          // M70-T4: a pipeline of the App proposed (not saved) in this chat joins that proposal, changed in place.
+          const parsed = ProposeInput.safeParse(use.input);
+          const outcome = this.proposeApp({ summary: parsed.data?.summary ?? "", app: request.draft!.source, pipelines: [parsed.data!.pipeline] }, request);
+          if (outcome.ok) {
+            appProposal = outcome.proposal;
+            proposal = null;
+            compileErrors = null;
+          } else {
+            appProposal = null;
+            compileErrors = outcome.errors;
+          }
+          results.push(toolResult(use.id, outcome.message, !outcome.ok));
+          continue;
+        }
         if (use.name === "propose_pipeline") {
           const outcome = this.propose(use.input, request.current, request.apps);
           if (outcome.ok) {
@@ -342,6 +370,7 @@ export class Builder {
     if (!parsed.success) return refuse([{ path: "", message: "propose_app needs { summary, app, pipelines }" }]);
     if (JSON.stringify(parsed.data).length > MAX_DEFINITION_CHARS) return refuse([{ path: "", message: "the proposal is too large" }]);
     const appResult = AppDefinitionSchema.safeParse(parsed.data.app);
+    const draft = request.draft && request.draft.app.name === (appResult.success ? appResult.data.name : undefined) ? request.draft : null;
     if (!appResult.success) {
       return refuse(appResult.error.issues.map((issue) => ({ path: `app.${issue.path.map(String).join(".")}`, message: issue.message })));
     }
@@ -358,6 +387,15 @@ export class Builder {
       else errors.push(...result.errors.map((e) => ({ path: `pipelines[${i}].${e.path}`, message: e.message })));
     });
     const proposed = new Set(pipelines.map((p) => p.definition.name));
+    // M70-T4: the pipelines proposed earlier in this chat and left out this time stay, checked against the App as it is now.
+    for (const earlier of draft?.pipelines ?? []) {
+      if (proposed.has(earlier.name)) continue;
+      const again = this.compiler.compile(definitionAsAuthored(earlier), { app });
+      if (again.ok) {
+        pipelines.push(again);
+        proposed.add(earlier.name);
+      } else errors.push(...again.errors.map((e) => ({ path: `"${earlier.name}" (proposed before).${e.path}`, message: e.message })));
+    }
     for (const existing of request.appPipelines ?? []) {
       if (proposed.has(existing.name)) continue;
       const again = this.compiler.compile(definitionAsAuthored(existing), { app });
@@ -373,8 +411,13 @@ export class Builder {
         return before ? `"${p.definition.name}":\n${diffDefinitions(before, p.definition).summary || "no changes"}` : `"${p.definition.name}": new.`;
       }),
     ];
-    const source = stringify(parsed.data.app, { lineWidth: 0 });
-    return { ok: true, proposal: { summary: parsed.data.summary.trim().slice(0, 300), app, source, pipelines }, message: lines.join("\n") };
+    // The App as written: the draft's own YAML when it was given as that (its comments kept).
+    const given = (input as { app?: unknown }).app;
+    const source = typeof given === "string" ? given : stringify(parsed.data.app, { lineWidth: 0 });
+    // M70-T4: what changed since the chat's last proposal of it, for the builder and on the proposal's card.
+    const changedSince = draft ? changesSince(draft, app, pipelines.map((p) => p.definition)) : null;
+    if (changedSince) lines.push(`Changed since the last proposal in this chat:\n${changedSince.join("\n") || "nothing"}`);
+    return { ok: true, proposal: { summary: parsed.data.summary.trim().slice(0, 300), app, source, pipelines, changedSince }, message: lines.join("\n") };
   }
 
   private async runTool(name: string, input: unknown, runs: BuilderRuns | null, lookups?: BuilderLookups): Promise<{ content: string; isError: boolean }> {
@@ -440,6 +483,10 @@ How to work:
   it. Only after their answer propose it (propose_app or propose_pipeline), matching the brief. Never propose a new
   idea before a brief: the tools refuse it. If they ask to skip the discussion, still state the brief; their next
   message is the answer.
+- Propose in parts, and change in place: a new App may be proposed first with its types and pages (propose_app,
+  pipelines: []), then each pipeline (propose_pipeline with "app": its name), each joining the App's proposal. To
+  change what you proposed in this chat, propose only what changes (the App, or one pipeline): the pipelines you leave
+  out stay as they were proposed, and the result says what changed since the last proposal.
 - Look things up before you design: <apps> lists the user's Apps (read_app gives one whole). Don't make a second App of
   what one of theirs keeps: change it, or read its type from the new App through uses:. list_examples shows the Apps
   Storm comes with: when one fits, say so and start from it (read_example), changed to what the user wants.
@@ -580,6 +627,38 @@ credential or a setting two or more of its pipelines use goes there, not in each
 Step catalog (the only steps that exist):
 
 ${catalog}`;
+}
+
+/** M70-T4: a pipeline proposed for the App this chat proposed (not saved yet): it joins that proposal. */
+function intoDraft(input: unknown, request: TurnRequest): boolean {
+  const named = ProposeInput.safeParse(input);
+  const draft = request.draft;
+  if (!named.success || !draft || named.data.pipeline.app !== draft.app.name) return false;
+  return !request.apps.some((a) => a.name === draft.app.name);
+}
+
+/** M70-T4: what a proposal changes against the chat's last one: the App's changes, then each pipeline's. */
+function changesSince(draft: DraftApp, app: AppDefinition, pipelines: CompiledDefinition[]): string[] {
+  const lines = diffApps(draft.app, app);
+  for (const p of pipelines) {
+    const before = draft.pipelines.find((d) => d.name === p.name);
+    if (!before) lines.push(`pipeline "${p.name}" added`);
+    else lines.push(...diffDefinitions(before, p).summary.split("\n").filter(Boolean).map((l) => `"${p.name}": ${l}`));
+  }
+  for (const d of draft.pipelines) if (!pipelines.some((p) => p.name === d.name)) lines.push(`pipeline "${d.name}" removed`);
+  return lines;
+}
+
+/** An App given as YAML text (the draft's own source), read as an object; an issue when it isn't one. */
+function readYamlObject(text: string, ctx: z.RefinementCtx): Record<string, unknown> {
+  try {
+    const value: unknown = parse(text);
+    if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  } catch {
+    // Said below.
+  }
+  ctx.addIssue({ code: "custom", message: "app: an App definition (an object)" });
+  return z.NEVER;
 }
 
 /** A saved version as a definition to compile again: the gates it got are inserted again. */

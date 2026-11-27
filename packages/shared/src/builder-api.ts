@@ -107,6 +107,8 @@ export interface AppProposalView {
   summary: string;
   app: { name: string; source: string; isNew: boolean; changes: string[] };
   pipelines: { name: string; source: string; isNew: boolean; changes: string[] }[];
+  /** M70-T4: what changed since the chat's last proposal of it (changed in place); null: the first one. */
+  changedSince: string[] | null;
   /** Once saved: the App's id. */
   savedAppId: string | null;
 }
