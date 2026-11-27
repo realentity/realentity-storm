@@ -57,9 +57,3 @@ export async function openAppPage(page: Page, label: string): Promise<void> {
   await tab.click();
   await expect(tab).toHaveAttribute("aria-current", "page");
 }
-
-/** Opens a pipeline's page from Home. */
-export async function openPipelinePage(page: Page, label: string): Promise<void> {
-  await page.goto("/");
-  await page.getByTestId("view-tile").filter({ hasText: label }).click();
-}

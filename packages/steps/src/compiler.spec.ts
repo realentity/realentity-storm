@@ -115,11 +115,11 @@ steps:
     type: browser.extract
     with: { recipes: [jobs.example.com/search], params: { category: net } }
   - id: fresh
-    type: data.dedupe
-    with: { from: "{{search.items}}", key: url, against: JobPosting }
+    type: data.save
+    with: { items: "{{search.items}}", collection: jobs, key: url }
   - id: more
     type: browser.details
-    with: { recipe: jobs.example.com/search, items: "{{fresh.items}}", maxItems: 30 }
+    with: { recipe: jobs.example.com/search, items: "{{fresh.added}}", maxItems: 30 }
 `),
       );
       expect(errorsOf(compiler.compile(pipeline([{ id: "more", type: "browser.details", with: { recipe: "jobs.example.com/search", items: [], maxItems: 500 } }])))).toEqual([
@@ -521,11 +521,10 @@ steps:
 
     it("accepts event and webhook triggers and rejects unknown events and filters", () => {
       ok(compiler.compile(pipeline(tell("x"), { trigger: after })));
-      ok(compiler.compile(pipeline(tell("x"), { trigger: { on: "application.status", status: ["INTERVIEW"] } })));
       ok(compiler.compile(pipeline(tell("x"), { trigger: { on: "email.classified", label: ["recruiter"] } })));
       ok(compiler.compile(pipeline(tell("x"), { trigger: { on: "recipe.broken" } })));
       ok(compiler.compile(pipeline(tell("x"), { trigger: { webhook: "hmac-sha256" } })));
-      for (const trigger of [{ on: "file.changed" }, { on: "application.status", status: ["HIRED"] }, { webhook: "basic" }]) {
+      for (const trigger of [{ on: "file.changed" }, { on: "application.status" }, { on: "view.action" }, { on: "email.classified", label: [] }, { webhook: "basic" }]) {
         expect(errorsOf(compiler.compile(pipeline(tell("x"), { trigger }))).join("\n")).toMatch(/trigger/);
       }
     });
@@ -541,7 +540,7 @@ steps:
       ]);
     });
 
-    it("lets an email's own address or a posting's URL be a target, never a webhook body or a run's outputs", () => {
+    it("lets an email's own address be a target, never a webhook body or a run's outputs", () => {
       const reply = ok(
         compiler.compile(
           pipeline([{ id: "send", type: "test.send", with: { to: "{{trigger.message.from}}", body: "Thanks" } }], {
@@ -550,7 +549,6 @@ steps:
         ),
       );
       expect(reply.policy.provenance).toEqual([{ stepId: "send", field: "to", kind: "recipient", source: "trigger.message.from" }]);
-      ok(compiler.compile(pipeline([{ id: "apply", type: "test.submit", with: { url: "{{trigger.job.url}}" } }], { trigger: { on: "application.status" } })));
       const fromBody = pipeline([{ id: "send", type: "test.send", with: { to: "{{trigger.body.email}}", body: "x" } }], { trigger: { webhook: "token" } });
       expect(errorsOf(compiler.compile(fromBody))).toEqual([
         "steps[0].with.to: {{trigger.body.email}} can't be a target: a webhook's body is written by whoever calls it",
@@ -653,20 +651,6 @@ steps:
       );
     });
 
-    it("M29-T8: a view's chart is a data.history collection of this pipeline", () => {
-      const source = (chart: string) =>
-        pipeline(
-          [
-            { id: "feeds", type: "http.fetch", with: { url: "https://github.com/acme/app/releases.atom" } },
-            { id: "seen", type: "data.save", with: { items: "{{feeds.items}}", collection: "releases", key: "id" } },
-            { id: "stars", type: "data.history", with: { items: "{{feeds.items}}", collection: "release-stars", key: "id", value: "title" } },
-          ],
-          { policy: { allowedDomains: ["github.com"] }, view: { menu: { label: "Releases" }, collection: "releases", columns: ["title"], chart: { history: chart } } },
-        );
-      expect(ok(compiler.compile(source("release-stars"))).definition.view?.chart).toEqual({ history: "release-stars", stepped: false });
-      expect(errorsOf(compiler.compile(source("releases")))).toEqual(['view.chart.history: no data.history step of this pipeline writes "releases"']);
-    });
-
     it("takes either below or above, with clearAt on the normal side", () => {
       const input = defaultCatalog().get("data.alert")!.input;
       const base = { items: [], key: "place", value: "min" };
@@ -679,70 +663,4 @@ steps:
     });
   });
 
-  describe("views (M27)", () => {
-    const steps = [
-      { id: "feeds", type: "http.fetch", with: { url: "https://github.com/acme/app/releases.atom" } },
-      { id: "seen", type: "data.save", with: { items: "{{feeds.items}}", collection: "releases", key: "id" } },
-      { id: "prices", type: "data.history", with: { items: "{{feeds.items}}", collection: "release-counts", key: "id", value: "title" } },
-    ];
-    const policy = { allowedDomains: ["github.com"] };
-    const view = { menu: { label: "Releases", icon: "package" }, collection: "releases", columns: ["title", { field: "published", as: "date" }] };
-
-    it("fills in a view's defaults: columns as fields, newest first, no marks or buttons", () => {
-      const compiled = ok(compiler.compile(pipeline(steps, { policy, view })));
-      expect(compiled.definition.view).toEqual({
-        ...view,
-        columns: [
-          { field: "title", as: "text" },
-          { field: "published", as: "date" },
-        ],
-        sort: { by: "@firstSeen", desc: true },
-        removed: false,
-        detail: {},
-        marks: [],
-        actions: [],
-      });
-      expect(ok(compiler.compile(pipeline(steps, { policy, view: { ...view, sort: "title" } }))).definition.view?.sort).toEqual({ by: "title", desc: false });
-    });
-
-    it("shows only what this pipeline keeps", () => {
-      expect(errorsOf(compiler.compile(pipeline(steps, { policy, view: { ...view, collection: "other", detail: { history: "prices" } } })))).toEqual([
-        'view.collection: no data.save step of this pipeline writes the collection "other"',
-        'view.detail.history: no data.history step of this pipeline writes "prices"',
-      ]);
-      ok(compiler.compile(pipeline(steps, { policy, view: { ...view, detail: { history: "release-counts" } } })));
-    });
-
-    it("checks marks, buttons and fields", () => {
-      const marks = [
-        { id: "done", label: "Done", hides: true },
-        { id: "done", label: "Again" },
-      ];
-      const actions = [
-        { label: "Check now", run: "self" },
-        { label: "Check now", run: "Other" },
-        { label: "Notes", run: "self", row: true },
-      ];
-      expect(errorsOf(compiler.compile(pipeline(steps, { policy, view: { ...view, marks, actions } })))).toEqual([
-        'view.marks[1].id: "done" is used by an earlier mark',
-        'view.actions[1].label: "Check now" is used by an earlier button',
-        "view.actions[2].run: a row's button starts another pipeline, one triggered by { on: view.action }",
-      ]);
-      const triggered = pipeline(steps, { policy, trigger: { on: "flow.later" }, view: { ...view, actions: [actions[0]] } });
-      expect(errorsOf(compiler.compile(triggered))).toEqual(["view.actions[0].run: a pipeline started by an event or a webhook can't be run from a button"]);
-      expect(errorsOf(compiler.compile(pipeline(steps, { policy, view: { ...view, columns: ["<b>x</b>"] } })))[0]).toMatch(/^view\.columns\[0\]/);
-      expect(errorsOf(compiler.compile(pipeline(steps, { policy, view: { ...view, menu: { label: "Releases", icon: "skull" } } })))[0]).toMatch(/^view\.menu\.icon/);
-    });
-
-    it("gives a row's pipeline the row as {{trigger.item}}, never as a target", () => {
-      const notes = (to: string) =>
-        pipeline([{ id: "send", type: "test.send", with: { to, body: "{{trigger.item.title}} ({{trigger.collection}})" } }], {
-          trigger: { on: "view.action", collection: "releases" },
-        });
-      ok(compiler.compile(notes("me@acme.test")));
-      expect(errorsOf(compiler.compile(notes("{{trigger.item.author}}")))).toEqual([
-        "steps[0].with.to: {{trigger.item.author}} can't be a target: a row holds what a pipeline read from pages, feeds or emails",
-      ]);
-    });
-  });
 });

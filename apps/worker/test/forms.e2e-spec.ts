@@ -92,8 +92,6 @@ describe("application forms", () => {
   afterEach(async () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
-    await db.client.application.deleteMany();
-    await db.client.jobPosting.deleteMany();
     await db.client.document.deleteMany();
     await db.client.userSetting.deleteMany();
     llm.prompts.length = 0;
@@ -128,23 +126,17 @@ steps:
     with:
       url: "${postingUrl()}"
       cv: cv-main
-      job: { url: "${postingUrl()}", title: Senior .NET Developer, company: Acme }
+      about: { url: "${postingUrl()}", title: Senior .NET Developer, company: Acme }
   - id: apply
     type: browser.fillAndSubmit
     with:
       url: "{{map.formUrl}}"
       fields: "{{map.fields}}"
       files: "{{map.files}}"
-      job: "${postingUrl()}"
 ${extra}`;
 
   /** Runs to the gate; the proposal of the apply step. */
   async function toGate(source: string): Promise<{ runId: string; proposal: Proposal }> {
-    await db.client.jobPosting.upsert({
-      where: { userId_url: { userId, url: postingUrl() } },
-      create: { userId, source: "ats", url: postingUrl(), title: "Senior .NET Developer", company: "Acme" },
-      update: {},
-    });
     const runId = await runner.start(await createVersion(db.client, userId, source), { trigger: "manual" });
     expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
     return { runId, proposal: await db.client.proposal.findFirstOrThrow({ where: { runId } }) };
@@ -188,15 +180,14 @@ ${extra}`;
     // The model saw the profile and the form's labels, as data.
     expect(llm.prompts[0]).toContain(PROFILE);
     expect(llm.prompts[0]).toContain('"label":"Why Acme?"');
-    // Read-only: nothing posted, nothing uploaded; the Application is prepared.
+    // Read-only: nothing posted, nothing uploaded.
     expect(posted()).toEqual([]);
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "PREPARED", runId });
     // The gate flags nothing new: ats.localhost is in the pipeline's list.
     expect(proposal.targets).toEqual([{ field: "url", kind: "domain", value: "ats.localhost", basis: "static", isNew: false }]);
   });
 
   // M59-T2: a form for anything else (a tender, a grant call): what it applies for is `about`, its file a `document`
-  it("M59-T2: a form for a call, not a job: `about` for the answers, `document` attached, no Application prepared", async () => {
+  it("M59-T2: a form for a call, not a job: `about` for the answers, `document` attached", async () => {
     const source = `name: Apply for a call
 policy: { allowedDomains: [ats.localhost] }
 steps:
@@ -219,7 +210,6 @@ steps:
     expect(llm.prompts[0]).toContain('"title":"City portal rebuild"');
     expect(llm.prompts[0]).toContain("why I fit this");
     expect(posted()).toEqual([]);
-    expect(await db.client.application.count()).toBe(0);
   });
 
   it("a form on the posting page, like dev.bg's: the person check is the user's to answer, the honeypot stays empty, an AJAX send counts", async () => {
@@ -256,7 +246,6 @@ steps:
     expect(post.body).toMatch(/name="privacy\[\]"\r\n\r\n1\r\n/);
     expect(post.body).toContain('name="files"; filename="Ana Petrova CV.pdf"');
     expect((await applyStep(runId)).output).toMatchObject({ submitted: true });
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "SUBMITTED" });
   });
 
   it("M10-S1: on a form that uploads a file the moment it is picked, mapping attaches nothing and sends nothing", async () => {
@@ -293,8 +282,6 @@ steps:
     expect(post.body).toMatch(/name="letter"; filename=""/);
 
     expect((await applyStep(runId)).output).toMatchObject({ submitted: true, confirmation: expect.stringContaining("Your application was received") as unknown });
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "SUBMITTED", submittedAt: expect.any(Date) as unknown });
-    expect(await db.client.jobPosting.findFirstOrThrow()).toMatchObject({ status: "APPLIED" });
   });
 
   it("M10-I2: a required field added after approval pauses the run; nothing is sent", async () => {
@@ -312,7 +299,6 @@ steps:
     expect(await advancing).toBe("FAILED");
     expect((await applyStep(runId)).error).toBe('Nothing was sent: "Salary expectation" is new and required');
     expect(posted()).toEqual([]);
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "PREPARED" });
   });
 
   it("M10-I3: stopBeforeSubmit fills everything and leaves the final button to the user", async () => {
@@ -328,7 +314,6 @@ steps:
     expect(await advancing).toBe("DONE");
     expect((await applyStep(runId)).output).toMatchObject({ submitted: false });
     expect(posted()).toEqual([]);
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "PREPARED" });
   });
 
   it("M10-S2: a form on an unlisted domain is flagged at the gate; an edited address elsewhere is refused unless approved", async () => {

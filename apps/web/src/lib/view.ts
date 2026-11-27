@@ -1,4 +1,4 @@
-import { fieldOf, type PipelineView, type ViewColumn, type ViewIcon, type ViewRow } from "@realentity/storm-shared";
+import { type ViewColumn, type ViewIcon } from "@realentity/storm-shared";
 import {
   IconBell,
   IconBook,
@@ -45,12 +45,6 @@ export const VIEW_ICON: Record<ViewIcon, Icon> = {
   cloud: IconCloud,
   lock: IconLock,
 };
-
-/** A row's name: its title field, else its first column, else its key. */
-export function rowTitle(view: PipelineView, row: ViewRow): string {
-  const value = fieldOf(row, view.title ?? view.columns[0].field);
-  return value === undefined || value === null || value === "" ? row.key : asText(value);
-}
 
 /** A column's label: as written, else the field's last segment. */
 export function columnLabel(column: ViewColumn): string {

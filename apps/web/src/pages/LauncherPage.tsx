@@ -9,7 +9,7 @@ import { VIEW_ICON } from "../lib/view";
  * whether anything of it runs by itself; under them, the pages pipelines keep without an App.
  */
 export function LauncherPage() {
-  const { apps, views, pending } = useLayout();
+  const { apps, pending } = useLayout();
   if (!apps.data) return apps.error ? <ErrorAlert error={apps.error} /> : <Loading />;
 
   return (
@@ -79,26 +79,6 @@ export function LauncherPage() {
             </Link>
           </div>
         </div>
-      )}
-      {(views.data?.length ?? 0) > 0 && (
-        <>
-          <h3 className="mt-4 mb-2">Pipeline pages</h3>
-          <div className="row row-cards">
-            {views.data?.map((view) => {
-              const Icon = VIEW_ICON[view.icon] ?? VIEW_ICON.list;
-              return (
-                <div key={view.pipelineId} className="col-6 col-sm-4 col-lg-3">
-                  <Link to={`/v/${view.pipelineId}`} className="card card-link text-reset text-decoration-none" title={view.pipelineName} data-testid="view-tile">
-                    <div className="card-body d-flex align-items-center gap-2 py-2">
-                      <Icon size={20} />
-                      {view.label}
-                    </div>
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
-        </>
       )}
     </>
   );

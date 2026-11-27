@@ -1,4 +1,4 @@
-import { APPLICATION_STATUSES, defaultTimeZone, setTrigger, TRIGGER_EVENTS, type CompileIssue } from "@realentity/storm-shared";
+import { defaultTimeZone, setTrigger, TRIGGER_EVENTS, type CompileIssue } from "@realentity/storm-shared";
 import { IconBolt } from "@tabler/icons-react";
 import { readCron, WEEKDAYS, writeCron } from "../lib/cron";
 import { type TriggerTypes } from "../lib/step-cards";
@@ -7,10 +7,9 @@ import { CommitInput, type DesignerEdit } from "./TypesDesigner";
 
 type Kind = "manual" | "schedule" | "event" | "webhook";
 
-/** What each event is, as a choice. view.action is M27's, on its way out with the old pages. */
+/** What each event is, as a choice. */
 const EVENTS: Record<string, string> = {
   "run.finished": "another pipeline's run finished",
-  "application.status": "a job application moved on",
   "email.classified": "an email was labelled by email.classify",
   "recipe.broken": "a site's recipe broke",
   "flow.later": "another pipeline's flow.later came due",
@@ -273,7 +272,6 @@ function Event({
             {label} ({event})
           </option>
         ))}
-        {on === "view.action" && <option value="view.action">a row&apos;s button on a pipeline&apos;s page (view.action)</option>}
       </select>
       {on === "run.finished" && (
         <div className="d-flex gap-2 align-items-center flex-wrap">
@@ -282,12 +280,6 @@ function Event({
           <span>when it</span>
           {many("status", ["DONE", "FAILED"])}
           <span className="text-secondary">(none chosen: DONE)</span>
-        </div>
-      )}
-      {on === "application.status" && (
-        <div className="d-flex gap-2 align-items-center flex-wrap">
-          <span>to</span>
-          {many("status", APPLICATION_STATUSES)}
         </div>
       )}
       {on === "email.classified" && (

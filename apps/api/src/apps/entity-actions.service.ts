@@ -32,7 +32,6 @@ import {
   type EntityActionDef,
   type RunDetailView,
 } from "@realentity/storm-shared";
-import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";
@@ -45,9 +44,6 @@ type Item = Record<string, unknown>;
 function fileFields(type: DataType): string[] {
   return Object.entries(type.fields).flatMap(([name, f]) => (FILE_KINDS.includes(f.type) ? [name] : []));
 }
-
-/** A Job's stage as the application.status it was (M12); the worker's job steps use the same. */
-const STAGE_STATUS: Record<string, string> = { prepared: "PREPARED", applied: "SUBMITTED", responded: "RESPONDED", interview: "INTERVIEW", rejected: "REJECTED" };
 
 /**
  * What the user does on an App's pages (M32): their fields on an entity's form, its stage moved as its moves allow them,
@@ -118,17 +114,6 @@ export class EntityActionsService {
     await this.prisma.client.dataEntity.update({ where: { dataEntityId: entity.dataEntityId }, data: { stage: to, stageDates } });
     const after = this.item(type, { ...entity, stage: to });
     await this.tell(userId, appId, app, typeName, key, after, before, [stages.field], { from, to });
-    // A Job reaching an application's stage (M33): the pipelines on application.status hear it, as from the Jobs page.
-    const status = STAGE_STATUS[to];
-    if (typeName === JOB_ENTITY.type && status && contractProblems(type, JOB_ENTITY).length === 0) {
-      const text = (v: unknown) => (typeof v === "string" ? v : null);
-      await this.queue.enqueueEvent({
-        userId,
-        event: "application.status",
-        data: { applicationId: entity.dataEntityId, status, job: { title: text(after.title), company: text(after.company), location: text(after.location), url: key } },
-        source: { depth: 0 },
-      });
-    }
   }
 
   /**

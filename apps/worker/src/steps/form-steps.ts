@@ -1,4 +1,4 @@
-import { type Fact, type JobPosting, type PrismaClient } from "@realentity/storm-db";
+import { type Fact, type PrismaClient } from "@realentity/storm-db";
 import { type LlmClient, type ModelRouter } from "@realentity/storm-llm";
 import { type FormField, type FormFile } from "@realentity/storm-steps";
 import { type Locator, type Page } from "playwright";
@@ -443,56 +443,18 @@ function fileFieldOf(fields: PageField[]): PageField | undefined {
   return files.find((f) => CV_FIELD.test(f.label) || CV_FIELD.test(f.key)) ?? files.find((f) => f.required) ?? files[0];
 }
 
-/** M10-T5: the posting's Application, prepared (a submitted one stays submitted). M33: in an App, the Job moved. */
+/** M10-T5, M33: the form's Job in the pipeline's App moved to prepared (none without a Job type, M59-T2). */
 export async function prepareApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
-  if (context.app) {
-    // In an App, its Job (none without a Job type, M59-T2); the old Applications only outside one.
-    const job = await jobAppOf(prisma, context);
-    const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
-    if (job && entity) await moveJob(prisma, context, job, entity, "prepared");
-    return;
-  }
-  const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
-  if (!posting) return;
-  const existing = await prisma.application.findUnique({ where: { jobPostingId: posting.jobPostingId } });
-  if (existing && existing.status !== "PREPARED") return;
-  const application = await prisma.application.upsert({
-    where: { jobPostingId: posting.jobPostingId },
-    create: { userId: context.userId, jobPostingId: posting.jobPostingId, status: "PREPARED", runId: context.runId },
-    update: { runId: context.runId },
-  });
-  if (!existing) await emitApplication(context, application.applicationId, "PREPARED", posting);
+  const job = await jobAppOf(prisma, context);
+  const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
+  if (job && entity) await moveJob(prisma, context, job, entity, "prepared");
 }
 
-/** M10-T5: sent: the Application submitted, the posting applied. M33: in an App, the Job moved to applied. */
+/** M10-T5, M33: sent: the form's Job in the pipeline's App moved to applied. */
 export async function submitApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
-  if (context.app) {
-    const job = await jobAppOf(prisma, context);
-    const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
-    if (job && entity) await moveJob(prisma, context, job, entity, "applied");
-    return;
-  }
-  const posting = await prisma.jobPosting.findFirst({ where: { userId: context.userId, url } });
-  if (!posting) return;
-  const now = new Date();
-  const [application] = await prisma.$transaction([
-    prisma.application.upsert({
-      where: { jobPostingId: posting.jobPostingId },
-      create: { userId: context.userId, jobPostingId: posting.jobPostingId, status: "SUBMITTED", submittedAt: now, runId: context.runId },
-      update: { status: "SUBMITTED", submittedAt: now, runId: context.runId },
-    }),
-    prisma.jobPosting.update({ where: { jobPostingId: posting.jobPostingId }, data: { status: "APPLIED" } }),
-  ]);
-  await emitApplication(context, application.applicationId, "SUBMITTED", posting);
-}
-
-/** application.status (M12-T1), with the posting. */
-async function emitApplication(context: StepContext, applicationId: string, status: string, posting: JobPosting): Promise<void> {
-  await context.emit?.("application.status", {
-    applicationId,
-    status,
-    job: { title: posting.title, company: posting.company, location: posting.location, url: posting.url },
-  });
+  const job = await jobAppOf(prisma, context);
+  const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
+  if (job && entity) await moveJob(prisma, context, job, entity, "applied");
 }
 
 export function ownerOf(context: StepContext): ArtifactOwner {

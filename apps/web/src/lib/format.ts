@@ -1,4 +1,4 @@
-import { type JobStatusName, type ProposalStatusName, type RunStatusName, type StepStatusName } from "@realentity/storm-shared";
+import { type ProposalStatusName, type RunStatusName, type StepStatusName } from "@realentity/storm-shared";
 
 const DATE_TIME = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
 
@@ -24,7 +24,7 @@ export function formatDuration(startedAt: string | null, finishedAt: string | nu
 
 export type Tone = "green" | "red" | "yellow" | "blue" | "azure" | "secondary" | "orange";
 
-const TONES: Record<RunStatusName | StepStatusName | ProposalStatusName | JobStatusName, Tone> = {
+const TONES: Record<RunStatusName | StepStatusName | ProposalStatusName, Tone> = {
   QUEUED: "secondary",
   RUNNING: "blue",
   WAITING_FOR_USER: "yellow",
@@ -40,9 +40,6 @@ const TONES: Record<RunStatusName | StepStatusName | ProposalStatusName | JobSta
   EXECUTING: "blue",
   REJECTED: "orange",
   EXPIRED: "secondary",
-  NEW: "blue",
-  SHORTLISTED: "green",
-  APPLIED: "azure",
 };
 
 export function statusTone(status: string): Tone {

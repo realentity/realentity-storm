@@ -151,17 +151,12 @@ function matches(trigger: EventTrigger, job: EventJob, app: string | undefined, 
       const same = target && job.source.pipelineId ? target === job.source.pipelineId : data.pipeline === trigger.pipeline;
       return same && (trigger.status ?? ["DONE"]).includes(data.status as "DONE");
     }
-    case "application.status":
-      return !trigger.status || trigger.status.includes(data.status as (typeof trigger.status)[number]);
     case "recipe.broken":
       return !trigger.site || data.site === trigger.site;
     case "email.classified":
       return !trigger.label || trigger.label.includes(data.label as string);
     case "flow.later":
       // Started by its own scheduled start (fireLater), never by an event.
-      return false;
-    case "view.action":
-      // Started by the api, from a row's button (M27).
       return false;
     case "entity.changed":
       // Only a pipeline of the same App watches its types (M30).

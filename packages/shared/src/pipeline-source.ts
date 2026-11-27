@@ -30,6 +30,5 @@ export function definitionToSource(definition: CompiledDefinition): string {
       ...(step.retries !== undefined ? { retries: step.retries } : {}),
       with: step.with,
     }));
-  if (definition.view) authored.view = definition.view;
   return stringify(authored, { lineWidth: 0 });
 }

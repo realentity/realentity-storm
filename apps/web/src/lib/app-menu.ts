@@ -1,11 +1,10 @@
-import { type AppMenuItem, type AppMenuPage, type ViewMenuItem } from "@realentity/storm-shared";
+import { type AppMenuItem, type AppMenuPage } from "@realentity/storm-shared";
 import { useOutletContext } from "react-router-dom";
 import { type Loaded } from "./use-load";
 
-/** What the signed-in layout loads once for its pages: the installed Apps and the pipelines' pages. */
+/** What the signed-in layout loads once for its pages: the installed Apps. */
 export interface LayoutContext {
   apps: Loaded<AppMenuItem[]>;
-  views: Loaded<ViewMenuItem[]>;
   /** Proposals waiting for a decision, all of them. */
   pending: number;
 }

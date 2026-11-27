@@ -387,7 +387,7 @@ steps:
       after: ${after}
       key: follow-up:app-1
       data: { job: { title: ".NET Lead", company: Acme } }
-      cancelOn: { event: application.status, match: { applicationId: app-1 } }
+      cancelOn: { event: email.classified, match: { "message.threadId": "<thread-1@mail.test>" } }
 `;
     const REMINDER = `
 name: Follow-up reminder
@@ -484,8 +484,8 @@ steps:
       const byEvent = await schedule();
       await triggers.fire({
         userId,
-        event: "application.status",
-        data: { applicationId: "app-2", status: "RESPONDED" },
+        event: "email.classified",
+        data: { label: "reply", reason: "an answer", message: { threadId: "<thread-2@mail.test>" } },
         source: { depth: 0 },
       });
       expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: byEvent.scheduledStartId } })).toMatchObject({
@@ -493,13 +493,13 @@ steps:
       });
       await triggers.fire({
         userId,
-        event: "application.status",
-        data: { applicationId: "app-1", status: "RESPONDED" },
+        event: "email.classified",
+        data: { label: "reply", reason: "an answer", message: { threadId: "<thread-1@mail.test>" } },
         source: { depth: 0 },
       });
       expect(await db.client.scheduledStart.findUniqueOrThrow({ where: { scheduledStartId: byEvent.scheduledStartId } })).toMatchObject({
         status: "CANCELLED",
-        reason: "cancelled by application.status",
+        reason: "cancelled by email.classified",
       });
 
       const replaced = await schedule();

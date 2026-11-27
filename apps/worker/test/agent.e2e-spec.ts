@@ -93,8 +93,6 @@ describe("browser agent", () => {
   afterEach(async () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
-    await db.client.application.deleteMany();
-    await db.client.jobPosting.deleteMany();
     await db.client.document.deleteMany();
     await db.client.fact.deleteMany();
     await db.client.userSetting.deleteMany();
@@ -121,7 +119,6 @@ steps:
       url: "${posting()}"
       goal: Find the application form and fill it from my profile
       documents: [cv-main]
-      job: { url: "${posting()}", title: Backend Engineer, company: Northwind }
       maxActions: ${maxActions}
   - id: send
     type: browser.submit
@@ -130,17 +127,11 @@ steps:
       actions: "{{agent.actions}}"
       files: "{{agent.files}}"
       submit: "{{agent.submit}}"
-      job: "${posting()}"
 `;
   /** Only the agent's step: what it does, without a gate. */
   const AGENT_ONLY = (maxActions = 15) => PIPELINE(maxActions).split("  - id: send")[0];
 
   const run = async (source: string) => {
-    await db.client.jobPosting.upsert({
-      where: { userId_url: { userId, url: posting() } },
-      create: { userId, source: "careers", url: posting(), title: "Backend Engineer", company: "Northwind" },
-      update: {},
-    });
     const runId = await runner.start(await createVersion(db.client, userId, source), { trigger: "manual" });
     return { runId, status: await runner.advance(runId) };
   };
@@ -198,7 +189,6 @@ steps:
     expect(JSON.stringify(chat.requests[0].messages[0])).toContain("<documents>cv-main</documents>");
     expect(chat.requests[0].choice.model).toBe("claude-sonnet-5-5");
     expect(chat.requests[0].tools.map((t) => t.name)).toEqual(["navigate", "click", "type", "select", "check", "attach", "read", "screenshot", "ask", "finish"]);
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "PREPARED", runId });
 
     // The gate: browser.submit's exact payload, on the pipeline's own site.
     const proposal = await db.client.proposal.findFirstOrThrow({ where: { runId } });
@@ -241,8 +231,6 @@ steps:
     expect(sentForm[0].body).toContain('name="cv"; filename="Ana Petrova CV.pdf"');
     expect(part("cv")).toBe(CV.toString());
     expect((await sendStep(runId)).output).toMatchObject({ submitted: true, confirmation: expect.stringContaining("Thanks, we received your application.") as unknown });
-    expect(await db.client.application.findFirstOrThrow()).toMatchObject({ status: "SUBMITTED" });
-    expect(await db.client.jobPosting.findFirstOrThrow()).toMatchObject({ status: "APPLIED" });
   });
 
   it("M11-S1: navigation outside the allowed sites is blocked: typed, clicked, or a redirect by the page or its server", async () => {
@@ -386,11 +374,6 @@ steps:
         (page) => ({ name: "type", input: { ref: ref(page, "textbox", /Earliest start date/), text: "1 March 2027", source: "asked" } }),
         READY,
       ]);
-      await db.client.jobPosting.upsert({
-        where: { userId_url: { userId, url: posting() } },
-        create: { userId, source: "careers", url: posting(), title: "Backend Engineer", company: "Northwind" },
-        update: {},
-      });
       const runId = await runner.start(await createVersion(db.client, userId, PIPELINE()), { trigger: "manual" });
       const done = answering(runId, "1 March 2027");
       const status = await runner.advance(runId);

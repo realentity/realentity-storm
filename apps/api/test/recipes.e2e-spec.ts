@@ -1,7 +1,5 @@
 import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
-import { QUEUES } from "@realentity/storm-queue";
-import { type ApplicationView, type JobPostingView, type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@realentity/storm-shared";
-import { TestEnvironment } from "@realentity/storm-testing";
+import { type RecipeDetailView, type RecipeSummaryView, type TeachStartedView } from "@realentity/storm-shared";
 import type request from "supertest";
 import { parse as parseYaml } from "yaml";
 import { createTestApp, type TestApp } from "./support/test-app";
@@ -17,22 +15,19 @@ fields:
 next: { kind: page, url: "https://dev.bg/company/jobs/{category}/?_paged={page}" }
 `;
 
-// M9-T3, T6, T7 (the api's part): the Jobs page, recipes and starting teach mode
-describe("jobs and recipes", () => {
+// M9-T3, T7 (the api's part): recipes and starting teach mode
+describe("recipes", () => {
   let api: TestApp;
   let agent: ReturnType<typeof request.agent>;
   let db: PrismaConnection;
-  let userId: string;
 
   beforeAll(async () => {
     api = await createTestApp();
     agent = await api.signedIn();
     db = createPrismaConnection();
-    userId = (await db.client.user.findUniqueOrThrow({ where: { email: TestEnvironment.ADMIN_EMAIL } })).userId;
   });
 
   afterEach(async () => {
-    await db.client.jobPosting.deleteMany();
     await db.client.siteRecipe.deleteMany();
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
@@ -41,25 +36,6 @@ describe("jobs and recipes", () => {
   afterAll(async () => {
     await db.close();
     await api.close();
-  });
-
-  it("M9-T6: lists postings best first, filters them, and keeps the user's decision", async () => {
-    const posting = (title: string, score: number | null, company = "Acme") =>
-      db.client.jobPosting.create({ data: { userId, source: "dev.bg/search", url: `https://dev.bg/company/jobads/${title.replace(/\W+/g, "-")}/`, title, company, score } });
-    await posting("Mid .NET Engineer", 64, "Beta");
-    const best = await posting("Senior .NET Developer", 91);
-    await posting("Not scored yet", null);
-
-    const list = (query = "") => agent.get(`/api/jobs${query}`).expect(200).then((r) => (r.body as JobPostingView[]).map((j) => j.title));
-    expect(await list()).toEqual(["Senior .NET Developer", "Mid .NET Engineer", "Not scored yet"]);
-    expect(await list("?minScore=70")).toEqual(["Senior .NET Developer"]);
-    expect(await list("?q=beta")).toEqual(["Mid .NET Engineer"]);
-
-    const updated = (await agent.patch(`/api/jobs/${best.jobPostingId}`).send({ status: "SHORTLISTED" }).expect(200)).body as JobPostingView;
-    expect(updated).toMatchObject({ status: "SHORTLISTED", score: 91, source: "dev.bg/search" });
-    expect(await list("?status=SHORTLISTED")).toEqual(["Senior .NET Developer"]);
-    await agent.patch(`/api/jobs/${best.jobPostingId}`).send({ status: "GONE" }).expect(400);
-    await agent.patch("/api/jobs/00000000-0000-4000-8000-000000000000").send({ status: "SKIPPED" }).expect(404);
   });
 
   it("M9-T3: imports a recipe as the next version, checked like a taught one, and lists its health", async () => {
@@ -162,55 +138,5 @@ describe("jobs and recipes", () => {
 
     await agent.post("/api/recipes/dev.bg/search/try").send({ maxItems: 1000 }).expect(400);
     await agent.post("/api/recipes/dev.bg/search/try").send({ params: { "bad name": "x" } }).expect(400);
-  });
-  describe("M16: outcomes", () => {
-    const DAY = 86_400_000;
-    /** A posting found `daysAgo`, scored, maybe applied to with outcome dates (days after applying). */
-    interface PostingOptions {
-      source?: string;
-      score?: number | null;
-      daysAgo?: number;
-      status?: "NEW" | "SHORTLISTED" | "SKIPPED" | "APPLIED";
-      applied?: { replied?: number; interview?: number; rejected?: number } | null;
-    }
-    async function posting(key: string, { source = "dev.bg/search", score = null, daysAgo = 5, status = "NEW", applied = null }: PostingOptions = {}) {
-      const found = new Date(Date.now() - daysAgo * DAY);
-      const job = await db.client.jobPosting.create({ data: { userId, source, url: `https://jobs.test/${key}`, title: key, company: key, score, status, firstSeenAt: found } });
-      if (!applied) return job;
-      const submittedAt = new Date(found.getTime() + DAY);
-      const at = (days?: number) => (days === undefined ? null : new Date(submittedAt.getTime() + days * DAY));
-      await db.client.application.create({
-        data: {
-          userId,
-          jobPostingId: job.jobPostingId,
-          status: applied.rejected !== undefined ? "REJECTED" : applied.interview !== undefined ? "INTERVIEW" : applied.replied !== undefined ? "RESPONDED" : "SUBMITTED",
-          submittedAt,
-          respondedAt: at(applied.replied),
-          interviewAt: at(applied.interview),
-          rejectedAt: at(applied.rejected),
-        },
-      });
-      return job;
-    }
-
-    it("an outcome by hand: the status, its date the first time, a note; the pipelines are told", async () => {
-      const job = await posting("acme", { status: "APPLIED", applied: {} });
-      const { applicationId } = await db.client.application.findFirstOrThrow({ where: { jobPostingId: job.jobPostingId } });
-      await db.client.$executeRaw`DELETE FROM pgboss.job WHERE name = ${QUEUES.events}`;
-
-      const interview = (await agent.patch(`/api/applications/${applicationId}`).send({ status: "INTERVIEW", note: "phone call" }).expect(200)).body as ApplicationView;
-      expect(interview).toMatchObject({ status: "INTERVIEW", interviewAt: expect.any(String) as unknown, rejectedAt: null });
-      expect(interview.notes).toMatch(/^\d{4}-\d\d-\d\d interview \(by hand\): phone call$/);
-      const events = await db.client.$queryRaw<{ data: Record<string, unknown> }[]>`SELECT data FROM pgboss.job WHERE name = ${QUEUES.events}`;
-      expect(events.map((e) => e.data)).toEqual([
-        expect.objectContaining({ event: "application.status", data: expect.objectContaining({ applicationId, status: "INTERVIEW" }) as unknown }),
-      ]);
-      // Undone by hand (a mistake): the interview's date stays, the Jobs page shows it.
-      const back = (await agent.patch(`/api/applications/${applicationId}`).send({ status: "SUBMITTED" }).expect(200)).body as ApplicationView;
-      expect(back).toMatchObject({ status: "SUBMITTED", interviewAt: interview.interviewAt });
-      const listed = (await agent.get("/api/jobs").expect(200)).body as JobPostingView[];
-      expect(listed[0].application).toMatchObject({ applicationId, status: "SUBMITTED", interviewAt: interview.interviewAt });
-      await agent.patch(`/api/applications/${applicationId}`).send({ status: "PREPARED" }).expect(400);
-    });
   });
 });

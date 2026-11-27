@@ -34,7 +34,7 @@ the Recipes page                   a pipeline
 │   url: …/jobs/{category}/│◀──────│   recipes: [jobs.example.com/search]          │
 │   params: category       │       │   params: { category: [net, java] }           │
 │   fields: url, title, …  │──────▶│   → items: [{ url, title, …, source }]        │
-└──────────────────────────┘       │ fresh: data.dedupe, key: url                  │
+└──────────────────────────┘       │ fresh: data.save, collection: jobs, key: url  │
                                    │ score: llm.score …                            │
                                    └───────────────────────────────────────────────┘
 ```
@@ -44,7 +44,7 @@ the Recipes page                   a pipeline
 - The pipeline names the recipe and gives the **params**: the values that change between searches. A list of values
   runs one search per value.
 - Every item comes back with the recipe's **fields** plus `source` (the recipe's name). The pipeline's next steps read
-  those names: `data.dedupe` with `key: url`, an App type whose fields are `title`, `company`… **Name the fields the way
+  those names: `data.save` with `key: url`, an App type whose fields are `title`, `company`… **Name the fields the way
   the pipeline reads them.** The examples ([job-board.yaml](../examples/apps/job-search.yaml),
   [listings.yaml](../examples/apps/apartments.yaml)) read `url`, `title`, `company`, `location`, `posted` for jobs and `url`,
   `title`, `price`, `rooms`, `size` for listings.
@@ -157,12 +157,12 @@ steps:
       params: { category: [net, java] }   # one search per category
       maxItems: 200
   - id: fresh
-    type: data.dedupe
-    with: { from: "{{search.items}}", key: url, against: JobPosting }
+    type: data.save
+    with: { items: "{{search.items}}", collection: jobs, key: url }
   - id: tell
     type: llm.summarize
-    when: "{{fresh.items}}"
-    with: { content: "{{fresh.items}}", instruction: "The new jobs, one line each." }
+    when: "{{fresh.added}}"
+    with: { content: "{{fresh.added}}", instruction: "The new jobs, one line each." }
 ```
 
 Each morning it reads up to 5 pages per category and continues with the jobs it hasn't seen before.
@@ -226,13 +226,13 @@ detail:
 ```
 
 Detail fields need new names (not a list field, not `source`). `browser.extract` doesn't open these pages;
-[`browser.details`](capabilities.md#browserdetails-%EF%B8%8F) does, placed after `data.dedupe` so only new items are
+[`browser.details`](capabilities.md#browserdetails-%EF%B8%8F) does, placed after `data.save` (its `added`) so only new items are
 opened:
 
 ```yaml
   - id: more
     type: browser.details
-    with: { recipe: jobs.example.com/search, items: "{{fresh.items}}", maxItems: 30 }
+    with: { recipe: jobs.example.com/search, items: "{{fresh.added}}", maxItems: 30 }
 ```
 
 It opens at most `maxItems` pages (20 by default, 100 at most), at the recipe's pace, only on its site. An item whose

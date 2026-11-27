@@ -1,4 +1,4 @@
-import { APPLICATION_STATUSES, isEventTrigger, isWebhookTrigger, type Trigger, type TriggerEventName } from "@realentity/storm-shared";
+import { isEventTrigger, isWebhookTrigger, type Trigger, type TriggerEventName } from "@realentity/storm-shared";
 import { z } from "zod";
 import { EmailMessageSchema, TelegramFileSchema } from "./catalog";
 
@@ -11,11 +11,6 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     summary: z.string().nullable(),
     /** Each step's output by step id (forEach steps: the list of their items' outputs). */
     outputs: z.record(z.string(), z.unknown()),
-  }),
-  "application.status": z.object({
-    applicationId: z.string(),
-    status: z.enum(APPLICATION_STATUSES),
-    job: z.object({ title: z.string(), company: z.string().nullable(), location: z.string().nullable(), url: z.string() }),
   }),
   "recipe.broken": z.object({
     site: z.string(),
@@ -31,14 +26,6 @@ export const TRIGGER_DATA: Record<TriggerEventName, z.ZodObject> = {
     key: z.string().nullable(),
     scheduledAt: z.string(),
     scheduledByRunId: z.string().nullable(),
-  }),
-  "view.action": z.object({
-    collection: z.string(),
-    key: z.string(),
-    /** The row as data.save kept it: read from pages, feeds or emails, so never a target. */
-    item: z.record(z.string(), z.unknown()),
-    /** The button's label. */
-    action: z.string(),
   }),
   "entity.changed": z.object({
     app: z.string(),
@@ -91,20 +78,18 @@ export function triggerDataSchema(trigger: Trigger): z.ZodObject | null {
 
 /**
  * Which {{trigger.*}} values may be a side effect's target (docs/design.md §1.4: targets come from data, never from LLM
- * text): an email's own addresses and a posting's own URL. A webhook body is written by whoever calls it, and a
+ * text): an email's own addresses. A webhook body is written by whoever calls it, and a
  * finished run's outputs may be LLM text, so neither is.
  */
 export function triggerTargetIssue(trigger: Trigger, source: string): string | null {
   if (isEventTrigger(trigger)) {
     if (trigger.on === "email.classified" && source.startsWith("trigger.message.")) return null;
-    if (trigger.on === "application.status" && source === "trigger.job.url") return null;
     if (trigger.on === "flow.later") return `{{${source}}} can't be a target: a flow.later's data is written by a pipeline, maybe from LLM text`;
-    if (trigger.on === "view.action") return `{{${source}}} can't be a target: a row holds what a pipeline read from pages, feeds or emails`;
     if (trigger.on === "telegram.command") return `{{${source}}} can't be a target: a message's text is data, not an address`;
     if (trigger.on === "entity.changed" || trigger.on === "entity.action") {
       return `{{${source}}} can't be a target: an entity holds what a pipeline read from pages, feeds or emails (only a type of mine can be)`;
     }
-    return `{{${source}}} can't be a target: only an email's own addresses (email.classified) or a posting's URL (application.status) can`;
+    return `{{${source}}} can't be a target: only an email's own addresses (email.classified) can`;
   }
   if (isWebhookTrigger(trigger)) return `{{${source}}} can't be a target: a webhook's body is written by whoever calls it`;
   return `{{${source}}} is only available in a pipeline triggered by an event or a webhook`;
@@ -127,12 +112,6 @@ export function exampleTriggerData(trigger: Trigger): Record<string, unknown> | 
         status: trigger.status?.[0] ?? "DONE",
         summary: "An example run (dry run)",
         outputs: {},
-      };
-    case "application.status":
-      return {
-        applicationId: "example-application",
-        status: trigger.status?.[0] ?? "SUBMITTED",
-        job: { title: "Example role", company: "Example Ltd", location: "Sofia", url: "https://jobs.example.com/example-role" },
       };
     case "recipe.broken":
       return {
@@ -165,13 +144,6 @@ export function exampleTriggerData(trigger: Trigger): Record<string, unknown> | 
       };
     case "flow.later":
       return { data: {}, key: null, scheduledAt: now, scheduledByRunId: null };
-    case "view.action":
-      return {
-        collection: trigger.collection ?? "example",
-        key: "example",
-        item: { id: "example", title: "An example row (dry run)", url: "https://example.com/example" },
-        action: "Example",
-      };
     case "entity.changed":
       return {
         app: "Example",

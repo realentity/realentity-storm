@@ -7,7 +7,7 @@ export function diffDefinitions(before: CompiledDefinition, after: CompiledDefin
   const changes: DefinitionChange[] = [];
 
   // M50: its slots too (one moved to its App, a label changed).
-  for (const field of ["name", "description", "app", "trigger", "view", "needs"] as const) {
+  for (const field of ["name", "description", "app", "trigger", "needs"] as const) {
     if (!same(before[field], after[field])) changes.push({ kind: "pipeline", field, before: before[field], after: after[field] });
   }
 

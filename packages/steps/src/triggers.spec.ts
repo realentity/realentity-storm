@@ -4,11 +4,9 @@ import { exampleTriggerData, triggerDataSchema } from "./triggers";
 describe("example trigger data for dry runs", () => {
   const triggers: Trigger[] = [
     { on: "run.finished", pipeline: "Job discovery" },
-    { on: "application.status", status: ["INTERVIEW"] },
     { on: "recipe.broken", site: "dev.bg" },
     { on: "email.classified", label: ["interview"] },
     { on: "flow.later" },
-    { on: "view.action", collection: "releases" },
     { on: "entity.changed", type: "Job", field: "salary" },
     { on: "entity.action", type: "Job" },
     { on: "telegram.command", command: "task" },
@@ -24,7 +22,6 @@ describe("example trigger data for dry runs", () => {
   });
 
   it("follows the trigger's own filters, and has none for manual or scheduled pipelines", () => {
-    expect(exampleTriggerData({ on: "application.status", status: ["INTERVIEW"] })).toMatchObject({ status: "INTERVIEW", applicationId: "example-application" });
     expect(exampleTriggerData({ on: "email.classified", label: ["interview"] })).toMatchObject({ label: "interview" });
     expect(exampleTriggerData({ on: "run.finished", pipeline: "Job discovery" })).toMatchObject({ pipeline: "Job discovery" });
     expect(exampleTriggerData("manual")).toBeNull();

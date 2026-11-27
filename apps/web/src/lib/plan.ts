@@ -69,16 +69,12 @@ export function describeTrigger(trigger: Trigger): string {
   switch (trigger.on) {
     case "run.finished":
       return `When "${trigger.pipeline}" finishes ${(trigger.status ?? ["DONE"]).join(" or ")}`;
-    case "application.status":
-      return `When an application becomes ${trigger.status?.join(" or ") ?? "anything new"}`;
     case "recipe.broken":
       return `When a recipe${trigger.site ? ` of ${trigger.site}` : ""} breaks`;
     case "email.classified":
       return `When an email is labelled ${trigger.label?.join(" or ") ?? "(any label)"}`;
     case "flow.later":
       return "Started later by another pipeline (flow.later), with its data";
-    case "view.action":
-      return `From a row's button on a pipeline's page${trigger.collection ? ` (${trigger.collection})` : ""}, with the row`;
     case "entity.changed":
       return `When a ${trigger.type} is added or changes${trigger.field ? ` (${trigger.field})` : ""}${trigger.stage ? `, moving to ${trigger.stage}` : ""}`;
     case "entity.action":

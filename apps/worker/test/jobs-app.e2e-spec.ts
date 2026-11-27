@@ -4,7 +4,6 @@ import { emptyUsage, ModelRouter, type LlmClient, type StructuredRequest } from 
 import { defaultCatalog, type EmailMessage } from "@realentity/storm-steps";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { type z } from "zod";
-import { WeeklyReview } from "../src/jobs/weekly-review";
 import { NO_ATTENTION, type StepContext } from "../src/runner/step-executor";
 import { ApplicationOutcomeStep } from "../src/steps/application-steps";
 import { DedupeStep, SaveStep } from "../src/steps/data-steps";
@@ -43,7 +42,7 @@ const email = (from: string, subject: string, text: string): EmailMessage => ({
   attachments: [],
 });
 
-// M33-I1 (Job Search): the job steps on the Jobs of the pipeline's App, still telling application.status
+// M33-I1 (Job Search): the job steps on the Jobs of the pipeline's App
 describe("M33: Job Search on Apps", () => {
   let db: PrismaConnection;
   let userId: string;
@@ -113,7 +112,7 @@ describe("M33: Job Search on Apps", () => {
     expect([deduped.items.map((i) => i.url), deduped.duplicates]).toEqual([[job("hooli").url], 1]);
   });
 
-  it("the form steps move a Job to prepared and applied, telling application.status as before", async () => {
+  it("the form steps move a Job to prepared and applied, each move an entity.changed", async () => {
     await save([job("acme")], "shortlisted");
     emitted = [];
     await prepareApplication(db.client, context(), job("acme").url);
@@ -121,17 +120,9 @@ describe("M33: Job Search on Apps", () => {
     expect(await stageOf("acme")).toBe("applied");
     const entity = await db.client.dataEntity.findFirstOrThrow({ where: { appId, type: "Job" } });
     expect(Object.keys(entity.stageDates as object).sort()).toEqual(["applied", "prepared", "shortlisted"]);
-    expect(emitted.filter((e) => e.event === "application.status").map((e) => e.data)).toEqual([
-      {
-        applicationId: entity.dataEntityId,
-        status: "PREPARED",
-        job: { title: "acme engineer", company: "Acme", location: null, url: job("acme").url },
-      },
-      {
-        applicationId: entity.dataEntityId,
-        status: "SUBMITTED",
-        job: { title: "acme engineer", company: "Acme", location: null, url: job("acme").url },
-      },
+    expect(emitted.map((e) => [e.event, (e.data as { stage?: unknown }).stage])).toEqual([
+      ["entity.changed", { from: "shortlisted", to: "prepared" }],
+      ["entity.changed", { from: "prepared", to: "applied" }],
     ]);
     // Prepared again (a retried run) after it was sent: it stays applied.
     await prepareApplication(db.client, context(), job("acme").url);
@@ -155,11 +146,8 @@ describe("M33: Job Search on Apps", () => {
 
     emitted = [];
     expect(await read("Interview invitation", "interview")).toMatchObject({ changed: true, status: "INTERVIEW", job: { company: "Acme" } });
-    expect(llm.prompts[0]).toContain('"status":"SUBMITTED"');
-    expect(emitted.map((e) => [e.event, e.data.status ?? (e.data.stage as { to: string }).to])).toEqual([
-      ["entity.changed", "interview"],
-      ["application.status", "INTERVIEW"],
-    ]);
+    expect(llm.prompts[0]).toContain('"status":"applied"');
+    expect(emitted.map((e) => [e.event, (e.data.stage as { to: string }).to])).toEqual([["entity.changed", "interview"]]);
     // An older email saying they answered doesn't move it back.
     expect(await read("Re: your application", "responded")).toMatchObject({ changed: false });
     const moved = await db.client.dataEntity.findFirstOrThrow({ where: { appId, key: job("acme").url } });
@@ -177,16 +165,5 @@ describe("M33: Job Search on Apps", () => {
     );
     expect(scoring.prompts[0]).toContain('"title":"acme engineer"');
     expect(scoring.prompts[0]).toContain('"outcome":"interview"');
-  });
-
-  it("the weekly review counts this week's applications from the Jobs", async () => {
-    await save([job("acme"), job("globex")]);
-    for (const key of ["acme", "globex"]) await submitApplication(db.client, context(), job(key).url);
-    const review = new WeeklyReview(db.client, {} as never, () => Promise.resolve());
-    const text = await (review as unknown as { outcomes(userId: string, since: Date): Promise<string | null> }).outcomes(
-      userId,
-      new Date(Date.now() - 7 * 86_400_000),
-    );
-    expect(text).toBe("Applications: 2 sent, 0 answered, 0 interview(s), 0 turned down");
   });
 });

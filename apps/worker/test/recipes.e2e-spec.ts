@@ -113,7 +113,7 @@ describe("recipes and job postings", () => {
     await db.client.run.deleteMany();
     await db.client.pipeline.deleteMany();
     await db.client.siteRecipe.deleteMany();
-    await db.client.jobPosting.deleteMany();
+    await db.client.dataRecord.deleteMany();
     notified.length = 0;
     sites.reset();
   });
@@ -153,12 +153,9 @@ steps:
       params: { query: ${query} }
       timeoutSeconds: ${timeoutSeconds}
 `;
-  const DAILY = `${SEARCH()}  - id: fresh
-    type: data.dedupe
-    with: { from: "{{search.items}}", key: url, against: JobPosting }
-  - id: save
+  const DAILY = `${SEARCH()}  - id: save
     type: data.save
-    with: { items: "{{fresh.items}}" }
+    with: { items: "{{search.items}}", collection: jobs, key: url }
 `;
 
   it("M9-I1: reads every item of the list across its pages, by next link or by page number, without the ad", async () => {
@@ -309,48 +306,19 @@ steps:
     expect(notified).toHaveLength(1);
   });
 
-  it("M9-I2: a second run over the same list saves no new postings", async () => {
+  it("M9-I2: a second run over the same list adds nothing new", async () => {
     await saveRecipe(boardRecipe());
     const first = await run(DAILY);
     expect(first.status).toBe("DONE");
-    expect(await output(first.runId, "save")).toMatchObject({ saved: 12, created: 12, skipped: 0, changed: [], removed: [] });
-    const saved = await db.client.jobPosting.findMany({ orderBy: { title: "asc" } });
+    expect(await output(first.runId, "save")).toMatchObject({ saved: 12, created: 12, changed: [], removed: [] });
+    const saved = await db.client.dataRecord.findMany({ where: { collection: "jobs" }, orderBy: { key: "asc" } });
     expect(saved).toHaveLength(12);
-    expect(saved[0]).toMatchObject({ source: "jobs.localhost/search", status: "NEW", company: expect.any(String) as unknown });
+    expect(saved[0].value).toMatchObject({ source: "jobs.localhost/search", company: expect.any(String) as unknown });
 
     const second = await run(DAILY);
     expect(second.status).toBe("DONE");
-    expect(await output(second.runId, "fresh")).toEqual({ items: [], duplicates: 12 });
-    expect(await output(second.runId, "save")).toEqual({ saved: 0, created: 0, skipped: 0, added: [], changed: [], removed: [], invalid: [] });
-    expect(await db.client.jobPosting.count()).toBe(12);
-  });
-
-  it("data.save moves a posting's status forward only, and a dry run saves nothing", async () => {
-    const url = sites.url("jobs", "/jobs/100");
-    await db.client.jobPosting.create({ data: { userId, source: "x", url, title: "Senior .NET Developer", status: "APPLIED" } });
-    const source = (status: string) => `name: Save
-steps:
-  - id: save
-    type: data.save
-    with:
-      status: ${status}
-      items:
-        - { url: "${url}", title: "Senior .NET Developer", score: 91, scoreReason: "Fits" }
-        - { url: "${sites.url("jobs", "/jobs/101")}", title: "Mid .NET Engineer 1" }
-        - { title: "no address" }
-`;
-    const dry = await runner.start(await createVersion(db.client, userId, source("SHORTLISTED")), { trigger: "manual", dryRun: true });
-    expect(await runner.advance(dry)).toBe("DONE");
-    expect(await output(dry, "save")).toMatchObject({ saved: 2, created: 1, skipped: 1 });
-    expect(await db.client.jobPosting.count()).toBe(1);
-
-    const { runId } = await run(source("SHORTLISTED"));
-    expect(await output(runId, "save")).toMatchObject({ saved: 2, created: 1, skipped: 1 });
-    expect(await db.client.jobPosting.findFirstOrThrow({ where: { url } })).toMatchObject({ status: "APPLIED", score: 91, scoreReason: "Fits" });
-    expect(await db.client.jobPosting.findFirstOrThrow({ where: { title: "Mid .NET Engineer 1" } })).toMatchObject({ status: "SHORTLISTED" });
-
-    await run(source("NEW"));
-    expect(await db.client.jobPosting.findFirstOrThrow({ where: { title: "Mid .NET Engineer 1" } })).toMatchObject({ status: "SHORTLISTED" });
+    expect(await output(second.runId, "save")).toMatchObject({ saved: 12, created: 0, added: [], changed: [], removed: [] });
+    expect(await db.client.dataRecord.count({ where: { collection: "jobs" } })).toBe(12);
   });
 
   it("M9-I3: a redesigned page fails the step clearly, marks the recipe broken and tells the user once", async () => {

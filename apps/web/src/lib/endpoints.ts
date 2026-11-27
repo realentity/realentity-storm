@@ -27,7 +27,6 @@ import {
   type AppDetailView,
   type AppDriftView,
   type AppImportResult,
-  type ImportSource,
   type AppEntityView,
   type AppListQuery,
   type AppListView,
@@ -47,15 +46,8 @@ import {
   type DraftTypeView,
   type EntityListView,
   type EntityQuery,
-  type PricesStatusView,
   type HealthView,
-  type PriceHistoryView,
-  type WatchedProductRequest,
-  type WatchedProductView,
-  type BillsView,
   type CostsView,
-  type BillView,
-  type ApplicationView,
   type ApproveProposalRequest,
   type BatchDecisionView,
   type DecideBatchRequest,
@@ -81,9 +73,6 @@ import {
   type GoogleClientView,
   type GoogleStatusView,
   type ImportRecipeRequest,
-  type JobFilter,
-  type JobPostingView,
-  type JobStatusName,
   type KillSwitchView,
   type LearningView,
   type LiveView,
@@ -117,15 +106,9 @@ import {
   type TeachRecipeRequest,
   type TryRecipeRequest,
   type TeachStartedView,
-  type UpdateApplicationRequest,
   type UpdatePipelineRequest,
   type WebhookView,
   type UpdateRuleRequest,
-  type ViewMenuItem,
-  type ViewPageView,
-  type ViewQuery,
-  type ViewRow,
-  type ViewRowView,
 } from "@realentity/storm-shared";
 import { query, request } from "./api";
 
@@ -286,30 +269,11 @@ export const api = {
       request<ScheduledStartView[]>("GET", `/scheduled-starts${pipelineId ? `?pipelineId=${pipelineId}` : ""}`),
     cancel: (id: string) => request<void>("DELETE", `/scheduled-starts/${id}`),
   },
-  prices: {
-    list: () => request<WatchedProductView[]>("GET", "/prices"),
-    create: (body: WatchedProductRequest) => request<WatchedProductView>("POST", "/prices", body),
-    update: (id: string, body: WatchedProductRequest) => request<WatchedProductView>("PUT", `/prices/${id}`, body),
-    remove: (id: string) => request<void>("DELETE", `/prices/${id}`),
-    history: (id: string) => request<PriceHistoryView>("GET", `/prices/${id}/history`),
-    status: () => request<PricesStatusView>("GET", "/prices/status"),
-    createPipeline: () => request<PipelineDetailView>("POST", "/prices/pipeline"),
-  },
   costs: {
     get: (days: number) => request<CostsView>("GET", `/costs?days=${days}`),
   },
   health: {
     get: () => request<HealthView>("GET", "/health/checks"),
-  },
-  /** Pipelines' pages (M27). A row's key may be a URL: always encoded. */
-  views: {
-    menu: () => request<ViewMenuItem[]>("GET", "/views"),
-    page: (pipelineId: string, q: Partial<ViewQuery> = {}) => request<ViewPageView>("GET", `/views/${pipelineId}${query(q)}`),
-    row: (pipelineId: string, key: string) => request<ViewRowView>("GET", `/views/${pipelineId}/rows/${encodeURIComponent(key)}`),
-    mark: (pipelineId: string, key: string, markId: string, on: boolean) =>
-      request<ViewRow>("PUT", `/views/${pipelineId}/rows/${encodeURIComponent(key)}/marks/${markId}`, { on }),
-    act: (pipelineId: string, index: number, key?: string) =>
-      request<RunDetailView>("POST", `/views/${pipelineId}/actions/${index}`, key === undefined ? {} : { key }),
   },
   apps: {
     list: () => request<AppSummaryView[]>("GET", "/apps"),
@@ -341,8 +305,9 @@ export const api = {
     drift: (appId: string) => request<AppDriftView[]>("GET", `/apps/${appId}/drift`),
     map: (appId: string) => request<AppMapView>("GET", `/apps/${appId}/map`),
     addField: (appId: string, type: string, field: string) => request<AppDetailView>("POST", `/apps/${appId}/drift`, { type, field }),
-    importFrom: (appId: string, from: ImportSource, into?: { collection: string; type: string }) =>
-      request<AppImportResult>("POST", `/apps/${appId}/import`, { from, ...into }),
+    /** M33-T5: a collection a pipeline kept, into one of the App's types. */
+    importFrom: (appId: string, into: { collection: string; type: string }) =>
+      request<AppImportResult>("POST", `/apps/${appId}/import`, { from: "collection", ...into }),
     menu: () => request<AppMenuItem[]>("GET", "/apps/menu"),
     pin: (appId: string, pinned: boolean) => request<void>("PUT", `/apps/${appId}/pinned`, { pinned }),
     page: (appId: string, type: string, q: Partial<AppListQuery> = {}) =>
@@ -382,10 +347,6 @@ export const api = {
     exportApp: (appId: string) => request<BundleExportView>("GET", `/bundles/apps/${appId}`),
     exportPipeline: (pipelineId: string) => request<BundleExportView>("GET", `/bundles/pipelines/${pipelineId}`),
   },
-  bills: {
-    list: () => request<BillsView>("GET", "/bills"),
-    paid: (billId: string, paid: boolean) => request<BillView>("PUT", `/bills/${billId}/paid`, { paid }),
-  },
   telegram: {
     commands: () => request<TelegramCommandsView>("GET", "/telegram/commands"),
     // M63: the Storm bot, Settings → Telegram.
@@ -417,12 +378,6 @@ export const api = {
     updateSuggestion: (suggestionId: string, status: SuggestionStatusName) =>
       request<void>("PATCH", `/suggestions/${suggestionId}`, { status }),
     reflect: () => request<void>("POST", "/reflection"),
-  },
-  jobs: {
-    list: (filter: Partial<JobFilter> = {}) => request<JobPostingView[]>("GET", `/jobs${query(filter)}`),
-    setStatus: (jobPostingId: string, status: JobStatusName) => request<JobPostingView>("PATCH", `/jobs/${jobPostingId}`, { status }),
-    setOutcome: (applicationId: string, body: UpdateApplicationRequest) =>
-      request<ApplicationView>("PATCH", `/applications/${applicationId}`, body),
   },
   documents: {
     list: () => request<DocumentView[]>("GET", "/documents"),

@@ -3,7 +3,6 @@ import { defaultTimeZone, type TelegramMessage } from "@realentity/storm-shared"
 import { Logger } from "@nestjs/common";
 import { type RunControls } from "../runner/run-controls";
 import { DigestStep } from "../steps/digest-step";
-import { jobAppIds } from "../steps/job-entities";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 /** The step types (and models) that cost the most this week. */
@@ -12,7 +11,7 @@ const TOP_COSTS = 3;
 /**
  * The weekly review (M19-T4, docs/design.md §12): Sunday evening on the Storm bot. The 7-day digest (runs, failures, what
  * waits for the user, reflection's suggestions, broken recipes, the LLM cost) and what a week shows better than a day: the
- * budget so far, where the money went, application outcomes, recipes that have found nothing for a while.
+ * budget so far, where the money went, recipes that have found nothing for a while.
  */
 export class WeeklyReview {
   private readonly logger = new Logger(WeeklyReview.name);
@@ -64,34 +63,9 @@ export class WeeklyReview {
       lines.push(`Topics: ${topics.slice(0, TOP_COSTS).map((t) => `${t.name} $${t.costUsd.toFixed(2)}`).join(", ")}`);
     }
 
-    const outcomes = await this.outcomes(userId, since);
-    if (outcomes) lines.push(outcomes);
     const quiet = await this.quietRecipes(userId);
     if (quiet.length > 0) lines.push(`Quiet recipes: ${quiet.join(", ")} (Recipes page)`);
     return lines.join("\n");
-  }
-
-  /** Applications this week (M16): sent, and what employers did; nothing when none moved. */
-  private async outcomes(userId: string, since: Date): Promise<string | null> {
-    const jobApps = await jobAppIds(this.prisma, userId);
-    if (jobApps.length > 0) return this.jobOutcomes(jobApps, since);
-    const [sent, answered, interviews, rejected] = await Promise.all(
-      (["submittedAt", "respondedAt", "interviewAt", "rejectedAt"] as const).map((field) =>
-        this.prisma.application.count({ where: { userId, [field]: { gte: since } } }),
-      ),
-    );
-    if (sent + answered + interviews + rejected === 0) return null;
-    return `Applications: ${sent} sent, ${answered} answered, ${interviews} interview(s), ${rejected} turned down`;
-  }
-
-  /** M33: the same from the Jobs of the user's Apps, by the dates each reached its stages. */
-  private async jobOutcomes(appIds: string[], since: Date): Promise<string | null> {
-    const rows = await this.prisma.dataEntity.findMany({ where: { appId: { in: appIds }, type: "Job" }, select: { stageDates: true } });
-    const after = since.toISOString();
-    const count = (stage: string) => rows.filter((r) => ((r.stageDates as Record<string, string>)[stage] ?? "") >= after).length;
-    const [sent, answered, interviews, rejected] = ["applied", "responded", "interview", "rejected"].map(count);
-    if (sent + answered + interviews + rejected === 0) return null;
-    return `Applications: ${sent} sent, ${answered} answered, ${interviews} interview(s), ${rejected} turned down`;
   }
 
   /** Recipes whose latest version has found nothing for a week (M18-T2). */

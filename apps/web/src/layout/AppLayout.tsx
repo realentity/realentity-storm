@@ -65,7 +65,6 @@ export function AppLayout() {
   const connection = useConnectionState();
   const { pathname } = useLocation();
   // Pipelines' pages (M27) and the Apps with theirs (M31): saving one changes them, so they are read again on every page change.
-  const views = useLoad(() => api.views.menu(), [pathname]);
   // Their tiles count what waits for a decision: a proposal made or decided changes it.
   const apps = useLoad(
     () => api.apps.menu(),
@@ -180,7 +179,7 @@ export function AppLayout() {
       </aside>
 
       {startOpen && (
-        <StartMenu apps={apps.data ?? []} views={views.data ?? []} onPinned={apps.reload} onClose={() => setStartOpen(false)} />
+        <StartMenu apps={apps.data ?? []} onPinned={apps.reload} onClose={() => setStartOpen(false)} />
       )}
       <div className="page-wrapper">
         <header className="navbar navbar-expand-md d-print-none sticky-top">
@@ -213,7 +212,7 @@ export function AppLayout() {
         </header>
         <div className="page-body">
           <div className="container-xl">
-            <Outlet context={{ apps, views, pending: pending.data?.length ?? 0 } satisfies LayoutContext} />
+            <Outlet context={{ apps, pending: pending.data?.length ?? 0 } satisfies LayoutContext} />
           </div>
         </div>
       </div>

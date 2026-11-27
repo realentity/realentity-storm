@@ -337,7 +337,7 @@ export class AppsService {
       ...summary,
       definition,
       usedBy: await this.uses.usedBy(userId, appId),
-      imports: await this.imports.available(userId, definition, appId),
+      imports: await this.imports.available(userId, definition),
       source,
       versions: app.versions.map((v) => ({ version: v.version, changeSummary: v.changeSummary, dateCreated: v.dateCreated.toISOString() })),
     };
