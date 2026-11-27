@@ -39,7 +39,11 @@ export function AppMap({ appId, map, preview = false }: Readonly<{ appId: string
   const columns: Placed[][] = [
     map.triggers.map((n) => ({ ...n, column: 0, x: 0, y: 0, href: `/pipelines/${n.id.slice("trigger:".length)}` })),
     map.pipelines.map((n) => ({ ...n, column: 1, x: 0, y: 0, href: `/pipelines/${n.pipelineId}`, muted: !n.enabled })),
-    map.types.map((n) => ({ ...n, column: 2, x: 0, y: 0, href: `/a/${appId}/${encodeURIComponent(n.type)}` })),
+    [
+      ...map.types.map((n) => ({ ...n, column: 2, x: 0, y: 0, href: `/a/${appId}/${encodeURIComponent(n.type)}` })),
+      // M66-T4: another App's types it reads, under its own: where each comes from is chosen on the App's page.
+      ...(map.uses ?? []).map((n) => ({ ...n, column: 2, x: 0, y: 0, href: `/apps/${appId}#uses` })),
+    ],
     map.pages.map((n) => ({ ...n, column: 3, x: 0, y: 0, href: `/${n.kind === "report" ? "r" : "a"}/${appId}/${encodeURIComponent(n.type)}` })),
   ];
   const rows = Math.max(1, ...columns.map((c) => c.length));

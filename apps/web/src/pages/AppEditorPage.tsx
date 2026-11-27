@@ -1,4 +1,4 @@
-import { checkAppSource, tabOf, type AppCheckView, type AppDesignerTab, type AppIssue } from "@realentity/storm-shared";
+import { checkAppSource, tabOf, type AppCheckView, type AppDesignerTab, type AppIssue, type AppUsedByView } from "@realentity/storm-shared";
 import { IconAlertTriangle, IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconFile, IconLoader2 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -13,7 +13,7 @@ import { appMarks, type BuilderMarks } from "../lib/builder-marks";
 import { focusOf } from "../lib/focus";
 import { StagesDesigner } from "../components/StagesDesigner";
 import { AppProperties, TypesDesigner, type DesignerEdit } from "../components/TypesDesigner";
-import { ErrorAlert, Loading, PageHeader } from "../components/ui";
+import { ErrorAlert, Loading, Modal, PageHeader } from "../components/ui";
 import { APP_TEMPLATES, EMPTY_APP } from "../lib/apps";
 import { api } from "../lib/endpoints";
 import { asObject, loose, text } from "../lib/loose-app";
@@ -50,6 +50,8 @@ export function AppEditorPage() {
   const [focus, setFocus] = useState<string | undefined>(undefined);
   const [marks, setMarks] = useState<BuilderMarks | null>(null);
   const action = useAction();
+  // M66-T4: a save that other Apps' uses would no longer fit asks first.
+  const [asking, setAsking] = useState<AppUsedByView[] | null>(null);
 
   useEffect(() => {
     if (existing.data && source === null) setSource(existing.data.source);
@@ -82,7 +84,10 @@ export function AppEditorPage() {
   };
   const entities = Object.fromEntries((existing.data?.types ?? []).map((t) => [t.name, t.entities]));
 
-  const save = async () => {
+  const save = async (sure = false) => {
+    const breaks = check.result?.usedBy ?? [];
+    if (!sure && breaks.length > 0) return setAsking(breaks);
+    setAsking(null);
     const saved = await action.run(() => (appId ? api.apps.save(appId, source) : api.apps.create(source)));
     if (!saved) return;
     toast.success(`Saved as v${saved.version}`);
@@ -198,6 +203,25 @@ export function AppEditorPage() {
         </div>
         <div className={`${wide ? "col-12" : "col-xl-4"} d-flex flex-column gap-3`}>
           <CheckCard check={check} isNew={!appId} />
+          {asking && (
+            <Modal
+              title="Other Apps read what this changes"
+              onClose={() => setAsking(null)}
+              footer={
+                <>
+                  <button type="button" className="btn" onClick={() => setAsking(null)}>
+                    Keep editing
+                  </button>
+                  <button type="button" className="btn btn-warning" onClick={() => void save(true)} data-testid="save-anyway">
+                    Save anyway
+                  </button>
+                </>
+              }
+            >
+              <p>After this save, each of these will need its data chosen again (or its App changed):</p>
+              <UsedByList usedBy={asking} />
+            </Modal>
+          )}
           <EditorChat
             appId={appId}
             editor={() => ({ source, ...(focus ? { focus } : {}) })}
@@ -311,6 +335,19 @@ function StartFrom({ onStart }: { onStart: (source: string) => void }) {
   );
 }
 
+/** M66-T4: other Apps' uses a draft would no longer fit, and why. */
+function UsedByList({ usedBy }: Readonly<{ usedBy: AppUsedByView[] }>) {
+  return (
+    <ul className="small mb-0 ps-3" data-testid="used-by-list">
+      {usedBy.map((u) => (
+        <li key={`${u.appId}:${u.use}`}>
+          <Link to={`/apps/${u.appId}`}>{u.app}</Link> reads its {u.type} ({u.fields.join(", ")}): {u.problems?.join("; ")}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function CheckCard({ check, isNew }: { check: ReturnType<typeof useCheck>; isNew: boolean }) {
   const view = check.result;
   const problems = (view?.errors.length ?? 0) + (view?.pipelines.length ?? 0);
@@ -350,6 +387,12 @@ function CheckCard({ check, isNew }: { check: ReturnType<typeof useCheck>; isNew
           </div>
         )}
         {view?.renamed && <RenameNote renamed={view.renamed} what="pipeline" />}
+        {view && view.usedBy.length > 0 && (
+          <div data-testid="used-by">
+            <div className="fw-bold mb-1">Other Apps read it</div>
+            <UsedByList usedBy={view.usedBy} />
+          </div>
+        )}
         {!isNew && view && view.errors.length === 0 && (
           <div data-testid="app-changes">
             <div className="fw-bold mb-1">What changes</div>

@@ -73,6 +73,36 @@ describe("an App's map (M37-T4)", () => {
     ]);
   });
 
+  // M66-T4: another App's types it reads, by the App chosen for each, and what reads them
+  it("draws each use by where it comes from: the pipelines reading it, the lists with a source of it, a type's ref to it", () => {
+    const papers = app("papers.yaml");
+    const report = pipeline("r", "Papers · Expense report", "manual", [["data.read", { type: "Bill" }], ["data.read", { type: "Paper" }]]);
+    const map = appMap(papers, [report], {}, () => [], { Bill: "Bills › Bill" });
+    expect(map.uses).toEqual([{ id: "use:Bill", use: "Bill", label: "Bill", detail: "from Bills › Bill" }]);
+    expect(map.edges).toEqual(expect.arrayContaining([{ from: "use:Bill", to: "pipeline:r", kind: "reads" }]));
+    expect(appMap(papers, [report], {}, () => []).uses).toEqual([{ id: "use:Bill", use: "Bill", label: "Bill", detail: "not chosen yet" }]);
+
+    const expenses = checkAppSource(`name: Expenses
+types:
+  Expense:
+    key: id
+    fields: { id: { type: text }, bill: { type: ref, to: Bill } }
+uses:
+  Bill: { from: { app: Bills, type: Bill }, fields: [billKey, issuer] }
+pages:
+  - list: Expense
+    sources: { bills: { from: Bill } }
+`).definition!;
+    expect(appMap(expenses, [], {}, () => []).edges).toEqual(
+      expect.arrayContaining([
+        { from: "use:Bill", to: "list:Expense", kind: "shows" },
+        { from: "use:Bill", to: "type:Expense", kind: "reads", label: "a ref" },
+      ]),
+    );
+    // An App without uses: none.
+    expect(appMap(app("tables.yaml"), [], {}, () => []).uses).toEqual([]);
+  });
+
   it("says each trigger plainly", () => {
     expect(triggerLabel("manual")).toBe("by hand");
     expect(triggerLabel({ webhook: "token" })).toBe("a call from the Internet");

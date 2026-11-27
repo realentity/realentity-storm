@@ -8,6 +8,7 @@ import {
   type AppUse,
   type AppUseSourceView,
   type AppUsesRequest,
+  type AppUsedByView,
   type AppUseView,
 } from "@realentity/storm-shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
@@ -144,6 +145,36 @@ export class AppUsesService {
         if (!fitBefore) await fill(other, name, use);
       }
     }
+  }
+
+  /** M66-T4: the user's other Apps whose uses this App fills: each use, the type it reads and its fields. */
+  async usedBy(userId: string, appId: string): Promise<AppUsedByView[]> {
+    const rows = await this.prisma.client.appUse.findMany({ where: { sourceAppId: appId }, orderBy: { name: "asc" } });
+    const consumers = await this.installed(userId, rows.map((r) => r.appId));
+    return rows
+      .flatMap((row) => {
+        const consumer = consumers.find((a) => a.appId === row.appId);
+        const use = consumer?.definition.uses?.[row.name];
+        return consumer && use ? [{ appId: consumer.appId, app: consumer.name, use: row.name, type: row.sourceType, fields: use.fields }] : [];
+      })
+      .sort((a, b) => a.app.localeCompare(b.app) || a.use.localeCompare(b.use));
+  }
+
+  /**
+   * M66-T4: the uses a draft of this App would no longer fit: a type they read renamed or removed, a field they read
+   * removed, made encrypted or a file. Each with why; the save goes ahead when I say so, and the App that uses it shows
+   * it needs attention until it is chosen again.
+   */
+  async brokenBy(userId: string, appId: string, draft: AppDefinition): Promise<AppUsedByView[]> {
+    const used = await this.usedBy(userId, appId);
+    const consumers = await this.installed(userId, [...new Set(used.map((u) => u.appId))]);
+    return used.flatMap((u) => {
+      const consumer = consumers.find((a) => a.appId === u.appId)!;
+      const use = consumer.definition.uses![u.use];
+      const type = Object.hasOwn(draft.types, u.type) ? draft.types[u.type] : undefined;
+      const problems = type ? useProblems(use, type, identifiedUses(consumer.definition).has(u.use)) : [`it would have no type ${u.type}`];
+      return problems.length > 0 ? [{ ...u, problems }] : [];
+    });
   }
 
   /** The user's Apps with a current version (`ids`: only these). */

@@ -336,6 +336,7 @@ export class AppsService {
     return {
       ...summary,
       definition,
+      usedBy: await this.uses.usedBy(userId, appId),
       imports: await this.imports.available(userId, definition, appId),
       source,
       versions: app.versions.map((v) => ({ version: v.version, changeSummary: v.changeSummary, dateCreated: v.dateCreated.toISOString() })),
@@ -361,6 +362,8 @@ export class AppsService {
       }),
       entities,
       (type) => this.catalog.get(type)?.entities ?? [],
+      // M66-T4: its uses, each by the App and type chosen for it.
+      Object.fromEntries((await this.uses.of(userId, appId)).map((u) => [u.name, u.source ? `${u.source.app} › ${u.source.type}` : null])),
     );
   }
 
@@ -489,7 +492,7 @@ export class AppsService {
     const app = appId ? await this.prisma.client.app.findFirst({ where: { appId, userId } }) : null;
     if (appId && !app) throw new NotFoundException();
     const { definition, errors } = checkAppSource(source);
-    if (!definition) return { ok: false, errors, pipelines: [], changes: [] };
+    if (!definition) return { ok: false, errors, pipelines: [], changes: [], usedBy: [] };
     const current = app?.currentVersionId
       ? await this.prisma.client.appVersion.findUnique({ where: { appVersionId: app.currentVersionId } })
       : null;
@@ -500,7 +503,9 @@ export class AppsService {
       app && definition.name !== app.name
         ? { from: app.name, to: definition.name, followers: (await this.forBuilder(userId, app.appId)).pipelines.map((p) => p.name).sort((a, b) => a.localeCompare(b)) }
         : undefined;
-    return { ok: pipelines.length === 0, errors: [], pipelines, changes, ...(renamed ? { renamed } : {}) };
+    // M66-T4: other Apps' uses it would no longer fit: said, and Save asks first.
+    const usedBy = app ? await this.uses.brokenBy(userId, app.appId, definition) : [];
+    return { ok: pipelines.length === 0, errors: [], pipelines, changes, ...(renamed ? { renamed } : {}), usedBy };
   }
 
   async entities(userId: string, appId: string, typeName: string, query: EntityQuery): Promise<EntityListView> {
