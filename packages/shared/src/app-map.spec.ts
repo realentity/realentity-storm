@@ -42,10 +42,10 @@ describe("an App's map (M37-T4)", () => {
 
   it("reads contracts, watches changes and an entity's buttons", () => {
     const bills = app("bills.yaml");
-    const save = pipeline("b", "Bills", "manual", [["bill.save"]]);
+    const save = pipeline("b", "Bills", "manual", [["test.save"]]);
     const remind = pipeline("r", "Remind", { on: "entity.changed", type: "Bill", stage: "due" }, [["data.read", { type: "Bill" }]]);
     const pay = pipeline("p", "Pay", { on: "entity.action", type: "Bill" }, [["notify.telegram"]]);
-    const map = appMap(bills, [save, remind, pay], {}, (type) => (type === "bill.save" ? [{ type: "Bill" }] : []));
+    const map = appMap(bills, [save, remind, pay], {}, (type) => (type === "test.save" ? [{ type: "Bill" }] : []));
     expect(map.edges).toEqual(
       expect.arrayContaining([
         { from: "pipeline:b", to: "type:Bill", kind: "writes" },

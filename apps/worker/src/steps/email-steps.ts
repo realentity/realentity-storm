@@ -11,7 +11,7 @@ import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { type StepLearning } from "../learning/learning";
 import { emailBlock } from "./email-block";
 import { readThread, THREAD_RULE } from "./email-thread";
-import { BillReadStep, BillSaveStep } from "./bill-steps";
+import { EmailAttachmentsStep } from "./attachment-steps";
 import { DraftFollowUpStep, EmailAwaitingStep } from "./follow-up-steps";
 import { DATA_ONLY, EXAMPLES_RULE, LlmStep } from "./llm-steps";
 import { drewOn, MEMORY_RULE, topicMemory, UsedFacts } from "./topic-context";
@@ -285,8 +285,7 @@ export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
     new DraftReplyStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
     new EmailAwaitingStep(deps.mail, deps.prisma),
     new DraftFollowUpStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
-    new BillReadStep(deps.mail, deps.llm, deps.router, deps.learning),
-    new BillSaveStep(deps.prisma),
+    new EmailAttachmentsStep(deps.mail),
     new EmailSendStep(deps.mail, deps.appFiles ? { prisma: deps.prisma, store: deps.appFiles } : undefined),
   ];
 }

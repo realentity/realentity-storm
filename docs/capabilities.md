@@ -16,13 +16,12 @@ Ready-made pipelines to copy are in [examples/](../examples/). This document exp
 | --- | --- | --- |
 | Lists of data | Deduplicate, filter, save and compare with last time, read back an App's entities, track a number over time, reshape an API's JSON, tell once when a number crosses a line | `data.dedupe`, `data.filter`, `data.save`, `data.read`, `data.history`, `data.map`, `data.alert` |
 | Databases | Read your own PostgreSQL database with one query, read-only | `db.query` |
-| The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product`, `price.watch` |
+| The web without a browser | Read RSS/Atom feeds, JSON APIs (with a key) and pages; change something at an API after you approve; read product prices | `http.fetch`, `http.request`, `shop.product` |
 | Uptime | Check whether a web address, a port or a host answers, how fast, and when its certificate expires; on your network too | `http.check`, `net.check` |
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
-| Email | Read new mail, triage it, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
+| Email | Read new mail, triage it, read its attachments' text, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.attachments`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
 | Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub, Google Drive) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `topic.tidy`, `git.changes`, `drive.changes`, `topic.index`, `topic.attachments` |
 | Job hunting | Track what employers answered to your applications | `application.outcome` |
-| Bills | Read bills from emails and their PDFs, keep them, flag unusual amounts | `bill.read`, `bill.save` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
 | Browser | Open pages (with sign-in), read lists with recipes and each item's own page, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.details`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
 | Documents | Read a stored document, a downloaded file or an App's file; keep an email's attachments in an App | `file.read`, `file.keep` |
@@ -469,7 +468,7 @@ steps:
 - **`needs:`** on a pipeline, or on an App (its pipelines share them; each install fills its own): `kind: credential`
   (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for),
   `kind: text` (`example`), `kind: email`: one of your email accounts (§4.4), or `kind: google` (`uses`: calendar,
-  drive): one of your Google accounts allowing them (§4.7). An account slot is the default account until you choose. A
+  drive): one of your Google accounts allowing them (§4.6). An account slot is the default account until you choose. A
   slot a step uses without one is added from where it is used: a database for `db.query`'s connection, the host of an
   address written in the step, an email or Google account for an email or calendar step's `account: <name>`, and text
   for `{{setting.<name>}}`. At most 20 slots; `account: topics` (every mailbox the topics read) only on `email.fetch`.
@@ -598,8 +597,10 @@ the App uses (`uses:`, §2.5): from the App you chose for it, only the fields th
 #### `data.history`
 Keeps a number per item over time (a price, a count) and adds a `history` object to each item: `previous`, `change`,
 `changePct`, `min`, `max`, `count`, `direction` (`new`, `up`, `down`, `same`), `lowest`, `usualChange` (the median
-change between the earlier values, once there are 3) and `vsUsual` (this change ÷ the usual one: `3` is three times
-the usual growth). The value can be text such as `"1 299,00 €"`.
+change between the earlier values, once there are 3), `vsUsual` (this change ÷ the usual one: `3` is three times
+the usual growth), `median` (of the earlier values kept, once there are 2) and `vsMedian` (this value ÷ the median:
+`1.3` is 30% above the usual; M71, the Bills App's "higher than usual" with `keep: 7`). The value can be text such as
+`"1 299,00 €"`.
 - In: `items`, `collection`, `key`, `value` (the field with the number), `keep` [60].
 - Out: `items`, `recorded`, `unreadable`.
 
@@ -795,11 +796,14 @@ is rolled back, and is stopped after `timeoutSeconds`. Still, give it a database
 ```
 
 #### `shop.product` 🧠
-The price of a product, or of one variant (`select: { size: M, color: Black }`), read from its page. It uses the
-page's schema.org data or price meta tags; if there are none, it opens the page in the headless browser, and as a last
-resort the cheap model reads the price from the text.
+The price of a product, or of one variant (`select: { size: M, color: Black }`, or the same as text: `"size: M,
+color: Black"`), read from its page. It uses the page's schema.org data or price meta tags; if there are none, it opens
+the page in the headless browser, and as a last resort the cheap model reads the price from the text. A `url` that is a
+field of mine (`{{item.url}}` in a `forEach` over `data.read`'s items of a type of mine, M71) is read on its own host
+without listing it in `allowedDomains`, as `http.fetch` reads one (§4.2).
 - In: `url`, `urls` or `products` (each with its own `select`), `browser` [`fallback`, or `always`/`never`], `llm` [true],
-  `timeoutSeconds` [30].
+  `timeoutSeconds` [30], `failWhenNone` [true: no price at all fails the step; false: each product with its `problem`,
+  for a `forEach` over shops].
 - Out: `items` (id, url, title, brand, price, currency, availability, inStock, variant, problem), `problems`, `report`.
 - `id` identifies product + variant: use it as the `key` for `data.history`.
 
@@ -815,26 +819,6 @@ steps:
   - id: prices
     type: data.history
     with: { items: "{{products.items}}", collection: product-prices, key: id, value: price }
-```
-
-#### `price.watch` 🧠
-Checks your watched **Products** in the pipeline's App (M33: save [examples/apps/prices.yaml](../examples/apps/prices.yaml)
-and say `app: Prices`): a `mine` type, each with its `shops`, a line each (`https://shop/p/7 | size: M, color: Black`
-for a variant). Each shop's page is read like `shop.product` and kept as an **Offer** with its price history (the
-Offer's page charts it; a line you remove takes its Offer off). It reports only news: a shop at or under your target
-price (once, when it crosses), the lowest in `lowestDays`, back in stock. `text` names the cheapest shop for each, and
-is empty when there is nothing new. The addresses are yours, so they need no `allowedDomains`.
-- In: `product` (only this one; default: all enabled), `lowestDays` [90].
-- Out: `products`, `news`, `text`, `problems`, `report`.
-
-```yaml
-- id: watch
-  type: price.watch
-  with: { lowestDays: 90 }
-- id: tell
-  type: notify.telegram
-  when: "{{watch.text}}"
-  with: { text: "{{watch.text}}" }
 ```
 
 ### 4.3 LLM
@@ -955,6 +939,28 @@ whatever it is called there (`[Gmail]/Sent Mail`, a translated name): the emails
 - id: fetch
   type: email.fetch
   with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
+```
+
+#### `email.attachments`
+The text of each email's readable attachments (PDFs, Word documents, text files), M71: `messages` come back with
+`files` (filename, contentType, text, truncated) and `attachmentText`, all of it in one text, so `llm.extract` reads the
+email with its PDF (`content: "{{item}}"`). A file that can't be read (a scan without text, a broken PDF) is left out
+and said in `problems`, never a failure; an image isn't read (`llm.extract`'s `files` reads an App's). `mailbox` must be
+the one the messages were read from. Put `email.classify` first, so only the emails worth it are read.
+- In: `messages`, `mailbox` [INBOX], `maxFiles` [3] per email, `maxChars` [8000] per file.
+- Out: `messages` (each with `files` and `attachmentText`), `read`, `problems`.
+
+```yaml
+- id: files
+  type: email.attachments
+  when: "{{triage.kept}}"
+  with: { messages: "{{triage.kept}}", maxFiles: 2 }
+- id: read
+  type: llm.extract
+  forEach: "{{files.messages}}"
+  with:
+    content: "{{item}}"
+    fields: { amount: "the total to pay, as a number", dueDate: "the date to pay by, YYYY-MM-DD" }
 ```
 
 #### `email.classify` 🧠
@@ -1217,45 +1223,7 @@ applied, and `llm.score` calibrates on the Jobs' outcomes.
   with: { text: "{{outcome.job.company}}: {{outcome.status}}. {{outcome.reason}}" }
 ```
 
-### 4.6 Bills
-
-#### `bill.read` 🧠
-Reads bills out of emails: the email text and its PDF attachments go to the LLM, which decides whether it's a bill and
-reads issuer, amount, currency, due date, period and reference. Emails that aren't bills are dropped. Nothing is paid.
-Each email is read whole, its PDFs too: `email.classify` first (a `bill` label kept) keeps it to the likely bills.
-- In: `messages`, `mailbox` [INBOX].
-- Out: `bills`, `notBills`.
-
-#### `bill.save`
-Keeps bills as **Bill entities of the pipeline's App** (M33: save [examples/apps/bills.yaml](../examples/apps/bills.yaml)
-and say `app: Bills`; the compiler checks the App has a Bill type it can write). The same bill again updates it and
-keeps whether you paid it; a new one is `due`. It returns what to do next: `remind` (new
-bills with a due date, each with `remindAt`, `remindDaysBefore` days before at 09:00) and `jumps` (new bills more than
-`jumpPercent` above the issuer's usual amount), with `jumpText` describing them. The Bills App's list shows them by month
-with the total and what is unpaid, a badge on what is due soon, and Mark paid on each row; the morning brief tells you
-the unpaid ones due within three days.
-- In: `bills`, `remindDaysBefore` [3], `jumpPercent` [30].
-- Out: `added`, `updated`, `remind`, `jumps`, `jumpText`.
-
-```yaml
-- id: read
-  type: bill.read
-  when: "{{triage.kept}}"
-  with: { messages: "{{triage.kept}}" }
-- id: save
-  type: bill.save
-  with: { bills: "{{read.bills}}" }
-- id: remind
-  type: calendar.create
-  forEach: "{{save.remind}}"
-  with: { title: "{{item.title}}", start: "{{item.remindAt}}", durationMinutes: 15 }
-- id: jump
-  type: notify.telegram
-  when: "{{save.jumpText}}"
-  with: { text: "{{save.jumpText}}" }
-```
-
-### 4.7 Google Calendar
+### 4.6 Google Calendar
 
 Needs a Google account connected in Settings, allowing the calendar (see [google-setup.md](google-setup.md)). You can
 connect several; one is the default. A calendar step's `account` is a google slot, written as a name (`account: work`),
@@ -1293,7 +1261,7 @@ the same start isn't created twice.
     meet: true
 ```
 
-### 4.8 Browser 🖥️
+### 4.7 Browser 🖥️
 
 The browser runs on the self-hosted server. With `headed: true` it's the watchable browser: you can see it in the
 run's **live view** and take over when it meets a CAPTCHA, a 2FA prompt or a page it doesn't recognize. Only one
@@ -1479,7 +1447,7 @@ as soon as a file is chosen, so this is always behind a gate.
 - In: `url`, `field` (selector of the file input), `file`, `submit`, `timeoutSeconds`.
 - Out: `uploaded`, `url`, `confirmation`.
 
-### 4.9 Documents
+### 4.8 Documents
 
 #### `file.read`
 Reads the text of a stored document (Documents page, e.g. `cv-main`), of a file `browser.download` kept, or of an
@@ -1534,7 +1502,7 @@ leaves Storm. A dry run keeps nothing and says how many it would.
     items: [{ title: "{{item.subject}}", document: "{{keep.first}}" }]   # this email's file
 ```
 
-### 4.10 You in the loop
+### 4.9 You in the loop
 
 #### `gate.review`
 Pauses the run and shows a list; you pick which items go on.
@@ -1568,7 +1536,7 @@ place it differently; it must come before its step, after every step that step u
   with: { to: "{{item.from}}", subject: "{{draft.subject}}", body: "{{draft.body}}" }
 ```
 
-### 4.11 Telling you
+### 4.10 Telling you
 
 #### `notify.telegram`
 Sends you a Telegram message (only to you, never to anyone else). See [telegram.md](telegram.md).
@@ -1590,7 +1558,7 @@ steps:
     with: { hours: 24 }
 ```
 
-### 4.12 Timing
+### 4.11 Timing
 
 #### `flow.later`
 Starts another pipeline (whose trigger is `{ on: flow.later }`) `after` a while (`30m`, `36h`, `7d`) or `at` a time,
@@ -1653,7 +1621,7 @@ What the steps add up to, with the pipeline that does it:
 | Your repositories' new releases (their public release feeds), a short post drafted for each, edited and approved at the gate, then posted to your Mastodon account (its address and encrypted token are yours) | `schedule` → `data.read` → `http.fetch` (forEach: a literal host, the repository in the path) → `data.map` → `data.dedupe` → `llm.generate` → `data.save` → `http.request` (a `mine` address, its encrypted token in a header) → `data.save { stage }` | the Announcements App ([announcements.yaml](../examples/apps/announcements.yaml)) with [announce.yaml](../examples/apps/announcements.yaml) |
 | Links you forward to yourself with #link and your feeds' items, collected over the week; on Friday the ones you pick written up as the issue, one email per Subscriber (not the ones who replied "unsubscribe") approved as one batch | `schedule` → `email.fetch` + `data.read` (your Feeds) → `http.fetch` (forEach, each Feed's url) → `data.map` → `data.dedupe` → `data.save`; then `schedule` → `data.read` → `gate.review` → `llm.generate` → `data.save` → `data.read { where: email nin … }` (a `mine` address) → `email.send` (forEach, one batch) → `data.save { stage }` | the Newsletter App ([newsletter.yaml](../examples/apps/newsletter.yaml)) with [collect-links.yaml](../examples/apps/newsletter.yaml) and [newsletter-issue.yaml](../examples/apps/newsletter.yaml) |
 | Turn interview invitations into calendar events with prep notes | `email.fetch` → `email.classify` → `llm.extract` → `calendar.find` → `llm.generate` → `calendar.create` | [interview-invite.yaml](../examples/pipelines/interview-invite.yaml) |
-| Keep your bills, with a reminder before they're due | `email.fetch` → `email.classify` → `bill.read` → `bill.save` → `calendar.create` / `notify.telegram` | [bills.yaml](../examples/apps/bills.yaml) |
+| Keep your bills, with a reminder before they're due, a message when one is well above the sender's usual, and the ones due soon every morning | `email.fetch` → `email.classify` → `email.attachments` → `llm.extract` → `data.map` (its key and month) → `data.save` → `data.map` → `calendar.create`; `data.history` (`vsMedian`) → `data.filter` → `notify.telegram`; `schedule` → `data.read` → `data.map` → `notify.telegram` | the Bills App ([bills.yaml](../examples/apps/bills.yaml)) with [bills.yaml](../examples/apps/bills.yaml), [due-soon.yaml](../examples/apps/bills.yaml) |
 | Keep your trips' bookings from email, with a reminder the day before each, a weather briefing three days before a trip and a packing list on a button | `email.fetch` → `email.classify` → `llm.extract` → `data.map` → `data.save` → `calendar.create`; `entity.changed` → `data.map` → `flow.later` / `flow.cancel`; `http.fetch` (Open-Meteo) → `data.read` → `llm.generate` → `notify.telegram` | the Trips App ([trips.yaml](../examples/apps/trips.yaml)) with [trip-bookings.yaml](../examples/apps/trips.yaml), [trip-booking-reminders.yaml](../examples/apps/trips.yaml), [trip-countdown.yaml](../examples/apps/trips.yaml), [trip-briefing.yaml](../examples/apps/trips.yaml), [packing-list.yaml](../examples/apps/trips.yaml) |
 | Freelance work: inquiries become scored leads, a proposal and a payment reminder to a client you added, an invoice draft for a won lead, watched until paid | `email.fetch` → `email.classify` → `data.read` → `llm.extract` → `data.map` → `data.save`; `entity.action` → `data.read` (a `mine` type: its address may be a target) → `llm.generate` → `email.send` → `data.save { stage }`; `entity.changed { stage: won }` → `data.map` → `data.save`; `data.read` → `data.map` → `data.save { stage: overdue }` | the Clients App ([clients.yaml](../examples/apps/clients.yaml)) with [client-inquiries.yaml](../examples/apps/clients.yaml), [proposal.yaml](../examples/apps/clients.yaml), [lead-won.yaml](../examples/apps/clients.yaml), [overdue-invoices.yaml](../examples/apps/clients.yaml), [payment-reminder.yaml](../examples/apps/clients.yaml) |
 | Find a place to rent: new listings marked against what you look for, price drops on your favorites, a request for a viewing to an agent you added, the viewing in your calendar | `browser.extract` → `data.history` → `data.dedupe { againstType }` → `llm.classify` → `data.map` → `data.save`; `entity.action` → `data.read` (a `mine` type) → `llm.generate` → `email.send` → `data.save { stage }`; `entity.changed { field }` → `calendar.create` | the Apartments App ([apartments.yaml](../examples/apps/apartments.yaml)) with a listing site's recipe ([example-listings.yaml](../recipes/example-listings.yaml)), [listings.yaml](../examples/apps/apartments.yaml), [ask-for-viewing.yaml](../examples/apps/apartments.yaml), [viewing.yaml](../examples/apps/apartments.yaml), [compare-favorites.yaml](../examples/apps/apartments.yaml) |
@@ -1665,9 +1633,9 @@ What the steps add up to, with the pipeline that does it:
 | Receipts, warranties and contracts read from their photo or PDF (sent from your phone too), a warranty's end in your calendar, a claim (its receipt attached) or a cancellation to the merchant you chose, a reminder before a contract's notice runs out, last month's expenses to your accountant with their documents (and the month's bills, from your Bills App when you have one: `uses:`) | `telegram.command` → `file.keep { telegram }` → `data.save`; `entity.changed { field: document }` → `llm.extract { files }` → `data.save`; `entity.changed { field: warrantyUntil }` → `data.map` → `calendar.create`; `entity.action` → `data.read` (a `mine` type: its address may be a target) X `data.map` → `flow.later` / `flow.cancel`; `schedule` → `data.read` → `data.map` → `gate.review` → `data.map` → `email.send` (to `{{setting.accountant}}`, `attachments`) | the Papers App ([papers.yaml](../examples/apps/papers.yaml)) with [paper-from-telegram.yaml](../examples/apps/papers.yaml), [read-paper.yaml](../examples/apps/papers.yaml), [warranty-in-calendar.yaml](../examples/apps/papers.yaml), [warranty-claim.yaml](../examples/apps/papers.yaml), [contract-cancel.yaml](../examples/apps/papers.yaml), [contract-watch.yaml](../examples/apps/papers.yaml), [contract-reminder.yaml](../examples/apps/papers.yaml), [expense-report.yaml](../examples/apps/papers.yaml) |
 | Your projects' GitHub variables and secrets kept here (secrets encrypted) by path and environment, sent to a repository, one of its environments, an organisation or Dependabot when you press Sync, with the token of its GitHub owner (a credential field); a later path overrides an earlier one; never deletes | `entity.action` → `data.read` → `data.map` → `http.fetch` (the public key, the variables there) → `http.request` with `{{item.secret \| sealedBox: key.json.key}}`, `onError: continue`, auto-approved (§2.3) | the Lockbox App ([lockbox.yaml](../examples/apps/lockbox.yaml)) with [lockbox-sync.yaml](../examples/apps/lockbox.yaml) |
 | Your monitors (web addresses, ports, ping; on your network too) checked every five minutes, with their response times; incidents on what you run, each resolved when its cause is gone: a monitor down, a database check above 0, the database out of reach; a monitor's runbooks (your restart or redeploy webhook) proposed when it goes down; a GitHub issue after you approve it, in the monitor's repository (or the default one) with its GitHub owner's token, and the week in numbers | `schedule` → `data.read` → `http.check`, `net.check` → `data.map` → `data.save`, `data.history`; `{ webhook: token }` → `data.read` → `data.map` → `data.save`; `db.query` → `data.alert` → `data.map` → `data.save`; `run.finished { status: [FAILED] }` → `data.save`; `entity.action` → `data.read` (repositories, GitHub owners with a credential field) → `data.map` → `http.request` → `data.save { stage }`, `notify.telegram` when there is none; `entity.changed { stage: open }`, `entity.action` → `data.read` (a `mine` type, its encrypted token in a header) → `http.request` → `notify.telegram` → `data.save { stage }` | the Server ops App ([server-ops.yaml](../examples/apps/server-ops.yaml)) with [check-monitors.yaml](../examples/apps/server-ops.yaml), [monitor-alerts.yaml](../examples/apps/server-ops.yaml), [database-check.yaml](../examples/apps/server-ops.yaml), [database-down.yaml](../examples/apps/server-ops.yaml), [incident-issue.yaml](../examples/apps/server-ops.yaml), [ops-week.yaml](../examples/apps/server-ops.yaml), [fix-offer.yaml](../examples/apps/server-ops.yaml), [fix.yaml](../examples/apps/server-ops.yaml) |
-| Tell you when a watched product is worth buying | `price.watch` → `notify.telegram` | [prices.yaml](../examples/apps/prices.yaml) |
+| Tell you when a watched product is worth buying: a shop at or under your target, the lowest in 90 days, back in stock, with the cheapest shop named | `data.read` (your Products and Shops, `mine` types) → `shop.product` (forEach, a Shop's page: no `allowedDomains`) → `data.map` → `data.save` → `data.history` → `data.alert` → `data.map` → `notify.telegram` | the Prices App ([prices.yaml](../examples/apps/prices.yaml)) with [prices.yaml](../examples/apps/prices.yaml) |
 | Prices of a shop's list, or of specific products | `browser.extract` or `shop.product` → `data.history` → `data.filter` → `llm.generate` → `notify.telegram` | [price-watch.yaml](../examples/pipelines/price-watch.yaml), [product-watch.yaml](../examples/pipelines/product-watch.yaml) |
-| New releases of your stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram`, plus `view` | [release-watch.yaml](../examples/apps/releases.yaml), [release-notes.yaml](../examples/apps/releases.yaml) |
+| New releases of your stack, with a page and buttons | `http.fetch` → `data.save` → `llm.summarize` → `notify.telegram` | [release-watch.yaml](../examples/apps/releases.yaml), [release-notes.yaml](../examples/apps/releases.yaml) |
 | Email you when it will be colder than 10° in the next 12 hours, and when it's back | `http.fetch` → `data.map` → `data.alert` → `email.send` | [cold-weather.yaml](../examples/pipelines/cold-weather.yaml) |
 | Open a GitHub issue when a pipeline fails, after you approve it | `http.request` on a `run.finished` trigger | the Releases App ([releases.yaml](../examples/apps/releases.yaml)) |
 | Tell you when a table grows much faster than usual | `db.query` → `data.history` → `data.alert` → `notify.telegram` | [table-growth.yaml](../examples/apps/tables.yaml) |

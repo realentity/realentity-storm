@@ -370,7 +370,6 @@ export const LLM_TASKS = [
   "email.classify",
   "email.draftReply",
   "email.draftFollowUp",
-  "bill.read",
   "llm.classify",
   "llm.score",
   "llm.generate",

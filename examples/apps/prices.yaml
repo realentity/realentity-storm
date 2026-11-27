@@ -1,7 +1,6 @@
-# M33: the Prices App. You add the Products to watch, each with its shops (a line each, the variant after "|");
-# price.watch (prices) keeps what each shop's page says as an Offer, with its price history, and tells
-# you only what is new. Save it on the Apps page before prices, then press "Move them here" on its page to
-# bring the products, shops and prices the old Prices page kept.
+# M33: the Prices App. You add the Products to watch, and the Shops that sell each (its page, and the variant you
+# want); every morning each shop's page is read (shop.product), kept as an Offer with its price history, and you are
+# told only what is new. M71: generic steps only, each in the pipeline below.
 app:
   name: Prices
   description: Products you watch, and what each shop asks for them
@@ -11,6 +10,7 @@ app:
     target.
   setup:
     - { kind: entities, type: Product, label: "The products to watch, added on its page" }
+    - { kind: entities, type: Shop, label: "The shops that sell them, a page each, added on its page" }
     - { kind: telegram, label: "Telegram, to tell you about drops" }
 types:
   Product:
@@ -21,7 +21,14 @@ types:
       targetPrice: { type: money, currency: currency, label: Target }
       currency: { type: text }     # the target's; a shop in another currency is never compared with it
       enabled: { type: yesno, label: Watched }
-      shops: { type: list }        # https://shop/p/7 | size: M, color: Black
+  Shop:
+    mine: true                     # a product's page at one shop: its address is yours, so it is read without allowedDomains
+    key: name
+    fields:
+      name: { type: text, required: true, help: "e.g. Jacket at shop.example, M" }
+      product: { type: ref, to: Product, required: true }
+      url: { type: url, required: true, label: Page }
+      variant: { type: text, help: "The one you want, when the page has several: size: M, color: Black" }
   Offer:
     key: offer                     # product | address | variant
     title: shop
@@ -51,25 +58,118 @@ pages:
   - list: Product
     menu: { label: Watched products, icon: tag }
     columns: [name, targetPrice, enabled]
+  - list: Shop
+    menu: { label: Shops, icon: tag }
+    columns: [name, product, url, variant]
 
 pipelines:
   prices:
     # M24: every morning, the watched products at each of their shops; a message only when something is new: a shop at or
-    # under its target (once), the lowest in 90 days, back in stock, with the cheapest shop named. M33: the products are
-    # in the Prices App, added on its Watched products page: no
-    # allowedDomains needed here.
+    # under its target (once), the lowest in 90 days, back in stock, with the cheapest shop named. A shop whose page
+    # can't be read keeps its last price, with the problem, and is said in its own message.
     name: Check prices
     description: The watched products, told only when a price is worth knowing.
     trigger: { schedule: "0 9 * * *" }
     steps:
-      - id: watch
-        type: price.watch
-        with: { lowestDays: 90 }
+      - id: products
+        type: data.read
+        with: { type: Product, where: [{ field: enabled, op: neq, value: false }] }
+      - id: watched
+        type: data.map
+        with: { from: "{{products.items}}", expression: "[name]" }
+      - id: shops
+        type: data.read
+        with: { type: Shop, where: [{ field: product, op: in, value: "{{watched.value}}" }], sort: name, limit: 1000 }
+      - id: read
+        type: shop.product
+        forEach: "{{shops.items}}"
+        with: { url: "{{item.url}}", select: "{{item.variant}}", failWhenNone: false }
+      - id: before
+        type: data.read
+        with: { type: Offer, limit: 1000 }
+      - id: offers
+        type: data.map
+        with:
+          from: { shops: "{{shops.items}}", reads: "{{read.items}}", products: "{{products.items}}", before: "{{before.items}}" }
+          expression: |-
+            (
+              $all := $;
+              $map(shops, function($s, $i) {(
+                $r := $all.reads[$i][0];
+                $p := $all.products[name = $s.product];
+                $key := $s.product & " | " & $s.url & ($s.variant ? " | " & $s.variant : "");
+                $last := $all.before[offer = $key];
+                $priced := $type($r.price) = "number";
+                $price := $priced ? $r.price : $last.price;
+                $currency := $priced ? $r.currency : $last.currency;
+                $comparable := $not($p.currency) or $not($currency) or $uppercase($p.currency) = $uppercase($currency);
+                {
+                  "offer": $key,
+                  "product": $s.product,
+                  "shop": $substringBefore($substringBefore($substringAfter($s.url, "://"), "/"), ":"),
+                  "url": $s.url,
+                  "variant": $s.variant ? $s.variant : undefined,
+                  "price": $price,
+                  "currency": $currency,
+                  "inStock": $priced ? $r.inStock : $last.inStock,
+                  "title": $priced ? $r.title : $last.title,
+                  "problem": $priced ? undefined : ($r.problem ? $r.problem : "no price"),
+                  "checkedAt": $now(),
+                  "priced": $priced,
+                  "vsTarget": $priced and $type($p.targetPrice) = "number" and $comparable ? $price - $p.targetPrice : undefined
+                }
+              )})
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{offers.items}}", type: Offer, complete: true }
+      - id: priced
+        type: data.filter
+        with: { items: "{{offers.items}}", where: [{ field: priced, op: eq, value: true }] }
+      - id: prices
+        type: data.history
+        with: { items: "{{priced.items}}", collection: price-watch, key: offer, value: price, keep: 90 }
+      - id: target
+        type: data.alert
+        with: { items: "{{priced.items}}", key: offer, value: vsTarget, below: 0.005, label: offer }
+      - id: news
+        type: data.map
+        with:
+          from: { offers: "{{prices.items}}", crossed: "{{target.crossed}}", changed: "{{save.changed}}", products: "{{products.items}}" }
+          expression: |-
+            (
+              $all := $;
+              $money := function($amount, $currency) { $formatNumber($amount, "0.00") & ($currency ? " " & $currency : "") };
+              $cheapest := function($name) {(
+                $p := $all.products[name = $name];
+                $in := $all.offers[product = $name and $not(inStock = false) and ($not($p.currency) or $not(currency) or $uppercase(currency) = $uppercase($p.currency))];
+                $sort($in, function($a, $b) { $a.price > $b.price })[0]
+              )};
+              $lines := $map($all.offers, function($o) {(
+                $p := $all.products[name = $o.product];
+                $why := [
+                  $o.offer in $all.crossed.offer ? "at or under your target " & $money($p.targetPrice, $p.currency) : undefined,
+                  $o.history.lowest ? "the lowest in 90 days" : undefined,
+                  $count($all.changed[key = $o.offer and before.inStock = false and after.inStock = true]) > 0 ? "back in stock" : undefined
+                ];
+                $c := $cheapest($o.product);
+                $count($why) = 0 ? undefined :
+                  $o.product & ": " & $money($o.price, $o.currency) & " at " & $o.shop & ", " & $join($why, ", ") &
+                  ($c and $c.offer != $o.offer ? " (cheapest now: " & $money($c.price, $c.currency) & " at " & $c.shop & ")" : "") &
+                  "\n" & $o.url
+              )});
+              $count($lines) = 0 ? "" : "Prices:\n" & $join($lines, "\n")
+            )
       - id: tell
         type: notify.telegram
-        when: "{{watch.text}}"
-        with: { text: "{{watch.text}}" }
+        when: "{{news.value}}"
+        with: { text: "{{news.value}}" }
+      - id: problems
+        type: data.map
+        with:
+          from: "{{offers.items}}"
+          expression: '$join($map($[problem], function($o) { $o.product & " at " & $o.shop & ": " & $o.problem }), "; ")'
       - id: trouble
         type: notify.telegram
-        when: "{{watch.problems}}"
-        with: { text: "Prices: can't read {{watch.problems}}" }
+        when: "{{problems.value}}"
+        with: { text: "Prices: can't read {{problems.value}}" }

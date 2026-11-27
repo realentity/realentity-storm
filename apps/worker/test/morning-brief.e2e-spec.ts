@@ -43,7 +43,7 @@ describe("morning brief", () => {
   // Tuesday 3 November 2026, 07:30 in Sofia (UTC+2).
   const now = new Date("2026-11-03T05:30:00Z");
 
-  it("today's calendar, what waits, what failed in the last day, unpaid bills due soon", async () => {
+  it("today's calendar, what waits, what failed in the last day; an App's bills aren't its news", async () => {
     const replies = await createVersion(db.client, userId, SIMPLE("Recruiter replies"));
     const jobs = await createVersion(db.client, userId, SIMPLE("Job search"));
     const run = (pipelineVersionId: string, status: "FAILED" | "WAITING_FOR_USER" | "DONE", hoursAgo: number, summary?: string, dryRun = false) =>
@@ -65,7 +65,7 @@ describe("morning brief", () => {
     await run(jobs, "FAILED", 30, "too old to tell");
     await run(jobs, "FAILED", 3, "a dry run", true);
 
-    // M33: Bill entities of a Bills App; paid ones are left out.
+    // M71: a Bills App's unpaid bills are its own pipeline's message (Bills due soon), not the brief's.
     const { appId } = await db.client.app.create({ data: { userId, name: "Bills" } });
     const bill = (issuer: string, amount: number, dueDate: string, paid = false) =>
       db.client.dataEntity.create({
@@ -99,10 +99,6 @@ describe("morning brief", () => {
       "Failed in the last day:",
       "• Recruiter replies: 1 item failed: note #1",
       "• Job search: dev.bg/search no longer matches the page",
-      "Bills:",
-      "• telco: 30.00 BGN, overdue since 2026-11-01",
-      "• evn: 84.20 BGN, due today",
-      "• water: 21.50 BGN, due 2026-11-06",
     ]);
     // Today in Sofia: from its midnight (22:00 UTC the day before) to the next.
     expect(asked).toEqual([[new Date("2026-11-02T22:00:00Z"), new Date("2026-11-03T22:00:00Z")]]);
@@ -112,7 +108,7 @@ describe("morning brief", () => {
     const sent: TelegramMessage[] = [];
     const quiet = new MorningBrief(db.client, (m) => (sent.push(m), Promise.resolve()), () => Promise.resolve(null), "https://storm.test");
     await expect(quiet.sendAll(now)).resolves.toBe(1);
-    expect(sent[0]?.text).toBe("Storm · Tuesday 3 November\nNothing on the calendar, nothing waiting, nothing failed, no bills due.");
+    expect(sent[0]?.text).toBe("Storm · Tuesday 3 November\nNothing on the calendar, nothing waiting, nothing failed.");
     expect(sent[0]?.buttons).toEqual([[{ text: "Open Storm", url: "https://storm.test" }]]);
 
     const broken = new MorningBrief(db.client, () => Promise.resolve(), () => Promise.reject(new Error("Google Calendar needs reconnecting")));

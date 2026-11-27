@@ -87,3 +87,32 @@ describe("an address of mine to read (M59-T6)", () => {
     expect(ok(fetch("{{item.text}}", [mail], "{{mail.messages}}")).policy.ownHosts).toBeUndefined();
   });
 });
+
+// M71: shop.product reads a Shop's page you typed on its host (examples/apps/prices.yaml), as http.fetch reads a Feed's
+describe("a shop's page of mine to read (M71)", () => {
+  const prices = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/prices.yaml")));
+  const read = (type: string, url: string) =>
+    compiler.compile(
+      {
+        name: "P",
+        app: "Prices",
+        steps: [
+          { id: "shops", type: "data.read", with: { type } },
+          { id: "price", type: "shop.product", forEach: "{{shops.items}}", with: { url } },
+        ],
+      },
+      { app: prices },
+    );
+
+  it("marks the read of a Shop's url; Check prices needs no allowedDomains", () => {
+    const check = ok(compiler.compile(parseYaml(exampleYaml("prices")), { app: prices }));
+    expect([check.policy.ownHosts, check.policy.allowedDomains]).toEqual([["read"], []]);
+    expect(ok(read("Shop", "{{item.url}}")).policy.ownHosts).toEqual(["price"]);
+  });
+
+  it("an Offer's url (a pipeline wrote it) or a url built from a Shop's is read on allowedDomains only", () => {
+    expect(ok(read("Offer", "{{item.url}}")).policy.ownHosts).toBeUndefined();
+    expect(ok(read("Shop", "{{item.url}}?ref=storm")).policy.ownHosts).toBeUndefined();
+    expect(errorsOf(read("Shop", "https://shop.example/p/7"))).toEqual(["steps[1].with.url: shop.example isn't in policy.allowedDomains: add it there to read from it"]);
+  });
+});

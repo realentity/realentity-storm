@@ -14,7 +14,8 @@ interface HistoryInput {
 
 /**
  * data.history (M13): a number per key over time, kept in `collection`. Each item gets `history`: the previous value,
- * the change, min and max so far, whether it is the lowest yet, the usual change and this one against it (M29);
+ * the change, min and max so far, whether it is the lowest yet, the usual change and this one against it (M29), the
+ * median of the earlier values and this one against it (M71: a bill against the usual amount);
  * an item whose value isn't a number gets null. One value per key per run (the first item with that key); only the
  * last `keep` stay. A dry run records nothing.
  */
@@ -66,6 +67,7 @@ function historyOf(before: number[], value: number) {
   const all = [...before, value];
   const change = previous === null ? null : round(value - previous);
   const usualChange = usualChangeOf(before);
+  const median = before.length < 2 ? null : medianOf(before);
   return {
     value,
     previous,
@@ -78,6 +80,8 @@ function historyOf(before: number[], value: number) {
     lowest: before.length > 0 && value < Math.min(...before),
     usualChange,
     vsUsual: change === null || !usualChange ? null : round(change / Math.abs(usualChange)),
+    median,
+    vsMedian: !median ? null : round(value / median),
   };
 }
 
@@ -88,8 +92,13 @@ function usualChangeOf(before: number[]): number | null {
     .map((v, i) => v - before[i])
     .sort((a, b) => a - b);
   if (changes.length < 3) return null;
-  const middle = Math.floor(changes.length / 2);
-  return round(changes.length % 2 ? changes[middle] : (changes[middle - 1] + changes[middle]) / 2);
+  return medianOf(changes);
+}
+
+function medianOf(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return round(sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 const round = (n: number): number => Math.round(n * 100) / 100;

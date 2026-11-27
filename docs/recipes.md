@@ -18,7 +18,7 @@ Use something else when:
 | The site | Instead |
 | --- | --- |
 | has an API or a feed (JSON, RSS) | [`http.fetch`](capabilities.md#httpfetch): faster, no browser |
-| is one product page you watch | [`shop.product`](capabilities.md#shopproduct-) or [`price.watch`](capabilities.md#pricewatch-) |
+| is one product page you watch | [`shop.product`](capabilities.md#shopproduct-) (the Prices App: a Shop's page each) |
 | needs a sign-in to see the list | not yet: recipes don't sign in. [`browser.open`](capabilities.md#browseropen-%EF%B8%8F) can sign in and read one page's text |
 | changes every visit, or is a one-off task | [`browser.agent`](capabilities.md#browseragent-%EF%B8%8F-) (an LLM in the browser, each run) |
 

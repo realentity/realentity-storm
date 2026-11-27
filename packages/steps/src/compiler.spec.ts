@@ -361,8 +361,9 @@ steps:
   // M2-U5
   it("classifies every catalog step that takes files as a side effect", () => {
     // M46: an App entity's stored file, read inside Storm (file.read's text) or shown to the model as any content is
-    // (llm.extract's files); neither uploads anything anywhere.
-    const readsStoredFiles = new Set(["file.read", "llm.extract"]);
+    // (llm.extract's files); neither uploads anything anywhere. M71: email.attachments reads an email's, as email.fetch
+    // reads the email.
+    const readsStoredFiles = new Set(["file.read", "llm.extract", "email.attachments"]);
     for (const step of [...CORE_STEPS, ...TEST_STEPS]) {
       if (readsStoredFiles.has(step.type)) continue;
       const takesFiles = Object.keys(step.input.shape).some((field) => /files?|attachments?|uploads?/i.test(field));

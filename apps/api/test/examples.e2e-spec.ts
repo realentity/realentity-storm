@@ -73,6 +73,7 @@ describe("examples", () => {
     expect(first.example).toBe("prices");
     expect(first.items.map((i) => [i.label, i.done])).toEqual([
       ["The products to watch, added on its page", false],
+      ["The shops that sell them, a page each, added on its page", false],
       ["Telegram, to tell you about drops", setup.telegram],
       ['Try "Prices · Check prices": a dry run, which sends and saves nothing', false],
       ['Switch "Prices · Check prices" on', false],
@@ -87,7 +88,7 @@ describe("examples", () => {
     await agent.post("/api/pipelines/dry-run").send({ source, pipelineId: pipeline.pipelineId }).expect(202);
     await agent.patch(`/api/pipelines/${pipeline.pipelineId}`).send({ enabled: true }).expect(200);
     const after = await checklist();
-    expect(after.items.slice(2).map((i) => i.done)).toEqual([true, true]);
+    expect(after.items.slice(3).map((i) => i.done)).toEqual([true, true]);
 
     // An App not installed from an example has none.
     const other = (

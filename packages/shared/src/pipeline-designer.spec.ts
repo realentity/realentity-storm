@@ -21,7 +21,7 @@ steps:
     type: email.fetch
     with: { sinceDays: 7 }        # a week back
   - id: read
-    type: bill.read
+    type: email.attachments
     when: "{{fetch.messages}}"
     with:
       messages: "{{fetch.messages}}"

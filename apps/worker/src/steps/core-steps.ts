@@ -22,7 +22,6 @@ import { FillAndSubmitStep, MapFormStep, type FormDependencies } from "./form-st
 import { HistoryStep } from "./history-step";
 import { HttpFetchStep, HttpRequestStep, type HttpFetchOptions } from "./http-steps";
 import { AlertStep, MapStep } from "./map-alert-steps";
-import { PriceWatchStep } from "./price-steps";
 import { ProductStep } from "./product-step";
 import { FlowCancelStep, FlowLaterStep } from "./flow-steps";
 import { ClassifyStep, ExtractStep, GenerateStep, ScoreStep, SummarizeStep } from "./llm-steps";
@@ -95,7 +94,6 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new NetCheckStep(deps.checks),
     new DbQueryStep(deps.vault),
     product,
-    new PriceWatchStep(deps.prisma, product),
     new ClassifyStep(deps.llm, deps.router, deps.learning),
     new ScoreStep(deps.llm, deps.router, deps.learning, deps.prisma),
     new ApplicationOutcomeStep(deps.prisma, deps.llm, deps.router, deps.learning),

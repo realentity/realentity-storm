@@ -3,8 +3,6 @@ import { defaultTimeZone, type TelegramMessage } from "@realentity/storm-shared"
 import { Logger } from "@nestjs/common";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Unpaid bills due this soon are in the brief (overdue ones too). */
-const BILLS_DAYS = 3;
 const MAX_FAILURES = 5;
 
 /** Today's events, as the brief shows them; throws when the calendar can't be read. */
@@ -19,7 +17,8 @@ export type TodaysEvents = (userId: string, from: Date, to: Date) => Promise<Bri
 /**
  * The morning brief (M25, docs/design.md §12): every morning on the Storm bot, what today needs. Today's calendar (when
  * Google is connected), what waits for the user (drafts and follow-ups at their gates, runs paused in the live view), the
- * runs that failed in the last day, unpaid bills due soon. A day with none of it says so in one line.
+ * runs that failed in the last day. A day with none of it says so in one line. An App's own news (bills due soon) is
+ * its own pipeline's message (M71: the Bills App's "Bills due soon").
  */
 export class MorningBrief {
   private readonly logger = new Logger(MorningBrief.name);
@@ -46,10 +45,10 @@ export class MorningBrief {
 
   async compose(userId: string, now = new Date()): Promise<string> {
     const title = `Storm · ${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: defaultTimeZone() })}`;
-    const parts = [await this.calendar(userId, now), await this.waiting(userId), await this.failed(userId, now), await this.bills(userId, now)].filter(
+    const parts = [await this.calendar(userId, now), await this.waiting(userId), await this.failed(userId, now)].filter(
       (part): part is string => part !== null,
     );
-    return [title, ...(parts.length ? parts : ["Nothing on the calendar, nothing waiting, nothing failed, no bills due."])].join("\n");
+    return [title, ...(parts.length ? parts : ["Nothing on the calendar, nothing waiting, nothing failed."])].join("\n");
   }
 
   private async calendar(userId: string, now: Date): Promise<string | null> {
@@ -109,27 +108,6 @@ export class MorningBrief {
     });
     if (runs.length > MAX_FAILURES) lines.push(`• … and ${runs.length - MAX_FAILURES} more`);
     return ["Failed in the last day:", ...lines].join("\n");
-  }
-
-  private async bills(userId: string, now: Date): Promise<string | null> {
-    const today = dayString(now);
-    const until = dayString(new Date(now.getTime() + BILLS_DAYS * DAY_MS));
-    // M33: the Bill entities bill.save keeps in the user's Apps, not yet paid.
-    const unpaid = await this.prisma.dataEntity.findMany({
-      where: { type: "Bill", app: { userId }, removedAt: null, OR: [{ stage: null }, { stage: { not: "paid" } }] },
-      select: { value: true },
-    });
-    const due = unpaid
-      .map((e) => e.value as { issuer?: unknown; amount?: unknown; currency?: unknown; dueDate?: unknown })
-      .filter((b): b is { issuer: string; amount: number; currency: string; dueDate: string } => typeof b.dueDate === "string" && b.dueDate <= until)
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-    if (due.length === 0) return null;
-    const lines = due.map((bill) => {
-      const date = bill.dueDate;
-      const when = date < today ? `overdue since ${date}` : date === today ? "due today" : `due ${date}`;
-      return `• ${bill.issuer}: ${Number(bill.amount).toFixed(2)} ${bill.currency}, ${when}`;
-    });
-    return ["Bills:", ...lines].join("\n");
   }
 }
 

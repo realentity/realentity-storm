@@ -1,6 +1,6 @@
-# M33: the Bills App. bill.save (bills) keeps each bill read from email as a Bill, due until you mark
-# it paid; the morning brief tells you the unpaid ones due soon. Save it on the Apps page before bills,
-# then press "Move my bills here" on its page to bring the bills the old Bills page kept.
+# M33: the Bills App. Each bill read from your email (its text and its PDF) is kept as a Bill, due until you mark it
+# paid, with a reminder in your calendar; every morning the unpaid ones due soon come to Telegram. M71: generic
+# steps only: email.attachments reads the PDFs, llm.extract the bill, data.map its key, data.save keeps it.
 app:
   name: Bills
   description: Bills from email, by month, paid or not
@@ -12,7 +12,7 @@ app:
     - { kind: email, label: "An email account, to read the bills from" }
     - { kind: llm, label: "The LLM, to read each bill" }
     - { kind: google-calendar, label: "Google Calendar, for the reminders" }
-    - { kind: telegram, label: "Telegram, to tell you about new bills" }
+    - { kind: telegram, label: "Telegram, to tell you about new bills and the ones due soon" }
 types:
   Bill:
     key: billKey                 # the sender's domain with the bill's reference, period or due date: the same bill again is the same Bill
@@ -52,9 +52,9 @@ pages:
 
 pipelines:
   bills:
-    # M23: bills from email (the text or a PDF): kept in the Bills App (M33, this App: save it first), a
-    # calendar reminder 3 days before each is due (after Act at the gate, like every event), and a message when one is much
-    # higher than usual. Nothing is paid.
+    # M23: bills from email (the text or a PDF): a calendar reminder 3 days before each is due (after Act at the gate,
+    # like every event), and a message when one is more than 30% above the sender's usual (the median of their last
+    # six). Nothing is paid.
     name: Read bills
     description: Bills from email, kept with a reminder before they're due.
     trigger: { schedule: "0 8,18 * * *" }
@@ -67,22 +67,133 @@ pipelines:
         with:
           messages: "{{fetch.messages}}"
           instruction: "bill: an invoice, a utility or phone bill, or a payment request with an amount for me to pay"
-      - id: read
-        type: bill.read
+          labels: [bill, other]
+          keep: [bill]
+      - id: files
+        type: email.attachments
         when: "{{triage.kept}}"
-        with: { messages: "{{triage.kept}}" }
+        with: { messages: "{{triage.kept}}", maxFiles: 2 }
+      - id: read
+        type: llm.extract
+        forEach: "{{files.messages}}"
+        with:
+          content: "{{item}}"
+          instruction: >-
+            The content is an email; the text of its attachments (a bill's PDF) is in attachmentText. A bill asks me
+            to pay an amount: an invoice, a utility or phone bill, a payment request. A receipt for a payment already
+            made, an order confirmation, an offer or a newsletter is not a bill. Read numbers exactly as written: the
+            amount is the total to pay, with VAT, not a subtotal.
+          fields:
+            isBill: "yes when it asks me to pay an amount, else no"
+            issuer: "who bills, short: the company name as the bill gives it"
+            amount: "the total to pay, as a number, e.g. 84.20"
+            currency: "the ISO 4217 code, e.g. BGN, EUR"
+            dueDate: "the date to pay by, YYYY-MM-DD"
+            period: "the month the bill is for, YYYY-MM"
+            reference: "the invoice or bill number"
+      - id: bills
+        type: data.map
+        with:
+          from: { emails: "{{files.messages}}", read: "{{read.values}}" }
+          # A bill's key: the sender's domain with its reference, else its period, else its due date, else the email.
+          expression: |-
+            (
+              $all := $;
+              $date := function($text, $pattern) { $contains($string($text), $pattern) ? $text : undefined };
+              $bills := $map(emails, function($e, $i) {(
+                $v := $all.read[$i];
+                $text := $replace($string($v.amount), /[\s']/, "");
+                $digits := $contains($text, ".") ? $replace($text, ",", "") : $replace($text, ",", ".");
+                $amount := $contains($digits, /^[0-9]+(\.[0-9]+)?$/) ? $round($number($digits), 2) : 0;
+                $issuerKey := $lowercase($substringAfter($e.from, "@"));
+                $due := $date($v.dueDate, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/);
+                $period := $date($v.period, /^[0-9]{4}-[0-9]{2}$/);
+                $reference := $trim($string($v.reference)) ? $trim($v.reference) : undefined;
+                $currency := $uppercase($trim($string($v.currency)));
+                $lowercase($trim($string($v.isBill))) = "yes" and $amount > 0 ? {
+                  "billKey": $issuerKey & "|" & ($reference ? $reference : $period ? $period : $due ? $due : $e.messageId),
+                  "issuer": $trim($string($v.issuer)) ? $trim($v.issuer) : ($e.fromName ? $e.fromName : $e.from),
+                  "issuerKey": $issuerKey,
+                  "amount": $amount,
+                  "currency": $currency ? $currency : undefined,
+                  "dueDate": $due,
+                  "month": ($period ? $period : $due ? $substring($due, 0, 7) : $substring($now(), 0, 7)) & "-01",
+                  "period": $period,
+                  "reference": $reference,
+                  "from": $e.from,
+                  "subject": $e.subject,
+                  "messageId": $e.messageId
+                } : undefined
+              )});
+              $bills
+            )
       - id: save
-        type: bill.save
-        with: { bills: "{{read.bills}}", remindDaysBefore: 3, jumpPercent: 30 }
+        type: data.save
+        with: { items: "{{bills.items}}", type: Bill }
+      - id: reminders
+        type: data.map
+        with:
+          from: "{{save.added}}"
+          expression: |-
+            $map($[dueDate], function($b) { {
+              "title": "Pay " & $b.issuer & ": " & $formatNumber($b.amount, "0.00") & ($b.currency ? " " & $b.currency : ""),
+              "start": $fromMillis($toMillis($b.dueDate & "T00:00:00Z") - 3 * 86400000, "[Y0001]-[M01]-[D01]") & "T09:00:00",
+              "description": $b.subject
+            } })
       - id: remind
         type: calendar.create
-        forEach: "{{save.remind}}"
+        forEach: "{{reminders.items}}"
         with:
           title: "{{item.title}}"
-          start: "{{item.remindAt}}"
+          start: "{{item.start}}"
           durationMinutes: 15
-          description: "{{item.subject}}"
+          description: "{{item.description}}"
+      - id: usual
+        type: data.history
+        when: "{{save.added}}"
+        with: { items: "{{save.added}}", collection: bill-amounts, key: issuerKey, value: amount, keep: 7 }
+      - id: higher
+        type: data.filter
+        with: { items: "{{usual.items}}", where: [{ field: history.vsMedian, op: gt, value: 1.3 }] }
+      - id: jumpText
+        type: data.map
+        with:
+          from: "{{higher.items}}"
+          expression: |-
+            $count($) = 0 ? "" : "Bills higher than usual:\n" & $join($map($, function($b) {
+              $b.issuer & ": " & $formatNumber($b.amount, "0.00") & ($b.currency ? " " & $b.currency : "") & ", " &
+              $string($round(($b.history.vsMedian - 1) * 100)) & "% above the usual " & $formatNumber($b.history.median, "0.00") &
+              ($b.period ? " (" & $b.period & ")" : "")
+            }), "\n")
       - id: jump
         type: notify.telegram
-        when: "{{save.jumpText}}"
-        with: { text: "{{save.jumpText}}" }
+        when: "{{jumpText.value}}"
+        with: { text: "{{jumpText.value}}" }
+
+  due-soon:
+    # M71 (was the morning brief's): every morning, the unpaid bills due within three days, and the overdue ones.
+    name: Bills due soon
+    description: The unpaid bills due in the next three days, and the overdue ones, every morning.
+    trigger: { schedule: "30 7 * * *" }
+    steps:
+      - id: unpaid
+        type: data.read
+        with: { type: Bill, where: [{ field: status, op: neq, value: paid }], sort: dueDate, limit: 200 }
+      - id: soon
+        type: data.map
+        with:
+          from: "{{unpaid.items}}"
+          expression: |-
+            (
+              $today := $substring($now(), 0, 10);
+              $until := $fromMillis($millis() + 3 * 86400000, "[Y0001]-[M01]-[D01]");
+              $due := $[dueDate and dueDate <= $until];
+              $count($due) = 0 ? "" : "Bills:\n" & $join($map($due, function($b) {
+                "• " & $b.issuer & ": " & $formatNumber($b.amount, "0.00") & ($b.currency ? " " & $b.currency : "") & ", " &
+                ($b.dueDate < $today ? "overdue since " & $b.dueDate : $b.dueDate = $today ? "due today" : "due " & $b.dueDate)
+              }), "\n")
+            )
+      - id: tell
+        type: notify.telegram
+        when: "{{soon.value}}"
+        with: { text: "{{soon.value}}" }

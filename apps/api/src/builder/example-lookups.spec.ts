@@ -5,7 +5,7 @@ describe("the examples the builder looks up (M70)", () => {
   it("lists each by id with what it is for, its types and pipelines; reads one whole", () => {
     const examples = new ExampleLookups();
     const list = examples.list();
-    expect(list).toMatch(/^bills: Bills: Bills from email, by month, paid or not \(types: Bill; pipelines: bills\)$/m);
+    expect(list).toMatch(/^bills: Bills: Bills from email, by month, paid or not \(types: Bill; pipelines: bills, due-soon\)$/m);
     expect(list).toMatch(/^hiring: Hiring: /m);
     expect(list.split("\n").length).toBeGreaterThanOrEqual(20);
     expect(examples.read("bills")).toContain("\npipelines:\n");

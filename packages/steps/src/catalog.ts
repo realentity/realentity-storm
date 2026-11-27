@@ -96,7 +96,7 @@ export interface EntityContract {
   key: string;
   fields: Record<string, FieldKind>;
   states?: string[];
-  /** A type of mine the step reads (price.watch's Product); otherwise one it writes, so never mine. */
+  /** A type of mine the step reads; otherwise one it writes, so never mine. */
   mine?: boolean;
   /**
    * M59-T3: the contract holds only with this input given (true, or any value but false or empty): llm.score's
@@ -111,27 +111,6 @@ export interface EntityContract {
 export function contractInputGiven(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false && value !== "";
 }
-
-/** bill.save's Bill (M33): the type a Bills App gives it. */
-export const BILL_ENTITY: EntityContract = {
-  type: "Bill",
-  key: "billKey",
-  fields: {
-    billKey: "text",
-    issuer: "text",
-    issuerKey: "text",
-    amount: "money",
-    currency: "text",
-    dueDate: "date",
-    month: "date",
-    period: "text",
-    reference: "text",
-    from: "email",
-    subject: "text",
-    messageId: "text",
-  },
-  states: ["due", "paid"],
-};
 
 /** A job and the user's application to it (M33): what the job steps and application.outcome move through its stages. */
 export const JOB_ENTITY: EntityContract = {
@@ -148,33 +127,6 @@ export const JOB_ENTITY: EntityContract = {
     source: "text",
   },
   states: ["new", "skipped", "shortlisted", "prepared", "applied", "responded", "interview", "rejected"],
-};
-
-/** price.watch's Product (M33): a type of mine, a shop per line of `shops` ("https://… | size: M, color: Black"). */
-export const PRODUCT_ENTITY: EntityContract = {
-  type: "Product",
-  key: "name",
-  mine: true,
-  fields: { name: "text", targetPrice: "money", currency: "text", enabled: "yesno", shops: "list" },
-};
-
-/** price.watch's Offer (M33): what it read last on one shop's page for one product. */
-export const OFFER_ENTITY: EntityContract = {
-  type: "Offer",
-  key: "offer",
-  fields: {
-    offer: "text",
-    product: "text",
-    shop: "text",
-    url: "url",
-    variant: "text",
-    price: "money",
-    currency: "text",
-    inStock: "yesno",
-    title: "text",
-    problem: "text",
-    checkedAt: "datetime",
-  },
 };
 
 export class StepCatalog {
@@ -643,7 +595,8 @@ export const CORE_STEPS: StepDefinition[] = [
       "Keeps a number per item over time (a price, a count) in `collection` by `key`, and adds `history` to each item: " +
       "previous, change, changePct, min, max, count, direction (new, up, down, same), lowest (the lowest so far), " +
       "usualChange (the median change between the earlier values, once there are 3) and vsUsual (change ÷ usualChange: " +
-      '3 is three times the usual growth). The value may be text such as "1 299,00 лв.". Filter on it with ' +
+      "3 is three times the usual growth), median (of the earlier values kept, once there are 2) and vsMedian (value ÷ " +
+      'median: 1.3 is 30% above the usual, M71). The value may be text such as "1 299,00 лв.". Filter on it with ' +
       "data.filter, e.g. history.change lt 0, or tell once with data.alert, e.g. history.vsUsual above 3.",
     sideEffect: false,
     saasSafe: true,
@@ -867,11 +820,13 @@ export const CORE_STEPS: StepDefinition[] = [
       "product (id, url, title, brand, price as a number, currency, availability, inStock, variant, problem). Reads the " +
       "page's schema.org data or price meta tags without a browser; a page without them, or one that refuses, opens in " +
       "the headless browser, and with no data there either the cheap model reads the price from its text. `id` is the " +
-      "product and the variant asked for: the key for data.history. Only hosts in policy.allowedDomains.",
+      "product and the variant asked for: the key for data.history. Only hosts in policy.allowedDomains; a `url` that is " +
+      "a field of mine ({{item.url}} over data.read's items of a type of mine, M71) is read on its own host too.",
     sideEffect: false,
     llm: true,
     saasSafe: true,
     reads: ["url", "urls", "products"],
+    ownAddress: "url",
     reports: "report",
     input: z.object({
       url: z.string().url().optional(),
@@ -882,10 +837,18 @@ export const CORE_STEPS: StepDefinition[] = [
         .max(25)
         .optional()
         .describe("products with their own variant each"),
-      select: Select.optional().describe("the variant, for url / urls: attribute: value, e.g. { size: M, color: Black }"),
+      select: z
+        .union([Select, z.string().max(300)])
+        .nullable()
+        .optional()
+        .describe('the variant, for url / urls: attribute: value, e.g. { size: M, color: Black } or "size: M, color: Black"'),
       browser: z.enum(["fallback", "always", "never"]).default("fallback"),
       llm: z.boolean().default(true).describe("no product data even in the browser: the cheap model reads the page's text"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
+      failWhenNone: z
+        .boolean()
+        .default(true)
+        .describe("false: no price read at all is still items, each with its problem, not a failure (a forEach over shops)"),
     }),
     output: z.object({
       items: Items,
@@ -1081,6 +1044,33 @@ export const CORE_STEPS: StepDefinition[] = [
       kept: Messages,
       dropped: Messages,
       results: z.array(z.object({ index: z.number().int(), label: z.string(), reason: z.string() })),
+    }),
+  },
+  {
+    type: "email.attachments",
+    description:
+      "Reads the text of each email's readable attachments (PDFs, Word documents, text files), M71: `messages` come " +
+      "back with `files` (filename, contentType, text, truncated) and `attachmentText`, all of it in one text, for " +
+      "llm.extract's content ({{item}}). `maxFiles` per email, `maxChars` per file; a file that can't be read is left " +
+      "out and said in `problems`. `mailbox` must be the one the messages were read from (email.fetch's). Put " +
+      "email.classify first, so only the emails worth it are read.",
+    sideEffect: false,
+    saasSafe: true,
+    input: z.object({
+      messages: Messages,
+      mailbox: z.string().min(1).max(200).default("INBOX").describe("where the messages are (a UID means something only there)"),
+      maxFiles: z.number().int().min(1).max(10).default(3),
+      maxChars: z.number().int().min(100).max(50_000).default(8_000),
+    }),
+    output: z.object({
+      messages: z.array(
+        EmailMessageSchema.extend({
+          files: z.array(z.object({ filename: z.string().nullable(), contentType: z.string(), text: z.string(), truncated: z.boolean() })),
+          attachmentText: z.string(),
+        }),
+      ),
+      read: z.number().int(),
+      problems: z.array(z.string()),
     }),
   },
   {
@@ -1349,85 +1339,6 @@ export const CORE_STEPS: StepDefinition[] = [
       topic: Topic,
     }),
     output: z.object({ subject: z.string(), body: z.string(), language: z.string(), drewOn: DrewOn }),
-  },
-  {
-    type: "price.watch",
-    description:
-      "Checks the user's enabled Products of the pipeline's App (M33, examples/apps/prices.yaml): each shop line's page read " +
-      "like shop.product, kept as an Offer with its price history (a removed line's Offer goes). `news`: a shop now at or under the user's target (once, when it crosses), the lowest in `lowestDays`, back in " +
-      "stock; `text` says so with the cheapest shop for each (empty when nothing is new, for `when`). The addresses " +
-      "are mine (a type of mine), so they need no allowedDomains. A dry run records nothing.",
-    sideEffect: false,
-    llm: true,
-    saasSafe: true,
-    reports: "report",
-    entities: [OFFER_ENTITY, PRODUCT_ENTITY],
-    input: z.object({
-      product: z.string().min(1).max(200).optional().describe("only this product (its name); default: every enabled one"),
-      lowestDays: z.number().int().min(7).max(365).default(90),
-    }),
-    output: z.object({
-      products: Items,
-      news: Items,
-      text: z.string(),
-      problems: z.array(z.string()),
-      report: z.string(),
-    }),
-  },
-  {
-    type: "bill.read",
-    description:
-      "Reads bills out of `messages` (M23): for each email, its text and the text of its PDF attachments go to the " +
-      "LLM, which says whether it is a bill (an amount the user has to pay) and reads issuer, amount, currency, due date, " +
-      "period and reference. Emails that aren't bills are dropped. Nothing is paid or saved: bill.save keeps them. Each " +
-      "email is read whole, its PDFs too: put email.classify first (a \"bill\" label kept) so only the likely bills are read.",
-    sideEffect: false,
-    llm: true,
-    llmOutput: true,
-    saasSafe: true,
-    input: z.object({
-      messages: Messages,
-      mailbox: z.string().min(1).max(200).default("INBOX").describe("where the messages are, to read their PDFs"),
-    }),
-    output: z.object({
-      bills: z.array(
-        z.object({
-          messageId: z.string(),
-          from: z.string(),
-          subject: z.string(),
-          issuer: z.string(),
-          amount: z.number(),
-          currency: z.string(),
-          dueDate: z.string().nullable().describe("YYYY-MM-DD"),
-          period: z.string().nullable().describe("YYYY-MM"),
-          reference: z.string().nullable(),
-        }),
-      ),
-      notBills: z.number().int(),
-    }),
-  },
-  {
-    type: "bill.save",
-    description:
-      "Keeps bills from bill.read as Bill entities of the pipeline's App (M33; see examples/apps/bills.yaml): the same " +
-      "bill again (same sender, reference or period) updates it, a new one is `due` until the user marks it paid. `added`: new bills; `remind`: the new ones with a due date, each with `remindAt` " +
-      "(`remindDaysBefore` days before, 09:00) for calendar.create; `jumps`: new bills more than `jumpPercent` above " +
-      "the usual (the median of the issuer's last six), and `jumpText` saying so (empty when none, for `when`).",
-    sideEffect: false,
-    saasSafe: true,
-    entities: [BILL_ENTITY],
-    input: z.object({
-      bills: Items,
-      remindDaysBefore: z.number().int().min(0).max(30).default(3),
-      jumpPercent: z.number().int().min(5).max(500).default(30),
-    }),
-    output: z.object({
-      added: Items,
-      updated: Items,
-      remind: Items,
-      jumps: Items,
-      jumpText: z.string(),
-    }),
   },
   {
     type: "email.send",

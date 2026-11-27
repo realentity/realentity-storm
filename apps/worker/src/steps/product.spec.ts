@@ -1,4 +1,4 @@
-import { itemOf, productOf } from "./product-step";
+import { itemOf, productOf, selectOf } from "./product-step";
 
 const URL = "https://shop.test/p/jacket";
 const ld = (...blocks: unknown[]) =>
@@ -114,5 +114,15 @@ describe("shop.product: reading a product page (M13 follow-up)", () => {
     expect(productOf(ld("{ not json", { "@type": "Organization", name: "Shop" }))).toBeNull();
     const raw = `{"@type":"Product","name":"Line\nbreak","offers":{"price":5,"priceCurrency":"EUR"}}`;
     expect(productOf(ld("{ not json", raw))).toMatchObject({ title: "Line break", offers: [{ price: 5 }] });
+  });
+});
+
+// M71: a Shop's variant, typed as text
+describe("shop.product: a variant as text", () => {
+  it("reads attribute: value pairs; empty is none; anything else is refused", () => {
+    expect(selectOf(" size: M ,color:Black ")).toEqual({ size: "M", color: "Black" });
+    expect(selectOf("")).toEqual({});
+    expect(() => selectOf("medium")).toThrow('"medium" isn\'t a variant: attribute: value, e.g. size: M, color: Black');
+    expect(() => selectOf("size:")).toThrow("isn't a variant");
   });
 });

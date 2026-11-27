@@ -623,7 +623,7 @@ export class PipelineCompiler {
 }
 
 /**
- * A step that writes entities of its own (bill.save, M33) needs its pipeline's App to have that type: the key, each
+ * A step that writes entities of its own (application.outcome, M33) needs its pipeline's App to have that type: the key, each
  * field of the kind it writes, and the states it sets.
  */
 function checkContract(
