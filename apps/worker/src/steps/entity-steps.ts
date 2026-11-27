@@ -9,7 +9,9 @@ import {
   comparableSealed,
   credentialAt,
   credentialFields,
+  declaredOnly,
   encryptedFields,
+  identifiedUses,
   entityItem,
   FILE_KINDS,
   fileRefId,
@@ -81,26 +83,9 @@ async function usedType(
   if (!owner || !version) return notChosen();
   const definition = readAppSource(version.source);
   const type = Object.hasOwn(definition.types, chosen.sourceType) ? definition.types[chosen.sourceType] : undefined;
-  const problems = type ? useProblems(use, type) : [`it has no type ${chosen.sourceType} any more`];
+  const problems = type ? useProblems(use, type, identifiedUses(app).has(name)) : [`it has no type ${chosen.sourceType} any more`];
   if (!type || problems.length > 0) throw new Error(`${owner.name} › ${chosen.sourceType} no longer fits ${name}: ${problems.join("; ")}. Choose again on ${app.name}'s page`);
   return { appId: owner.appId, typeName: chosen.sourceType, type };
-}
-
-/** M66: only a use's declared fields of an entity, at their paths. */
-function declaredOnly(item: Item, fields: readonly string[]): Item {
-  const out: Item = {};
-  for (const path of fields) {
-    const value = valueAt(item, path);
-    if (value === undefined) continue;
-    const segments = path.split(".");
-    let current = out;
-    for (const segment of segments.slice(0, -1)) {
-      if (!current[segment] || typeof current[segment] !== "object") current[segment] = {};
-      current = current[segment] as Item;
-    }
-    current[segments.at(-1)!] = value;
-  }
-  return out;
 }
 
 interface SaveEntitiesInput {

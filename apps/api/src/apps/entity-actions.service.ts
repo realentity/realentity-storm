@@ -37,6 +37,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PrismaService } from "../database/prisma.service";
 import { RunsService } from "../runs/runs.service";
 import { AppFilesService } from "./app-files.service";
+import { AppUsesService } from "./app-uses.service";
 
 type Item = Record<string, unknown>;
 
@@ -61,6 +62,7 @@ export class EntityActionsService {
     private readonly runs: RunsService,
     private readonly files: AppFilesService,
     private readonly keys: SealKeys,
+    private readonly uses: AppUsesService,
   ) {}
 
   /**
@@ -79,7 +81,7 @@ export class EntityActionsService {
       await this.files.attach(appId, typeName, key, this.check(type, allowed, values), fileFields(type)),
     );
     // M56: a ref matching another field is checked against the entity as it will be.
-    await this.checkRefs(userId, appId, type, checked, { ...this.item(type, entity), ...checked });
+    await this.checkRefs(userId, appId, app, type, checked, { ...this.item(type, entity), ...checked });
     const mine = { ...(entity.mine as Item) };
     for (const [field, value] of Object.entries(checked)) {
       if (value === null) delete mine[field];
@@ -138,7 +140,7 @@ export class EntityActionsService {
     if (!addedByHand(app, typeName)) throw new ConflictException(`${typeName} is added by pipelines; its list doesn't add one by hand`);
     const allowed = listPageOf(app, typeName).create!.map((f) => f.field);
     let checked = this.check(type, allowed, values);
-    await this.checkRefs(userId, appId, type, checked, checked);
+    await this.checkRefs(userId, appId, app, type, checked, checked);
     // M48: a key Storm makes.
     if (autoKey(type)) checked = { ...checked, [type.key]: await this.freshKey(appId, typeName) };
     const missing = Object.entries(type.fields).filter(
@@ -276,7 +278,7 @@ export class EntityActionsService {
    * M55: a ref set on a form points at an entity of its type that is there; M56: each of a list of refs, and one that
    * matches another field (an Entry's path) is one with that field as the entity has it (`as`: as it will be saved).
    */
-  private async checkRefs(userId: string, appId: string, type: DataType, values: Item, as: Item): Promise<void> {
+  private async checkRefs(userId: string, appId: string, app: AppDefinition, type: DataType, values: Item, as: Item): Promise<void> {
     const errors: { path: string; message: string }[] = [];
     // M57: a credential of the user's, allowed on the host the field is for.
     for (const name of credentialFields(type)) {
@@ -297,7 +299,17 @@ export class EntityActionsService {
       const value = name in values ? values[name] : entityValueAt(as, name);
       if (!isRefField(field) || !field.to || value === null || value === undefined) continue;
       const keys = (Array.isArray(value) ? value : [value]).map(String);
-      const there = await this.prisma.client.dataEntity.findMany({ where: { appId, type: field.to, key: { in: keys }, removedAt: null } });
+      // M66: a ref to a use points at an entity of the App chosen for it (a ref to a use never matches).
+      let where: Prisma.DataEntityWhereInput = { appId, type: field.to };
+      if (app.uses && Object.hasOwn(app.uses, field.to)) {
+        const chosen = (await this.uses.chosen(userId, appId, app)).get(field.to);
+        if (!chosen) {
+          errors.push({ path: name, message: `${field.to} isn't chosen yet: choose which of your Apps it comes from, on ${app.name}'s page` });
+          continue;
+        }
+        where = { appId: chosen.appId, type: chosen.typeName };
+      }
+      const there = await this.prisma.client.dataEntity.findMany({ where: { ...where, key: { in: keys }, removedAt: null } });
       const missing = keys.filter((k) => !there.some((t) => t.key === k));
       if (missing.length > 0) {
         errors.push({ path: name, message: `isn't one of the ${field.to}s${Array.isArray(value) ? `: ${missing.join(", ")}` : ""}` });

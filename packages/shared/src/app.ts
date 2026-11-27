@@ -426,7 +426,7 @@ export const SOURCE_NAME = /^[a-z][A-Za-z0-9]{0,39}$/;
 /**
  * M65: a page's query of the App's own data (DataSource): the distinct values of a field with how many have each (the
  * tags in use; a date's days with `by: day`), or entities of a type (`where`, `sort`), each with an id and a label.
- * Always a collection; how many may be picked is the control's. Evaluated by the api, over the App's own types only.
+ * Always a collection; how many may be picked is the control's. Evaluated by the api, over the App's own types and (M66) its uses.
  */
 export const PageSourceSchema = z.union([
   z
@@ -747,9 +747,11 @@ const UNUSABLE_KINDS: readonly FieldKind[] = ["credential", "file", "image"];
 
 /**
  * M66: what keeps another App's type from filling a use: a declared field it lacks, or one that can't be read from
- * another App (encrypted, a credential, a file or an image). Empty: it fits.
+ * another App (encrypted, a credential, a file or an image). Empty: it fits. `identified` (a ref points at the use,
+ * or a page lists its entities, see `identifiedUses`): its key and title must be among the fields too, since a ref
+ * holds the key and shows the title.
  */
-export function useProblems(use: Pick<AppUse, "fields">, type: DataType): string[] {
+export function useProblems(use: Pick<AppUse, "fields">, type: DataType, identified = false): string[] {
   const problems: string[] = [];
   for (const name of use.fields) {
     const field = Object.hasOwn(type.fields, name) ? type.fields[name] : undefined;
@@ -757,7 +759,55 @@ export function useProblems(use: Pick<AppUse, "fields">, type: DataType): string
     else if (field.encrypted) problems.push(`${name} is encrypted`);
     else if (UNUSABLE_KINDS.includes(field.type)) problems.push(`${name} is a ${field.type}`);
   }
+  if (identified) {
+    if (!use.fields.includes(type.key)) problems.push(`its key ${type.key} isn't among the fields read (a ref holds it)`);
+    const title = type.title ?? type.key;
+    if (title !== type.key && !use.fields.includes(title)) problems.push(`its title ${title} isn't among the fields read (a ref shows it)`);
+  }
   return problems;
+}
+
+/**
+ * M66: the uses an App points at by a ref, or whose entities a page lists without naming their id and label: the
+ * ones whose chosen type's key and title must be among the fields read.
+ */
+export function identifiedUses(app: { types: Record<string, DataType>; pages: AppPage[]; uses?: Record<string, AppUse> }): Set<string> {
+  const uses = app.uses ?? {};
+  const named = new Set<string>();
+  for (const type of Object.values(app.types))
+    for (const field of Object.values(type.fields)) if (isRefField(field) && field.to && Object.hasOwn(uses, field.to)) named.add(field.to);
+  for (const page of app.pages) {
+    if (!("list" in page)) continue;
+    for (const source of Object.values(page.sources ?? {}))
+      if (Object.hasOwn(uses, source.from) && !("distinct" in source) && (!source.id || !source.display)) named.add(source.from);
+  }
+  return named;
+}
+
+/** M66: the chosen type as a use reads it: only the declared fields, its stages only when their field is one. */
+export function narrowedType(type: DataType, use: Pick<AppUse, "fields">): DataType {
+  return {
+    ...type,
+    fields: Object.fromEntries(use.fields.filter((f) => Object.hasOwn(type.fields, f)).map((f) => [f, type.fields[f]])),
+    stages: type.stages && use.fields.includes(type.stages.field) ? type.stages : undefined,
+  };
+}
+
+/** M66: only a use's declared fields of an entity, at their paths. */
+export function declaredOnly(item: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const path of fields) {
+    const value = entityValueAt(item, path);
+    if (value === undefined) continue;
+    const segments = path.split(".");
+    let current = out;
+    for (const segment of segments.slice(0, -1)) {
+      if (!current[segment] || typeof current[segment] !== "object") current[segment] = {};
+      current = current[segment] as Record<string, unknown>;
+    }
+    current[segments.at(-1)!] = value;
+  }
+  return out;
 }
 
 export const AppDefinitionSchema = z
@@ -804,15 +854,21 @@ export const DISTINCT_KINDS: readonly FieldKind[] = ["text", "email", "number", 
 
 /** Pages only on the App's types, and only on their fields, each used as its kind allows. */
 function checkPages(
-  app: { types: Record<string, DataType>; pages: AppPage[] },
+  app: { types: Record<string, DataType>; pages: AppPage[]; uses?: Record<string, AppUse> },
   issue: (path: (string | number)[], message: string) => void,
 ): void {
-  // M55: a ref points at a type of this App.
+  // M55: a ref points at a type of this App; M66: or at a use, another App's type it reads.
+  const uses = Object.keys(app.uses ?? {});
   for (const [typeName, type] of Object.entries(app.types)) {
     for (const [name, field] of Object.entries(type.fields)) {
       if (!isRefField(field) || !field.to) continue;
+      if (uses.includes(field.to)) {
+        if (field.match) issue(["types", typeName, "fields", name, "match"], `${field.to} is another App's type (a use): a ref to it can't match`);
+        continue;
+      }
       if (!Object.hasOwn(app.types, field.to)) {
-        issue(["types", typeName, "fields", name, "to"], `there is no type "${field.to}" (types: ${Object.keys(app.types).join(", ")})`);
+        const or = uses.length > 0 ? `; uses: ${uses.join(", ")}` : "";
+        issue(["types", typeName, "fields", name, "to"], `there is no type "${field.to}" (types: ${Object.keys(app.types).join(", ")}${or})`);
         continue;
       }
       // M56: a path of the entry's project: Path.project and Entry.project point at the same type.
@@ -949,6 +1005,8 @@ function checkPages(
           else if (g.type !== "enum" && g.type !== "ref")
             issue([...where, "group"], `a related list groups by an enum or a ref field: "${related.group}" is ${g.type}`);
           else if (related.group === related.by) issue([...where, "group"], `${related.by} is this ${typeName}: every row has it`);
+          else if (g.type === "ref" && uses.some((u) => u === g.to))
+            issue([...where, "group"], `${related.group} points at another App's type (${g.to}): a related list groups by a ref to this App's own types`);
         }
       });
       page.fields?.forEach((f, j) => field(f, [...at, "fields", j]));
@@ -1000,10 +1058,17 @@ function checkControls(
 }
 
 /** A report's measures each count one thing, on the type's fields and states; its shares and columns name its tiles. */
-/** M65: a page's source reads a type of this App, by fields it has, never an encrypted one. */
-function checkSource(app: { types: Record<string, DataType> }, source: PageSource, at: (string | number)[], issue: (path: (string | number)[], message: string) => void): void {
+/** M65: a page's source reads a type of this App, by fields it has, never an encrypted one. M66: or a use, by its fields. */
+function checkSource(
+  app: { types: Record<string, DataType>; uses?: Record<string, AppUse> },
+  source: PageSource,
+  at: (string | number)[],
+  issue: (path: (string | number)[], message: string) => void,
+): void {
   const type = Object.hasOwn(app.types, source.from) ? app.types[source.from] : undefined;
-  if (!type) return issue([...at, "from"], `there is no type "${source.from}" in this App (a source reads only its own types)`);
+  const use = !type && app.uses && Object.hasOwn(app.uses, source.from) ? app.uses[source.from] : undefined;
+  if (use) return checkUseSource(source, use, at, issue);
+  if (!type) return issue([...at, "from"], `there is no type "${source.from}" in this App (a source reads its own types and its uses)`);
   const kindOf = (name: string): FieldKind | undefined => (name.startsWith("@") ? "datetime" : type.fields[name]?.type);
   const field = (name: string, path: (string | number)[], kinds?: readonly FieldKind[], what?: string) => {
     const kind = kindOf(name);
@@ -1016,6 +1081,22 @@ function checkSource(app: { types: Record<string, DataType> }, source: PageSourc
     if (source.by) field(source.distinct, [...at, "by"], PERIOD_KINDS, "by day is a date's or a time's");
     return;
   }
+  source.where?.forEach((condition, j) => field(condition.field, [...at, "where", j, "field"]));
+  if (source.sort) field(source.sort.replace(/^-/, ""), [...at, "sort"]);
+  if (source.id) field(source.id, [...at, "id"]);
+  if (source.display) field(source.display, [...at, "display"]);
+}
+
+/**
+ * M66: a source of a use names only the fields the use declares (their kinds are the chosen type's, known only once
+ * it is chosen: the api reads them as the chosen type's).
+ */
+function checkUseSource(source: PageSource, use: AppUse, at: (string | number)[], issue: (path: (string | number)[], message: string) => void): void {
+  const field = (name: string, path: (string | number)[]) => {
+    if (!name.startsWith("@") && !use.fields.includes(name))
+      issue(path, `${source.from} is read only by the fields it declares: "${name}" isn't one (${use.fields.join(", ")})`);
+  };
+  if ("distinct" in source) return field(source.distinct, [...at, "distinct"]);
   source.where?.forEach((condition, j) => field(condition.field, [...at, "where", j, "field"]));
   if (source.sort) field(source.sort.replace(/^-/, ""), [...at, "sort"]);
   if (source.id) field(source.id, [...at, "id"]);
@@ -1388,6 +1469,12 @@ export interface AppUseSourceView {
 }
 
 /** M66: a use of another App's type, and which of the user's Apps fills it. */
+/** M66: one of a ref's choices through a use: the chosen App's entity, by its key (what is saved) and title. */
+export interface AppUseChoiceView {
+  value: string;
+  label: string;
+}
+
 export interface AppUseView {
   /** Its local name in the App. */
   name: string;

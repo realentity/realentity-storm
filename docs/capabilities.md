@@ -273,7 +273,7 @@ together match all. Days are counted in the instance's time zone (`TZ`). A page'
 App's own types, for its controls: the distinct values of a field with how many entities have each (`by: day` for a
 date's or a time's days), or entities as items (data.read's `where` and `sort`, `id` and `display` fields: default
 the key and the title). On the page's own type, a source counts what the page's other filters and search leave.
-A source can't read another App's types, nor an encrypted field. A list grouped by a list of text (`group: { by:
+A source reads another App's type only through a use, on its named fields (M66, below), and never an encrypted field. A list grouped by a list of text (`group: { by:
 tag }`) shows an entity under each of its values (a task under each of its tags; spellings without case as one), and
 the ones without any under "No tag".
 
@@ -452,10 +452,16 @@ uses:
   items and the checklist doesn't wait for it (Papers reads your Bills App's bills this way, when you have one).
 - **Not a target:** what a use holds isn't a recipient, an address or a check's address in this App, whoever wrote it
   there.
+- **On pages:** a page's source may read a use (`sources: { bills: { from: Bill, sort: dueDate } }`), on its named
+  fields only, and a field may point at one (`bill: { type: ref, to: Bill }`): its choices on a form, its filter's
+  values and the title shown for it are the chosen App's entities, and a save checks the bill is there. A ref, or a
+  source listing a use's entities without naming its `id` and `display`, needs the chosen type's key and title among
+  the use's fields (a ref holds the key and shows the title): a type without them doesn't fit. A ref to a use can't
+  `match`, and a related list doesn't group by one. Not chosen, a page shows nothing of it: no choices, empty sources, a
+  saved ref by its key.
 - **Its name** can't be one of the App's own types: when the App has a `Bill` of its own, call the use `HomeBill`.
 
-Where several Apps' types appear together, a type is shown as *App › Type*. Page sources and refs through a use come
-next; for now pipelines read it.
+Where several Apps' types appear together, a type is shown as *App › Type*.
 
 ---
 

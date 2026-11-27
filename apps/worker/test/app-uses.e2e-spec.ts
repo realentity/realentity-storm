@@ -197,6 +197,17 @@ describe("data.read through a use (M66)", () => {
     await expect(read()).rejects.toThrow("Bills › Bill no longer fits Bill: it has no type Bill any more");
   });
 
+  it("a use a ref of the App points at, without the chosen type's key among its fields: doesn't fit, refused", async () => {
+    await choose(billsId);
+    const withRef = REPORT.replace("fields: { id: { type: text } }", "fields: { id: { type: text }, bill: { type: ref, to: Bill } }");
+    const version = await db.client.appVersion.create({ data: { appId: reportId, version: 2, definition: {}, source: withRef } });
+    await db.client.app.update({ where: { appId: reportId }, data: { currentVersionId: version.appVersionId } });
+    await expect(read()).rejects.toThrow("Bills › Bill no longer fits Bill: its key billKey isn't among the fields read (a ref holds it)");
+    const keyed = await db.client.appVersion.create({ data: { appId: reportId, version: 3, definition: {}, source: withRef.replace("fields: [issuer,", "fields: [billKey, issuer,") } });
+    await db.client.app.update({ where: { appId: reportId }, data: { currentVersionId: keyed.appVersionId } });
+    expect((await read()).items.map((i) => i.billKey)).toEqual(["water-11", "power-11"]);
+  });
+
   it("a pipeline of the App compiled and run: its total from the other App's bills", async () => {
     await choose(billsId);
     const compiler = new PipelineCompiler(defaultCatalog());

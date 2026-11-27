@@ -46,7 +46,7 @@ describe("page sources (M65)", () => {
   it("reads the App's own types, by fields they have, never an encrypted one", () => {
     expect(problems([{ list: "Memo", sources: { tags: { from: "Memo", distinct: "tags" }, days: { from: "Memo", distinct: "@firstSeen", by: "day" } } }])).toEqual([]);
     expect(problems([{ list: "Memo", sources: { bills: { from: "Bill", distinct: "payee" } } }])).toEqual([
-      'pages.0.sources.bills.from: there is no type "Bill" in this App (a source reads only its own types)',
+      'pages.0.sources.bills.from: there is no type "Bill" in this App (a source reads its own types and its uses)',
     ]);
     expect(problems([{ list: "Memo", sources: { a: { from: "Memo", distinct: "secret" } } }])).toEqual([
       "pages.0.sources.a.distinct: Memo.secret is encrypted: a source can't read it",

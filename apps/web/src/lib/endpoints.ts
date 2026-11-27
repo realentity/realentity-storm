@@ -67,6 +67,7 @@ import {
   type CreateRuleRequest,
   type CredentialView,
   type AppUsesRequest,
+  type AppUseChoiceView,
   type AppUseView,
   type BindingsRequest,
   type BindingView,
@@ -321,6 +322,8 @@ export const api = {
     /** M66: its uses of other Apps' types, and which of my Apps fills each. */
     uses: (appId: string) => request<AppUseView[]>("GET", `/apps/${appId}/uses`),
     setUses: (appId: string, body: AppUsesRequest) => request<AppUseView[]>("PUT", `/apps/${appId}/uses`, body),
+    /** M66: a ref's choices through a use: the chosen App's entities. */
+    useChoices: (appId: string, name: string) => request<AppUseChoiceView[]>("GET", `/apps/${appId}/uses/${encodeURIComponent(name)}/choices`),
     /** The App itself (`remove` is an entity's); refused while pipelines belong to it. */
     removeApp: (appId: string) => request<void>("DELETE", `/apps/${appId}`),
     /** The App with its pipelines. */

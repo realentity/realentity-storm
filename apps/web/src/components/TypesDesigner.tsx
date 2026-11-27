@@ -94,6 +94,7 @@ export function TypesDesigner({
           renamedNote={renamedNote(name)}
           marked={marked}
           typeNames={app.types.map(([t]) => t)}
+          uses={app.uses}
         />
       ))}
       {editable && (
@@ -135,11 +136,14 @@ function TypeTable({
   renamedNote,
   marked,
   typeNames,
+  uses,
 }: Readonly<{
   name: string;
   type: LooseType;
   /** M55: the App's types, a ref's to pick from. */
   typeNames: string[];
+  /** M66: another App's types it reads: a ref may point at one. */
+  uses: string[];
   issues: AppIssue[];
   onLine: (line: number) => void;
   onEdit: (edit: DesignerEdit, note?: string) => void;
@@ -462,6 +466,11 @@ function TypeTable({
                         {typeNames.map((t) => (
                           <option key={t} value={t}>
                             a {t}
+                          </option>
+                        ))}
+                        {uses.map((u) => (
+                          <option key={`use:${u}`} value={u}>
+                            a {u} (from another App)
                           </option>
                         ))}
                       </select>

@@ -92,6 +92,8 @@ export interface FormField {
   encrypted?: boolean;
   /** M55: a ref (M56: or a list of refs): the type whose entities it is picked from. */
   ref?: string;
+  /** M66: `ref` is a use, another App's type: its choices are the chosen App's (GET /apps/:appId/uses/:name/choices). */
+  use?: true;
   /** M57: a credential: the host it is for, its choices the credentials allowed there. */
   for?: string;
   /** M56: picked among the ones whose field of this name is the form's (an Entry's path, of its project). */
@@ -239,7 +241,7 @@ export function listPageOf(app: AppDefinition, typeName: string): ResolvedListPa
   return {
     type: typeName,
     mine: type.mine,
-    create: addedByHand(app, typeName) ? formFields(type, addFieldNames(type, app.pages.find((p): p is FormPage => "form" in p && p.form === typeName))) : null,
+    create: addedByHand(app, typeName) ? formFields(app, type, addFieldNames(type, app.pages.find((p): p is FormPage => "form" in p && p.form === typeName))) : null,
     actions: page?.actions ?? [],
     label: (menu && menu.label) || typeName,
     icon: (menu && menu.icon) || app.icon,
@@ -301,7 +303,7 @@ function relatedOf(app: AppDefinition, page: ViewPage | undefined): PageRelated[
       columns: related.columns ? related.columns.map((c) => column(type, c)) : list.columns.filter((c) => c.field !== related.by),
       filters: (related.filters ?? []).map((f) => pageFilter(type, f)),
       title: list.title,
-      create: related.add ? formFields(type, addFieldNames(type, form)) : null,
+      create: related.add ? formFields(app, type, addFieldNames(type, form)) : null,
       adds: Array.isArray(related.add)
         ? related.add.map((a) => ({ label: a.label, set: Object.fromEntries(Object.entries(a.set).map(([k, v]) => [k, String(v)])) }))
         : related.add
@@ -337,7 +339,7 @@ export function viewPageOf(app: AppDefinition, typeName: string): ResolvedViewPa
     mine: type.mine,
     remove: addedByHand(app, typeName),
     stages: type.stages ? { field: type.stages.field, label: fieldLabel(type, type.stages.field), states: type.stages.states } : null,
-    form: formFields(type, formFieldNames(type, form)),
+    form: formFields(app, type, formFieldNames(type, form)),
     actions: page?.actions ?? [],
     ...naming(type),
     sections,
@@ -348,7 +350,8 @@ export function viewPageOf(app: AppDefinition, typeName: string): ResolvedViewPa
   };
 }
 
-function formFields(type: DataType, names: string[]): FormField[] {
+function formFields(app: AppDefinition, type: DataType, names: string[]): FormField[] {
+  const uses = app.uses ?? {};
   return names
     .filter((name) => type.stages?.field !== name)
     .map((name) => {
@@ -361,6 +364,7 @@ function formFields(type: DataType, names: string[]): FormField[] {
         ...(field.values ? { values: field.values } : {}),
         ...(field.encrypted ? { encrypted: true } : {}),
         ...(isRefField(field) && field.to ? { ref: field.to } : {}),
+        ...(isRefField(field) && field.to && Object.hasOwn(uses, field.to) ? { use: true as const } : {}),
         ...(field.match ? { match: field.match } : {}),
         ...(field.for ? { for: field.for } : {}),
         ...(field.when ? { when: field.when } : {}),
