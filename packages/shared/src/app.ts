@@ -738,8 +738,18 @@ export const AppUseSchema = z
      * doesn't wait for it. Chosen and no longer fitting still stops, as a mistake to fix.
      */
     optional: z.boolean().optional(),
+    /**
+     * M66-T6: its fields that are mine there (a Person's email you typed in Contacts), so they may be targets here, as a
+     * type of mine's are: a recipient, an address. Only a type where each is a field of mine fits.
+     */
+    mine: z.array(z.string().regex(ENTITY_FIELD, 'a field name, e.g. "email"')).min(1).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((use, ctx) => {
+    use.mine?.forEach((field, i) => {
+      if (!use.fields.includes(field)) ctx.addIssue({ code: "custom", path: ["mine", i], message: `"${field}" isn't one of its fields (${use.fields.join(", ")})` });
+    });
+  });
 export type AppUse = z.output<typeof AppUseSchema>;
 
 /** M66: the field kinds a use can't read: what is sealed or kept as a file stays in its App. */
@@ -751,13 +761,15 @@ const UNUSABLE_KINDS: readonly FieldKind[] = ["credential", "file", "image"];
  * or a page lists its entities, see `identifiedUses`): its key and title must be among the fields too, since a ref
  * holds the key and shows the title.
  */
-export function useProblems(use: Pick<AppUse, "fields">, type: DataType, identified = false): string[] {
+export function useProblems(use: Pick<AppUse, "fields" | "mine">, type: DataType, identified = false): string[] {
   const problems: string[] = [];
   for (const name of use.fields) {
     const field = Object.hasOwn(type.fields, name) ? type.fields[name] : undefined;
     if (!field) problems.push(`it has no field "${name}"`);
     else if (field.encrypted) problems.push(`${name} is encrypted`);
     else if (UNUSABLE_KINDS.includes(field.type)) problems.push(`${name} is a ${field.type}`);
+    // M66-T6: one it targets is one I typed there.
+    else if (use.mine?.includes(name) && !type.mine && !field.mine) problems.push(`${name} isn't a field of mine there (typed by me)`);
   }
   if (identified) {
     if (!use.fields.includes(type.key)) problems.push(`its key ${type.key} isn't among the fields read (a ref holds it)`);

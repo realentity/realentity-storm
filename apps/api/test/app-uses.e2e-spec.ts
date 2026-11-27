@@ -181,6 +181,24 @@ describe("an App's uses of other Apps' types (M66)", () => {
     expect(await uses(again)).toEqual([expect.objectContaining({ source: { appId: household, app: "Household", type: "Payment" }, problems: [] })]);
   });
 
+  // M66-T6: a use that targets a field (mine:) is filled only by a type where I typed it
+  it("mine: is filled only where the field is mine; elsewhere not offered, and refused", async () => {
+    const bills = await install(BILLS("Bills"));
+    const mine = REPORT("Mine", "[issuer]").replace("    help:", "    mine: [issuer]\n    help:");
+    const report = await install(mine);
+    expect(await filled(report)).toEqual({ Bill: null });
+    expect((await uses(report))[0].fits).toEqual([]);
+    const refused = (await agent.put(`/api/apps/${report}/uses`).send({ Bill: { appId: bills, type: "Bill" } }).expect(400)).body as { errors: unknown[] };
+    expect(refused.errors).toEqual([{ path: "Bill", message: "Bills › Bill doesn't fit: issuer isn't a field of mine there (typed by me)" }]);
+
+    // The owner keeps it as mine: fills it, by the name it gives.
+    await agent.put(`/api/apps/${bills}`).send({ source: BILLS("Bills").replace("issuer: { type: text }", "issuer: { type: text, mine: true }") }).expect(200);
+    expect(await filled(report)).toEqual({ Bill: "Bills › Bill" });
+    // And the owner's check says before it stops being mine.
+    const check = (await agent.post("/api/apps/check").send({ source: BILLS("Bills"), appId: bills }).expect(201)).body as AppCheckView;
+    expect(check.usedBy.map((u) => u.problems)).toEqual([["issuer isn't a field of mine there (typed by me)"]]);
+  });
+
   // M66-T4: the owner's side
   it("the owner lists the Apps that read it; its draft's check names the uses it would no longer fit, and why; the map draws a use", async () => {
     const bills = await install(BILLS("Bills"));

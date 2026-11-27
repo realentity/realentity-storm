@@ -74,9 +74,12 @@ uses:
     from: { app: ${unique("No such Bills")}, type: Bill }
     fields: [issuer]
     optional: true
+    mine: [issuer]
 `);
   await page.goto(`/apps/${optional}`);
   await expect(page.getByTestId("use-optional-Bill")).toHaveText("optional");
+  // M66-T6: what it may send to, from fields I typed there.
+  await expect(page.getByTestId("use-mine-Bill")).toHaveText("yours: issuer");
   await expect(page.getByTestId("use-source-Bill").locator("option:checked")).toHaveText("None: it works without it");
   await expect(page.getByTestId("uses-missing")).toHaveCount(0);
 });

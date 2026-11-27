@@ -59,6 +59,12 @@ export function UsesCard({ load, save }: Readonly<{ load: () => Promise<AppUseVi
                 <span className="text-secondary small">
                   as {view.use.from.app} › {view.use.from.type}: {view.use.fields.join(", ")}
                 </span>
+                {/* M66-T6: what it may send to or check: fields I typed there. */}
+                {view.use.mine && (
+                  <span className="badge bg-azure-lt" title="Fields you typed in that App: this App may send to them or check them" data-testid={`use-mine-${view.name}`}>
+                    yours: {view.use.mine.join(", ")}
+                  </span>
+                )}
               </div>
               {view.use.help && <div className="small text-secondary mb-1">{view.use.help}</div>}
               <select

@@ -414,11 +414,37 @@ uses:
         with: { to: "{{item.contact.email}}", subject: "Paid?", body: "Is it paid?" },
       };
       expect(errorsOf(compiler.compile(pipeline([read(), send]), { app: report }))).toEqual([
-        "steps[1].with.to: {{item.contact.email}} can't be a target: Bill comes from another App (uses:), and what it holds isn't a target here",
+        "steps[1].with.to: {{item.contact.email}} can't be a target: Bill comes from another App (uses:); only a field its use lists under mine: ({{item.<field>}} over its items) can be",
       ]);
       const check = { id: "check", type: "http.check", forEach: "{{bills.items}}", with: { url: "{{item.issuer}}" } };
       expect(errorsOf(compiler.compile(pipeline([read(), check]), { app: report }))).toEqual([
         expect.stringMatching(/^steps\[1\]\.with\.url: \{\{item\.issuer\}\} isn't a field of mine/),
+      ]);
+    });
+
+    // M66-T6: a use's fields of mine there may be targets here
+    it("a field its use lists under mine: is a recipient or a check's address over its items; the others aren't", () => {
+      const mine = AppDefinitionSchema.parse({ ...report, uses: { Bill: { ...report.uses!.Bill, mine: ["contact.email", "issuer"] } } });
+      const send = { id: "send", type: "email.send", forEach: "{{bills.items}}", with: { to: "{{item.contact.email}}", subject: "Paid?", body: "Is it paid?" } };
+      const result = ok(compiler.compile(pipeline([read(), send]), { app: mine }));
+      expect(result.policy.provenance).toEqual([expect.objectContaining({ stepId: "send", field: "to", kind: "recipient", source: "item.contact.email" })]);
+      ok(compiler.compile(pipeline([read(), { id: "check", type: "http.check", forEach: "{{bills.items}}", with: { url: "{{item.issuer}}" } }]), { app: mine }));
+
+      // Not listed under mine:, or not one item's field over its items: still not.
+      const other = { ...send, with: { ...send.with, to: "{{item.dueDate}}" } };
+      expect(errorsOf(compiler.compile(pipeline([read(), other]), { app: mine }))).toEqual([
+        "steps[1].with.to: {{item.dueDate}} can't be a target: Bill comes from another App (uses:); only a field its use lists under mine: ({{item.<field>}} over its items) can be",
+      ]);
+      const whole = { id: "send", type: "email.send", with: { to: "{{bills.items}}", subject: "Paid?", body: "Is it paid?" } };
+      expect(errorsOf(compiler.compile(pipeline([read(), whole]), { app: mine }))).toEqual(expect.arrayContaining([expect.stringMatching(/^steps\[1\]\.with\.to: \{\{bills\.items\}\} can't be a target/)]));
+      const counted = { id: "check", type: "http.check", forEach: "{{bills.count}}", with: { url: "{{item.issuer}}" } };
+      expect(errorsOf(compiler.compile(pipeline([read(), counted]), { app: mine }))).toEqual(expect.arrayContaining([expect.stringMatching(/\{\{item\.issuer\}\} isn't a field of mine/)]));
+    });
+
+    it("mine: names only fields the use reads", () => {
+      const result = AppDefinitionSchema.safeParse({ ...report, uses: { Bill: { ...report.uses!.Bill, mine: ["phone"] } } });
+      expect(result.error?.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([
+        'uses.Bill.mine.0: "phone" isn\'t one of its fields (issuer, amount, dueDate, contact.email)',
       ]);
     });
   });
