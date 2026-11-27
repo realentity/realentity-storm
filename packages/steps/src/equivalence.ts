@@ -186,7 +186,7 @@ function triggerShape(definition: CompiledDefinition, app: AppDefinition | null 
  */
 function shape(definition: CompiledDefinition, catalog: StepCatalog) {
   const typeOf = new Map(definition.steps.map((s) => [s.id, s.type]));
-  const refs = (value: unknown): string[] => [...JSON.stringify(value ?? null).matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)].map(([, ref]) => ref);
+  const refs = (value: unknown): string[] => [...JSON.stringify(value ?? null).matchAll(/\{\{([^}]*)\}\}/g)].map(([, ref]) => ref.trim());
   const root = (ref: string) => {
     const slot = /^(cred|setting):/.exec(ref)?.[1];
     const head = /^\w+/.exec(ref)?.[0] ?? ref;
