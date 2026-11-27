@@ -208,6 +208,13 @@ export class Builder {
     const fail = (error: string): TurnResult => ({ transcript: null, text: "", proposal: null, appProposal: null, brief: null, compileErrors: null, error, usage });
     // M70-T1: a new idea is discussed and said back (a brief) before anything is proposed.
     const briefFirst = isNewIdea(request) && !briefed(request.history);
+    // M70-T4: the App proposal open now: the chat's, then this turn's latest, so a second proposal in a turn builds on the first.
+    let open: DraftApp | null = request.draft ?? null;
+    let lastProposed: AppProposal | null = null;
+    const opened = (proposal: AppProposal) => {
+      open = { app: proposal.app, source: proposal.source, pipelines: proposal.pipelines.map((p) => p.definition) };
+      lastProposed = proposal;
+    };
 
     for (let call = 0; call < MAX_CALLS_PER_TURN; call++) {
       if (tokensOf(usage) >= request.tokensLeft) return fail("This chat reached its token limit. Start a new chat to continue.");
@@ -263,9 +270,10 @@ export class Builder {
           continue;
         }
         if (use.name === "propose_app") {
-          const outcome = this.proposeApp(use.input, request);
+          const outcome = this.proposeApp(use.input, request, open);
           if (outcome.ok) {
             appProposal = outcome.proposal;
+            opened(outcome.proposal);
             proposal = null;
             compileErrors = null;
           } else {
@@ -281,12 +289,13 @@ export class Builder {
           results.push(toolResult(use.id, draft ?? "No items to draft from in that run's step.", draft === null));
           continue;
         }
-        if (use.name === "propose_pipeline" && intoDraft(use.input, request)) {
+        if (use.name === "propose_pipeline" && intoDraft(use.input, request, open)) {
           // M70-T4: a pipeline of the App proposed (not saved) in this chat joins that proposal, changed in place.
           const parsed = ProposeInput.safeParse(use.input);
-          const outcome = this.proposeApp({ summary: parsed.data?.summary ?? "", app: request.draft!.source, pipelines: [parsed.data!.pipeline] }, request);
+          const outcome = this.proposeApp({ summary: parsed.data?.summary ?? "", app: open!.source, pipelines: [parsed.data!.pipeline] }, request, open);
           if (outcome.ok) {
             appProposal = outcome.proposal;
+            opened(outcome.proposal);
             proposal = null;
             compileErrors = null;
           } else {
@@ -313,6 +322,12 @@ export class Builder {
         }
       }
       added.push({ role: "user", content: results });
+    }
+    // M70-T4: out of calls after an App's part was proposed: that part is kept, and the rest comes after "go on".
+    if (lastProposed) {
+      const text = "That's as far as I got in this message. What I proposed so far is kept: say go on, and I'll propose the rest.";
+      const transcript = [...added.slice(1), { role: "assistant" as const, content: [{ type: "text" as const, text }] }];
+      return { transcript, text, proposal: null, appProposal: lastProposed, brief, compileErrors, error: null, usage };
     }
     // What its last attempt didn't compile with, shown with the error (M67: the eval sees it too).
     return { ...fail(`The builder needed more than ${MAX_CALLS_PER_TURN} steps for this message. Try a smaller request.`), compileErrors };
@@ -360,7 +375,7 @@ export class Builder {
    * M34: an App and its pipelines as one change. The App must be valid; each pipeline must name it and compile against
    * it; so must the App's pipelines that the proposal leaves as they are (a chat about an App).
    */
-  private proposeApp(input: unknown, request: TurnRequest): { ok: true; proposal: AppProposal; message: string } | { ok: false; errors: CompileIssue[]; message: string } {
+  private proposeApp(input: unknown, request: TurnRequest, open: DraftApp | null): { ok: true; proposal: AppProposal; message: string } | { ok: false; errors: CompileIssue[]; message: string } {
     const refuse = (errors: CompileIssue[]) => ({
       ok: false as const,
       errors,
@@ -370,7 +385,9 @@ export class Builder {
     if (!parsed.success) return refuse([{ path: "", message: "propose_app needs { summary, app, pipelines }" }]);
     if (JSON.stringify(parsed.data).length > MAX_DEFINITION_CHARS) return refuse([{ path: "", message: "the proposal is too large" }]);
     const appResult = AppDefinitionSchema.safeParse(parsed.data.app);
-    const draft = request.draft && request.draft.app.name === (appResult.success ? appResult.data.name : undefined) ? request.draft : null;
+    const named = (d: DraftApp | null | undefined) => (d && d.app.name === (appResult.success ? appResult.data.name : undefined) ? d : null);
+    // The chat's last proposal of it (what changed since is told against that one), and the one open now (its pipelines stay).
+    const [draft, kept] = [named(request.draft), named(open)];
     if (!appResult.success) {
       return refuse(appResult.error.issues.map((issue) => ({ path: `app.${issue.path.map(String).join(".")}`, message: issue.message })));
     }
@@ -388,7 +405,7 @@ export class Builder {
     });
     const proposed = new Set(pipelines.map((p) => p.definition.name));
     // M70-T4: the pipelines proposed earlier in this chat and left out this time stay, checked against the App as it is now.
-    for (const earlier of draft?.pipelines ?? []) {
+    for (const earlier of kept?.pipelines ?? []) {
       if (proposed.has(earlier.name)) continue;
       const again = this.compiler.compile(definitionAsAuthored(earlier), { app });
       if (again.ok) {
@@ -486,7 +503,10 @@ How to work:
 - Propose in parts, and change in place: a new App may be proposed first with its types and pages (propose_app,
   pipelines: []), then each pipeline (propose_pipeline with "app": its name), each joining the App's proposal. To
   change what you proposed in this chat, propose only what changes (the App, or one pipeline): the pipelines you leave
-  out stay as they were proposed, and the result says what changed since the last proposal.
+  out stay as they were proposed, and the result says what changed since the last proposal. An App with more than two
+  pipelines always comes in parts, one call each: one answer has room for about 16,000 tokens, and a whole large App
+  with its pipelines doesn't fit. At most three parts in one message: then say what is still to come, and the user
+  says go on.
 - Look things up before you design: <apps> lists the user's Apps (read_app gives one whole). Don't make a second App of
   what one of theirs keeps: change it, or read its type from the new App through uses:. list_examples shows the Apps
   Storm comes with: when one fits, say so and start from it (read_example), changed to what the user wants.
@@ -611,7 +631,14 @@ task's or a note's title can change), "values"? (enum), "currency"? (money: the 
 "moves"?: true, "add"?: true (the user adds and deletes them by hand too, on a form of the key and the form's fields;
 pipelines still write them; never with a complete data.save), "actions"?: [{ "label", "run" }] }, { "view": "<Type>",
 "sections"?, "history"?, "actions"?: [{ "label", "run", "when"? }] }, { "form": "<Type>", "fields"? (any but the key
-and the stage: what the user sets stays over what pipelines write) }] }. Its pipelines say "app": "<name>" and write with
+and the stage: what the user sets stays over what pipelines write) }, { "report": "<Type>" (a page of its own, beside the
+list: counts, sums and shares over a period), "menu"?, "date"? (a date field; default @firstSeen), "periods"? (days:
+[90, 30, 365]), "tiles": [{ "label", "count": true | "sum": "<number or money field>" | "reached": "<state>" | [...],
+"when"?, "of"?: "<another tile's label>" (a share of it) }], "trends"?: [{ <a tile's measure>, "every": day|week|month }],
+"tables"?: [{ "by": "<field>", "bands"?: [80, 60, 40, 0] (a number in bands), "columns": ["<tile labels>"] }] }],
+"uses"?: { "<Name>": { "from": { "app", "type" }, "fields": [...], "help"?, "optional"? } } (another App's type this one
+reads, never writes, under a local name: data.read { "type": "<Name>" }; "optional": it works without one). Its
+pipelines say "app": "<name>" and write with
 data.save { "type": "<Type>", "items", "stage"? }, read with data.read, start on { "on": "entity.changed", "type",
 "stage"? } or an entity's button { "on": "entity.action", "type" }. An entity a pipeline wrote is never a target; one
 of a "mine" type may be. "needs"? on the App: slots its pipelines share (M50), filled once per install of it: a
@@ -630,9 +657,8 @@ ${catalog}`;
 }
 
 /** M70-T4: a pipeline proposed for the App this chat proposed (not saved yet): it joins that proposal. */
-function intoDraft(input: unknown, request: TurnRequest): boolean {
+function intoDraft(input: unknown, request: TurnRequest, draft: DraftApp | null): boolean {
   const named = ProposeInput.safeParse(input);
-  const draft = request.draft;
   if (!named.success || !draft || named.data.pipeline.app !== draft.app.name) return false;
   return !request.apps.some((a) => a.name === draft.app.name);
 }

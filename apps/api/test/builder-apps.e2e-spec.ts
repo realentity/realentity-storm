@@ -189,6 +189,38 @@ describe("the builder and Apps", () => {
     expect(await db.client.pipeline.count({ where: { userId, name: COLLECT.name } })).toBe(1);
   });
 
+  // M70-T4 (found by the eval: Hiring lost its pipeline): two proposals in one turn, the second builds on the first
+  it("in one turn: the App with its pipeline, then the App alone, then a pipeline: the pipelines proposed earlier in the turn stay", async () => {
+    const chat = await briefedChat();
+    const withIsbn = { ...READING, types: { Book: { ...READING.types.Book, fields: { ...READING.types.Book.fields, isbn: { type: "text" } } } } };
+    const second = { ...COLLECT, name: "Second feed" };
+    llm.answer(
+      proposeApp(READING, [COLLECT]),
+      proposeApp(withIsbn, [], "An ISBN too"),
+      callTools({ name: "propose_pipeline", input: { summary: "Another feed", pipeline: second } }),
+      say("All three."),
+    );
+    const proposal = (await send(chat.chatId, "Agreed.")).messages.at(-1)!.appProposal!;
+    expect(proposal.pipelines.map((p) => p.name).sort()).toEqual([COLLECT.name, second.name]);
+    expect(proposal.app.source).toContain("isbn");
+    // Nothing was proposed before this turn, so there is nothing to have changed since.
+    expect(proposal.changedSince).toBeNull();
+  });
+
+  // M70-T4 (found by the eval: Job Search and Server ops lost every part they had proposed)
+  it("out of calls after a part was proposed: the part is kept, and the next message goes on from it", async () => {
+    const chat = await briefedChat();
+    const lookup = () => callTools({ name: "list_examples", input: {} });
+    llm.answer(proposeApp(READING, []), lookup(), lookup(), lookup(), lookup(), lookup(), lookup(), lookup());
+    const stopped = (await send(chat.chatId, "Agreed.")).messages.at(-1)!;
+    expect(stopped.text).toContain("say go on");
+    expect(stopped.appProposal).toMatchObject({ status: "open", app: { name: "Reading list" }, pipelines: [] });
+
+    llm.answer(callTools({ name: "propose_pipeline", input: { summary: "The feed", pipeline: COLLECT } }), say("Now the feed."));
+    const next = (await send(chat.chatId, "Go on.")).messages.at(-1)!;
+    expect(next.appProposal).toMatchObject({ pipelines: [{ name: COLLECT.name }], changedSince: [`pipeline "${COLLECT.name}" added`] });
+  });
+
   // M70-T3: the builder looks up the examples and the user's Apps, whole, instead of guessing or making a second one
   it("looks up the examples (a list, one whole) and one of my Apps whole, with its pipelines; an unknown one is said so", async () => {
     await agent.post("/api/apps").send({ source: JSON.stringify(READING) }).expect(201);
