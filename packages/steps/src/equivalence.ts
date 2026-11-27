@@ -128,7 +128,7 @@ function usesOf(app: AppDefinition): string[] {
 function shape(definition: CompiledDefinition, catalog: StepCatalog) {
   const typeOf = new Map(definition.steps.map((s) => [s.id, s.type]));
   const refs = (value: unknown): string[] =>
-    [...JSON.stringify(value ?? null).matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)].map(([, ref]) => ref.replace(/^([a-zA-Z0-9_]+)/, (id: string) => typeOf.get(id) ?? id));
+    [...JSON.stringify(value ?? null).matchAll(/\{\{([^}]*)\}\}/g)].map(([, ref]) => ref.trim().replace(/^([a-zA-Z0-9_]+)/, (id: string) => typeOf.get(id) ?? id));
   const slots: Record<string, number> = {};
   for (const step of definition.steps)
     for (const ref of refs(step.with)) {
