@@ -28,6 +28,13 @@ export interface BuilderRuns {
   read(runId: string, stepKey?: string): Promise<string | null>;
 }
 
+/** M70-T3: what the builder looks up, on demand: the examples (by id), one of the user's Apps (by name) whole. */
+export interface BuilderLookups {
+  examples(): string;
+  example(id: string): string | null;
+  app(name: string): Promise<string | null>;
+}
+
 export interface TurnRequest {
   choice: ModelChoice;
   /** The conversation so far, as the API saw it. */
@@ -45,6 +52,8 @@ export interface TurnRequest {
   apps: AppDefinition[];
   /** M34: a chat about an App: its pipelines as they are (by name), checked against a proposed version. */
   appPipelines?: CompiledDefinition[];
+  /** M70-T3: what the builder may look up: the examples, the user's Apps whole. */
+  lookups?: BuilderLookups;
   /** M34-T3: a type drafted from a run's step (as the Apps page's Try the source does); null when it has none. */
   draftType?: (runId: string, stepKey: string) => Promise<string | null>;
 }
@@ -87,6 +96,8 @@ const ProposeAppInput = z.object({
     .describe("Its pipelines to add or change, each whole and with app: <the App's name>; leave out the ones that stay as they are."),
 });
 const DraftTypeInput = z.object({ runId: z.string(), stepKey: z.string().describe("The step whose items to draft from.") });
+const ReadExampleInput = z.object({ id: z.string().describe("The example's id, as list_examples gives it (hiring, bills).") });
+const ReadAppInput = z.object({ name: z.string().describe("The App's name, as <apps> lists it.") });
 const ListRunsInput = z.object({ limit: z.number().int().min(1).max(20).optional().describe("Default 10.") });
 const ReadRunInput = z.object({
   runId: z.string(),
@@ -132,6 +143,25 @@ export class Builder {
         "A type drafted from what a step of a run gave (a dry run of the source): field names and kinds from the real " +
         "values, without the LLM. Use it to see what a source really gives before you write the type.",
       input: DraftTypeInput,
+    },
+    {
+      name: "list_examples",
+      description:
+        "The example Apps that come with Storm: each one's id, what it is for, its types and pipelines. Look here before " +
+        "making a new App: when one fits, say so and start from it (read_example), keeping what the user wants.",
+      input: z.object({}),
+    },
+    {
+      name: "read_example",
+      description: "One example App's file, whole: its types, pages and pipelines, with comments on why.",
+      input: ReadExampleInput,
+    },
+    {
+      name: "read_app",
+      description:
+        "One of the user's Apps, whole: its types (every field), pages, uses and pipelines. Read it before changing it, " +
+        "or before reading one of its types from another App (uses:), instead of making a second App of the same thing.",
+      input: ReadAppInput,
     },
     {
       name: "list_runs",
@@ -250,7 +280,7 @@ export class Builder {
           }
           results.push(toolResult(use.id, outcome.message, !outcome.ok));
         } else {
-          const answer = await this.runTool(use.name, use.input, request.runs);
+          const answer = await this.runTool(use.name, use.input, request.runs, request.lookups);
           results.push(toolResult(use.id, answer.content, answer.isError));
         }
       }
@@ -347,7 +377,19 @@ export class Builder {
     return { ok: true, proposal: { summary: parsed.data.summary.trim().slice(0, 300), app, source, pipelines }, message: lines.join("\n") };
   }
 
-  private async runTool(name: string, input: unknown, runs: BuilderRuns | null): Promise<{ content: string; isError: boolean }> {
+  private async runTool(name: string, input: unknown, runs: BuilderRuns | null, lookups?: BuilderLookups): Promise<{ content: string; isError: boolean }> {
+    // M70-T3: the examples and the user's Apps.
+    if (name === "list_examples") return { content: lookups?.examples() ?? "No examples here.", isError: false };
+    if (name === "read_example") {
+      const parsed = ReadExampleInput.safeParse(input);
+      const text = parsed.success ? lookups?.example(parsed.data.id.trim()) : null;
+      return text ? { content: text, isError: false } : { content: "No such example: list_examples gives their ids.", isError: true };
+    }
+    if (name === "read_app") {
+      const parsed = ReadAppInput.safeParse(input);
+      const text = parsed.success && lookups ? await lookups.app(parsed.data.name.trim()) : null;
+      return text ? { content: text, isError: false } : { content: "The user has no App of that name: <apps> lists theirs.", isError: true };
+    }
     if (name === "list_runs") {
       const parsed = ListRunsInput.safeParse(input);
       if (!runs) return { content: "This pipeline isn't saved yet, so it has no runs.", isError: false };
@@ -398,6 +440,9 @@ How to work:
   it. Only after their answer propose it (propose_app or propose_pipeline), matching the brief. Never propose a new
   idea before a brief: the tools refuse it. If they ask to skip the discussion, still state the brief; their next
   message is the answer.
+- Look things up before you design: <apps> lists the user's Apps (read_app gives one whole). Don't make a second App of
+  what one of theirs keeps: change it, or read its type from the new App through uses:. list_examples shows the Apps
+  Storm comes with: when one fits, say so and start from it (read_example), changed to what the user wants.
 - A change to what exists (the current pipeline, the App this chat is about, an editor's draft) needs no brief: make
   exactly the change asked, propose it, and say what changed.
 - When something the user asks for can't be built from the catalog (no step for it yet), say plainly what is missing,

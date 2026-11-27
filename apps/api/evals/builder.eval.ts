@@ -16,6 +16,7 @@ import {
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Builder, type TurnResult } from "../src/builder/builder";
+import { ExampleLookups } from "../src/builder/example-lookups";
 
 /**
  * M7-V1, M67-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
@@ -167,11 +168,14 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
   const history: ChatMessage[] = [];
   const turns: TurnResult[] = [];
   let usage = emptyUsage();
+  // M70-T3: the examples it may look up, not the one this case rebuilds: the eval measures building, not copying.
+  const examples = new ExampleLookups(c.file?.startsWith("apps/") ? [c.file.replace(/^apps\/|\.yaml$/g, "")] : []);
+  const lookups = { examples: () => examples.list(), example: (id: string) => examples.read(id), app: () => Promise.resolve(null) };
   const say = async (text: string, showCurrent: boolean) => {
     const shown = showCurrent && current ? `<current_pipeline version="1" id="eval">\n${definitionToSource(current)}</current_pipeline>\n\n` : "";
     const recipes = showCurrent ? `<saved_recipes>\n${c.recipes ?? "none yet"}\n</saved_recipes>\n\n` : "";
     const user: ChatMessage = { role: "user", content: [{ type: "text", text: `${shown}${recipes}${text}` }] };
-    const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [] });
+    const turn = await builder.turn({ choice, history, user, current, runs: null, tokensLeft: 2_000_000, apps: [], lookups });
     usage = addUsage(usage, turn.usage);
     if (turn.transcript) history.push(user, ...turn.transcript);
     turns.push(turn);

@@ -1,3 +1,4 @@
+import { ExampleLookups } from "./example-lookups";
 import { Prisma, type BuilderChat, type BuilderMessage } from "@realentity/storm-db";
 import { Integrations } from "@realentity/storm-db";
 import { ModelRouter, type ChatMessage, type LlmChat, type LlmUsage } from "@realentity/storm-llm";
@@ -71,6 +72,8 @@ interface StoredProposal {
 export class BuilderService {
   /** Chats with a turn in progress: one at a time per chat. */
   private readonly busy = new Set<string>();
+  /** M70-T3: the example Apps the builder may look up. */
+  private readonly examples = new ExampleLookups();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -302,6 +305,18 @@ export class BuilderService {
       tokensLeft: (await this.tokenCap(userId)) - chat.tokensUsed,
       apps: appsList,
       ...(about ? { appPipelines: about.pipelines } : {}),
+      // M70-T3: the examples, and the user's Apps whole.
+      lookups: {
+        examples: () => this.examples.list(),
+        example: (id) => this.examples.read(id),
+        app: async (name) => {
+          const found = await this.apps.byName(userId, name);
+          const app = found && (await this.apps.forBuilder(userId, found.appId));
+          return app && `${app.source}${app.pipelines.map((p) => `
+---
+${definitionToSource(p)}`).join("")}`;
+        },
+      },
       draftType: async (runId, stepKey) => {
         if (!/^[0-9a-f-]{36}$/i.test(runId)) return null;
         const draft = await this.apps.draftType(userId, { runId, stepKey }).catch(() => null);

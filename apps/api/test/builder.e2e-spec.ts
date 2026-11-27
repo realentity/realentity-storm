@@ -119,7 +119,7 @@ describe("builder chat", () => {
     expect(system).toContain("## email.send");
     expect(system).toContain("to: string (email)");
     expect(system).not.toContain("shell");
-    expect(tools.map((t) => t.name)).toEqual(["propose_pipeline", "propose_app", "state_brief", "draft_type", "list_runs", "read_run"]);
+    expect(tools.map((t) => t.name)).toEqual(["propose_pipeline", "propose_app", "state_brief", "draft_type", "list_examples", "read_example", "read_app", "list_runs", "read_run"]);
   });
 
   it("M7-S2: a builder-made pipeline still gets the gate before its side effect; saving it makes v1 of a new pipeline", async () => {

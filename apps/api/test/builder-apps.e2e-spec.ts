@@ -152,6 +152,30 @@ describe("the builder and Apps", () => {
     expect(((await agent.get(`/api/pipelines/${pipeline.pipelineId}`).expect(200)).body as PipelineDetailView).currentVersion).toBe(1);
   });
 
+  // M70-T3: the builder looks up the examples and the user's Apps, whole, instead of guessing or making a second one
+  it("looks up the examples (a list, one whole) and one of my Apps whole, with its pipelines; an unknown one is said so", async () => {
+    await agent.post("/api/apps").send({ source: JSON.stringify(READING) }).expect(201);
+    await agent.post("/api/pipelines").send({ source: JSON.stringify(COLLECT) }).expect(201);
+    llm.answer(
+      callTools(
+        { name: "list_examples", input: {} },
+        { name: "read_example", input: { id: "bills" } },
+        { name: "read_example", input: { id: "nothing" } },
+        { name: "read_app", input: { name: "Reading list" } },
+        { name: "read_app", input: { name: "Nope" } },
+      ),
+      say("Bills is close; you have a Reading list already."),
+    );
+    await send((await newChat()).chatId, "Something like my bills?");
+    const [list, example, missing, app, none] = toolResults(llm.last);
+    expect(list.content).toMatch(/^hiring: Hiring: .*\(types: .*; pipelines: .*\)$/m);
+    expect(example.content).toContain("\npipelines:\n");
+    expect(missing).toMatchObject({ is_error: true, content: "No such example: list_examples gives their ids." });
+    expect(app.content).toContain("\"rating\":{\"type\":\"number\",\"mine\":true}");
+    expect(app.content).toContain(`\n---\nname: ${COLLECT.name}`);
+    expect(none).toMatchObject({ is_error: true, content: "The user has no App of that name: <apps> lists theirs." });
+  });
+
   it("T3: draft_type shows the builder what a run's step really gave", async () => {
     const pipeline = (
       await agent
