@@ -918,7 +918,13 @@ pnpm test:web                  # browser tests (Playwright) against the composed
 pnpm --filter @realentity/storm-worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
 pnpm --filter @realentity/storm-api eval:builder -- --list   # M67: the builder's cases (one per example App and pipeline) and what no case uses; no model called
 pnpm --filter @realentity/storm-api eval:builder -- --only bills --runs 3   # the builder rebuilds them from plain descriptions (real Claude API; cost per case reported)
+pnpm --filter @realentity/storm-api eval:builder -- --rescore evals/results/<file>.json   # a run's saved answers judged again by the rules as they are now; no model called
 ```
+
+The eval compares what matters, not the wording: a trigger by what it points at, the kinds of steps (the ones that
+only shape data may differ, and the order), each side effect (once or per item, and the kind of place it goes to),
+slots and limits; an App's types, keys, stages, at least its fields of mine and the moves its pipelines make, its
+reports, slots and uses (`appDifferences`, `pipelineDifferences` in `packages/steps/src/equivalence.ts`).
 
 **Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. In Settings → Email
 add the Gmail address with that app password (several accounts are fine: one is the default, and a pipeline's email
