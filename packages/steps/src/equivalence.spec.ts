@@ -65,7 +65,7 @@ describe("the builder's eval: equivalent to an example (M67)", () => {
     const changed = structuredClone(replies);
     changed.trigger = { schedule: "*/30 * * * *", tz: "Europe/Sofia" };
     changed.steps = changed.steps.filter((s) => s.type !== "gate.act");
-    changed.limits = { ...changed.limits, "email.draftReply": "1/day" };
+    changed.limits = Object.fromEntries(Object.keys(replies.limits ?? {}).map((k) => [k, "1/day"]));
     const problems = pipelineDifferences(replies, changed, catalog);
     expect(problems.map((p) => p.split(":")[0])).toEqual(["trigger", "steps", "forEach", "limits"]);
 
@@ -75,6 +75,16 @@ describe("the builder's eval: equivalent to an example (M67)", () => {
     const other = elsewhere.steps.find((s) => s.id === draft.id)!;
     other.with = { ...other.with, message: "{{trigger}}" };
     expect(pipelineDifferences(replies, elsewhere, catalog)).toEqual([expect.stringMatching(/^side effects' sources: /)]);
+
+    // A limit more is a stricter cap: fine. The example's limit left out, or another value: not.
+    const stricter = structuredClone(replies);
+    stricter.limits = { ...stricter.limits, "email.fetch": "100/day" };
+    expect(pipelineDifferences(replies, stricter, catalog)).toEqual([]);
+    const [limited] = Object.keys(replies.limits ?? {});
+    expect(limited).toBeDefined();
+    const looser = structuredClone(replies);
+    looser.limits = {};
+    expect(pipelineDifferences(replies, looser, catalog)).toEqual([expect.stringMatching(/^limits: /)]);
 
     // A slot more: a credential it didn't use.
     const tables = exampleApp("tables").pipelines[0];
@@ -105,6 +115,8 @@ describe("the builder's eval: equivalent to an example (M67)", () => {
       expect.stringMatching(/^types: expected \[.*\], got \[.*"Extra".*\]$/),
     ]);
     expect(appDifferences(bills, app((raw) => (raw.needs = { ...(raw.needs as object), extra: { kind: "text" } })), catalog)).toEqual([expect.stringMatching(/^slots: /)]);
+    // An email or Google account slot is the default account otherwise: either is fine.
+    expect(appDifferences(bills, app((raw) => (raw.needs = { ...(raw.needs as object), mail: { kind: "email" }, google: { kind: "google" } })), catalog)).toEqual([]);
     expect(appDifferences(bills, app((raw) => (raw.uses = { Card: { from: { app: "Cards", type: "Card" }, fields: ["number"] } })), catalog)).toEqual([
       'uses: expected [], got ["Card ← Cards › Card"]',
     ]);

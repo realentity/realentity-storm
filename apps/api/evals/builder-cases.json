@@ -187,7 +187,7 @@
   {
     "name": "Recruiter replies (M4)",
     "file": "pipelines/recruiter-replies.yaml",
-    "description": "Every 15 minutes, read my new emails. Keep only those where a recruiter, hiring manager or client writes to me personally about a role, a project, an interview or a contract and expects an answer; skip job alerts, newsletters, notifications and mass mail. For each one, draft a short, warm reply as me: if it could fit, show interest and ask for what is missing (rate, remote or on-site, start date, duration) and propose a short call; if it clearly doesn't, decline politely in a sentence or two. I approve every reply before it goes out, as a reply in the same thread. At most 20 replies a day."
+    "description": "Every 15 minutes, read my new emails. Keep only those where a recruiter, hiring manager or client writes to me personally about a role, a project, an interview or a contract and expects an answer; skip job alerts, newsletters, notifications and mass mail, and leave any email that belongs to one of my topics to Topic replies, so nothing is answered twice. For each one, draft a short, warm reply as me: if it could fit, show interest and ask for what is missing (rate, remote or on-site, start date, duration) and propose a short call; if it clearly doesn't, decline politely in a sentence or two. I approve every reply before it goes out, as a reply in the same thread. At most 20 replies a day."
   },
   {
     "name": "Topic replies",

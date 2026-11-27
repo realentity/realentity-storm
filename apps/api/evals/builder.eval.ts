@@ -1,7 +1,7 @@
 import { exampleFiles, exampleYaml } from "@realentity/storm-shared/example-files";
 import { config } from "dotenv";
 import { readAppPackage, readAppSource } from "@realentity/storm-shared";
-import { addUsage, ClaudeChat, emptyUsage, ModelRouter, type ChatMessage, type LlmUsage } from "@realentity/storm-llm";
+import { addUsage, ClaudeChat, emptyUsage, ModelRouter, OpenAiApi, OpenAiChat, type ChatMessage, type LlmUsage } from "@realentity/storm-llm";
 import { definitionToSource, type CompiledDefinition } from "@realentity/storm-shared";
 import {
   appDifferences,
@@ -19,7 +19,8 @@ import { Builder, type TurnResult } from "../src/builder/builder";
 
 /**
  * M7-V1, M67-V1 (docs/design.md test strategy: LLM eval with the real Claude API, run by hand):
- *   pnpm --filter @realentity/storm-api eval:builder [--only <text>] [--runs 3] [--list]
+ *   pnpm --filter @realentity/storm-api eval:builder [--only <text>] [--runs 3] [--max-turns 4] [--list]
+ *     [--model <a Claude model>] [--base-url http://localhost:11434/v1 --model qwen3:14b]
  * The builder (its prompt, tools and model) recreates each example App and pipeline from a plain description of it
  * (evals/builder-cases.json), and the result must be equivalent in what matters (@realentity/storm-steps'
  * appDifferences, pipelineDifferences). Also: an edit in a pipeline's chat changes only what was asked (M7-T3), and a
@@ -38,6 +39,8 @@ interface Case {
   current?: string;
   /** The <saved_recipes> lines the builder sees (none by default). */
   recipes?: string;
+  /** M67-T2: what the simulated user answers when the builder asks (facts the description left out). */
+  answers?: string;
 }
 
 /** The cases: one per example App and pipeline (M67-T1), and the edit and missing-capability ones (M7). */
@@ -54,7 +57,16 @@ export function loadCases(): Case[] {
   ];
 }
 
-const FOLLOW_UP = "Use sensible defaults for anything still open and propose it.";
+/**
+ * M67-T2: the simulated user. When the builder asks or says back what it will build (a brief, M70), it answers with the
+ * case's facts once, then agrees; the builder must propose within `--max-turns`.
+ */
+function simulatedUser(c: Case, reply: number): string {
+  const agree = "Use sensible defaults for anything still open. If you have said what you will build, that is agreed: propose it.";
+  return reply === 1 && c.answers ? `${c.answers}
+
+${agree}` : agree;
+}
 const catalog = defaultCatalog();
 const compiler = new PipelineCompiler(catalog);
 
@@ -90,9 +102,10 @@ async function main(): Promise<void> {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] : undefined;
   };
-  const only = flag("--only")?.toLowerCase();
+  // --only bills,tables: the cases whose name or file has any of these.
+  const only = flag("--only")?.toLowerCase().split(",").map((o) => o.trim()).filter(Boolean);
   const runs = Number(flag("--runs") ?? 1);
-  const cases = loadCases().filter((c) => !only || c.name.toLowerCase().includes(only) || c.file?.includes(only));
+  const cases = loadCases().filter((c) => !only || only.some((o) => c.name.toLowerCase().includes(o) || c.file?.includes(o)));
   const { covered, gaps } = matrix(loadCases());
   if (args.includes("--list")) {
     for (const c of cases) console.log(`${c.name}${c.file ? ` (${c.file})` : ""}`);
@@ -100,16 +113,30 @@ async function main(): Promise<void> {
     return;
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set in .env");
-  const builder = new Builder(ClaudeChat.fromApiKey(apiKey), compiler, catalog);
-  const choice = await new ModelRouter(() => Promise.resolve(null)).choose("eval", "builder");
+  // The builder's model: Claude's default for it, another Claude model (--model), or a model on an OpenAI-compatible
+  // server (--base-url http://localhost:11434/v1 --model qwen3:14b: Ollama, M60), which costs nothing.
+  const baseUrl = flag("--base-url");
+  const model = flag("--model");
+  const defaults = await new ModelRouter(() => Promise.resolve(null)).choose("eval", "builder");
+  let builder: Builder;
+  let choice = defaults;
+  if (baseUrl) {
+    if (!model) throw new Error("--base-url needs --model (the model's name on that server)");
+    builder = new Builder(new OpenAiChat(new OpenAiApi({ baseUrl, apiKey: process.env.LLM_OPENAI_API_KEY })), compiler, catalog);
+    choice = { ...defaults, model: `openai:${model}` };
+  } else {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set in .env");
+    builder = new Builder(ClaudeChat.fromApiKey(apiKey), compiler, catalog);
+    if (model) choice = { ...defaults, model };
+  }
+  const maxTurns = Number(flag("--max-turns") ?? 4);
 
   let usage: LlmUsage = emptyUsage();
   const results: { name: string; run: number; pass: boolean; problems: string[]; costUsd: number; turns: unknown[] }[] = [];
   for (const c of cases) {
     for (let run = 1; run <= runs; run++) {
-      const result = await runCase(c, builder, choice);
+      const result = await runCase(c, builder, choice, maxTurns);
       usage = addUsage(usage, result.usage);
       const pass = result.problems.length === 0;
       console.log(`${pass ? "PASS" : "FAIL"} ${c.name}${runs > 1 ? ` [${run}/${runs}]` : ""} (${result.turns.length} turn(s), $${result.usage.costUsd.toFixed(2)})${pass ? "" : `\n  ${result.problems.join("\n  ")}`}`);
@@ -128,14 +155,14 @@ async function main(): Promise<void> {
   console.log(`Capabilities no case uses (${gaps.length}): ${gaps.join(", ") || "none"}`);
   const dir = resolve(__dirname, "results");
   mkdirSync(dir, { recursive: true });
-  const file = resolve(dir, `${new Date().toISOString().slice(0, 10)}-builder.json`);
+  const file = resolve(dir, `${new Date().toISOString().slice(0, 16).replace(":", "")}-builder.json`);
   writeFileSync(file, `${JSON.stringify({ model: choice, runs, passing, total: byCase.length, costUsd: usage.costUsd, cases: byCase, gaps, covered, results }, null, 2)}\n`);
   console.log(`Results: ${file}`);
   if (passing < byCase.length) process.exitCode = 1;
 }
 
-/** One run of a case: the description, one follow-up when it asks back, and what differs from the example. */
-async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<ModelRouter["choose"]>>) {
+/** One run of a case: the description, the simulated user's replies while it asks back, and what differs from the example. */
+async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<ModelRouter["choose"]>>, maxTurns: number) {
   const current = c.current ? examplePipeline(c.current) : null;
   const history: ChatMessage[] = [];
   const turns: TurnResult[] = [];
@@ -152,8 +179,11 @@ async function runCase(c: Case, builder: Builder, choice: Awaited<ReturnType<Mod
   };
 
   let turn = await say(c.description, true);
-  // Asking back is fine (M7-T2); one answer, then it must propose. Not for the missing-capability case.
-  if (!turn.proposal && !turn.appProposal && !turn.error && (c.file || c.current)) turn = await say(FOLLOW_UP, false);
+  // Asking back and saying back what it will build are fine (M7-T2, M70); the simulated user answers until it proposes,
+  // within maxTurns. Not for the missing-capability case: there it must say what is missing, not build around it.
+  for (let reply = 1; reply < maxTurns && !turn.proposal && !turn.appProposal && !turn.error && (c.file || c.current); reply++) {
+    turn = await say(simulatedUser(c, reply), false);
+  }
 
   const problems: string[] = [];
   if (turn.error) problems.push(`error: ${turn.error}`);

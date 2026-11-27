@@ -28,7 +28,8 @@ const SOURCE_FIELDS = ["to", "message", "subject", "body", "inReplyTo", "items",
 /**
  * Two pipelines are equivalent when they have the same trigger, the same step types in order (gates included), each
  * step iterating over the same thing, each side effect's inputs coming from the same steps (by type, so ids may
- * differ; literal text may differ), the same limits, and as many slots (credentials, settings) used.
+ * differ; literal text may differ), at least the example's limits (more is a stricter cap), and as many slots
+ * (credentials, settings) used.
  */
 export function pipelineDifferences(expected: CompiledDefinition, actual: CompiledDefinition, catalog: StepCatalog): string[] {
   const problems: string[] = [];
@@ -41,7 +42,10 @@ export function pipelineDifferences(expected: CompiledDefinition, actual: Compil
   same("forEach", e.forEach, a.forEach);
   same("side effects' sources", e.sources, a.sources);
   same("slots", e.slots, a.slots);
-  same("limits", expected.limits ?? null, actual.limits ?? null);
+  // Every limit the example has, as it has it; one more is a stricter cap, which is fine.
+  const limits = expected.limits ?? {};
+  const kept = Object.fromEntries(Object.keys(limits).map((k) => [k, actual.limits?.[k] ?? null]));
+  same("limits", limits, kept);
   return problems;
 }
 
@@ -106,8 +110,10 @@ function typeShape(app: AppDefinition, name: string) {
   };
 }
 
+/** Credential and text slots by kind; an email or Google account slot is the instance's default account otherwise, so either is fine. */
 function slotsOf(app: AppDefinition): string[] {
   return Object.values(app.needs ?? {})
+    .filter((need) => need.kind === "credential" || need.kind === "text")
     .map((need) => (need.kind === "credential" && need.type ? `credential:${need.type}` : need.kind))
     .sort();
 }
