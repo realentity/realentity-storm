@@ -22,11 +22,29 @@ export function checkAppSource(source: string): { definition: AppDefinition | nu
   if (result.success) return { definition: result.data, errors: [] };
   return {
     definition: null,
-    errors: result.error.issues.map((issue) => {
-      const path = issue.path.map((p) => (typeof p === "symbol" ? String(p) : p));
-      return { path: path.map(String).join("."), message: issue.message, line: lineAt(document, lines, path) };
-    }),
+    errors: plainIssues(result.error.issues).map(({ path, message }) => ({ path: path.map(String).join("."), message, line: lineAt(document, lines, path) })),
   };
+}
+
+/** An issue as a reader can act on it: where, and what. */
+export interface PlainIssue {
+  path: (string | number)[];
+  message: string;
+}
+
+/**
+ * Zod's issues, a union's ("Invalid input", M67: the builder retried a report page blind) said as the option that came
+ * closest says them: the one whose shape fits best (fewest problems at its top: a key it lacks or doesn't know), then
+ * fewest problems in all. A page with a wrong tile is told about the tile, not that it is no page.
+ */
+export function plainIssues(issues: readonly z.core.$ZodIssue[], at: (string | number)[] = []): PlainIssue[] {
+  return issues.flatMap((issue) => {
+    const path = [...at, ...issue.path.map((p) => (typeof p === "symbol" ? String(p) : p))];
+    if (issue.code !== "invalid_union" || issue.errors.length === 0) return [{ path, message: issue.message }];
+    const fit = (option: z.core.$ZodIssue[]) => option.filter((i) => i.path.length <= 1).length * 1000 + option.length;
+    const closest = [...issue.errors].sort((a, b) => fit(a) - fit(b))[0];
+    return plainIssues(closest, path);
+  });
 }
 
 /**

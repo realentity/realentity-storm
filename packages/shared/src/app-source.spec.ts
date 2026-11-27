@@ -28,6 +28,20 @@ describe("checkAppSource (M35-T1)", () => {
     expect(Object.keys(definition!.types.Bill.fields)).toEqual(["id", "amount", "currency", "status"]);
   });
 
+  // M67: the builder retried a report page blind on "Invalid input"
+  it("a page of a kind with a mistake in it: told the mistake, at its path, not that it is no page", () => {
+    const report = `${SOURCE}  - report: Bill\n    tiles:\n      - { label: Due, count: true, share: 2 }\n`;
+    const { errors } = checkAppSource(report);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ path: "pages.1.tiles.0", line: 22 });
+    expect(errors[0].message).toContain("share");
+    expect(errors[0].message).not.toBe("Invalid input");
+    // A page of no kind it knows: still told what is wrong with it, on its line.
+    const { errors: unknown } = checkAppSource(`${SOURCE}  - chart: Bill\n`);
+    expect(unknown.length).toBeGreaterThan(0);
+    expect(unknown.every((e) => e.path.startsWith("pages.1") && e.line === 20 && e.message !== "Invalid input")).toBe(true);
+  });
+
   it("gives a YAML error its line", () => {
     const { definition, errors } = checkAppSource("name: Bills\ntypes:\n  Bill: { key: id\n");
     expect(definition).toBeNull();

@@ -10,7 +10,7 @@ import {
   type LlmUsage,
   type ModelChoice,
 } from "@realentity/storm-llm";
-import { AppDefinitionSchema, BuilderBriefSchema, defaultTimeZone, type AppDefinition, type BuilderBrief, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
+import { AppDefinitionSchema, BuilderBriefSchema, defaultTimeZone, plainIssues, type AppDefinition, type BuilderBrief, type CompiledDefinition, type CompileIssue, type CompileResult } from "@realentity/storm-shared";
 import { describeCatalog, diffApps, diffDefinitions, type PipelineCompiler, type StepCatalog } from "@realentity/storm-steps";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
@@ -389,7 +389,7 @@ export class Builder {
     // The chat's last proposal of it (what changed since is told against that one), and the one open now (its pipelines stay).
     const [draft, kept] = [named(request.draft), named(open)];
     if (!appResult.success) {
-      return refuse(appResult.error.issues.map((issue) => ({ path: `app.${issue.path.map(String).join(".")}`, message: issue.message })));
+      return refuse(plainIssues(appResult.error.issues, ["app"]).map(({ path, message }) => ({ path: path.join("."), message })));
     }
     const app = appResult.data;
     const errors: CompileIssue[] = [];

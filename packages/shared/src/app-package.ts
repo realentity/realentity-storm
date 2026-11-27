@@ -1,7 +1,7 @@
 import { Document, isMap, isScalar, isSeq, LineCounter, parseAllDocuments, parseDocument, type Pair, type YAMLMap } from "yaml";
 import { z } from "zod";
 import { type AppIssue } from "./app";
-import { lineAt } from "./app-source";
+import { lineAt, plainIssues } from "./app-source";
 import { type BundleDocument } from "./bundle";
 import { ExampleNeedSchema, type ExampleNeed } from "./examples";
 
@@ -77,10 +77,7 @@ export function readAppPackage(text: string, appName?: string): AppPackage {
   const original = parseDocument(text, { lineCounter: lines, prettyErrors: false });
   const checked = AppPackageSchema.safeParse(original.toJS());
   if (!checked.success) {
-    const errors = checked.error.issues.map((issue) => {
-      const path = issue.path.map((p) => (typeof p === "symbol" ? String(p) : p));
-      return { path: path.join("."), message: issue.message, line: lineAt(original, lines, path) };
-    });
+    const errors = plainIssues(checked.error.issues).map(({ path, message }) => ({ path: path.join("."), message, line: lineAt(original, lines, path) }));
     return { name: "", documents: [], setup: null, errors };
   }
   const name = appName ?? checked.data.app.name;
