@@ -3,20 +3,17 @@ import { ToastContainer } from "react-toastify";
 import { Loading } from "./components/ui";
 import { useSession } from "./context/use-session";
 import { AppLayout } from "./layout/AppLayout";
-import { BillsPage } from "./pages/BillsPage";
 import { BuilderPage } from "./pages/BuilderPage";
 import { CostsPage } from "./pages/CostsPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { HealthPage } from "./pages/HealthPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { InboxPage } from "./pages/InboxPage";
-import { JobsPage } from "./pages/JobsPage";
 import { AppHome, LauncherPage } from "./pages/LauncherPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PipelineEditorPage } from "./pages/PipelineEditorPage";
 import { PipelinePage } from "./pages/PipelinePage";
 import { PipelinesPage } from "./pages/PipelinesPage";
-import { PricesPage } from "./pages/PricesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { TopicPage } from "./pages/TopicPage";
 import { ProposalPage } from "./pages/ProposalPage";
@@ -31,8 +28,6 @@ import { RunPage } from "./pages/RunPage";
 import { RulesPage } from "./pages/RulesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TopicsPage } from "./pages/TopicsPage";
-import { ViewPage } from "./pages/ViewPage";
-import { ViewRowPage } from "./pages/ViewRowPage";
 
 /** Signed out: the login page for every path (the path is kept, so it opens after signing in). */
 export function App() {
@@ -59,13 +54,10 @@ export function App() {
             <Route path="pipelines/:pipelineId" element={<PipelinePage />} />
             <Route path="pipelines/:pipelineId/edit" element={<PipelineEditorPage />} />
             <Route path="runs/:runId" element={<RunPage />} />
-            <Route path="jobs" element={<JobsPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="rules" element={<RulesPage />} />
             <Route path="topics" element={<TopicsPage />} />
             <Route path="topics/:topicId" element={<TopicPage />} />
-            <Route path="bills" element={<BillsPage />} />
-            <Route path="prices" element={<PricesPage />} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:site/:what" element={<RecipePage />} />
             <Route path="profile" element={<ProfilePage />} />
@@ -82,8 +74,6 @@ export function App() {
             <Route path="a/:appId/:type" element={<AppListPage />} />
             <Route path="a/:appId/:type/:key" element={<AppEntityPage />} />
             <Route path="r/:appId/:type" element={<AppReportPage />} />
-            <Route path="v/:pipelineId" element={<ViewPage />} />
-            <Route path="v/:pipelineId/rows/:key" element={<ViewRowPage />} />
             <Route
               path="*"
               element={

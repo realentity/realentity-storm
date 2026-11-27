@@ -114,35 +114,33 @@ export function AppPage() {
         <UsesCard load={() => api.apps.uses(appId)} save={(body) => api.apps.setUses(appId, body)} />
       </div>
       {data.imports.map((i) => (
-        <div key={i.collection ?? i.from} className="alert alert-info d-flex align-items-center gap-3" data-testid="app-import">
+        <div key={i.collection} className="alert alert-info d-flex align-items-center gap-3" data-testid="app-import">
           <div>
-            {i.count} kept by {i.label} can move here, once: the old page stays until it goes.
+            {i.count} kept by {i.label} can move here, once: the collection stays as it is.
           </div>
-          {i.from === "collection" && (
-            <select
-              className="form-select w-auto ms-auto"
-              aria-label={`Type for ${i.collection}`}
-              value={into[i.collection!] ?? ""}
-              onChange={(e) => setInto({ ...into, [i.collection!]: e.target.value })}
-            >
-              <option value="">into…</option>
-              {Object.entries(data.definition.types)
-                .filter(([, t]) => !t.mine)
-                .map(([name]) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-            </select>
-          )}
+          <select
+            className="form-select w-auto ms-auto"
+            aria-label={`Type for ${i.collection}`}
+            value={into[i.collection] ?? ""}
+            onChange={(e) => setInto({ ...into, [i.collection]: e.target.value })}
+          >
+            <option value="">into…</option>
+            {Object.entries(data.definition.types)
+              .filter(([, t]) => !t.mine)
+              .map(([name]) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </select>
           <button
             type="button"
-            className={`btn btn-primary ${i.from === "collection" ? "" : "ms-auto"}`}
-            disabled={mover.busy || (i.from === "collection" && !into[i.collection!])}
+            className="btn btn-primary"
+            disabled={mover.busy || !into[i.collection]}
             onClick={() =>
               void mover
                 .run(() =>
-                  api.apps.importFrom(appId, i.from, i.collection ? { collection: i.collection, type: into[i.collection] } : undefined),
+                  api.apps.importFrom(appId, { collection: i.collection, type: into[i.collection] }),
                 )
                 .then((result) => {
                   if (!result) return;

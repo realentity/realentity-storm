@@ -1,58 +1,22 @@
 import {
   ImportRecipeSchema,
-  JobFilterSchema,
   TeachRecipeSchema,
   TryRecipeSchema,
-  UpdateApplicationSchema,
-  UpdateJobSchema,
-  type ApplicationView,
   type ImportRecipeRequest,
-  type JobFilter,
-  type JobPostingView,
   type RecipeDetailView,
   type RecipeSummaryView,
   type TeachRecipeRequest,
   type TeachStartedView,
   type TryRecipeRequest,
-  type UpdateApplicationRequest,
-  type UpdateJobRequest,
 } from "@realentity/storm-shared";
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post } from "@nestjs/common";
 import { CurrentUser, type AuthenticatedUser } from "../auth/public.decorator";
 import { ZodBodyPipe } from "../common/zod-body.pipe";
-import { JobsService, RecipesService } from "./jobs.service";
+import { RecipesService } from "./recipes.service";
 
 @Controller()
-export class JobsController {
-  constructor(
-    private readonly jobs: JobsService,
-    private readonly recipes: RecipesService,
-  ) {}
-
-  /** Best score first. */
-  @Get("jobs")
-  list(@CurrentUser() user: AuthenticatedUser, @Query(new ZodBodyPipe(JobFilterSchema)) filter: JobFilter): Promise<JobPostingView[]> {
-    return this.jobs.list(user.userId, filter);
-  }
-
-  @Patch("jobs/:jobPostingId")
-  update(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("jobPostingId", ParseUUIDPipe) jobPostingId: string,
-    @Body(new ZodBodyPipe(UpdateJobSchema)) body: UpdateJobRequest,
-  ): Promise<JobPostingView> {
-    return this.jobs.update(user.userId, jobPostingId, body);
-  }
-
-  /** An application's outcome by hand (M16-T3): replied, interview, rejected. */
-  @Patch("applications/:applicationId")
-  updateApplication(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("applicationId", ParseUUIDPipe) applicationId: string,
-    @Body(new ZodBodyPipe(UpdateApplicationSchema)) body: UpdateApplicationRequest,
-  ): Promise<ApplicationView> {
-    return this.jobs.updateApplication(user.userId, applicationId, body);
-  }
+export class RecipesController {
+  constructor(private readonly recipes: RecipesService) {}
 
   @Get("recipes")
   recipesList(@CurrentUser() user: AuthenticatedUser): Promise<RecipeSummaryView[]> {

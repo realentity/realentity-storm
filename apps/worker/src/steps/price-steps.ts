@@ -1,8 +1,11 @@
 import { type DataEntity, type Prisma, type PrismaClient } from "@realentity/storm-db";
-import { entityItem, PRICE_WATCH_COLLECTION } from "@realentity/storm-shared";
+import { entityItem } from "@realentity/storm-shared";
 import { offerKey, parseShopLine } from "@realentity/storm-steps";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
 import { appType } from "./entity-steps";
+
+/** Where price.watch keeps each Offer's prices over time (DataPoint), by the Offer's key. */
+const PRICE_WATCH_COLLECTION = "price-watch";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Prices kept per shop: a year of daily checks. */

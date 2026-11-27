@@ -1438,28 +1438,23 @@ export interface AppVersionSummaryView {
   dateCreated: string;
 }
 
-/** Data a hand-built page keeps that this App can take (M33): "Move my bills here". */
+/** M33-T5: a collection a pipeline's data.save kept (M13) that this App can take: "Move the "prices" collection here". */
 export interface AppImportView {
-  from: ImportSource;
+  from: "collection";
   label: string;
-  /** from: collection: which one. */
-  collection?: string;
+  collection: string;
   /** How many there are to move (moved ones are skipped). */
   count: number;
 }
 
-export const IMPORT_SOURCES = ["bills", "prices", "jobs", "collection"] as const;
-export type ImportSource = (typeof IMPORT_SOURCES)[number];
-
-/** `collection` (M33-T5): a collection a pipeline's data.save kept (M13, a page's `view:`), into one of the App's types. */
+/** A collection, into one of the App's types. */
 export const AppImportRequestSchema = z
   .object({
-    from: z.enum(IMPORT_SOURCES),
-    collection: z.string().regex(/^[a-z][a-z0-9._-]{0,63}$/).optional(),
-    type: z.string().regex(TYPE_NAME).optional(),
+    from: z.literal("collection").default("collection"),
+    collection: z.string().regex(/^[a-z][a-z0-9._-]{0,63}$/),
+    type: z.string().regex(TYPE_NAME),
   })
-  .strict()
-  .refine((r) => r.from !== "collection" || (r.collection && r.type), "a collection's move names the collection and the type");
+  .strict();
 export type AppImportRequest = z.infer<typeof AppImportRequestSchema>;
 
 export interface AppImportResult {

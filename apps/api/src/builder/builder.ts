@@ -547,18 +547,15 @@ Pipeline definition (JSON; the user sees it as YAML):
 - name (required), description (optional, one sentence).
 - trigger: "manual", or { "schedule": "<5-field cron>", "tz": "${defaultTimeZone()}" } (the user's time zone unless they say otherwise),
   or an event: { "on": "run.finished", "pipeline": "<name>", "status"?: ["DONE" | "FAILED"] },
-  { "on": "application.status", "status"?: ["PREPARED" | "SUBMITTED" | "RESPONDED" | "REJECTED" | "INTERVIEW"] },
   { "on": "recipe.broken", "site"?: "<host>" }, { "on": "email.classified", "label"?: ["<label>"] },
-  { "on": "view.action", "collection"?: "<collection>" } (a row's button on a page, see view),
   { "on": "telegram.command", "command": "<lowercase name, e.g. task>", "description"?: "<for the bot's menu>" } (the
   user sends /task <text> to the Storm bot, maybe as a photo's caption: {{trigger.text}} is what follows it, never a
   target, {{trigger.file}} a photo or file for file.keep's telegram; never run, status, inbox, pause, resume, new, edit,
   help, start), or a webhook:
   { "webhook": "hmac-sha256" | "token" }. The event's data is "{{trigger.*}}": run.finished: runId, pipeline,
-  status, summary, outputs (by step id); application.status: applicationId, status, job { title, company, location,
-  url }; recipe.broken: site, recipe, version, reason, fixProposed; email.classified: label, reason, message (an
-  email); view.action: collection, key, item (the row), action; webhook: body, event, receivedAt. As a target, only "{{trigger.message.*}}" (email.classified) or
-  "{{trigger.job.url}}" (application.status); never a webhook body or a run's outputs.
+  status, summary, outputs (by step id); recipe.broken: site, recipe, version, reason, fixProposed; email.classified: label, reason, message (an
+  email); webhook: body, event, receivedAt. As a target, only "{{trigger.message.*}}" (email.classified); never a
+  webhook body or a run's outputs.
 - steps: in order. Each { "id", "type", "with", "forEach"?, "retries"? }. id: lowercase start, letters, digits, _
   (not "item", "cred" or "trigger"). type: a catalog step type. with: that step's parameters, nothing else.
 - References: "{{stepId.field}}" is an earlier step's output field ("{{fetch.messages}}"). A value that is exactly one
@@ -606,16 +603,6 @@ Pipeline definition (JSON; the user sees it as YAML):
 - limits: { "<side-effect step type>": "N/day" | "N/hour" }, e.g. { "email.send": "20/day" }.
 - policy: { "allowedDomains": [...], "allowedRecipients": [...] } for fixed targets; usually not needed.
 - retries (0–5) for flaky non-side-effect steps only.
-- view (optional): a page in the menu for a collection this pipeline's data.save keeps. Give one when the user wants to
-  see or browse what a watch keeps ("a page", "a list", "show me"), not by default. { "menu": { "label", "icon"? },
-  "collection", "columns": ["<field>" | { "field", "label"?, "as"?: text|number|money|date|datetime|badge|link|yesno,
-  "currency"?: "<field>" }], "title"?, "link"?: "<url field>", "sort"?: "-<field>" (default "-@firstSeen"),
-  "removed"?: true (for complete saves), "detail"?: { "fields"?, "history"?: "<data.history collection>" },
-  "chart"?: { "history": "<data.history collection>", "label"?, "stepped"?: true for prices } (a trend over time),
-  "marks"?: [{ "id", "label", "hides"? }] (the user's, by hand, e.g. done), "actions"?: [{ "label", "run": "self" |
-  "<pipeline name>", "row"?: true, "confirm"? }] }. Fields are dotted paths of the saved item; @key, @firstSeen,
-  @lastSeen are the row's own. A page button runs a manual or scheduled pipeline; a row button runs one triggered by
-  { "on": "view.action" }, which reads the row as {{trigger.item.<field>}} (never a target).
 
 Apps (M30–M34): when what the user describes is about keeping and acting on things (jobs, bills, products, people,
 books), not only telling them once, propose an App with propose_app: its types, their pages, and the pipelines that fill

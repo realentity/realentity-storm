@@ -57,14 +57,10 @@ export function triggerLabel(trigger: Trigger): string | null {
       return `after ${trigger.pipeline}`;
     case "email.classified":
       return trigger.label ? `an email: ${trigger.label.join(", ")}` : "an email";
-    case "application.status":
-      return "an application's status";
     case "recipe.broken":
       return "a broken recipe";
     case "flow.later":
       return "later, from another pipeline";
-    case "view.action":
-      return "a button on a pipeline's page";
     case "telegram.command":
       return `/${trigger.command} on Telegram`;
   }

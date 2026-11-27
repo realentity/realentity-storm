@@ -85,21 +85,6 @@ enum CredentialKind {
   DATABASE
 }
 
-enum JobPostingStatus {
-  NEW
-  SHORTLISTED
-  SKIPPED
-  APPLIED
-}
-
-enum ApplicationStatus {
-  PREPARED
-  SUBMITTED
-  RESPONDED
-  REJECTED
-  INTERVIEW
-}
-
 // #endregion
 
 // #region Identity
@@ -115,8 +100,6 @@ model User {
   sessions         UserSession[]
   settings         UserSetting?
   followUps        FollowUp[]
-  bills            Bill[]
-  watched          WatchedProduct[]
   pipelines        Pipeline[]
   builderChats     BuilderChat[]
   siteRecipes      SiteRecipe[]
@@ -127,8 +110,6 @@ model User {
   credentials      Credential[]
   modelSettings    ModelSetting[]
   artifacts        Artifact[]
-  jobPostings      JobPosting[]
-  applications     Application[]
   documents        Document[]
   mailCursors      MailCursor[]
   reflections      Reflection[]
@@ -277,78 +258,6 @@ model Webhook {
   @@map("Webhooks")
 }
 
-/// Where a pipeline's email.fetch stopped in a mailbox: messages with a higher UID are new. A new UIDVALIDITY (the
-/// server renumbered the mailbox) starts over from the look-back window.
-/// A product the user watches on the Prices page (M24): a target price, and the shops that sell it.
-model WatchedProduct {
-  watchedProductId String         @id @default(uuid()) @db.Uuid
-  userId           String         @db.Uuid
-  user             User           @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  name             String
-  targetPrice      Decimal?       @db.Decimal(12, 2)
-  /// The target's currency; a shop in another currency is never compared with it.
-  currency         String?
-  enabled          Boolean        @default(true)
-  offers           WatchedOffer[]
-  dateCreated      DateTime       @default(now())
-  dateUpdated      DateTime       @updatedAt
-
-  @@index([userId])
-  @@map("WatchedProducts")
-}
-
-/// One shop's page for a watched product, with what price.watch read last. Its history is in DataPoint
-/// (collection "price-watch", key: watchedOfferId).
-model WatchedOffer {
-  watchedOfferId   String         @id @default(uuid()) @db.Uuid
-  watchedProductId String         @db.Uuid
-  product          WatchedProduct @relation(fields: [watchedProductId], references: [watchedProductId], onDelete: Cascade)
-  url              String
-  /// The variant, as shop.product's select: { size: M, color: Black }.
-  select           Json?
-  lastPrice        Decimal?       @db.Decimal(12, 2)
-  lastCurrency     String?
-  lastInStock      Boolean?
-  lastTitle        String?
-  lastProblem      String?
-  lastCheckedAt    DateTime?
-  dateCreated      DateTime       @default(now())
-
-  @@index([watchedProductId])
-  @@map("WatchedOffers")
-}
-
-/// A bill read from an email or its PDF (M23, bill.save): one row per bill, however many emails mention it.
-model Bill {
-  billId      String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  user        User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  /// Who bills, as the bill names it (e.g. "EVN Bulgaria").
-  issuer      String
-  /// The sender's domain: bills from one issuer are compared with each other by it.
-  issuerKey   String
-  /// issuerKey with the bill's reference, else its period, else its due date, else the email: the same bill again is
-  /// the same row.
-  billKey     String
-  amount      Decimal   @db.Decimal(12, 2)
-  currency    String
-  dueDate     DateTime? @db.Date
-  /// The month it is for, YYYY-MM.
-  period      String?
-  reference   String?
-  messageId   String
-  from        String
-  subject     String
-  paidAt      DateTime?
-  runId       String?   @db.Uuid
-  dateCreated DateTime  @default(now())
-  dateUpdated DateTime  @updatedAt
-
-  @@unique([userId, billKey])
-  @@index([userId, issuerKey])
-  @@map("Bills")
-}
-
 /// One of the user's sent emails that email.awaiting proposed a follow-up for (M22): never proposed again, whatever they
 /// decided. Another message of theirs in the thread is a new one to follow up.
 model FollowUp {
@@ -367,6 +276,8 @@ model FollowUp {
   @@map("FollowUps")
 }
 
+/// Where a pipeline's email.fetch stopped in a mailbox: messages with a higher UID are new. A new UIDVALIDITY (the
+/// server renumbered the mailbox) starts over from the look-back window.
 model MailCursor {
   mailCursorId String   @id @default(uuid()) @db.Uuid
   userId       String   @db.Uuid
@@ -811,57 +722,6 @@ model ModelSetting {
 // #endregion
 
 // #region Jobs
-
-model JobPosting {
-  jobPostingId String           @id @default(uuid()) @db.Uuid
-  userId       String           @db.Uuid
-  user         User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  source       String
-  externalId   String?
-  url          String
-  title        String
-  company      String?
-  location     String?
-  description  String           @default("")
-  score        Float?
-  scoreReason  String?
-  status       JobPostingStatus @default(NEW)
-  firstSeenAt  DateTime         @default(now())
-  lastSeenAt   DateTime         @default(now())
-  dateUpdated  DateTime         @updatedAt
-
-  applications Application[]
-
-  @@unique([userId, url])
-  @@index([userId, status])
-  @@map("JobPostings")
-}
-
-model Application {
-  applicationId String            @id @default(uuid()) @db.Uuid
-  userId        String            @db.Uuid
-  user          User              @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  jobPostingId  String            @db.Uuid
-  jobPosting    JobPosting        @relation(fields: [jobPostingId], references: [jobPostingId], onDelete: Cascade)
-  proposalId    String?           @db.Uuid
-  status        ApplicationStatus @default(PREPARED)
-  cvArtifactId  String?           @db.Uuid
-  /// The run that prepared or submitted it.
-  runId         String?           @db.Uuid
-  submittedAt   DateTime?
-  /// When the employer first answered, invited the user to an interview, turned them down (M16): kept when the status moves
-  /// on, so an interview that ended in a rejection still counts as an interview.
-  respondedAt   DateTime?
-  interviewAt   DateTime?
-  rejectedAt    DateTime?
-  notes         String?
-  dateCreated   DateTime          @default(now())
-  dateUpdated   DateTime          @updatedAt
-
-  @@unique([jobPostingId])
-  @@index([userId])
-  @@map("Applications")
-}
 
 /// A file of the user's that application forms may attach (their CV, a cover letter), under DOCUMENTS_DIR. Uploading one
 /// with the same name replaces it: the old row keeps its file (an approved payload names it by id and SHA-256) and

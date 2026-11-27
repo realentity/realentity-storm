@@ -1,6 +1,6 @@
 import { type PipelineDetailView } from "@realentity/storm-shared";
 import { NeedsCard } from "../components/NeedsCard";
-import { IconEye, IconLayoutList, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
+import { IconEye, IconPencil, IconPlayerPlay } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ExportYaml } from "../components/ImportYaml";
@@ -66,12 +66,6 @@ export function PipelinePage() {
         title={p.name}
         actions={
           <>
-            {p.current?.definition.view && (
-              <Link to={`/v/${pipelineId}`} className="btn" data-testid="open-view">
-                <IconLayoutList size={18} className="me-1" />
-                {p.current.definition.view.menu.label}
-              </Link>
-            )}
             {p.current && <ExportYaml what="pipeline" id={pipelineId} />}
             <Link to={`/pipelines/${pipelineId}/edit`} className="btn" data-testid="edit-pipeline">
               <IconPencil size={18} className="me-1" />

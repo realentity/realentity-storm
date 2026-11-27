@@ -51,7 +51,6 @@ steps:
     type: notify.telegram
     when: "{{feeds.items}}"              # skip the step when the value is empty
     with: { text: "New releases: {{feeds.items}}" }
-view: ...                                # optional: a page on Home for a saved collection (§2.4)
 ```
 
 ### 2.1 References
@@ -125,39 +124,12 @@ transformed only as `http.request` sends it, after its gate. A credential (`{{cr
   On the editor's cards, *Try up to here* dry-runs it up to one step: the steps after it don't run, the step shows what
   it gave, and the cards after it pick from that.
 
-### 2.4 A page for the pipeline (`view`)
+### 2.4 A pipeline's own list (`collection`)
 
-> M33: an App's pages (§2.5) do all of this and more; Release watch and Table growth are now in the Releases and
-> Tables Apps ([examples/apps/](../examples/apps/)). `view` still works, until it goes with the old pages.
-
-A pipeline that saves a collection (`data.save` with `collection:`) can show it as a page (on *Home*, under Pipeline pages), with columns,
-marks (e.g. *Done*, which hides a row) and buttons that start a pipeline for a row:
-
-```yaml
-view:
-  menu: { label: Releases, icon: package }
-  collection: releases
-  columns: [title, { field: published, as: date }, { field: source, label: Feed, as: link }]
-  link: url
-  sort: -published
-  marks: [{ id: upgraded, label: Upgraded, hides: true }]
-  actions:
-    - { label: Check now, run: self }
-    - { label: Upgrade notes, run: Release notes, row: true, confirm: "Send this release's notes to Telegram?" }
-```
-
-With a `data.history` step, `chart` draws its values above the list, a line per key (the five with the highest latest
-value; every key's own page charts it too). `stepped: true` for prices, which hold until the next reading:
-
-```yaml
-view:
-  menu: { label: Tables, icon: chart }
-  collection: tables                     # the latest count per table (data.save)
-  columns: [name, { field: rows, as: number }]
-  sort: -rows
-  detail: { history: table-rows }        # a table's own page: its chart
-  chart: { history: table-rows, label: Rows }
-```
+A pipeline outside an App keeps what it saw in a named list of yours: `data.save` with `collection` and `key` keeps
+each item once and says which are `added` (new since the last run), `changed` and, with `complete: true`, `removed`;
+`data.history` with a `collection` keeps a number per item over time. The list has no page of its own: when you want
+one, make an App (§2.5), and *Move it here* on the App's page moves the list into one of its types.
 
 ### 2.5 Apps and data types
 
@@ -353,8 +325,8 @@ A target (an address to send to) never comes from a type pipelines write, even a
 from a `mine` type it may.
 
 A list can also draw a `data.history` collection keyed by its entities above it (`chart: { history, label?, stepped? }`,
-the five with the highest latest value), and *Move them here* on an App's page brings a pipeline's collection (a
-`view:` page's) into one of its types: a mark on a row becomes the `mine` yes/no field of its name.
+the five with the highest latest value), and *Move it here* on an App's page brings a pipeline's collection (§2.4)
+into one of its types.
 
 **Reports.** A `report:` page counts a type's entities over a period, picked on the page from `periods` (in days; the
 first is shown first, *All time* is always offered). An entity is in the period by its `date`: a date field, or
@@ -533,18 +505,16 @@ steps:
 | `manual` (default) | You press Run, or send `/run <name>` on Telegram | — |
 | `{ schedule: "0 8 * * 1-5", tz: Europe/Sofia }` | A five-field cron time, in `tz` (default: the server's time zone) | — |
 | `{ on: run.finished, pipeline: Bills, status: [FAILED] }` | Another pipeline's run ends (default: only `DONE`) | `runId`, `pipeline`, `status`, `summary` (for a failed run, the step and its error), `outputs` |
-| `{ on: application.status, status: [SUBMITTED] }` | One of your applications changes status | `applicationId`, `status`, `job` (title, company, location, url) |
 | `{ on: recipe.broken, site: jobs.example.com }` | A browser recipe stops matching its site | `site`, `recipe`, `version`, `reason`, `fixProposed` |
 | `{ on: email.classified, label: [interview] }` | An `email.classify` step labels an email | `label`, `reason`, `message` (the email) |
 | `{ on: flow.later }` | Another pipeline's `flow.later` fires | `data`, `key`, `scheduledAt`, `scheduledByRunId` |
-| `{ on: view.action, collection: releases }` | A row's button on a pipeline's page | `collection`, `key`, `item` (the row), `action` |
 | `{ on: entity.changed, type: Job, field: salary, stage: interview }` | An entity of the pipeline's App is added or changed, by another pipeline or by you (`field`: only changes of it; `stage`: only a move into it) | `app`, `type`, `key`, `item`, `before` (null when added), `changed` (field names), `by`, `stage` (`from`, `to`, or null) |
 | `{ on: entity.action, type: Job }` | An entity's button on its page | `app`, `type`, `key`, `item`, `action` |
 | `{ on: telegram.command, command: task, description: "Add a task" }` | You send `/task Buy milk` to the Storm bot, maybe as a photo's or a file's caption (M49). Only while the pipeline is on; a command is one pipeline's (switching on a second with it is refused, with a name to use instead); it is in the bot's menu with its `description`. Never one of the bot's own (`/run`, `/inbox`, …) | `command`, `text` (what follows it: data, never a target), `file` (a photo or file sent with it, for `file.keep`'s `telegram`; null without one), `messageId`, `sentAt` |
 | `{ webhook: hmac-sha256 }` or `{ webhook: token }` | An HTTP call from the internet (GitHub-style signature, or a bearer token) | `body`, `event`, `receivedAt` |
 
-Only an email's own addresses (`email.classified`) and a posting's own URL (`application.status`) may be used as
-targets of a side effect. Webhook bodies, `flow.later` data, view rows and entities pipelines write are never trusted as targets; an entity of a `mine` type is.
+Only an email's own addresses (`email.classified`) may be used as targets of a side effect. Webhook bodies,
+`flow.later` data and entities pipelines write are never trusted as targets; an entity of a `mine` type is.
 
 ---
 
@@ -560,15 +530,15 @@ Each step lists what it does, its main inputs (defaults in brackets) and its out
 
 #### `data.dedupe`
 Removes items whose `key` repeats, keeping the first. With `againstType: Job` (a type of the pipeline's App, M33) it
-also drops the items already kept as entities of it, so each posting comes through once (`against: JobPosting` does
-the same with what the old Jobs page kept).
-- In: `from` (list), `key`, `againstType` or `against` (optional).
+also drops the items already kept as entities of it, so each comes through once. Outside an App, `data.save` into a
+collection does the same with its `added`.
+- In: `from` (list), `key`, `againstType` (optional).
 - Out: `items`, `duplicates` (how many were removed).
 
 ```yaml
 - id: fresh
   type: data.dedupe
-  with: { from: "{{search.items}}", key: url, against: JobPosting }
+  with: { from: "{{search.items}}", key: url, againstType: Job }
 ```
 
 #### `data.filter`
@@ -589,15 +559,13 @@ a list of text's value without case, unless the field is `caseSensitive`).
 ```
 
 #### `data.save`
-Saves items and says what changed since the last save.
-- **Default (job postings)**: saves by `url` to the Jobs page, with a `status` (`NEW`, `SKIPPED`, `SHORTLISTED`).
-  A posting saved again keeps its first-seen date, and its status only moves forward.
+Saves items and says what changed since the last save, with `collection` or `type` (one of them).
 - **With `collection`**: a named list of your own, one item per `key`. `changed` compares `fields` (default: all).
   `complete: true` means the items are the whole list, so saved items missing from it go to `removed`.
 - **With `type`** (a type of the pipeline's App, §2.5): as entities, by the type's key; each field as its kind, your
   (`mine`) fields never written. `fields` and `complete` as with a collection; `key` and `collection` aren't taken.
   `stage` (M33) moves every item to that stage, as the type's moves allow a pipeline (`stage: skipped` for the agencies).
-- In: `items`, `into` [JobPosting], `status` [NEW], `collection`, `key`, `fields`, `complete` [false], `type`, `stage`.
+- In: `items`, `collection`, `key`, `fields`, `complete` [false], `type`, `stage`.
 - Out: `saved`, `created`, `skipped`, `added` (new), `changed` (with `before`/`after`), `removed`, `invalid` (with
   `type`: `key`, `saved`, `problems`). In a dry run nothing is saved: `preview` says so first, and the counts are what
   a run would save.
@@ -855,8 +823,7 @@ and say `app: Prices`): a `mine` type, each with its `shops`, a line each (`http
 for a variant). Each shop's page is read like `shop.product` and kept as an **Offer** with its price history (the
 Offer's page charts it; a line you remove takes its Offer off). It reports only news: a shop at or under your target
 price (once, when it crosses), the lowest in `lowestDays`, back in stock. `text` names the cheapest shop for each, and
-is empty when there is nothing new. The addresses are yours, so they need no `allowedDomains`. *Move them here* on the
-App's page brings the products, shops and price history the old Prices page kept.
+is empty when there is nothing new. The addresses are yours, so they need no `allowedDomains`.
 - In: `product` (only this one; default: all enabled), `lowestDays` [90].
 - Out: `products`, `news`, `text`, `problems`, `report`.
 
@@ -1231,10 +1198,10 @@ files and writes nothing.
 #### `application.outcome` 🧠
 Reads what an email says about one of your submitted applications, matches it to the application (by the sender's
 domain or the company's name, and the role) and moves it on: `RESPONDED`, `INTERVIEW` or `REJECTED`. Only forward.
-It emits `application.status`, which can cancel a scheduled follow-up. An automatic "we received it" isn't an answer.
-In the Job Search App (M33, `app: Job Search`) it works on the Jobs you applied to, moving each as its stages allow a
-pipeline, the email noted in its comments; `browser.mapForm` and `browser.fillAndSubmit` move a Job to prepared and
-applied, and `llm.score` calibrates on the Jobs' outcomes, all still emitting `application.status`.
+An automatic "we received it" isn't an answer. It works on the Jobs of the pipeline's App (M33, `app: Job Search`)
+you applied to, moving each as its stages allow a pipeline (an `entity.changed`, which can cancel a scheduled
+follow-up), the email noted in its comments; `browser.mapForm` and `browser.fillAndSubmit` move a Job to prepared and
+applied, and `llm.score` calibrates on the Jobs' outcomes.
 - In: `message`.
 - Out: `matched`, `applicationId`, `job`, `status`, `changed`, `reason`.
 
@@ -1266,7 +1233,7 @@ keeps whether you paid it; a new one is `due`. It returns what to do next: `remi
 bills with a due date, each with `remindAt`, `remindDaysBefore` days before at 09:00) and `jumps` (new bills more than
 `jumpPercent` above the issuer's usual amount), with `jumpText` describing them. The Bills App's list shows them by month
 with the total and what is unpaid, a badge on what is due soon, and Mark paid on each row; the morning brief tells you
-the unpaid ones due within three days. *Move them here* on the App's page brings the bills the old Bills page kept.
+the unpaid ones due within three days.
 - In: `bills`, `remindDaysBefore` [3], `jumpPercent` [30].
 - Out: `added`, `updated`, `remind`, `jumps`, `jumpText`.
 
@@ -1383,7 +1350,7 @@ gone or nothing new comes. Teach mode writes the first two; the others are set b
 #### `browser.details` 🖥️
 Opens each item's own page and adds more fields to the item, as the recipe's `detail` section says: a job ad's
 description, a listing's floor. Headless, no LLM, at the recipe's pace, on the recipe's site only. Put it after
-`data.dedupe`, so only new items are opened (each page once). Items over `maxItems`, without a link, off the site, or
+`data.save` (its `added`) or `data.dedupe` with `againstType`, so only new items are opened (each page once). Items over `maxItems`, without a link, off the site, or
 whose page fails come back as they were. When none of the pages opened has the fields, the item pages changed: the step
 fails saying so (edit the recipe's `detail`). A recipe's **Try** opens the first 5 items' pages too.
 - In: `recipe`, `items`, `maxItems` [20, at most 100], `timeoutSeconds` [30].
@@ -1394,11 +1361,11 @@ fails saying so (edit the recipe's `detail`). A recipe's **Try** opens the first
   type: browser.extract
   with: { recipes: [jobs.example.com/search], params: { category: net } }
 - id: fresh
-  type: data.dedupe
-  with: { from: "{{search.items}}", key: url, against: JobPosting }
+  type: data.save
+  with: { items: "{{search.items}}", collection: jobs, key: url }
 - id: more
   type: browser.details
-  with: { recipe: jobs.example.com/search, items: "{{fresh.items}}", maxItems: 30 }
+  with: { recipe: jobs.example.com/search, items: "{{fresh.added}}", maxItems: 30 }
 ```
 
 The recipe names the field with each item's link (`url` if left out) and the fields to read on its page, new names, not
@@ -1443,8 +1410,7 @@ App can use the step. Its output is the payload of `browser.fillAndSubmit`, whic
 Fills the form with exactly the approved fields and files, and submits it in the live browser. Before typing, it reads
 the form again: a changed field, a new required field or another address pauses the run, and nothing is sent. With
 `stopBeforeSubmit: true` it fills everything and you press the final button yourself. With `job`, that posting's
-Job (in Job Search) is applied, or its application marked submitted (event `application.status`); without it, the form
-can be for anything.
+Job in the pipeline's App is applied; without it, the form can be for anything.
 - In: `url`, `fields`, `files`, `stopBeforeSubmit` [false], `job`, `timeoutSeconds`.
 - Out: `submitted`, `url`, `confirmation`.
 
@@ -1631,7 +1597,7 @@ Starts another pipeline (whose trigger is `{ on: flow.later }`) `after` a while 
 with `data` as its `{{trigger.data}}`. It fires once, unless cancelled first by `flow.cancel` with its `key`, or by an
 event matching `cancelOn`. Another `flow.later` with the same key replaces it.
 - In: `pipeline`, `after` or `at`, `timeZone`, `data`, `key`, `cancelOn` (`{ event, match }`; `event`: run.finished,
-  application.status, recipe.broken or email.classified).
+  recipe.broken, email.classified or entity.changed).
 - Out: `scheduledStartId`, `fireAt`, `replaced`.
 
 #### `flow.cancel`
@@ -1640,27 +1606,28 @@ Cancels the starts `flow.later` scheduled with `key` that haven't started yet.
 - Out: `cancelled`.
 
 ```yaml
-# 7 days after you apply, a reminder, unless the employer answers first
+# 7 days after you apply, a reminder, unless the employer answers first (application.outcome moves the Job)
 name: Follow-up after applying
-trigger: { on: application.status, status: [SUBMITTED] }
+app: Job Search
+trigger: { on: entity.changed, type: Job, stage: applied }
 steps:
   - id: later
     type: flow.later
     with:
       pipeline: Follow-up reminder
       after: 7d
-      key: "follow-up:{{trigger.applicationId}}"
-      data: { job: "{{trigger.job}}" }
+      key: "follow-up:{{trigger.key}}"
+      data: { job: "{{trigger.item}}" }
       cancelOn:
-        event: application.status
-        match: { applicationId: "{{trigger.applicationId}}" }
+        event: entity.changed
+        match: { key: "{{trigger.key}}", by: pipeline }
 ```
 
 ```yaml
 # Cancel it by hand, e.g. when you withdraw
 - id: stop
   type: flow.cancel
-  with: { key: "follow-up:{{trigger.applicationId}}" }
+  with: { key: "follow-up:{{trigger.key}}" }
 ```
 
 ---

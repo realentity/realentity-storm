@@ -151,22 +151,21 @@ describe("pipelines", () => {
 
     it("a pipeline started by an event gets an example of the event in a dry run; a scheduled one gets none", async () => {
       const source = `
-name: Follow-up after applying
-trigger: { on: application.status, status: [SUBMITTED] }
+name: Follow-up after an interview email
+trigger: { on: email.classified, label: [interview] }
 steps:
   - id: later
     type: flow.later
     with:
       pipeline: Follow-up reminder
       after: 7d
-      cancelOn: { event: application.status, match: { applicationId: "{{trigger.applicationId}}" } }
+      cancelOn: { event: email.classified, match: { "message.threadId": "{{trigger.message.threadId}}" } }
 `;
       const { run } = await dryRun(source);
       const detail = (await agent.get(`/api/runs/${run.runId}`).expect(200)).body as { triggerData: Record<string, unknown> };
       expect(detail.triggerData).toMatchObject({
-        applicationId: "example-application",
-        status: "SUBMITTED",
-        job: { url: "https://jobs.example.com/example-role" },
+        label: "interview",
+        message: { subject: "An example email" },
       });
       const scheduled = await dryRun(V1);
       expect(((await agent.get(`/api/runs/${scheduled.run.runId}`).expect(200)).body as { triggerData: unknown }).triggerData).toBeNull();

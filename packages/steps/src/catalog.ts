@@ -99,11 +99,6 @@ export interface EntityContract {
   /** A type of mine the step reads (price.watch's Product); otherwise one it writes, so never mine. */
   mine?: boolean;
   /**
-   * The step works outside an App too (on what the old pages kept, until they go: M33-T4): the type is checked only
-   * when its pipeline names an App.
-   */
-  optional?: boolean;
-  /**
    * M59-T3: the contract holds only with this input given (true, or any value but false or empty): llm.score's
    * `outcomes`, browser.mapForm's `job`. Without it the step works in any App.
    */
@@ -142,7 +137,6 @@ export const BILL_ENTITY: EntityContract = {
 export const JOB_ENTITY: EntityContract = {
   type: "Job",
   key: "url",
-  optional: true,
   fields: {
     url: "url",
     title: "text",
@@ -450,9 +444,6 @@ const TimeZone = z
 /** A product variant by its attributes (shop.product), e.g. { size: "M", color: "Black" }. */
 const Select = z.record(z.string().min(1).max(40), z.string().min(1).max(100));
 
-/** Where data.save and data.dedupe keep and look up items. */
-export const SAVED_LISTS = ["JobPosting"] as const;
-
 /** A collection of the user's own for data.save and data.history (M13). */
 export const COLLECTION = /^[a-z][a-z0-9._-]{0,63}$/;
 
@@ -545,15 +536,13 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.dedupe",
     description:
-      "Removes items whose `key` field repeats, keeping the first; with `against: JobPosting`, also the jobs saved " +
-      "before (by data.save), so each posting comes through once; with `againstType` (a type of the pipeline's App, " +
-      "M33), the items whose key is already an entity of it.",
+      "Removes items whose `key` field repeats, keeping the first; with `againstType` (a type of the pipeline's App, " +
+      "M33), also the items whose key is already an entity of it, so each comes through once.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
       from: Items,
       key: z.string().min(1),
-      against: z.enum(SAVED_LISTS).optional().describe("also drop items whose key is already saved there (key: the posting's url)"),
       againstType: z
         .string()
         .regex(TYPE_NAME)
@@ -573,9 +562,7 @@ export const CORE_STEPS: StepDefinition[] = [
   {
     type: "data.save",
     description:
-      "Saves items and says what changed since the last save. Default: as job postings (by `url`; title, company, " +
-      "location, description, score, scoreReason, source) for the Jobs page and deduplication; a posting saved again " +
-      "keeps its first-seen date and `status` only moves forward (NEW → SKIPPED or SHORTLISTED; APPLIED stays). With " +
+      "Saves items and says what changed since the last save. With " +
       "`collection`: into that named list, one item per `key`; `changed` compares `fields` (default every field); " +
       "`complete: true` means the items are the whole list, so missing ones are `removed`. With `type` (a type of the " +
       "pipeline's App, M30): as entities of that type, by its key; each field read as its kind, a wrong one left out " +
@@ -586,13 +573,11 @@ export const CORE_STEPS: StepDefinition[] = [
     saasSafe: true,
     input: z.object({
       items: Items,
-      into: z.enum(SAVED_LISTS).default("JobPosting"),
-      status: z.enum(["NEW", "SKIPPED", "SHORTLISTED"]).default("NEW"),
       collection: z
         .string()
         .regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. releases")
         .optional()
-        .describe("a list of the user's own instead of JobPosting"),
+        .describe("a list of the user's own (a pipeline outside an App)"),
       key: z.string().min(1).optional().describe("the field that identifies an item in the collection, e.g. url or id"),
       fields: z.array(z.string().min(1)).min(1).optional().describe("the fields whose change counts (default: all)"),
       complete: z.boolean().default(false).describe("the items are the whole list: saved ones missing from it are removed"),
@@ -608,7 +593,7 @@ export const CORE_STEPS: StepDefinition[] = [
         .max(40)
         .optional()
         .describe("with type: move each item to this stage, as its type's moves allow a pipeline (M33)"),
-    }),
+    }).refine((i) => i.collection !== undefined || i.type !== undefined, "data.save needs `collection` (a list of yours) or `type` (a type of the pipeline's App)"),
     output: z.object({
       /** A dry run: that nothing was saved, and what a run would save (the counts are that). */
       preview: z.string().optional(),
@@ -1530,7 +1515,7 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Starts another pipeline (by name; its trigger must be { on: flow.later }) `after` a while (30m, 36h, 7d) or " +
       "`at` a time, with `data` as its {{trigger.data}}. Once, unless cancelled first: by flow.cancel with its `key`, " +
-      "or by an event matching `cancelOn` (e.g. { event: application.status, match: { applicationId: … } }). " +
+      "or by an event matching `cancelOn` (e.g. { event: entity.changed, match: { key: …, by: pipeline } }). " +
       "Another flow.later with the same key replaces it. A dry run schedules nothing.",
     sideEffect: false,
     saasSafe: true,
@@ -1546,7 +1531,7 @@ export const CORE_STEPS: StepDefinition[] = [
       key: z.string().trim().min(1).max(300).optional(),
       cancelOn: z
         .object({
-          event: z.enum(["run.finished", "application.status", "recipe.broken", "email.classified"]),
+          event: z.enum(["run.finished", "recipe.broken", "email.classified", "entity.changed"]),
           match: z.record(z.string().min(1), z.string()).describe("dotted paths in the event's data and the values that cancel"),
         })
         .optional(),
@@ -1687,7 +1672,7 @@ export const CORE_STEPS: StepDefinition[] = [
       job: z
         .record(z.string(), z.unknown())
         .optional()
-        .describe("a job posting (title, company, url): for the answers, and its Job (Job Search) or Application is prepared"),
+        .describe("a job posting (title, company, url): for the answers, and its Job in the pipeline's App is prepared"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1715,7 +1700,7 @@ export const CORE_STEPS: StepDefinition[] = [
       fields: z.array(FormFieldSchema),
       files: z.array(FormFileSchema).default([]),
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
-      job: z.string().optional().describe("a job posting's url: its Job (Job Search) is applied, or its Application submitted"),
+      job: z.string().optional().describe("a job posting's url: its Job in the pipeline's App is applied"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1836,7 +1821,7 @@ export const CORE_STEPS: StepDefinition[] = [
       job: z
         .record(z.string(), z.unknown())
         .optional()
-        .describe("a job posting (title, company, url): for the answers, and its Job (Job Search) or Application is prepared"),
+        .describe("a job posting (title, company, url): for the answers, and its Job in the pipeline's App is prepared"),
       maxActions: z.number().int().min(1).max(50).default(25),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
@@ -1868,7 +1853,7 @@ export const CORE_STEPS: StepDefinition[] = [
       files: z.array(FormFileSchema).default([]),
       submit: ElementTargetSchema,
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
-      job: z.string().optional().describe("a job posting's url: its Job (Job Search) is applied, or its Application submitted"),
+      job: z.string().optional().describe("a job posting's url: its Job in the pipeline's App is applied"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({

@@ -331,8 +331,10 @@ describe("Apps (M30)", () => {
       ],
     });
     ok(compiler.compile(jobs(true), { app: jobSearch }));
-    // Outside an App: the old applications' outcomes.
-    ok(compiler.compile({ name: "Score", steps: [{ id: "score", type: "llm.score", with: { items: [], against: "x", outcomes: true } }] }));
+    // Outside an App there are no Jobs to learn from (M71: the old applications are gone).
+    expect(errorsOf(compiler.compile({ name: "Score", steps: [{ id: "score", type: "llm.score", with: { items: [], against: "x", outcomes: true } }] }))).toEqual([
+      "steps[0].with.outcomes: llm.score with outcomes reads Job entities: say which App with `app:` (one with a Job type)",
+    ]);
   });
 
   // M66-I1: another App's type through `uses:`: read only, only its declared fields, never a target

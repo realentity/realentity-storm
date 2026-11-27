@@ -3,8 +3,6 @@ import { z } from "zod";
 import { APP_NAME, ENTITY_FIELD, TYPE_NAME } from "./app";
 import { HOST_PATTERN } from "./credentials";
 import { NeedsSchema } from "./needs";
-import { APPLICATION_STATUSES } from "./jobs-api";
-import { PipelineViewSchema, VIEW_COLLECTION } from "./view";
 
 /**
  * Pipeline definition (docs/design.md §2.2): what a pipeline is authored as (YAML or JSON) before compilation.
@@ -70,11 +68,9 @@ const CRON = /^(\S+\s+){4}\S+$/;
 /** What happens in Storm that can start a pipeline (M12-T1); the event's data is {{trigger.*}} in its steps. */
 export const TRIGGER_EVENTS = [
   "run.finished",
-  "application.status",
   "recipe.broken",
   "email.classified",
   "flow.later",
-  "view.action",
   "entity.changed",
   "entity.action",
   "telegram.command",
@@ -109,14 +105,11 @@ export const EventTriggerSchema = z.discriminatedUnion("on", [
       status: list(z.enum(["DONE", "FAILED"])),
     })
     .strict(),
-  z.object({ on: z.literal("application.status"), status: list(z.enum(APPLICATION_STATUSES)) }).strict(),
   z.object({ on: z.literal("recipe.broken"), site: z.string().trim().toLowerCase().min(1).optional() }).strict(),
   /** One event per email an email.classify step labelled; `label` filters them. */
   z.object({ on: z.literal("email.classified"), label: list(z.string().min(1)) }).strict(),
   /** Started by another pipeline's flow.later (M14-T3), with the data it gave: {{trigger.data}}. */
   z.object({ on: z.literal("flow.later") }).strict(),
-  /** Started by a row's button on a pipeline's page (M27), with the row: {{trigger.item}}. `collection` limits it to one. */
-  z.object({ on: z.literal("view.action"), collection: z.string().regex(VIEW_COLLECTION).optional() }).strict(),
   /**
    * An entity of the pipeline's App was added or changed (M30): by another pipeline's data.save, or by the user (M32).
    * `field` limits it to changes of that field.
@@ -223,8 +216,6 @@ export const PipelineDefinitionSchema = z
     steps: z.array(PipelineStepSchema).min(1).max(50),
     limits: z.record(z.string(), z.string().regex(LIMIT, '"N/day" or "N/hour"')).default({}),
     policy: PipelinePolicySchema.default({ allowedDomains: [], allowedRecipients: [] }),
-    /** Its page (M27): the collection it saves, in the menu, as a list with the user's marks and buttons. */
-    view: PipelineViewSchema.optional(),
     /**
      * M50: the credentials and settings it needs, by slot ({{cred:github}}, {{setting.repository}}); the user chooses
      * which fill them. A slot a step uses without one here is added by the compiler, from where it is used.

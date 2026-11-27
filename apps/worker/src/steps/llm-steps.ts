@@ -146,7 +146,7 @@ export class ScoreStep extends LlmStep {
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const { items, against, instruction, top, outcomes } = input as { items: Item[]; against: string; instruction?: string; top?: number; outcomes: boolean };
-    const learned = outcomes ? await this.outcomes(context.userId, context) : "";
+    const learned = outcomes ? await this.outcomes(context) : "";
     const schema = z.object({
       results: z.array(z.object({ index: z.number().int(), score: z.number().int().min(0).max(100), reason: z.string() })),
     });
@@ -165,41 +165,16 @@ export class ScoreStep extends LlmStep {
 
   /**
    * The user's recent applications with an outcome, as an <outcomes> block: an interview, a rejection, an answer, or none
-   * after NO_ANSWER_DAYS. Empty without any.
+   * after NO_ANSWER_DAYS; from the Jobs of the pipeline's App (none without a Job type). Empty without any.
    */
-  private async outcomes(userId: string, context?: StepContext): Promise<string> {
+  private async outcomes(context: StepContext): Promise<string> {
     if (!this.prisma) return "";
-    // In an App, its Jobs (none without a Job type); the old applications only outside one.
-    if (context?.app) {
-      const job = await jobAppOf(this.prisma, context);
-      return job ? jobOutcomesOf(this.prisma, job) : "";
-    }
-    const silentSince = new Date(Date.now() - NO_ANSWER_DAYS * 86_400_000);
-    const applications = await this.prisma.application.findMany({
-      where: {
-        userId,
-        OR: [{ status: { in: ["RESPONDED", "INTERVIEW", "REJECTED"] } }, { status: "SUBMITTED", submittedAt: { lt: silentSince } }],
-      },
-      include: { jobPosting: true },
-      orderBy: { dateUpdated: "desc" },
-      take: MAX_OUTCOMES,
-    });
-    if (applications.length === 0) return "";
-    const lines = applications.map((a) =>
-      JSON.stringify({
-        title: a.jobPosting.title,
-        company: a.jobPosting.company,
-        location: a.jobPosting.location,
-        scoredThen: a.jobPosting.score,
-        // An interview that ended in a rejection still got an interview.
-        outcome: a.interviewAt ? "interview" : a.rejectedAt ? "rejected" : a.respondedAt ? "answered" : `no answer in ${NO_ANSWER_DAYS} days`,
-      }),
-    );
-    return `<outcomes>\n${lines.join("\n")}\n</outcomes>\n`;
+    const job = await jobAppOf(this.prisma, context);
+    return job ? jobOutcomesOf(this.prisma, job) : "";
   }
 }
 
-/** M33: the same outcomes from the Jobs of the pipeline's App, by the dates each reached its stages. */
+/** M33: the outcomes from the Jobs of the pipeline's App, by the dates each reached its stages. */
 async function jobOutcomesOf(prisma: PrismaClient, job: JobApp): Promise<string> {
   const silentSince = new Date(Date.now() - NO_ANSWER_DAYS * 86_400_000).toISOString();
   const rows = await prisma.dataEntity.findMany({ where: { appId: job.appId, type: "Job", stage: { in: ["applied", "responded", "interview", "offer", "rejected"] } }, orderBy: { lastSeenAt: "desc" } });

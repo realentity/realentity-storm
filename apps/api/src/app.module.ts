@@ -2,7 +2,6 @@ import { Global, Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module";
-import { BillsModule } from "./bills/bills.module";
 import { BuilderModule } from "./builder/builder.module";
 import { BundlesModule } from "./bundles/bundles.module";
 import { ExamplesModule } from "./examples/examples.module";
@@ -19,17 +18,15 @@ import { FactsModule } from "./facts/facts.module";
 import { TopicsModule } from "./topics/topics.module";
 import { GoogleModule } from "./google/google.module";
 import { HooksModule } from "./hooks/hooks.module";
-import { JobsModule } from "./jobs/jobs.module";
+import { RecipesModule } from "./recipes/recipes.module";
 import { LearningModule } from "./learning/learning.module";
 import { LiveModule } from "./live/live.module";
 import { PipelinesModule } from "./pipelines/pipelines.module";
-import { PricesModule } from "./prices/prices.module";
 import { ProposalsModule } from "./proposals/proposals.module";
 import { QueueModule } from "./queue/queue.module";
 import { RunsModule } from "./runs/runs.module";
 import { AppsModule } from "./apps/apps.module";
 import { StepsModule } from "./steps/steps.module";
-import { ViewsModule } from "./views/views.module";
 import { MaskSealedInterceptor } from "./mask-sealed.interceptor";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { Integrations } from "@realentity/storm-db";
@@ -62,16 +59,13 @@ export class CoreModule {}
     BundlesModule,
     ExamplesModule,
     LiveModule,
-    JobsModule,
+    RecipesModule,
     DocumentsModule,
     HooksModule,
-    BillsModule,
-    PricesModule,
     GoogleModule,
     FactsModule,
     TopicsModule,
     HealthModule,
-    ViewsModule,
     AppsModule,
   ],
   providers: [

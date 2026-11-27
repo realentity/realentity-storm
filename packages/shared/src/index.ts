@@ -9,7 +9,7 @@ export * from "./app-sources";
 export * from "./app-source";
 export * from "./app-stages";
 export * from "./auth";
-export * from "./bills-api";
+
 export * from "./builder-api";
 export * from "./bundle";
 export * from "./app-package";
@@ -25,7 +25,8 @@ export * from "./google";
 export * from "./integrations-api";
 export * from "./connections-api";
 export * from "./health-api";
-export * from "./jobs-api";
+export * from "./documents-api";
+export * from "./recipes-api";
 export * from "./learning-api";
 export * from "./needs";
 export * from "./pipeline";
@@ -33,7 +34,7 @@ export * from "./pipeline-api";
 export * from "./pipeline-designer";
 export * from "./pipeline-source";
 export * from "./refs";
-export * from "./prices-api";
+
 export * from "./runs-api";
 export * from "./telegram";
 export * from "./telegram-api";

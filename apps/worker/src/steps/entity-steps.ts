@@ -30,8 +30,6 @@ import {
 } from "@realentity/storm-shared";
 import { type CredentialVault } from "../secrets/credential-vault";
 import { type StepContext, type StepExecutor } from "../runner/step-executor";
-import { contractProblems, JOB_ENTITY } from "@realentity/storm-steps";
-import { emitStatus, STAGE_STATUS } from "./job-entities";
 
 type Item = Record<string, unknown>;
 
@@ -241,14 +239,7 @@ export async function saveEntities(
     if (fileFields.length > 0 && filesRoot) {
       for (const { key, value } of writes) await releaseFiles(prisma, filesRoot, { appId, type: typeName, key }, value, before.get(key)?.mine);
     }
-    for (const event of events) {
-      await context.emit?.("entity.changed", { app: app.name, appId, type: typeName, ...event, by: "pipeline" });
-      // A Job reaching an application's stage still tells application.status (M33): its pipelines start on it.
-      const move = event.stage as { to: string } | null;
-      const isJob = typeName === JOB_ENTITY.type && contractProblems(type, JOB_ENTITY).length === 0;
-      const saved = move && STAGE_STATUS[move.to] && isJob ? await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId, type: typeName, key: event.key as string } } }) : null;
-      if (saved && move) await emitStatus(context, saved, move.to, event.item as Item);
-    }
+    for (const event of events) await context.emit?.("entity.changed", { app: app.name, appId, type: typeName, ...event, by: "pipeline" });
   }
   return {
     saved: keyed.size,
