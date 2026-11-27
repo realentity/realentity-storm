@@ -1,4 +1,5 @@
-import { createPrismaConnection, type PrismaConnection } from "@realentity/storm-db";
+import { payloadHash } from "@realentity/storm-crypto";
+import { createPrismaConnection, type Prisma, type PrismaConnection } from "@realentity/storm-db";
 import { readAppSource } from "@realentity/storm-shared";
 import { TestEnvironment } from "@realentity/storm-testing";
 import { defaultCatalog, PipelineCompiler } from "@realentity/storm-steps";
@@ -7,6 +8,8 @@ import { ExecutorRegistry, NO_ATTENTION, type StepContext } from "../src/runner/
 import { SaveStep } from "../src/steps/data-steps";
 import { ReadStep } from "../src/steps/entity-steps";
 import { MapStep } from "../src/steps/map-alert-steps";
+import { type MailConnector, type OutgoingMail } from "../src/mail/mail-connector";
+import { EmailSendStep } from "../src/steps/email-steps";
 import { catalog, createVersion } from "./support/test-steps";
 
 const BILLS = `
@@ -206,6 +209,63 @@ describe("data.read through a use (M66)", () => {
     const keyed = await db.client.appVersion.create({ data: { appId: reportId, version: 3, definition: {}, source: withRef.replace("fields: [issuer,", "fields: [billKey, issuer,") } });
     await db.client.app.update({ where: { appId: reportId }, data: { currentVersionId: keyed.appVersionId } });
     expect((await read()).items.map((i) => i.billKey)).toEqual(["water-11", "power-11"]);
+  });
+
+  // M66-T6: a field of mine there, listed under the use's mine:, is a recipient here; checked again at every run
+  it("sends to a use's field of mine (mine:), as I typed it there; refused once the owner no longer keeps it as mine", async () => {
+    const owner = await db.client.appVersion.create({
+      data: { appId: billsId, version: 2, definition: {}, source: BILLS.replace("      note:", "      email: { type: email, mine: true }\n      note:") },
+    });
+    await db.client.app.update({ where: { appId: billsId }, data: { currentVersionId: owner.appVersionId } });
+    await db.client.dataEntity.update({ where: { appId_type_key: { appId: billsId, type: "Bill", key: "power-11" } }, data: { mine: { note: "Paid late", email: "billing@power.example" } } });
+    const reader = REPORT.replace("fields: [issuer, amount, dueDate, status, note]", "fields: [issuer, email]\n    mine: [email]");
+    const version = await db.client.appVersion.create({ data: { appId: reportId, version: 2, definition: {}, source: reader } });
+    await db.client.app.update({ where: { appId: reportId }, data: { currentVersionId: version.appVersionId } });
+    await choose(billsId);
+
+    const sent: OutgoingMail[] = [];
+    const mail = {
+      send: (_who: unknown, message: OutgoingMail) => (sent.push(message), Promise.resolve({ messageId: "<m1@example.com>", accepted: [message.to], from: "me@example.com" })),
+    } as unknown as MailConnector;
+    const versionId = await createVersion(
+      db.client,
+      userId,
+      `name: Report · Ask
+app: Report
+steps:
+  - id: bills
+    type: data.read
+    with: { type: Bill, where: [{ field: issuer, op: eq, value: Power Co }] }
+  - id: ask
+    type: email.send
+    forEach: "{{bills.items}}"
+    with: { to: "{{item.email}}", subject: "Your invoice", body: "Could you send me the invoice, please?" }
+`,
+      new PipelineCompiler(defaultCatalog()),
+      { app: readAppSource(reader) },
+    );
+    const runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([new ReadStep(db.client), new EmailSendStep(mail)]));
+    const first = await runner.start(versionId, { trigger: "manual" });
+    expect(await runner.advance(first)).toBe("WAITING_FOR_USER");
+    const [proposal] = await db.client.proposal.findMany({ where: { runId: first } });
+    const payload = proposal.originalPayload as Record<string, unknown>;
+    expect(payload).toMatchObject({ to: "billing@power.example" });
+    await db.client.proposal.update({ where: { proposalId: proposal.proposalId }, data: { status: "APPROVED", finalPayload: payload as Prisma.InputJsonValue, payloadHash: payloadHash(payload) } });
+    expect(await runner.advance(first)).toBe("DONE");
+    expect(sent.map((m) => m.to)).toEqual(["billing@power.example"]);
+
+    // The owner keeps the address as written by pipelines now: the use no longer fits, nothing sent.
+    const changed = await db.client.appVersion.create({
+      data: { appId: billsId, version: 3, definition: {}, source: BILLS.replace("      note:", "      email: { type: email }\n      note:") },
+    });
+    await db.client.app.update({ where: { appId: billsId }, data: { currentVersionId: changed.appVersionId } });
+    const runId = await runner.start(versionId, { trigger: "manual" });
+    expect(await runner.advance(runId)).toBe("FAILED");
+    const failed = await db.client.step.findFirstOrThrow({ where: { runId, stepKey: "bills" } });
+    expect(failed.error).toContain("Bills › Bill no longer fits Bill: email isn't a field of mine there (typed by me)");
+    expect(sent).toHaveLength(1);
+    await db.client.run.deleteMany();
+    await db.client.pipeline.deleteMany();
   });
 
   it("a pipeline of the App compiled and run: its total from the other App's bills", async () => {

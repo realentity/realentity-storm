@@ -426,6 +426,9 @@ export class PipelineCompiler {
   /** {{item.x}} over data.read's items, or {{trigger.item.x}}: x is a field of mine of that type. */
   private isMineField(source: string, scope: Scope, known: Map<string, CompiledStepInfo>): boolean {
     if (!scope.app) return false;
+    // M66-T6: over a use's items, a field the use lists under mine:.
+    const read = known.get((scope.forEach ?? "").split(".")[0] ?? "")?.untrusted;
+    if (read && source.startsWith("item.") && scope.app.uses && Object.hasOwn(scope.app.uses, read)) return useMineField(source, scope, read) !== null;
     let typeName: string | undefined;
     let field: string;
     if (source.startsWith("item.")) {
@@ -760,6 +763,18 @@ function triggerType(data: TypeInfo, trigger: Trigger, app: AppDefinition | unde
 }
 
 /**
+ * M66-T6: {{item.x}} in a loop over a use's items (`forEach: {{read.items}}`), x listed under the use's mine:; the field,
+ * else null.
+ */
+function useMineField(source: string, scope: Scope, use: string): string | null {
+  if (!source.startsWith("item.")) return null;
+  const [, output, ...rest] = (scope.forEach ?? "").split(".");
+  if (output !== "items" || rest.length > 0) return null;
+  const field = source.slice("item.".length);
+  return scope.app?.uses?.[use]?.mine?.includes(field) ? field : null;
+}
+
+/**
  * A target from data.read's items (M32): only from a type of mine, which the user wrote on its form; a type pipelines write
  * holds what pages, feeds and emails said.
  */
@@ -770,9 +785,13 @@ function entityTargetIssue(value: unknown, scope: Scope, known: Map<string, Comp
   const step = root === "item" ? scope.forEach?.split(".")[0] : root;
   const untrusted = step ? known.get(step)?.untrusted : undefined;
   if (!untrusted) return null;
-  // M66: another App's type: what it holds isn't a target here, whoever wrote it there.
-  if (scope.app?.uses && Object.hasOwn(scope.app.uses, untrusted))
-    return `{{${source}}} can't be a target: ${untrusted} comes from another App (uses:), and what it holds isn't a target here`;
+  // M66: another App's type: what it holds isn't a target here, whoever wrote it there; M66-T6: but a field its use
+  // says is mine there (and only a type where it is fits), in a loop over its items.
+  if (scope.app?.uses && Object.hasOwn(scope.app.uses, untrusted)) {
+    const field = useMineField(source, scope, untrusted);
+    if (field) return null;
+    return `{{${source}}} can't be a target: ${untrusted} comes from another App (uses:); only a field its use lists under mine: ({{item.<field>}} over its items) can be`;
+  }
   return `{{${source}}} can't be a target: ${untrusted} is written by pipelines, from what pages, feeds or emails said; only a type of mine can be`;
 }
 

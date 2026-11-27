@@ -48,6 +48,27 @@ describe("an App's uses (M66)", () => {
     expect(issues(app({ Bill: { from: { app: "Bills", type: "bill" }, fields: ["issuer"] } }))).toEqual(['uses.Bill.from.type: a type name, e.g. "Bill"']);
   });
 
+  it("M66-T6: a field under mine: fits only where it is mine (a field of mine, or a type of mine), and only one it reads", () => {
+    const contacts = AppDefinitionSchema.parse(
+      parseYaml(`
+name: Contacts
+types:
+  Person:
+    key: id
+    fields:
+      id: { type: text }
+      email: { type: email, mine: true }
+      phone: { type: text }
+`),
+    ).types.Person;
+    expect(useProblems({ fields: ["email", "phone"], mine: ["email"] }, contacts)).toEqual([]);
+    expect(useProblems({ fields: ["email", "phone"], mine: ["email", "phone"] }, contacts)).toEqual(["phone isn't a field of mine there (typed by me)"]);
+    expect(useProblems({ fields: ["issuer"], mine: ["issuer"] }, BILL)).toEqual([]);
+    expect(issues(app({ Person: { from: { app: "Contacts", type: "Person" }, fields: ["email"], mine: ["phone"] } }))).toEqual([
+      'uses.Person.mine.0: "phone" isn\'t one of its fields (email)',
+    ]);
+  });
+
   it("a type fits a use when it has the fields, none encrypted, a credential or a file", () => {
     expect(useProblems({ fields: ["issuer", "amount"] }, BILL)).toEqual([]);
     expect(useProblems({ fields: ["issuer", "vat", "note", "scan", "token"] }, BILL)).toEqual([

@@ -454,8 +454,11 @@ uses:
 - **Not chosen yet, or no longer fitting** (a field removed or made encrypted in the other App): `data.read` fails,
   saying so, and reads nothing. With `optional: true` the App works without it: not chosen, `data.read` gives no
   items and the checklist doesn't wait for it (Papers reads your Bills App's bills this way, when you have one).
-- **Not a target:** what a use holds isn't a recipient, an address or a check's address in this App, whoever wrote it
-  there.
+- **Not a target, unless it is yours there:** what a use holds isn't a recipient, an address or a check's address in
+  this App, whoever wrote it there; except a field it lists under `mine:` (`mine: [email]`, one of its `fields`), as a
+  type of mine's are: `{{item.email}}` over its items may be `email.send`'s `to` or a check's address. Only a type where
+  that field is mine (you typed it on its form) fits, checked at every run and when the other App changes: a Person's
+  email you typed in Contacts may be Newsletter's recipient, an address a pipeline wrote there never.
 - **On pages:** a page's source may read a use (`sources: { bills: { from: Bill, sort: dueDate } }`), on its named
   fields only, and a field may point at one (`bill: { type: ref, to: Bill }`): its choices on a form, its filter's
   values and the title shown for it are the chosen App's entities, and a save checks the bill is there. A ref, or a
