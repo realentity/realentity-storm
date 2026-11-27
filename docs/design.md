@@ -916,6 +916,8 @@ pnpm test:e2e                  # integration tests: PostgreSQL in Testcontainers
 pnpm --filter @realentity/storm-web-e2e exec playwright install chromium
 pnpm test:web                  # browser tests (Playwright) against the composed stack: database, api, worker, web
 pnpm --filter @realentity/storm-worker eval:email   # LLM evals (real Claude API, ~$0.13): email triage accuracy, reply drafts
+pnpm --filter @realentity/storm-api eval:builder -- --list   # M67: the builder's cases (one per example App and pipeline) and what no case uses; no model called
+pnpm --filter @realentity/storm-api eval:builder -- --only bills --runs 3   # the builder rebuilds them from plain descriptions (real Claude API; cost per case reported)
 ```
 
 **Mail (Phase 1):** in Gmail, turn on 2-step verification and create an app password. In Settings → Email

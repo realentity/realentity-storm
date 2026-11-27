@@ -10,3 +10,4 @@ export * from "./entity-types";
 export * from "./recipe";
 export * from "./type-info";
 export * from "./triggers";
+export * from "./equivalence";
