@@ -1255,6 +1255,7 @@ applied, and `llm.score` calibrates on the Jobs' outcomes, all still emitting `a
 #### `bill.read` 🧠
 Reads bills out of emails: the email text and its PDF attachments go to the LLM, which decides whether it's a bill and
 reads issuer, amount, currency, due date, period and reference. Emails that aren't bills are dropped. Nothing is paid.
+Each email is read whole, its PDFs too: `email.classify` first (a `bill` label kept) keeps it to the likely bills.
 - In: `messages`, `mailbox` [INBOX].
 - Out: `bills`, `notBills`.
 
