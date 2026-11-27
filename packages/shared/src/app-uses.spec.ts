@@ -25,10 +25,13 @@ types:
 
 // M66-U1: `uses:` in the App format: a local name, the App and type it names, the fields read
 describe("an App's uses (M66)", () => {
-  it("reads a use: from, fields, help", () => {
-    const result = app({ Bill: { from: { app: "Bills", type: "Bill" }, fields: ["issuer", "amount"], help: "For the report" } });
+  it("reads a use: from, fields, help, optional", () => {
+    const result = app({ Bill: { from: { app: "Bills", type: "Bill" }, fields: ["issuer", "amount"], help: "For the report", optional: true } });
     expect(result.success).toBe(true);
-    expect(result.data?.uses).toEqual({ Bill: { from: { app: "Bills", type: "Bill" }, fields: ["issuer", "amount"], help: "For the report" } });
+    expect(result.data?.uses).toEqual({ Bill: { from: { app: "Bills", type: "Bill" }, fields: ["issuer", "amount"], help: "For the report", optional: true } });
+    expect(issues(app({ Bill: { from: { app: "Bills", type: "Bill" }, fields: ["issuer"], optional: "yes" } }))).toEqual([
+      "uses.Bill.optional: Invalid input: expected boolean, received string",
+    ]);
   });
 
   it("refuses a use named as one of its own types, fields named twice or none, and anything else in it", () => {

@@ -19,7 +19,7 @@ types:
     expect(created.status(), await created.text()).toBe(201);
     return ((await created.json()) as { appId: string }).appId;
   };
-  await create(bill(bills));
+  const billsId = await create(bill(bills));
   await create(bill(home));
   const report = await create(`name: ${unique("Report")}
 types:
@@ -49,4 +49,34 @@ uses:
 
   await page.getByTestId("use-source-Bill").selectOption({ value: "" });
   await expect(page.getByTestId("uses-missing")).toHaveText("1 to choose");
+
+  // The App it came from deleted: to choose again, from another App, a type of another name among them.
+  await page.getByTestId("use-source-Bill").selectOption({ label: `${bills} › Bill` });
+  await expect(page.getByTestId("uses-missing")).toHaveCount(0);
+  expect((await page.request.delete(`/api/apps/${billsId}`)).status()).toBe(204);
+  const household = unique("Household");
+  await create(bill(household).replace("  Bill:", "  Payment:"));
+  await page.reload();
+  await expect(page.getByTestId("uses-missing")).toHaveText("1 to choose");
+  await page.getByTestId("use-source-Bill").selectOption({ label: `${household} › Payment` });
+  await expect(page.getByTestId("uses-missing")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("use-source-Bill").locator("option:checked")).toHaveText(`${household} › Payment`);
+
+  // An optional use, not chosen: said so, and nothing waits for it.
+  const optional = await create(`name: ${unique("Expenses")}
+types:
+  Expense:
+    key: id
+    fields: { id: { type: text } }
+uses:
+  Bill:
+    from: { app: ${unique("No such Bills")}, type: Bill }
+    fields: [issuer]
+    optional: true
+`);
+  await page.goto(`/apps/${optional}`);
+  await expect(page.getByTestId("use-optional-Bill")).toHaveText("optional");
+  await expect(page.getByTestId("use-source-Bill").locator("option:checked")).toHaveText("None: it works without it");
+  await expect(page.getByTestId("uses-missing")).toHaveCount(0);
 });

@@ -20,7 +20,7 @@ export function UsesCard({ load, save }: Readonly<{ load: () => Promise<AppUseVi
   const views = shown ?? loaded.data;
   if (!views) return loaded.error ? <ErrorAlert error={loaded.error} /> : <Loading />;
   if (views.length === 0) return null;
-  const open = views.filter((v) => !v.source || v.problems.length > 0).length;
+  const open = views.filter((v) => (!v.source && !v.use.optional) || (v.source && v.problems.length > 0)).length;
 
   const choose = async (view: AppUseView, value: string) => {
     const [appId, type] = value.split("|");
@@ -51,6 +51,11 @@ export function UsesCard({ load, save }: Readonly<{ load: () => Promise<AppUseVi
             <div key={view.name} className="list-group-item" data-testid={`use-${view.name}`}>
               <div className="d-flex align-items-baseline gap-2 mb-1">
                 <span className="fw-bold">{view.name}</span>
+                {view.use.optional && (
+                  <span className="badge bg-secondary-lt" data-testid={`use-optional-${view.name}`}>
+                    optional
+                  </span>
+                )}
                 <span className="text-secondary small">
                   as {view.use.from.app} › {view.use.from.type}: {view.use.fields.join(", ")}
                 </span>
@@ -64,7 +69,9 @@ export function UsesCard({ load, save }: Readonly<{ load: () => Promise<AppUseVi
                 onChange={(e) => void choose(view, e.target.value)}
                 data-testid={`use-source-${view.name}`}
               >
-                <option value="">{options.length ? "Choose one of your Apps…" : "None of your Apps has it yet"}</option>
+                <option value="">
+                  {view.use.optional ? "None: it works without it" : options.length ? "Choose one of your Apps…" : "None of your Apps has it yet"}
+                </option>
                 {options.map((f) => (
                   <option key={valueOf(f)} value={valueOf(f)}>
                     {f.app} › {f.type}

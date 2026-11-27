@@ -110,6 +110,23 @@ describe("an App's uses of other Apps' types (M66)", () => {
     await db.client.user.delete({ where: { userId: other.userId } });
   });
 
+  it("a choice made stays: the App it names installed later doesn't take it; the chosen type renamed away: said so; a type that isn't there: refused", async () => {
+    const household = await install(BILLS("Household").replace("  Bill:", "  Payment:"));
+    const report = await install(REPORT());
+    await agent.put(`/api/apps/${report}/uses`).send({ Bill: { appId: household, type: "Payment" } }).expect(200);
+    await install(BILLS("Bills"));
+    expect(await filled(report)).toEqual({ Bill: "Household › Payment" });
+
+    // Two types of one App that fit: offered by name, the App named first.
+    await agent.put(`/api/apps/${household}`).send({ source: BILLS("Household").replace("  Bill:", "  Payment:") + BILLS("x").replace(/^[\s\S]*types:\n/, "").replace("  Bill:", "  Invoice:") }).expect(200);
+    expect((await uses(report))[0].fits.map((f) => `${f.app} › ${f.type}`)).toEqual(["Bills › Bill", "Household › Invoice", "Household › Payment"]);
+
+    await agent.put(`/api/apps/${household}`).send({ source: BILLS("Household").replace("  Bill:", "  Invoice:") }).expect(200);
+    expect(await uses(report)).toEqual([expect.objectContaining({ source: expect.objectContaining({ type: "Payment" }) as unknown, problems: ["Household has no type Payment any more"] })]);
+    const refused = (await agent.put(`/api/apps/${report}/uses`).send({ Bill: { appId: household, type: "Payment" } }).expect(400)).body as { errors: unknown[] };
+    expect(refused.errors).toEqual([{ path: "Bill", message: "Household has no type Payment" }]);
+  });
+
   it("two Apps of the name it gives, or one named otherwise: waits for my choice", async () => {
     await install(BILLS("Home bills"));
     const report = await install(REPORT());
@@ -155,6 +172,13 @@ describe("an App's uses of other Apps' types (M66)", () => {
     await agent.put(`/api/apps/${again}/uses`).send({ Bill: { appId: bills, type: "Bill" } }).expect(200);
     await agent.delete(`/api/apps/${bills}`).expect(204);
     expect(await filled(again)).toEqual({ Bill: null });
+
+    // Pointed elsewhere after: another App, its type named otherwise, offered and chosen.
+    const household = await install(BILLS("Household").replace("  Bill:", "  Payment:"));
+    expect(await filled(again)).toEqual({ Bill: null });
+    expect((await uses(again))[0].fits).toEqual([{ appId: household, app: "Household", type: "Payment" }]);
+    await agent.put(`/api/apps/${again}/uses`).send({ Bill: { appId: household, type: "Payment" } }).expect(200);
+    expect(await uses(again)).toEqual([expect.objectContaining({ source: { appId: household, app: "Household", type: "Payment" }, problems: [] })]);
   });
 
   it("an App installed from an example lists each use on its checklist until it is filled", async () => {
@@ -167,5 +191,23 @@ describe("an App's uses of other Apps' types (M66)", () => {
     expect(await item()).toMatchObject({ done: true });
     await agent.put(`/api/apps/${bills}`).send({ source: BILLS("Bills").replace("      amount: { type: money }\n", "") }).expect(200);
     expect(await item()).toMatchObject({ done: false, note: 'Bills › Bill no longer fits: it has no field "amount"' });
+  });
+
+  it("an optional use doesn't hold the checklist back until it is chosen and stops fitting", async () => {
+    const report = await install(REPORT().replace("    help:", "    optional: true\n    help:"));
+    await db.client.app.update({ where: { appId: report }, data: { example: { id: "report", needs: [] } } });
+    const item = async () =>
+      ((await agent.get(`/api/examples/apps/${report}/checklist`).expect(200)).body as ChecklistView).items.find((i) => i.label.startsWith('Choose where "Bill"'));
+    expect(await item()).toEqual({ label: 'Choose where "Bill" comes from: Your bills, for the monthly expense report (optional)', done: true, link: `/apps/${report}#uses` });
+    const bills = await install(BILLS("Bills"));
+    expect(await item()).toMatchObject({ done: true });
+    await agent.put(`/api/apps/${bills}`).send({ source: BILLS("Bills").replace("      amount: { type: money }\n", "") }).expect(200);
+    expect(await item()).toMatchObject({ done: false });
+
+    // Without help: just where it comes from.
+    const plain = await install(REPORT("Plain").replace(/ {4}help:.*\n/,"    optional: true\n"));
+    await db.client.app.update({ where: { appId: plain }, data: { example: { id: "plain", needs: [] } } });
+    const items = ((await agent.get(`/api/examples/apps/${plain}/checklist`).expect(200)).body as ChecklistView).items;
+    expect(items.filter((i) => i.label.startsWith("Choose where"))).toEqual([{ label: 'Choose where "Bill" comes from (optional)', done: true, link: `/apps/${plain}#uses` }]);
   });
 });
