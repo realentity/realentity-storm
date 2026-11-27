@@ -121,7 +121,7 @@ A CPU with fewer cores is slower in proportion: half the threads, about twice th
 - **Images** (Papers' scans, screenshots for `browser.agent`) need a model that can see them: gemma3, mistral-small3.2,
   qwen2.5vl. A text-only model fails such a step with the server's message.
 - **PDFs** aren't sent to local models: a step that would give the model a PDF fails and says so. Choose a Claude
-  model for that step type, or a pipeline that reads the PDF's text first (`file.read`, `bill.read` already do).
+  model for that step type, or a pipeline that reads the PDF's text first (`file.read`, `email.attachments`).
 - **Tool calls** are what the builder and `browser.agent` work with. A model without them (gemma3) can't do those.
 - **Embeddings** (examples in drafts, topics by meaning) come from the server chosen in **Settings → AI → Embeddings**:
   `bge-m3` on Ollama (`ollama pull bge-m3`, 1024 dimensions) keeps that text home too; OpenAI's

@@ -38,7 +38,7 @@ export interface AppMapPipeline {
 }
 
 /**
- * What a step type writes or reads of an App, from its contracts (bill.save writes Bill; price.watch reads Product).
+ * What a step type writes or reads of an App, from its contracts (browser.fillAndSubmit with a job writes Job).
  * `reads`: only read, though not a type of mine; `when`: only with that input given (llm.score's `outcomes`,
  * browser.mapForm's `job`: M59-T3).
  */

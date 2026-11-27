@@ -272,7 +272,7 @@ function WeeklyReview({ settings, onSaved }: { settings: SettingsView; onSaved: 
         {toggle(
           "morningBrief",
           "Morning brief",
-          "Every day at 07:30: today's calendar, what waits for you, what failed overnight, bills due soon.",
+          "Every day at 07:30: today's calendar, what waits for you, what failed overnight.",
         )}
         {toggle(
           "weeklyReview",

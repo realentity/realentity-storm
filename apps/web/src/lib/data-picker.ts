@@ -137,7 +137,7 @@ function sources(ctx: PickerContext, stepIndex: number): Source[] {
     if (item && schema.properties?.items) {
       schema = { ...schema, properties: { ...schema.properties, items: { type: "array", items: { type: "object", properties: item } } } };
     }
-    // What the step really gave fills in what its schema leaves out (bill.save's remind: "a list of objects").
+    // What the step really gave fills in what its schema leaves out (data.map's items: "a list of objects").
     const real = ctx.outputs?.[step.id];
     if (real !== undefined)
       schema = withValue(schema, step.forEach ? (Array.isArray(real) ? real.find((v) => v != null) : undefined) : real);

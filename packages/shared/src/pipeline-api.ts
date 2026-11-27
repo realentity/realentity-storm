@@ -125,7 +125,7 @@ export interface StepTypeView {
   /** Inputs shown on its card though not required (http.fetch's url). */
   primary: string[];
   /**
-   * M40-T2: the App types it writes (or reads, a type of mine) by its contracts: bill.save writes Bill. M59-T3: `reads`,
+   * M40-T2: the App types it writes (or reads, a type of mine) by its contracts: application.outcome writes Job. M59-T3: `reads`,
    * only read though not mine; `when`, only with that input given (llm.score's `outcomes`, browser.mapForm's `job`).
    */
   entities: { type: string; mine: boolean; reads?: boolean; when?: string }[];

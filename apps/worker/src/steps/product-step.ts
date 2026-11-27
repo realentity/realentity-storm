@@ -16,10 +16,27 @@ interface ProductInput {
   url?: string;
   urls?: string[];
   products?: { url: string; select?: Select }[];
-  select?: Select;
+  /** M71: also as text, "size: M, color: Black" (a variant field of mine). */
+  select?: Select | string | null;
   browser: "fallback" | "always" | "never";
   llm: boolean;
   timeoutSeconds: number;
+  failWhenNone: boolean;
+}
+
+/**
+ * A variant as text (M71): "size: M, color: Black", each attribute and its value; an empty text is none. Text that
+ * isn't that is refused, so a typo doesn't read the product's other price.
+ */
+export function selectOf(text: string): Select {
+  const select: Select = {};
+  for (const pair of text.split(",")) {
+    if (!pair.trim()) continue;
+    const [name = "", value = ""] = pair.split(":", 2).map((part) => part.trim());
+    if (!name || !value) throw new Error(`"${text}" isn't a variant: attribute: value, e.g. size: M, color: Black`);
+    select[name] = value;
+  }
+  return select;
 }
 
 /** One way to buy the product: a variant's offer, or the product's own. */
@@ -87,18 +104,29 @@ export class ProductStep extends LlmStep {
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { url, urls, products, select, browser, llm, timeoutSeconds } = input as unknown as ProductInput;
+    const { url, urls, products, select, browser, llm, timeoutSeconds, failWhenNone } = input as unknown as ProductInput;
     if ([url, urls, products].filter((given) => given !== undefined).length !== 1) {
       throw new Error("shop.product reads `url`, `urls` or `products`: give one of them");
     }
     const wanted = products ?? (urls ?? [url!]).map((address) => ({ url: address, select: undefined }));
-    const allowed = context.allowedDomains ?? [];
+    // M71: a url the user typed (a field of mine: policy.ownHosts) is read on its own host too, as http.fetch does.
+    const own = context.ownHost === true && url ? [new URL(url).hostname.toLowerCase()] : [];
+    const allowed = [...(context.allowedDomains ?? []), ...own];
+    let variant: Select | undefined;
+    try {
+      variant = typeof select === "string" ? selectOf(select) : (select ?? undefined);
+    } catch (error) {
+      if (failWhenNone) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      const items = wanted.map((product) => unread(product.url, {}, message));
+      return { items, problems: items.map((item) => `${String(item.url)}: ${message}`), report: items.map(reportOf).join("\n") };
+    }
     const items: Item[] = [];
     for (const product of wanted) {
-      items.push(await this.read(product.url, product.select ?? select ?? {}, allowed, { browser, llm, timeout: timeoutSeconds * 1000 }, context));
+      items.push(await this.read(product.url, product.select ?? variant ?? {}, allowed, { browser, llm, timeout: timeoutSeconds * 1000 }, context));
     }
     const problems = items.filter((item) => item.problem).map((item) => `${String(item.url)}: ${String(item.problem)}`);
-    if (items.every((item) => item.price === null)) throw new Error(`No price read: ${problems.join("; ")}`);
+    if (failWhenNone && items.every((item) => item.price === null)) throw new Error(`No price read: ${problems.join("; ")}`);
     return { items, problems, report: items.map(reportOf).join("\n") };
   }
 

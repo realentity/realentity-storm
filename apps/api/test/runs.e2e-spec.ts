@@ -531,7 +531,6 @@ describe("runs, proposals and controls", () => {
         "email.classify": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
         "email.draftReply": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
         "email.draftFollowUp": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
-        "bill.read": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },
         "llm.classify": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
         "llm.score": { model: "claude-haiku-5-5", effort: "low", source: "built-in" },
         "llm.generate": { model: "claude-sonnet-5-5", effort: "medium", source: "built-in" },

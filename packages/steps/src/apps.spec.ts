@@ -3,7 +3,6 @@ import { AppDefinitionSchema, checkEntity, type AppDefinition, type CompileResul
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { diffApps } from "./app-diff";
-import { offerKey, parseShopLine } from "./domain-entities";
 import { defaultCatalog } from "./catalog";
 import { PipelineCompiler } from "./compiler";
 import { draftType } from "./draft-type";
@@ -281,30 +280,6 @@ describe("Apps (M30)", () => {
     });
   });
 
-  // M33: a step that writes entities of its own needs its App to have their type
-  it("checks bill.save's Bill against the pipeline's App", () => {
-    const bills = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/bills.yaml")));
-    const save = (app?: object) => ({ name: "Bills", ...(app ? { app: "Bills" } : {}), steps: [{ id: "save", type: "bill.save", with: { bills: [] } }] });
-    ok(compiler.compile(save({}), { app: bills }));
-    expect(errorsOf(compiler.compile(save()))).toEqual(["steps[0].type: bill.save writes Bill entities: say which App with `app:` (one with a Bill type)"]);
-    const bill = bills.types.Bill;
-    const changed = AppDefinitionSchema.parse({
-      ...bills,
-      pages: [],
-      types: {
-        Bill: {
-          ...bill,
-          key: "issuer",
-          stages: { ...bill.stages, states: ["due", "settled"], moves: [{ from: "due", to: ["settled"] }] },
-          fields: { ...Object.fromEntries(Object.entries(bill.fields).filter(([n]) => n !== "status" && n !== "subject")), amount: { type: "number", required: true } },
-        },
-      },
-    });
-    expect(errorsOf(compiler.compile(save({}), { app: changed }))).toEqual([
-      'steps[0].type: bill.save writes Bill entities: its key must be billKey; amount must be money, not number; subject (text) is missing; its stages need the state "paid"',
-    ]);
-  });
-
   // M59-T3: llm.score scores any items in any App; only `outcomes: true` reads the App's Jobs
   it("checks llm.score's Job only with outcomes", () => {
     const hiring = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/hiring.yaml")));
@@ -473,27 +448,6 @@ uses:
     expect(errorsOf(compiler.compile(form({ job: "{{item}}" }), { app: tenders }))).toEqual([
       'steps[1].with.job: browser.mapForm with job writes Job entities, and "Tenders" has no type Job',
     ]);
-  });
-
-  // M33: price.watch reads Products of mine and writes Offers
-  it("checks price.watch's Product and Offer, and reads a shop line", () => {
-    const prices = AppDefinitionSchema.parse(parseYaml(exampleYaml("apps/prices.yaml")));
-    const watch = { name: "Prices", app: "Prices", steps: [{ id: "watch", type: "price.watch", with: {} }] };
-    ok(compiler.compile(watch, { app: prices }));
-    const notMine = AppDefinitionSchema.parse({ ...prices, pages: [], types: { ...prices.types, Product: { ...prices.types.Product, mine: false } } });
-    expect(errorsOf(compiler.compile(watch, { app: notMine }))).toEqual(["steps[0].type: price.watch reads Product entities: it must be a type of mine (mine: true)"]);
-    const noOffer = AppDefinitionSchema.parse({ ...prices, pages: [], types: { Product: prices.types.Product } });
-    expect(errorsOf(compiler.compile(watch, { app: noOffer }))).toEqual(['steps[0].type: price.watch writes Offer entities, and "Prices" has no type Offer']);
-
-    expect(parseShopLine("https://shop.test/p/7")).toEqual({ url: "https://shop.test/p/7" });
-    expect(parseShopLine(" https://shop.test/p/7 | size: M ,color:Black ")).toEqual({
-      url: "https://shop.test/p/7",
-      select: { size: "M", color: "Black" },
-      variant: "size: M, color: Black",
-    });
-    expect(parseShopLine("javascript:alert(1)")).toBeNull();
-    expect(parseShopLine("https://shop.test | size")).toBeNull();
-    expect(offerKey("Jacket", "https://shop.test/p/7", "size: M")).toBe("Jacket | https://shop.test/p/7 | size: M");
   });
 
   describe("a draft type from samples (M30-U2)", () => {
