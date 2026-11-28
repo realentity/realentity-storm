@@ -1382,6 +1382,11 @@ export function checkEntity(type: DataType, item: Record<string, unknown>): Chec
   }
   // M52: a sealed value under a field the type doesn't name isn't kept.
   for (const name of Object.keys(value)) {
+    // M71: what Storm says of an entity (data.read's "@stages") is never saved as one of its fields.
+    if (name.startsWith("@")) {
+      delete value[name];
+      continue;
+    }
     if (!(name in type.fields) && !Object.keys(type.fields).some((f) => f.startsWith(`${name}.`)) && holdsSealed(value[name])) {
       delete value[name];
       problems.push(`${name} is an encrypted value: only an encrypted field keeps it`);

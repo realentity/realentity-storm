@@ -21,7 +21,6 @@ Ready-made pipelines to copy are in [examples/](../examples/). This document exp
 | LLM | Label, score, write, summarize, pull fields out of text | `llm.classify`, `llm.score`, `llm.generate`, `llm.summarize`, `llm.extract` |
 | Email | Read new mail, triage it, read its attachments' text, draft replies, find unanswered emails, draft follow-ups, send | `email.fetch`, `email.classify`, `email.attachments`, `email.draftReply`, `email.awaiting`, `email.draftFollowUp`, `email.send` |
 | Topics | Sort email into the subjects you keep a memory of (a project, a customer), and keep what is true about each, with your approval; read their documents where they live (GitHub, Google Drive) for drafts to quote | `topic.match`, `topic.extract`, `topic.apply`, `topic.tidy`, `git.changes`, `drive.changes`, `topic.index`, `topic.attachments` |
-| Job hunting | Track what employers answered to your applications | `application.outcome` |
 | Google Calendar | Find events, create events (with invites and Meet links) | `calendar.find`, `calendar.create` |
 | Browser | Open pages (with sign-in), read lists with recipes and each item's own page, teach recipes, read and fill forms, let an agent work a page, download and upload files | `browser.open`, `browser.extract`, `browser.details`, `browser.teach`, `browser.mapForm`, `browser.fillAndSubmit`, `browser.agent`, `browser.submit`, `browser.download`, `browser.upload` |
 | Documents | Read a stored document, a downloaded file or an App's file; keep an email's attachments in an App | `file.read`, `file.keep` |
@@ -468,7 +467,7 @@ steps:
 - **`needs:`** on a pipeline, or on an App (its pipelines share them; each install fills its own): `kind: credential`
   (`type`: password, api_key, database, oauth_token, storage_state, totp_seed; `for`: the host it is for),
   `kind: text` (`example`), `kind: email`: one of your email accounts (§4.4), or `kind: google` (`uses`: calendar,
-  drive): one of your Google accounts allowing them (§4.6). An account slot is the default account until you choose. A
+  drive): one of your Google accounts allowing them (§4.5). An account slot is the default account until you choose. A
   slot a step uses without one is added from where it is used: a database for `db.query`'s connection, the host of an
   address written in the step, an email or Google account for an email or calendar step's `account: <name>`, and text
   for `{{setting.<name>}}`. At most 20 slots; `account: topics` (every mailbox the topics read) only on `email.fetch`.
@@ -584,7 +583,9 @@ Saves items and says what changed since the last save, with `collection` or `typ
 Reads entities of a type of the pipeline's App (§2.5) as items, your (`mine`) fields included. Or another App's type
 the App uses (`uses:`, §2.5): from the App you chose for it, only the fields the use names, never a target.
 - In: `type`, `where` (as `data.filter`, on the type's fields), `sort` (`"-salary"`, `"@firstSeen"`), `limit` [100],
-  `removed` [false: the removed ones instead].
+  `removed` [false: the removed ones instead], `stageDates` [false: with stages, each item's `@stages`, when it
+  first reached each stage, e.g. `{ applied: "2026-11-02T09:00:00.000Z" }`; sort and filter on it as `@stages.applied`;
+  `data.save` never keeps an `@` name].
 - Out: `items` (typed by the type: `{{item.salary}}` is checked), `count` (matching, before `limit`).
 
 ```yaml
@@ -843,10 +844,11 @@ Labels each item following `instruction`. Items with a `keep` label go to `kept`
 
 #### `llm.score` 🧠
 Scores each item 0–100 against `against` (a profile, a role, any criteria), whatever the items are: job postings,
-applicants, tenders. `top` keeps the best N. With `outcomes: true`, the outcomes of your past applications (interviews,
-rejections, silence) calibrate the scores for job postings; in an App, that needs its Job type (Job Search), and any App
-can use the step without it.
-- In: `items`, `against`, `instruction`, `top`, `outcomes` [false].
+applicants, tenders. `top` keeps the best N. `examples` are earlier items and what came of them (an `outcome`
+field: an interview, a rejection, no answer), at most 50: they calibrate the scores, so an item like those that went
+well scores higher. The pipeline reads them, usually with `data.read` (`stageDates: true`) and `data.map`; the step
+knows no type (M71).
+- In: `items`, `against`, `instruction`, `top`, `examples`.
 - Out: `scored` (all, with `score` and `scoreReason`), `top`.
 
 ```yaml
@@ -856,7 +858,7 @@ can use the step without it.
     items: "{{agencies.kept}}"
     against: Staff/Principal engineer or architect, TypeScript and Node.js, remote or hybrid.
     top: 10
-    outcomes: true
+    examples: "{{outcomes.items}}"    # e.g. { title, company, outcome: interview }, from your Jobs (job-search.yaml)
 ```
 
 #### `llm.generate` 🧠
@@ -1199,31 +1201,7 @@ files and writes nothing.
   with: { proposals: "{{review.selected}}" }
 ```
 
-### 4.5 Job applications
-
-#### `application.outcome` 🧠
-Reads what an email says about one of your submitted applications, matches it to the application (by the sender's
-domain or the company's name, and the role) and moves it on: `RESPONDED`, `INTERVIEW` or `REJECTED`. Only forward.
-An automatic "we received it" isn't an answer. It works on the Jobs of the pipeline's App (M33, `app: Job Search`)
-you applied to, moving each as its stages allow a pipeline (an `entity.changed`, which can cancel a scheduled
-follow-up), the email noted in its comments; `browser.mapForm` and `browser.fillAndSubmit` move a Job to prepared and
-applied, and `llm.score` calibrates on the Jobs' outcomes.
-- In: `message`.
-- Out: `matched`, `applicationId`, `job`, `status`, `changed`, `reason`.
-
-```yaml
-- id: outcome
-  type: application.outcome
-  forEach: "{{triage.kept}}"
-  with: { message: "{{item}}" }
-- id: tell
-  type: notify.telegram
-  forEach: "{{triage.kept}}"
-  when: "{{outcome.changed}}"
-  with: { text: "{{outcome.job.company}}: {{outcome.status}}. {{outcome.reason}}" }
-```
-
-### 4.6 Google Calendar
+### 4.5 Google Calendar
 
 Needs a Google account connected in Settings, allowing the calendar (see [google-setup.md](google-setup.md)). You can
 connect several; one is the default. A calendar step's `account` is a google slot, written as a name (`account: work`),
@@ -1261,7 +1239,7 @@ the same start isn't created twice.
     meet: true
 ```
 
-### 4.7 Browser 🖥️
+### 4.6 Browser 🖥️
 
 The browser runs on the self-hosted server. With `headed: true` it's the watchable browser: you can see it in the
 run's **live view** and take over when it meets a CAPTCHA, a 2FA prompt or a page it doesn't recognize. Only one
@@ -1368,18 +1346,17 @@ proposes a recipe, it's checked on the page (items outlined), and Continue saves
 Opens an application form (a job's, a tender's, a grant call's: following the page's Apply button if needed) and reads
 every field, typing nothing. It proposes each value from your profile (Settings), writes free-text answers following
 `message`, uses your stored facts and asks you what it can't answer, and attaches the stored `document` to the form's
-file field (a CV field first). `about` is what the form applies for (a call, an offer), for the answers; `job` is a job
-posting, and then its Job (in Job Search) or application is prepared too. Only `job` needs a Job type in the App: any
-App can use the step. Its output is the payload of `browser.fillAndSubmit`, which you see and can edit at the gate.
-- In: `url`, `headed`, `document` (`cv`, its older name), `message`, `about`, `job`, `timeoutSeconds`.
+file field (a CV field first). `about` is what the form applies for (a job, a call, an offer: `{{item}}`), for the
+answers. It moves no entity: a `data.save` after it moves the App's row (M71). Its output is the payload of
+`browser.fillAndSubmit`, which you see and can edit at the gate.
+- In: `url`, `headed`, `document` (`cv`, its older name), `message`, `about`, `timeoutSeconds`.
 - Out: `formUrl`, `fields` (key, label, type, required, options, value, source), `files`, `submit`, `notes`.
 
 #### `browser.fillAndSubmit` ⚡ 🖥️
 Fills the form with exactly the approved fields and files, and submits it in the live browser. Before typing, it reads
 the form again: a changed field, a new required field or another address pauses the run, and nothing is sent. With
-`stopBeforeSubmit: true` it fills everything and you press the final button yourself. With `job`, that posting's
-Job in the pipeline's App is applied; without it, the form can be for anything.
-- In: `url`, `fields`, `files`, `stopBeforeSubmit` [false], `job`, `timeoutSeconds`.
+`stopBeforeSubmit: true` it fills everything and you press the final button yourself. The form can be for anything.
+- In: `url`, `fields`, `files`, `stopBeforeSubmit` [false], `timeoutSeconds`.
 - Out: `submitted`, `url`, `confirmation`.
 
 ```yaml
@@ -1389,7 +1366,7 @@ Job in the pipeline's App is applied; without it, the form can be for anything.
   with:
     url: "{{item.url}}"
     cv: cv-main
-    job: "{{item}}"
+    about: "{{item}}"
     message: Why this role fits me, from my profile only, 2-3 sentences.
 - id: apply
   type: browser.fillAndSubmit
@@ -1398,8 +1375,8 @@ Job in the pipeline's App is applied; without it, the form can be for anything.
     url: "{{map.formUrl}}"
     fields: "{{map.fields}}"
     files: "{{map.files}}"
-    job: "{{item.url}}"
     stopBeforeSubmit: true
+# Then a data.save with stage: applied moves the Jobs, or you move them on their page.
 limits: { browser.fillAndSubmit: 5/day }
 ```
 
@@ -1408,14 +1385,15 @@ For a site without a recipe: an LLM works the page towards `goal` (find the appl
 something), from the page's accessibility outline. It can navigate, click, type, select, tick, attach one of
 `documents` and read, at most `maxActions` times, only on the start site and the allowed domains. **It sends
 nothing**: no submit is pressed, no file is picked. Its recorded actions are the payload of `browser.submit`.
-- In: `url`, `goal`, `headed`, `documents`, `message`, `job`, `maxActions` [25], `timeoutSeconds`.
+- In: `url`, `goal`, `headed`, `documents`, `message`, `about` (what the form applies for, for the answers), `maxActions`
+  [25], `timeoutSeconds`.
 - Out: `outcome` (`ready`: a form is filled and its final button found; `done`: nothing to send), `answer`,
   `actions`, `files`, `submit`, `url`, `pageUrl`, `notes`.
 
 #### `browser.submit` ⚡ 🖥️
 Repeats an approved `browser.agent` run exactly, without the LLM, and presses its final button. An element that's
 gone, or a page off the allowed sites, pauses the run with nothing sent.
-- In: `url`, `actions`, `files`, `submit`, `stopBeforeSubmit` [false], `job`, `timeoutSeconds`.
+- In: `url`, `actions`, `files`, `submit`, `stopBeforeSubmit` [false], `timeoutSeconds`.
 - Out: `submitted`, `url`, `confirmation`.
 
 ```yaml
@@ -1447,7 +1425,7 @@ as soon as a file is chosen, so this is always behind a gate.
 - In: `url`, `field` (selector of the file input), `file`, `submit`, `timeoutSeconds`.
 - Out: `uploaded`, `url`, `confirmation`.
 
-### 4.8 Documents
+### 4.7 Documents
 
 #### `file.read`
 Reads the text of a stored document (Documents page, e.g. `cv-main`), of a file `browser.download` kept, or of an
@@ -1502,7 +1480,7 @@ leaves Storm. A dry run keeps nothing and says how many it would.
     items: [{ title: "{{item.subject}}", document: "{{keep.first}}" }]   # this email's file
 ```
 
-### 4.9 You in the loop
+### 4.8 You in the loop
 
 #### `gate.review`
 Pauses the run and shows a list; you pick which items go on.
@@ -1536,7 +1514,7 @@ place it differently; it must come before its step, after every step that step u
   with: { to: "{{item.from}}", subject: "{{draft.subject}}", body: "{{draft.body}}" }
 ```
 
-### 4.10 Telling you
+### 4.9 Telling you
 
 #### `notify.telegram`
 Sends you a Telegram message (only to you, never to anyone else). See [telegram.md](telegram.md).
@@ -1558,7 +1536,7 @@ steps:
     with: { hours: 24 }
 ```
 
-### 4.11 Timing
+### 4.10 Timing
 
 #### `flow.later`
 Starts another pipeline (whose trigger is `{ on: flow.later }`) `after` a while (`30m`, `36h`, `7d`) or `at` a time,
@@ -1574,7 +1552,7 @@ Cancels the starts `flow.later` scheduled with `key` that haven't started yet.
 - Out: `cancelled`.
 
 ```yaml
-# 7 days after you apply, a reminder, unless the employer answers first (application.outcome moves the Job)
+# 7 days after you apply, a reminder, unless the employer answers first (application-replies moves the Job)
 name: Follow-up after applying
 app: Job Search
 trigger: { on: entity.changed, type: Job, stage: applied }
@@ -1608,8 +1586,8 @@ What the steps add up to, with the pipeline that does it:
 | --- | --- | --- |
 | Draft replies to recruiters and clients, send after you approve | `email.fetch` → `email.classify` → `topic.match` (the email of your topics is left to Topic replies) → `email.draftReply` → `email.send` | [recruiter-replies.yaml](../examples/pipelines/recruiter-replies.yaml) |
 | Draft replies to the email of your topics with what Storm knows about them, send after you approve | `email.fetch` → `email.classify` → `topic.match` → `email.draftReply` (`topic: auto`, on `linked`) → `email.send` | [topic-replies.yaml](../examples/pipelines/topic-replies.yaml) |
-| Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../examples/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../examples/apps/job-search.yaml) up to `data.save` |
-| Track answers to your applications | `email.fetch` → `email.classify` → `application.outcome` → `notify.telegram` | [application-replies.yaml](../examples/apps/job-search.yaml) |
+| Find new jobs, score them, let you pick, fill the forms | `browser.extract` → `data.dedupe` → `llm.classify` → `llm.score` (`examples`: your Jobs' outcomes, by `data.read` and `data.map`) → `data.save` → `gate.review` → `browser.mapForm` → `browser.fillAndSubmit` | the Job Search App ([job-search.yaml](../examples/apps/job-search.yaml)) with a job-board recipe ([example-jobs.yaml](../recipes/example-jobs.yaml)) and [job-board.yaml](../examples/apps/job-search.yaml) up to `data.save` |
+| Track answers to your applications | `data.read` (the open ones) → `email.fetch` → `email.classify` → `llm.extract` (which Job, what it says) → `data.map` → `data.save` (its stage) → `notify.telegram` | [application-replies.yaml](../examples/apps/job-search.yaml) |
 | Keep what is true about your topics (a project, a customer) from your email, with your approval, for your drafts to use | `email.fetch` (INBOX, and Sent: what you wrote) → `email.classify` → `topic.match` → `topic.attachments`; `git.changes`, `drive.changes` → `topic.index`; → `topic.extract` → `gate.review` → `topic.apply` (drafts: `email.draftReply` with `topic: auto`) | [topic-upkeep.yaml](../examples/pipelines/topic-upkeep.yaml) |
 | Each week, merge your topics' overlapping facts and retire stale ones, with your approval | `topic.tidy` → `gate.review` → `topic.apply` | [topic-tidy.yaml](../examples/pipelines/topic-tidy.yaml) |
 | Nudge people who didn't answer your emails | `email.awaiting` → `email.draftFollowUp` → `email.send` | [email-follow-ups.yaml](../examples/pipelines/email-follow-ups.yaml) |

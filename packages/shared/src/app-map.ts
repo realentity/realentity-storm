@@ -38,9 +38,8 @@ export interface AppMapPipeline {
 }
 
 /**
- * What a step type writes or reads of an App, from its contracts (browser.fillAndSubmit with a job writes Job).
- * `reads`: only read, though not a type of mine; `when`: only with that input given (llm.score's `outcomes`,
- * browser.mapForm's `job`: M59-T3).
+ * What a step type writes or reads of an App, from its contracts. `reads`: only read, though not a type of mine;
+ * `when`: only with that input given (M59-T3).
  */
 export type ContractsOf = (stepType: string) => { type: string; mine?: boolean; reads?: boolean; when?: string }[];
 

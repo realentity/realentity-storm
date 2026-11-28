@@ -375,7 +375,6 @@ export const LLM_TASKS = [
   "llm.generate",
   "llm.summarize",
   "llm.extract",
-  "application.outcome",
   "reflection",
   "builder",
   "browser.teach",

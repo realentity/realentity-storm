@@ -7,7 +7,6 @@ import { type LaterStarts } from "../runner/later";
 import { type StepExecutor } from "../runner/step-executor";
 import { type CredentialVault } from "../secrets/credential-vault";
 import { BrowserAgentStep, BrowserSubmitStep } from "./agent-steps";
-import { ApplicationOutcomeStep } from "./application-steps";
 import { BrowserOpenStep, type BrowserDependencies } from "./browser-steps";
 import { CalendarCreateStep, CalendarFindStep } from "./calendar-steps";
 import { DedupeStep, FilterStep, SaveStep } from "./data-steps";
@@ -95,8 +94,7 @@ export function coreSteps(deps: CoreStepDependencies): StepExecutor[] {
     new DbQueryStep(deps.vault),
     product,
     new ClassifyStep(deps.llm, deps.router, deps.learning),
-    new ScoreStep(deps.llm, deps.router, deps.learning, deps.prisma),
-    new ApplicationOutcomeStep(deps.prisma, deps.llm, deps.router, deps.learning),
+    new ScoreStep(deps.llm, deps.router, deps.learning),
     new GenerateStep(deps.llm, deps.router, deps.learning),
     new SummarizeStep(deps.llm, deps.router, deps.learning),
     deps.appFiles ? new ExtractStep(deps.llm, deps.router, deps.learning).withFiles(deps.prisma, deps.appFiles) : new ExtractStep(deps.llm, deps.router, deps.learning),

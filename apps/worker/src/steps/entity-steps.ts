@@ -275,7 +275,8 @@ export class ReadStep implements StepExecutor {
       sort,
       limit,
       removed,
-    } = input as { type: string; where?: Condition[]; sort?: string; limit: number; removed: boolean };
+      stageDates,
+    } = input as { type: string; where?: Condition[]; sort?: string; limit: number; removed: boolean; stageDates: boolean };
     const own = await pipelineApp(this.prisma, context, typeName);
     // M66: another App's type this App uses: read where it is kept, only its declared fields.
     const use = Object.hasOwn(own.app.uses ?? {}, typeName) ? own.app.uses![typeName] : undefined;
@@ -301,6 +302,8 @@ export class ReadStep implements StepExecutor {
         (field) => credentialAt(appId, typeName, row.key, field),
       ),
     }));
+    // M71: when each first reached each stage (an outcome: an interview that ended in a rejection was still one).
+    if (stageDates && type.stages) for (const { row, item } of entities) item["@stages"] = { ...(row.stageDates as Record<string, string>) };
     return narrowed(entities, type, { where, sort, limit });
   }
 
