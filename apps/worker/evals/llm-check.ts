@@ -101,7 +101,7 @@ const CHECKS: Check[] = [
         { title: "Full-stack engineer, React and Node.js, remote from Europe", id: "mid2" },
       ];
       const out = (await new ScoreStep(llm.client, router).execute(
-        { items, against: "Senior backend engineer, TypeScript and Node.js, PostgreSQL, wants fully remote work from the EU", outcomes: false },
+        { items, against: "Senior backend engineer, TypeScript and Node.js, PostgreSQL, wants fully remote work from the EU" },
         context,
       )) as { top: { id: string; score: number }[] };
       const order = out.top.map((t) => t.id);

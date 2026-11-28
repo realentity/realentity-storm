@@ -277,7 +277,7 @@ function WeeklyReview({ settings, onSaved }: { settings: SettingsView; onSaved: 
         {toggle(
           "weeklyReview",
           "Weekly review",
-          "Sunday evening: the week's runs and failures, the LLM cost against the budget, what waits for you, application outcomes, broken and quiet recipes.",
+          "Sunday evening: the week's runs and failures, the LLM cost against the budget, what waits for you, broken and quiet recipes.",
         )}
       </div>
     </div>

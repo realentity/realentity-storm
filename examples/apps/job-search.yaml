@@ -1,8 +1,8 @@
-# M30–M33: the Job Search App. Its pipelines say `app: Job Search`: a job-board pipeline (job-board:
-# browser.extract with a recipe like recipes/example-jobs.yaml) keeps the jobs it finds as Jobs, the form steps move a job to prepared and
-# applied, application-replies moves it on from the employer's emails. Save it
-# on the Apps page before its pipelines, then press "Move them here" on its page to bring the jobs and applications
-# the old Jobs page kept.
+# M30–M33: the Job Search App. A job-board pipeline (job-board: browser.extract with a recipe like
+# recipes/example-jobs.yaml) keeps the jobs it finds as Jobs, scored with what came of your earlier applications;
+# application-replies moves a Job on from the employer's emails. You move a Job to prepared and applied on its page.
+# M71: generic steps only: data.read gives the Jobs and when each reached its stages, llm.score and llm.extract read
+# them, data.save moves a Job as its stages allow.
 app:
   name: Job Search
   description: Jobs you find, and where you are with each
@@ -80,8 +80,9 @@ pipelines:
     # Jobs from a job board, in the Job Search App: every weekday morning,
     # the board's categories read with a recipe (recipes/example-jobs.yaml: import it on the Recipes page as
     # "jobs.example.com/search", and set the site and the categories here), only the postings not kept before, the agencies
-    # set aside as skipped, the rest scored against what you look for (edit `against`; `outcomes` learns from what came of
-    # your applications) and kept as Jobs. You're told about the ones scored 70 or more. Nothing is sent.
+    # set aside as skipped, the rest scored against what you look for (edit `against`; `examples` are your last
+    # applications and what came of them: an interview, a rejection, an answer, or none in three weeks) and kept as
+    # Jobs. You're told about the ones scored 70 or more. Nothing is sent.
     name: Job board
     description: New postings from a job board, scored and kept as Jobs; the best told on Telegram.
     trigger: { schedule: "0 8 * * 1-5" }
@@ -105,6 +106,36 @@ pipelines:
           instruction: '"agency": a recruitment agency hiring for a client it doesn''t name. "employer": the company hires for itself.'
           labels: [employer, agency]
           keep: [employer]
+      - id: past
+        type: data.read
+        when: "{{agencies.kept}}"
+        with:
+          type: Job
+          where: [{ field: status, op: in, value: [applied, responded, interview, offer, rejected] }]
+          sort: -@stages.applied
+          limit: 100
+          stageDates: true
+      - id: outcomes
+        type: data.map
+        with:
+          from: "{{past.items}}"
+          # What came of each: an interview that ended in a rejection was still an interview; no answer counts after
+          # three weeks. The last 30.
+          expression: |-
+            (
+              $silent := $fromMillis($millis() - 21 * 86400000);
+              $done := $filter($, function($j) { $j.status != "applied" or $lookup($j, "@stages").applied < $silent });
+              $map($done, function($j) {(
+                $d := $lookup($j, "@stages");
+                {
+                  "title": $j.title,
+                  "company": $j.company,
+                  "location": $j.location,
+                  "scoredThen": $j.score,
+                  "outcome": $d.offer ? "offer" : $d.interview ? "interview" : $d.rejected ? "rejected" : $d.responded ? "answered" : "no answer in 3 weeks"
+                }
+              )})[[0..29]]
+            )
       - id: score
         type: llm.score
         with:
@@ -112,7 +143,7 @@ pipelines:
           against: >-
             Senior or lead software engineer: back-end or full-stack, TypeScript or Node.js, remote or hybrid, a product
             company. Not: on-call heavy roles, short contracts.
-          outcomes: true
+          examples: "{{outcomes.items}}"
       - id: save
         type: data.save
         with: { items: "{{score.scored}}", type: Job }
@@ -128,17 +159,28 @@ pipelines:
         with: { text: "{{item.score}}: {{item.title}} at {{item.company}}, {{item.location}}.\n{{item.scoreReason}}\n{{item.url}}" }
 
   application-replies:
-    # M16: every 15 minutes, emails about your applications move them on (replied, interview, rejected): the Jobs page
-    # counts them, and a message tells you. Only forward: what you set by hand on the Jobs page stays unless an email moves it further.
+    # M16; M71 on generic steps: every 15 minutes, emails about your open applications move their Jobs on (responded,
+    # interview, rejected), and a message tells you. Only forward, as the Job's stages allow: what you set by hand
+    # stays unless an email moves it further. No open application, no email read.
     name: Application replies
-    description: Replies about your applications update their status, and tell you.
+    description: Replies about your applications move their Jobs on, and tell you.
     trigger: { schedule: "*/15 * * * *" }
     steps:
+      - id: open
+        type: data.read
+        with:
+          type: Job
+          where: [{ field: status, op: in, value: [applied, responded, interview] }]
+          sort: -@stages.applied
+          limit: 30
+          stageDates: true
       - id: fetch
         type: email.fetch
+        when: "{{open.items}}"
         with: { mailbox: INBOX, limit: 50, sinceDays: 2 }
       - id: triage
         type: email.classify
+        when: "{{fetch.messages}}"
         with:
           messages: "{{fetch.messages}}"
           instruction: >-
@@ -147,13 +189,59 @@ pipelines:
             your application".
           labels: [application, other]
           keep: [application]
-      - id: outcome
-        type: application.outcome
+      - id: applications
+        type: data.map
+        with:
+          from: "{{open.items}}"
+          expression: |-
+            $map($, function($j) { { "url": $j.url, "title": $j.title, "company": $j.company, "status": $j.status } })
+      - id: read
+        type: llm.extract
         forEach: "{{triage.kept}}"
-        with: { message: "{{item}}" }
+        with:
+          content: { email: "{{item}}", applications: "{{applications.items}}" }
+          instruction: >-
+            The content is an email I received and my open job applications. Decide which application the email is
+            about, by the company (the sender's domain, the company's name) and the role, and what it says: interview
+            (they invite me to an interview or a call, or schedule one), rejected (they won't go on with me), responded
+            (a person from the employer or its recruiter answered otherwise: a question, next steps, an assignment),
+            none (not about these applications, or only an automatic confirmation that my application arrived).
+          fields:
+            job: "the url of the application the email is about, exactly as in applications; empty when none fits or you're unsure"
+            outcome: "interview, rejected, responded or none"
+            reason: "what the email says, in one sentence"
+      - id: moves
+        type: data.map
+        with:
+          from: { jobs: "{{open.items}}", read: "{{read.values}}" }
+          # The Job the email is about, moved to what it says; comments are mine, so they aren't given back.
+          expression: |-
+            (
+              $all := $;
+              $map(read, function($v) {(
+                $outcome := $lowercase($trim($string($v.outcome)));
+                $job := $all.jobs[url = $trim($string($v.job))][0];
+                $job and $outcome in ["responded", "interview", "rejected"] ?
+                  $merge([$sift($job, function($x, $k) { $k != "comments" }), { "status": $outcome, "@reason": $v.reason }])
+                  : undefined
+              )})
+            )
+      - id: save
+        type: data.save
+        with: { items: "{{moves.items}}", type: Job }
+      - id: news
+        type: data.map
+        with:
+          from: { changed: "{{save.changed}}", moves: "{{moves.items}}" }
+          expression: |-
+            (
+              $all := $;
+              $map(changed[after.status], function($c) {(
+                $why := $lookup($all.moves[url = $c.key][0], "@reason");
+                { "text": $c.item.company & " (" & $c.item.title & "): " & $c.after.status & ". " & $why & "\n" & $c.key }
+              )})
+            )
       - id: tell
         type: notify.telegram
-        forEach: "{{triage.kept}}"
-        when: "{{outcome.changed}}"
-        with:
-          text: "{{outcome.job.company}} ({{outcome.job.title}}): {{outcome.status}}. {{outcome.reason}}\n{{outcome.job.url}}"
+        forEach: "{{news.items}}"
+        with: { text: "{{item.text}}" }

@@ -206,7 +206,7 @@ the builder instead. The answer is saved on the Profile page as a fact.
 | --- | --- | --- | --- |
 | Morning brief | every day 07:30 | Today's calendar (if Google is connected), what waits for you, failures in the last day | Settings |
 | Daily digest | every day 19:00 | What ran, what waits, what failed, suggestions, LLM cost | the `Daily digest` pipeline ([examples/pipelines/daily-digest.yaml](../examples/pipelines/daily-digest.yaml)) |
-| Weekly review | Sunday 19:00 | The 7-day digest, budget so far, where the money went, application outcomes, recipes that found nothing for a while | Settings |
+| Weekly review | Sunday 19:00 | The 7-day digest, budget so far, where the money went, recipes that found nothing for a while | Settings |
 
 ### 3.5 Alerts
 

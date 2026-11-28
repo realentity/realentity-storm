@@ -11,7 +11,7 @@ import { type DocumentStore } from "../browser/document-store";
 import { type Asker } from "../learning/asker";
 import { type Facts } from "../learning/facts";
 import { type BrowserDependencies } from "./browser-steps";
-import { bodyText, ownerOf, prepareApplication, sent, sentWithin, settle, submitApplication, unblock, type FormDependencies } from "./form-steps";
+import { bodyText, ownerOf, sent, sentWithin, settle, unblock, type FormDependencies } from "./form-steps";
 
 /** Consecutive failed actions before the agent's model hands over to the stronger one (docs/design.md §5), and before it gives up after that. */
 const ESCALATE_AFTER = 3;
@@ -41,7 +41,7 @@ export interface AgentInput {
   headed: boolean;
   documents: string[];
   message?: string;
-  job?: Record<string, unknown>;
+  about?: Record<string, unknown>;
   maxActions: number;
   timeoutSeconds: number;
 }
@@ -99,7 +99,7 @@ function toolsFor(documents: string[], canAsk: boolean): ChatTool[] {
         text: z.string(),
         source: z
           .enum(["profile", "fact", "asked", "written", "none"])
-          .describe("profile: the user's profile; fact: one of <facts>; asked: the user's answer to your question; written: an answer you wrote for this job"),
+          .describe("profile: the user's profile; fact: one of <facts>; asked: the user's answer to your question; written: an answer you wrote for this form"),
       }),
     },
     { name: "select", description: "Picks an option of a select by its text.", input: z.object({ ref: Ref, option: z.string() }) },
@@ -492,7 +492,6 @@ export class BrowserAgentStep implements StepExecutor {
       if (checks.length) notes.push(`A check that you're a person (${checks.map((c) => `"${c}"`).join(", ")}): you answer it in the live view before it is sent.`);
       const empty = await emptyRequired(page);
       if (empty.length) notes.push(`Required and still empty: ${empty.join(", ")}.`);
-      if (!context.dryRun && typeof input.job?.url === "string") await prepareApplication(this.deps.prisma, context, input.job.url);
     }
     return {
       url: input.url,
@@ -518,7 +517,6 @@ interface SubmitInput {
   files: FormFile[];
   submit: ElementTarget;
   stopBeforeSubmit: boolean;
-  job?: string;
   timeoutSeconds: number;
 }
 
@@ -534,7 +532,7 @@ export class BrowserSubmitStep implements StepExecutor {
   constructor(private readonly deps: FormDependencies) {}
 
   async execute(raw: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { url, actions, files, submit, stopBeforeSubmit, job, timeoutSeconds } = raw as unknown as SubmitInput;
+    const { url, actions, files, submit, stopBeforeSubmit, timeoutSeconds } = raw as unknown as SubmitInput;
     const timeout = timeoutSeconds * 1000;
     const allowedHosts = [hostOf(url), ...(context.allowedDomains ?? [])];
     const allowed = (host: string) => hostMatches(host, allowedHosts);
@@ -623,7 +621,6 @@ export class BrowserSubmitStep implements StepExecutor {
           submitted = await sent(page2, watched, before);
         }
       }
-      if (submitted && !context.dryRun && job) await submitApplication(this.deps.prisma, context, job);
       const confirmation = (await page2.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
       await this.screenshot(page2, context).catch(() => undefined);
       return { submitted, url: page2.url(), confirmation: confirmation.slice(0, MAX_CONFIRMATION) };
@@ -659,8 +656,8 @@ function introOf(input: AgentInput, profile: string, hosts: string[], facts: Fac
     `<task>${input.goal}</task>`,
     `<profile>\n${profile || "(empty: the user hasn't written a profile yet)"}\n</profile>`,
     `<facts>\n${facts.map((f) => `${f.question}: ${f.answer}`).join("\n") || "(none yet)"}\n</facts>`,
-    `<message>${input.message ?? "A short, plain message: why this role fits me, from my profile, 2-3 sentences."}</message>`,
-    `<posting>\n${JSON.stringify(input.job ?? {})}\n</posting>`,
+    `<message>${input.message ?? "A short, plain message: why I fit this, from my profile, 2-3 sentences."}</message>`,
+    `<posting>\n${JSON.stringify(input.about ?? {})}\n</posting>`,
     `<documents>${input.documents.length ? input.documents.join(", ") : "(none: attach nothing)"}</documents>`,
     `<limits>At most ${input.maxActions} actions, on ${hosts.join(", ")} only.</limits>`,
   ].join("\n");

@@ -315,8 +315,22 @@ export class PipelineCompiler {
         return;
       }
       if (typeof field !== "string" || extra.includes(field) || field in type.fields) return;
+      if (field.startsWith("@stages.") && step.type === "data.read") {
+        const message = !type.stages
+          ? `${typeName} has no stages`
+          : step.with.stageDates !== true
+            ? `${field} needs stageDates: true`
+            : `"${field.slice(8)}" is not a state of ${typeName} (states: ${type.stages.states.join(", ")})`;
+        errors.push({ path: where, message });
+        return;
+      }
       errors.push({ path: where, message: `${typeName} has no field "${field}" (fields: ${Object.keys(type.fields).join(", ")})` });
     };
+    // M71: data.read's stageDates: when each entity first reached each of its type's states, "@stages.applied".
+    const stageDates = step.with.stageDates === true && type.stages ? type.stages.states.map((state) => `@stages.${state}`) : [];
+    if (step.type === "data.read" && step.with.stageDates === true && !type.stages) {
+      errors.push({ path: `${at}.stageDates`, message: `${typeName} has no stages` });
+    }
 
     if (step.type === "data.dedupe") return {};
     if (step.type === "data.save") {
@@ -372,12 +386,12 @@ export class PipelineCompiler {
     if (Array.isArray(step.with.where)) {
       step.with.where.forEach((condition, i) => {
         if (!condition || typeof condition !== "object") return;
-        fieldIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`);
+        fieldIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`, stageDates);
         sealedIssue((condition as { field?: unknown }).field, `${at}.where[${i}].field`, "a condition");
       });
     }
     if (typeof step.with.sort === "string") {
-      fieldIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, ["@firstSeen", "@lastSeen"]);
+      fieldIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, ["@firstSeen", "@lastSeen", ...stageDates]);
       sealedIssue(step.with.sort.replace(/^-/, ""), `${at}.sort`, "sorted by");
     }
     return {
@@ -623,7 +637,7 @@ export class PipelineCompiler {
 }
 
 /**
- * A step that writes entities of its own (application.outcome, M33) needs its pipeline's App to have that type: the key, each
+ * A step that writes entities of its own (M33) needs its pipeline's App to have that type: the key, each
  * field of the kind it writes, and the states it sets.
  */
 function checkContract(

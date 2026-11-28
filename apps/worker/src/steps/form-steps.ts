@@ -11,7 +11,6 @@ import { type Asker } from "../learning/asker";
 import { type Facts } from "../learning/facts";
 import { type StepLearning } from "../learning/learning";
 import { NO_ATTENTION, RunStopped, type Attention, type StepContext, type StepExecutor } from "../runner/step-executor";
-import { jobAppOf, moveJob } from "./job-entities";
 import { type BrowserDependencies } from "./browser-steps";
 import { DATA_ONLY, LlmStep } from "./llm-steps";
 
@@ -38,7 +37,6 @@ interface MapInput {
   cv?: string;
   message?: string;
   about?: Record<string, unknown>;
-  job?: Record<string, unknown>;
   timeoutSeconds: number;
 }
 
@@ -70,8 +68,8 @@ const SYSTEM =
 /**
  * browser.mapForm (docs/design.md §2.2, M10-T2): the form read, nothing typed or attached. Values come from the user's
  * profile (Settings) or are written for free-text questions; their document (a CV) goes to the file field. The output is
- * the payload of browser.fillAndSubmit, which the user sees field by field at its gate. For a `job`, its Job or
- * Application is prepared; any other form (`about`: a tender, a grant call, M59-T2) moves nothing.
+ * the payload of browser.fillAndSubmit, which the user sees field by field at its gate. `about` is what the form
+ * applies for (a job, a tender, a grant call, M59-T2); the step moves no entity (M71: the pipeline's data.save does).
  */
 export class MapFormStep extends LlmStep {
   readonly type = "browser.mapForm";
@@ -86,7 +84,7 @@ export class MapFormStep extends LlmStep {
   }
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { url, headed, cv, message, about, job, timeoutSeconds } = input as unknown as MapInput;
+    const { url, headed, cv, message, about, timeoutSeconds } = input as unknown as MapInput;
     const document = (input as unknown as MapInput).document ?? cv;
     const timeout = timeoutSeconds * 1000;
     const lease = await this.deps.pool.lease(headed, { acceptDownloads: false });
@@ -103,7 +101,7 @@ export class MapFormStep extends LlmStep {
 
       const profile = (await this.deps.prisma.userSetting.findUnique({ where: { userId: context.userId } }))?.profile ?? "";
       const facts = (await this.deps.facts?.list(context.userId)) ?? [];
-      const answers = await this.propose(context, form, profile, message, about ?? job, facts, Boolean(job));
+      const answers = await this.propose(context, form, profile, message, about, facts);
       const fields: FormField[] = form.fields.map((field) => withValue(field, answers.values.get(field.key)));
       const asked = await this.askMe(context, fields, new URL(page.url()).hostname);
       await this.deps.facts?.used(fields.flatMap((f) => (f.source === "fact" && f.fact ? [f.fact.factId] : [])));
@@ -123,7 +121,6 @@ export class MapFormStep extends LlmStep {
         .join(" ");
 
       await this.screenshot(page, context).catch(() => undefined);
-      if (!context.dryRun && typeof job?.url === "string") await prepareApplication(this.deps.prisma, context, job.url);
       return { formUrl: page.url(), fields, files, submit: form.submit, notes };
     } finally {
       await lease.close();
@@ -138,7 +135,6 @@ export class MapFormStep extends LlmStep {
     message: string | undefined,
     posting: Record<string, unknown> | undefined,
     facts: Fact[] = [],
-    forJob = true,
   ): Promise<{ values: Map<string, Answer>; notes: string }> {
     const fields = form.fields.filter((f) => f.type !== "file" && !f.human);
     const values = new Map<string, Answer>();
@@ -146,7 +142,7 @@ export class MapFormStep extends LlmStep {
     const prompt = [
       `<profile>\n${profile || "(empty: the user hasn't written a profile yet)"}\n</profile>`,
       `<facts>\n${facts.map((f) => JSON.stringify({ id: f.factId, question: f.question, answer: f.answer })).join("\n") || "(none yet)"}\n</facts>`,
-      `<message>${message ?? defaultMessage(forJob)}</message>`,
+      `<message>${message ?? DEFAULT_MESSAGE}</message>`,
       `<posting>\n${JSON.stringify(posting ?? {})}\n</posting>`,
       `<form>\n${fields.map((f) => JSON.stringify({ key: f.key, label: f.label, type: f.type, required: f.required, options: f.options })).join("\n")}\n</form>`,
     ].join("\n");
@@ -192,7 +188,6 @@ interface FillInput {
   fields: FormField[];
   files: FormFile[];
   stopBeforeSubmit: boolean;
-  job?: string;
   timeoutSeconds: number;
 }
 
@@ -209,7 +204,7 @@ export class FillAndSubmitStep implements StepExecutor {
   constructor(private readonly deps: FormDependencies) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { url, fields, files, stopBeforeSubmit, job, timeoutSeconds } = input as unknown as FillInput;
+    const { url, fields, files, stopBeforeSubmit, timeoutSeconds } = input as unknown as FillInput;
     const timeout = timeoutSeconds * 1000;
     const host = new URL(url).hostname;
     const lease = await this.deps.pool.lease(true, { acceptDownloads: false });
@@ -259,7 +254,6 @@ export class FillAndSubmitStep implements StepExecutor {
           submitted = await sent(current, fields, before);
         }
       }
-      if (submitted && !context.dryRun && job) await submitApplication(this.deps.prisma, context, job);
       const confirmation = (await current.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
       await this.screenshot(current, context).catch(() => undefined);
       return { submitted, url: current.url(), confirmation: confirmation.slice(0, MAX_CONFIRMATION) };
@@ -432,29 +426,12 @@ function sameAnswer(value: string | null, answer: string): boolean {
   return a === b || a.includes(b) || b.includes(a);
 }
 
-function defaultMessage(forJob: boolean): string {
-  const why = forJob ? "this role fits me" : "I fit this";
-  return `A short, plain message: why ${why}, from my profile, 2-3 sentences.`;
-}
+const DEFAULT_MESSAGE = "A short, plain message: why I fit this, from my profile, 2-3 sentences.";
 
 /** The field a document goes to: a CV / résumé field first, else the required file field, else the first one. */
 function fileFieldOf(fields: PageField[]): PageField | undefined {
   const files = fields.filter((f) => f.type === "file");
   return files.find((f) => CV_FIELD.test(f.label) || CV_FIELD.test(f.key)) ?? files.find((f) => f.required) ?? files[0];
-}
-
-/** M10-T5, M33: the form's Job in the pipeline's App moved to prepared (none without a Job type, M59-T2). */
-export async function prepareApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
-  const job = await jobAppOf(prisma, context);
-  const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
-  if (job && entity) await moveJob(prisma, context, job, entity, "prepared");
-}
-
-/** M10-T5, M33: sent: the form's Job in the pipeline's App moved to applied. */
-export async function submitApplication(prisma: PrismaClient, context: StepContext, url: string): Promise<void> {
-  const job = await jobAppOf(prisma, context);
-  const entity = job && (await prisma.dataEntity.findUnique({ where: { appId_type_key: { appId: job.appId, type: "Job", key: url } } }));
-  if (job && entity) await moveJob(prisma, context, job, entity, "applied");
 }
 
 export function ownerOf(context: StepContext): ArtifactOwner {

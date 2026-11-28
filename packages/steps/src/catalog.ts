@@ -99,11 +99,11 @@ export interface EntityContract {
   /** A type of mine the step reads; otherwise one it writes, so never mine. */
   mine?: boolean;
   /**
-   * M59-T3: the contract holds only with this input given (true, or any value but false or empty): llm.score's
-   * `outcomes`, browser.mapForm's `job`. Without it the step works in any App.
+   * M59-T3: the contract holds only with this input given (true, or any value but false or empty). Without it the
+   * step works in any App.
    */
   when?: string;
-  /** The step only reads the type, though it isn't a type of mine (llm.score's outcomes, from the App's Jobs). */
+  /** The step only reads the type, though it isn't a type of mine. */
   reads?: boolean;
 }
 
@@ -111,23 +111,6 @@ export interface EntityContract {
 export function contractInputGiven(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false && value !== "";
 }
-
-/** A job and the user's application to it (M33): what the job steps and application.outcome move through its stages. */
-export const JOB_ENTITY: EntityContract = {
-  type: "Job",
-  key: "url",
-  fields: {
-    url: "url",
-    title: "text",
-    company: "text",
-    location: "text",
-    description: "longtext",
-    score: "number",
-    scoreReason: "longtext",
-    source: "text",
-  },
-  states: ["new", "skipped", "shortlisted", "prepared", "applied", "responded", "interview", "rejected"],
-};
 
 export class StepCatalog {
   private readonly steps = new Map<string, StepDefinition>();
@@ -574,7 +557,8 @@ export const CORE_STEPS: StepDefinition[] = [
     description:
       "Reads entities of a type of the pipeline's App (M30), as items: their fields, mine included. `where` keeps " +
       'those matching every condition (as data.filter, on the type\'s fields), `sort` orders them ("-salary": highest ' +
-      "first), `limit` caps them; `removed: true` reads the removed ones instead.",
+      "first), `limit` caps them; `removed: true` reads the removed ones instead. `stageDates: true` (M71) adds " +
+      '"@stages": when each entity first reached each stage (data.save never keeps an @ name).',
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -586,6 +570,10 @@ export const CORE_STEPS: StepDefinition[] = [
         .optional(),
       limit: z.number().int().min(1).max(1000).default(100),
       removed: z.boolean().default(false),
+      stageDates: z
+        .boolean()
+        .default(false)
+        .describe('with stages: each item\'s "@stages", when it first reached each stage, e.g. { applied: "2026-11-02T…" }'),
     }),
     output: z.object({ items: Items, count: z.number().int() }),
   },
@@ -877,8 +865,10 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "llm.score",
-    entities: [{ ...JOB_ENTITY, when: "outcomes", reads: true }],
-    description: "Scores each item 0–100 against `against` (a profile, a role, any criteria text); `top` keeps the best N.",
+    description:
+      "Scores each item 0–100 against `against` (a profile, a role, any criteria text); `top` keeps the best N. " +
+      "`examples` (M71): earlier items with what came of them (an outcome: an interview, a rejection, no answer), " +
+      "which calibrate the scores: an item like those that went well scores higher, the criteria first.",
     sideEffect: false,
     llm: true,
     llmOutput: true,
@@ -888,10 +878,11 @@ export const CORE_STEPS: StepDefinition[] = [
       against: z.string().min(1),
       instruction: z.string().optional(),
       top: z.number().int().min(1).max(100).optional(),
-      outcomes: z
-        .boolean()
-        .default(false)
-        .describe("job postings: the user's applications' outcomes (interviews, rejections, no answer) calibrate the scores"),
+      examples: z
+        .array(z.record(z.string(), z.unknown()))
+        .max(50)
+        .optional()
+        .describe("earlier items and what came of them (an outcome field), to calibrate the scores, e.g. {{past.items}}"),
     }),
     output: z.object({ scored: Items, top: Items }),
   },
@@ -948,28 +939,6 @@ export const CORE_STEPS: StepDefinition[] = [
       timeZone: TimeZone,
     }),
     output: z.object({ values: z.record(z.string(), z.string()), missing: z.array(z.string()), found: z.boolean() }),
-  },
-  {
-    type: "application.outcome",
-    entities: [JOB_ENTITY],
-    description:
-      "What an email says about one of the user's submitted applications: matched by the company and role (the sender's " +
-      "domain or the company's name first), and the application moved on: replied, interview, rejected (forward " +
-      "only; the date kept, the email noted; application.status emitted, which cancels a follow-up flow.later). " +
-      "matched false when it isn't about one (an automatic \"we received it\" isn't an answer). A dry run moves nothing.",
-    sideEffect: false,
-    llm: true,
-    llmOutput: true,
-    saasSafe: true,
-    input: z.object({ message: EmailMessageSchema }),
-    output: z.object({
-      matched: z.boolean(),
-      applicationId: z.string().nullable(),
-      job: z.object({ title: z.string(), company: z.string().nullable(), url: z.string() }).nullable(),
-      status: z.enum(["RESPONDED", "INTERVIEW", "REJECTED"]).nullable(),
-      changed: z.boolean().describe("the status moved (false: it was there already, or a dry run)"),
-      reason: z.string(),
-    }),
   },
   {
     type: "gate.review",
@@ -1562,7 +1531,6 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.mapForm",
-    entities: [{ ...JOB_ENTITY, when: "job" }],
     description:
       "Opens an application form (a job's, a tender's, a grant's: following the page's Apply button when the form isn't " +
       "there) and reads every field, typing and attaching nothing. Proposes each value from the user's profile (Settings) " +
@@ -1580,10 +1548,6 @@ export const CORE_STEPS: StepDefinition[] = [
       cv: DocumentName.optional().describe("the same as document, its older name (a CV / résumé field first)"),
       message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer or buyer)"),
       about: z.record(z.string(), z.unknown()).optional().describe("what the form applies for (a call, an offer), for the answers"),
-      job: z
-        .record(z.string(), z.unknown())
-        .optional()
-        .describe("a job posting (title, company, url): for the answers, and its Job in the pipeline's App is prepared"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1596,7 +1560,6 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.fillAndSubmit",
-    entities: [{ ...JOB_ENTITY, when: "job" }],
     description:
       "Fills an application form with exactly the approved fields and files and submits it, in the live browser. " +
       "Before typing it reads the form again: a field that changed, a new required field or another address pauses " +
@@ -1611,7 +1574,6 @@ export const CORE_STEPS: StepDefinition[] = [
       fields: z.array(FormFieldSchema),
       files: z.array(FormFileSchema).default([]),
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
-      job: z.string().optional().describe("a job posting's url: its Job in the pipeline's App is applied"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
@@ -1710,7 +1672,6 @@ export const CORE_STEPS: StepDefinition[] = [
   },
   {
     type: "browser.agent",
-    entities: [{ ...JOB_ENTITY, when: "job" }],
     description:
       "An LLM works the page towards `goal` (find the apply button and fill the form, read something) on a site " +
       "without a recipe, from the page's accessibility outline: navigate, click, type, select, tick, attach one of " +
@@ -1728,11 +1689,8 @@ export const CORE_STEPS: StepDefinition[] = [
       goal: z.string().min(1).max(2000).describe("what to do, e.g. find the application form and fill it from the user's profile"),
       headed: z.boolean().default(false).describe("watchable in the live view; one headed run at a time"),
       documents: z.array(DocumentName).max(5).default([]).describe('stored documents it may attach, e.g. ["cv-main"]'),
-      message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer)"),
-      job: z
-        .record(z.string(), z.unknown())
-        .optional()
-        .describe("a job posting (title, company, url): for the answers, and its Job in the pipeline's App is prepared"),
+      message: z.string().max(2000).optional().describe("how to write free-text answers (a message to the employer or buyer)"),
+      about: z.record(z.string(), z.unknown()).optional().describe("what the form applies for (a job, a call, an offer), for the answers"),
       maxActions: z.number().int().min(1).max(50).default(25),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
@@ -1753,7 +1711,6 @@ export const CORE_STEPS: StepDefinition[] = [
       "Repeats an approved browser.agent run exactly, without an LLM, in the live browser, and presses its final " +
       "button. An element that is no longer there, or a page off the allowed sites, pauses the run for the user with " +
       "nothing sent. With stopBeforeSubmit the user presses the final button.",
-    entities: [{ ...JOB_ENTITY, when: "job" }],
     sideEffect: true,
     targets: { url: "domain" },
     headed: true,
@@ -1764,7 +1721,6 @@ export const CORE_STEPS: StepDefinition[] = [
       files: z.array(FormFileSchema).default([]),
       submit: ElementTargetSchema,
       stopBeforeSubmit: z.boolean().default(false).describe("fill, then the user submits in the live view"),
-      job: z.string().optional().describe("a job posting's url: its Job in the pipeline's App is applied"),
       timeoutSeconds: z.number().int().min(5).max(120).default(30),
     }),
     output: z.object({
