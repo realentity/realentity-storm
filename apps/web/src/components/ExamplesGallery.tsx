@@ -3,7 +3,6 @@ import { IconCheck, IconDownload, IconKey, IconMap, IconSparkles, IconX } from "
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { useCatalog } from "../lib/catalog";
 import { api } from "../lib/endpoints";
 import { EXAMPLES, type ExampleEntry } from "../lib/examples";
 import { useAction, useLoad } from "../lib/use-load";
@@ -129,11 +128,7 @@ function ExampleCard({
   onInstall,
 }: Readonly<{ example: ExampleEntry; setup: SetupView | null; installed?: AppSummaryView; busy: boolean; onInstall: () => void }>) {
   const [showMap, setShowMap] = useState(false);
-  const catalog = useCatalog();
-  const map =
-    showMap && example.app
-      ? appMap(example.app, example.pipelines, {}, (type) => catalog.find((s) => s.type === type)?.entities ?? [])
-      : null;
+  const map = showMap && example.app ? appMap(example.app, example.pipelines, {}) : null;
   return (
     <div className={example.starter ? "col-12" : "col-md-6"}>
       <div className={`card h-100 ${example.starter ? "border-primary" : ""}`} data-testid="example-card" data-example={example.id}>

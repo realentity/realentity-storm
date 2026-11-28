@@ -124,11 +124,6 @@ export interface StepTypeView {
   pageFields: string[];
   /** Inputs shown on its card though not required (http.fetch's url). */
   primary: string[];
-  /**
-   * M40-T2: the App types it writes (or reads, a type of mine) by its contracts. M59-T3: `reads`, only read though not
-   * mine; `when`, only with that input given.
-   */
-  entities: { type: string; mine: boolean; reads?: boolean; when?: string }[];
 }
 
 /** M36-T4: what {{trigger}} holds, by event, and for a webhook: for the step builder's data picker. */

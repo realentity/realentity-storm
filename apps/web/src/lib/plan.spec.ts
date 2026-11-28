@@ -41,7 +41,6 @@ const step = (type: string, sideEffect = false, headed = false): StepTypeView =>
   credentials: false,
   pageFields: [],
   primary: [],
-  entities: [],
 });
 
 const CATALOG: StepTypeView[] = [step("test.search"), step("llm.generate"), step("gate.act"), step("test.submit", true, true), step("notify.telegram")];

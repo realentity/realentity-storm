@@ -211,7 +211,7 @@ pipelines:
     steps:
       - id: waiting
         type: email.awaiting
-        with: { afterDays: 3, lookbackDays: 30, maxFollowUps: 1, limit: 20, remember: false }
+        with: { afterDays: 3, lookbackDays: 30, maxFollowUps: 1, limit: 20 }
       - id: open
         type: data.read
         with: { type: Meeting, where: [{ field: status, op: eq, value: proposed }], limit: 1000 }

@@ -99,7 +99,6 @@ model User {
 
   sessions         UserSession[]
   settings         UserSetting?
-  followUps        FollowUp[]
   pipelines        Pipeline[]
   builderChats     BuilderChat[]
   siteRecipes      SiteRecipe[]
@@ -256,24 +255,6 @@ model Webhook {
 
   @@index([userId])
   @@map("Webhooks")
-}
-
-/// One of the user's sent emails that email.awaiting proposed a follow-up for (M22): never proposed again, whatever they
-/// decided. Another message of theirs in the thread is a new one to follow up.
-model FollowUp {
-  followUpId  String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  /// The Message-ID of the user's email that got no answer.
-  messageId   String
-  threadId    String
-  to          String
-  subject     String
-  runId       String?  @db.Uuid
-  dateCreated DateTime @default(now())
-
-  @@unique([userId, messageId])
-  @@map("FollowUps")
 }
 
 /// Where a pipeline's email.fetch stopped in a mailbox: messages with a higher UID are new. A new UIDVALIDITY (the

@@ -1,4 +1,4 @@
-import { CONDITION_OPS, defaultTimeZone, isTimeZone, TYPE_NAME, type FieldKind, type TargetKind } from "@realentity/storm-shared";
+import { CONDITION_OPS, defaultTimeZone, isTimeZone, TYPE_NAME, type TargetKind } from "@realentity/storm-shared";
 import jsonata from "jsonata";
 import { z } from "zod";
 import { RecipeNameSchema } from "./recipe";
@@ -82,34 +82,8 @@ export interface StepDefinition {
    * user typed, as `checks`): then its host is read though not in allowedDomains, at a public address only.
    */
   ownAddress?: string;
-  /**
-   * The entity types it writes or reads, which its pipeline's App must have (M33): that key, these fields of these
-   * kinds, these states when it sets the stage. The App may have more fields; the compiler checks these are there.
-   */
-  entities?: EntityContract[];
   input: z.ZodObject;
   output: z.ZodObject;
-}
-
-export interface EntityContract {
-  type: string;
-  key: string;
-  fields: Record<string, FieldKind>;
-  states?: string[];
-  /** A type of mine the step reads; otherwise one it writes, so never mine. */
-  mine?: boolean;
-  /**
-   * M59-T3: the contract holds only with this input given (true, or any value but false or empty). Without it the
-   * step works in any App.
-   */
-  when?: string;
-  /** The step only reads the type, though it isn't a type of mine. */
-  reads?: boolean;
-}
-
-/** M59-T3: an input that makes a contract with `when` hold. */
-export function contractInputGiven(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== false && value !== "";
 }
 
 export class StepCatalog {
@@ -472,7 +446,8 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "data.dedupe",
     description:
       "Removes items whose `key` field repeats, keeping the first; with `againstType` (a type of the pipeline's App, " +
-      "M33), also the items whose key is already an entity of it, so each comes through once.",
+      "M33), also the items whose key is already an entity of it, so each comes through once; with `againstCollection` " +
+      "(M71), the items already saved in that list of yours (data.save's `collection`, the same `key`).",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -483,6 +458,11 @@ export const CORE_STEPS: StepDefinition[] = [
         .regex(TYPE_NAME)
         .optional()
         .describe("also drop items whose key is already an entity of this type of the pipeline's App"),
+      againstCollection: z
+        .string()
+        .regex(COLLECTION, "lowercase letters, digits, . _ -, e.g. follow-ups")
+        .optional()
+        .describe("also drop items already saved in this collection of yours (data.save with collection)"),
     }),
     output: z.object({ items: Items, duplicates: z.number().int() }),
   },
@@ -1254,11 +1234,10 @@ export const CORE_STEPS: StepDefinition[] = [
     type: "email.awaiting",
     description:
       "The user's sent emails that got no answer (M22): threads whose last message is the user's (the Sent folder), older than " +
-      "`afterDays`, with nothing from the other side in `mailbox` since. Each of the user's emails is listed once ever: a " +
-      "thread comes back only when the user writes in it again. Draft the nudge with email.draftFollowUp (message: " +
+      "`afterDays`, with nothing from the other side in `mailbox` since. Every such thread, each run: keeping track is the " +
+      "pipeline's (an App's rows; data.dedupe against a collection, M71). Draft the nudge with email.draftFollowUp (message: " +
       "{{item.message}}) and send it with email.send to {{item.to}}, inReplyTo {{item.message.messageId}}, " +
-      "references {{item.references}}. With `remember: false` it lists every such thread each time, and keeping track " +
-      "is left to the pipeline (an App's rows: snoozed, dropped). Read-only.",
+      "references {{item.references}}. Read-only.",
     sideEffect: false,
     saasSafe: true,
     input: z.object({
@@ -1269,10 +1248,6 @@ export const CORE_STEPS: StepDefinition[] = [
       maxFollowUps: z.number().int().min(1).max(3).default(1).describe("follow-ups in a row without an answer, at most"),
       limit: z.number().int().min(1).max(20).default(5),
       account: EmailAccount,
-      remember: z
-        .boolean()
-        .default(true)
-        .describe("false: every unanswered thread each time, none remembered as listed (M58-T3: an App keeps its own rows)"),
     }),
     output: z.object({
       threads: z.array(

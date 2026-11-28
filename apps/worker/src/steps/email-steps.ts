@@ -283,7 +283,7 @@ export function emailSteps(deps: EmailStepDependencies): StepExecutor[] {
     new EmailFetchStep(deps.mail, deps.prisma),
     new EmailClassifyStep(deps.llm, deps.router, deps.learning),
     new DraftReplyStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
-    new EmailAwaitingStep(deps.mail, deps.prisma),
+    new EmailAwaitingStep(deps.mail),
     new DraftFollowUpStep(deps.llm, deps.router, deps.learning, deps.mail, deps.prisma, deps.embeddings),
     new EmailAttachmentsStep(deps.mail),
     new EmailSendStep(deps.mail, deps.appFiles ? { prisma: deps.prisma, store: deps.appFiles } : undefined),

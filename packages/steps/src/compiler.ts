@@ -30,9 +30,8 @@ import {
 } from "@realentity/storm-shared";
 import { parse as parseYaml } from "yaml";
 import { type z } from "zod";
-import { contractInputGiven, defaultCatalog, type EntityContract, type StepCatalog, type StepDefinition } from "./catalog";
+import { defaultCatalog, type StepCatalog, type StepDefinition } from "./catalog";
 import { triggerDataSchema, triggerTargetIssue } from "./triggers";
-import { contractProblems } from "./domain-entities";
 import { entityTypeInfo, entityTypeOf } from "./entity-types";
 import { describeSchema, formatType, isAssignable, isOptional, navigate, UNKNOWN, type TypeInfo } from "./type-info";
 
@@ -156,7 +155,6 @@ export class PipelineCompiler {
 
       this.checkInputs(scope, known, errors);
       const entities = this.checkEntitySteps(scope, Boolean(definition.app), known, errors);
-      for (const contract of stepDefinition.entities ?? []) checkContract(stepDefinition, contract, step.with, definition.app, app, path, errors);
       if (stepDefinition.sideEffect) this.collectTargets(scope, known, policy, errors);
       if (stepDefinition.checks && this.checkAddress(scope, stepDefinition.checks, known, errors)) privateHosts.push(step.id);
       if (stepDefinition.ownAddress && this.isOwnAddress(scope, stepDefinition.ownAddress, known)) ownHosts.push(step.id);
@@ -634,40 +632,6 @@ export class PipelineCompiler {
     });
     return result;
   }
-}
-
-/**
- * A step that writes entities of its own (M33) needs its pipeline's App to have that type: the key, each
- * field of the kind it writes, and the states it sets.
- */
-function checkContract(
-  step: StepDefinition,
-  contract: EntityContract,
-  input: Record<string, unknown>,
-  appName: string | undefined,
-  app: AppDefinition | undefined,
-  path: string,
-  errors: CompileIssue[],
-): void {
-  if (contract.when && !contractInputGiven(input[contract.when])) return;
-  const at = contract.when ? `${path}.with.${contract.when}` : `${path}.type`;
-  const who = contract.when ? `${step.type} with ${contract.when}` : step.type;
-  const verb = contract.mine || contract.reads ? "reads" : "writes";
-  if (!appName) {
-    errors.push({
-      path: at,
-      message: `${who} ${verb} ${contract.type} entities: say which App with \`app:\` (one with a ${contract.type} type)`,
-    });
-    return;
-  }
-  if (!app) return; // the missing App is already said
-  const type = entityTypeOf(app, contract.type);
-  if (!type) {
-    errors.push({ path: at, message: `${who} ${verb} ${contract.type} entities, and "${app.name}" has no type ${contract.type}` });
-    return;
-  }
-  const problems = contractProblems(type, contract);
-  if (problems.length > 0) errors.push({ path: at, message: `${who} ${verb} ${contract.type} entities: ${problems.join("; ")}` });
 }
 
 /**

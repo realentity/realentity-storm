@@ -59,7 +59,7 @@ pipelines:
     # Every Monday at 09:00, the Follow-ups App's unanswered emails (older than 5 days, at most two nudges each): kept on
     # its list, and a nudge drafted for each one you haven't snoozed or dropped, in its thread and language. They wait at
     # the gate together; each one you approve is sent from the account the email went from, and its row is nudged; one
-    # you untick is snoozed. email.awaiting remembers nothing here (remember: false): the rows do.
+    # you untick is snoozed. email.awaiting remembers nothing: the rows do.
     name: Follow-ups
     description: Every Monday, a nudge for each email still waiting on an answer, approved together.
     trigger: { schedule: "0 9 * * 1" }
@@ -68,7 +68,7 @@ pipelines:
     steps:
       - id: waiting
         type: email.awaiting
-        with: { afterDays: 5, lookbackDays: 45, maxFollowUps: 2, limit: 20, remember: false }
+        with: { afterDays: 5, lookbackDays: 45, maxFollowUps: 2, limit: 20 }
       - id: held
         type: data.read
         with: { type: FollowUp, where: [{ field: status, op: in, value: [snoozed, dropped] }], limit: 1000 }
