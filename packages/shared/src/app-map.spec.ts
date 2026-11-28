@@ -23,7 +23,7 @@ describe("an App's map (M37-T4)", () => {
       ["db.query"],
       ["data.save", { type: "Table", items: "{{counts.items}}" }],
     ]);
-    const map = appMap(app("tables.yaml"), [growth], { Table: 12 }, () => []);
+    const map = appMap(app("tables.yaml"), [growth], { Table: 12 });
     expect(map.triggers).toEqual([{ id: "trigger:g", label: "on a schedule: 0 * * * *" }]);
     expect(map.types).toEqual([expect.objectContaining({ id: "type:Table", entities: 12, detail: "12 kept" })]);
     expect(map.pages.map((p) => [p.id, p.label])).toEqual([
@@ -40,12 +40,12 @@ describe("an App's map (M37-T4)", () => {
     );
   });
 
-  it("reads contracts, watches changes and an entity's buttons", () => {
+  it("draws what data.save writes, changes watched and an entity's buttons", () => {
     const bills = app("bills.yaml");
-    const save = pipeline("b", "Bills", "manual", [["test.save"]]);
+    const save = pipeline("b", "Bills", "manual", [["data.save", { type: "Bill" }]]);
     const remind = pipeline("r", "Remind", { on: "entity.changed", type: "Bill", stage: "due" }, [["data.read", { type: "Bill" }]]);
     const pay = pipeline("p", "Pay", { on: "entity.action", type: "Bill" }, [["notify.telegram"]]);
-    const map = appMap(bills, [save, remind, pay], {}, (type) => (type === "test.save" ? [{ type: "Bill" }] : []));
+    const map = appMap(bills, [save, remind, pay], {});
     expect(map.edges).toEqual(
       expect.arrayContaining([
         { from: "pipeline:b", to: "type:Bill", kind: "writes" },
@@ -58,29 +58,14 @@ describe("an App's map (M37-T4)", () => {
     expect(map.triggers.map((t) => t.id)).toEqual(["trigger:b"]);
   });
 
-  // M59-T3: llm.score reads the App's Jobs only with outcomes: true; browser.mapForm moves one only for a job
-  it("draws a contract with `when` only when its input is given", () => {
-    const jobs = app("job-search.yaml");
-    const contracts = (type: string) =>
-      type === "llm.score" ? [{ type: "Job", when: "outcomes", reads: true }] : type === "browser.mapForm" ? [{ type: "Job", when: "job" }] : [];
-    const calibrated = pipeline("c", "Calibrated", "manual", [["llm.score", { outcomes: true }]]);
-    const plain = pipeline("p", "Plain", "manual", [["llm.score", { outcomes: false }], ["llm.score"], ["browser.mapForm", { about: "{{item}}" }]]);
-    const apply = pipeline("a", "Apply", "manual", [["browser.mapForm", { job: "{{item}}" }]]);
-    const edges = appMap(jobs, [calibrated, plain, apply], {}, contracts).edges;
-    expect(edges.filter((e) => e.kind !== "starts" && (e.from.startsWith("pipeline:") || e.to.startsWith("pipeline:")))).toEqual([
-      { from: "type:Job", to: "pipeline:c", kind: "reads" },
-      { from: "pipeline:a", to: "type:Job", kind: "writes" },
-    ]);
-  });
-
   // M66-T4: another App's types it reads, by the App chosen for each, and what reads them
   it("draws each use by where it comes from: the pipelines reading it, the lists with a source of it, a type's ref to it", () => {
     const papers = app("papers.yaml");
     const report = pipeline("r", "Papers · Expense report", "manual", [["data.read", { type: "Bill" }], ["data.read", { type: "Paper" }]]);
-    const map = appMap(papers, [report], {}, () => [], { Bill: "Bills › Bill" });
+    const map = appMap(papers, [report], {}, { Bill: "Bills › Bill" });
     expect(map.uses).toEqual([{ id: "use:Bill", use: "Bill", label: "Bill", detail: "from Bills › Bill" }]);
     expect(map.edges).toEqual(expect.arrayContaining([{ from: "use:Bill", to: "pipeline:r", kind: "reads" }]));
-    expect(appMap(papers, [report], {}, () => []).uses).toEqual([{ id: "use:Bill", use: "Bill", label: "Bill", detail: "not chosen yet" }]);
+    expect(appMap(papers, [report], {}).uses).toEqual([{ id: "use:Bill", use: "Bill", label: "Bill", detail: "not chosen yet" }]);
 
     const expenses = checkAppSource(`name: Expenses
 types:
@@ -93,14 +78,14 @@ pages:
   - list: Expense
     sources: { bills: { from: Bill } }
 `).definition!;
-    expect(appMap(expenses, [], {}, () => []).edges).toEqual(
+    expect(appMap(expenses, [], {}).edges).toEqual(
       expect.arrayContaining([
         { from: "use:Bill", to: "list:Expense", kind: "shows" },
         { from: "use:Bill", to: "type:Expense", kind: "reads", label: "a ref" },
       ]),
     );
     // An App without uses: none.
-    expect(appMap(app("tables.yaml"), [], {}, () => []).uses).toEqual([]);
+    expect(appMap(app("tables.yaml"), [], {}).uses).toEqual([]);
   });
 
   it("says each trigger plainly", () => {

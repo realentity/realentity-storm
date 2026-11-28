@@ -10,7 +10,8 @@ type Item = Record<string, unknown>;
 
 /**
  * data.dedupe: the first item per `key` value wins. Items without the key are all kept. With `againstType`, items whose
- * key is already an entity of that type of the pipeline's App go too: each comes through once.
+ * key is already an entity of that type of the pipeline's App go too: each comes through once; with `againstCollection`
+ * (M71), those already saved in that list of the user's (data.save's `collection`, by its key).
  */
 export class DedupeStep implements StepExecutor {
   readonly type = "data.dedupe";
@@ -18,7 +19,7 @@ export class DedupeStep implements StepExecutor {
   constructor(private readonly prisma?: PrismaClient) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
-    const { from, key, againstType } = input as { from: Item[]; key: string; againstType?: string };
+    const { from, key, againstType, againstCollection } = input as { from: Item[]; key: string; againstType?: string; againstCollection?: string };
     const seen = new Set<string>();
     let items = from.filter((item) => {
       const value = valueAt(item, key);
@@ -28,6 +29,23 @@ export class DedupeStep implements StepExecutor {
       seen.add(id);
       return true;
     });
+    if (againstCollection) {
+      // Removed ones too: seen before is seen.
+      if (!this.prisma) throw new Error("data.dedupe against a collection needs the database");
+      const keys = items.map((item) => keyOf(item, key)).filter((k): k is string => k !== null);
+      const saved = new Set(
+        (
+          await this.prisma.dataRecord.findMany({
+            where: { userId: context.userId, collection: againstCollection, key: { in: keys } },
+            select: { key: true },
+          })
+        ).map((r) => r.key),
+      );
+      items = items.filter((item) => {
+        const k = keyOf(item, key);
+        return k === null || !saved.has(k);
+      });
+    }
     if (againstType) {
       // M33: the items whose key is already an entity of the type (removed ones too: seen before is seen).
       if (!this.prisma) throw new Error("data.dedupe against a type needs the database");

@@ -1,23 +1,39 @@
 # M22: your emails nobody answered in 5 days get a short follow-up in the same thread, drafted for your approval.
-# Rejecting one leaves that thread alone; writing in it again makes it count again. Gmail: sentMailbox is found
-# by itself ([Gmail]/Sent Mail).
+# Each email is proposed once: rejecting one leaves that thread alone; writing in it again makes it count again (your
+# new email is another one). M71: email.awaiting remembers nothing; this pipeline keeps the emails it proposed in a
+# list of yours (follow-ups), and data.dedupe leaves those out. Gmail: sentMailbox is found by itself ([Gmail]/Sent Mail).
 name: Email follow-ups
 description: A follow-up for your emails that got no answer in 5 days.
 trigger: { schedule: "0 9 * * 1-5" }
 steps:
   - id: waiting
     type: email.awaiting
-    with: { afterDays: 5, lookbackDays: 30, limit: 5 }
+    with: { afterDays: 5, lookbackDays: 30, limit: 20 }
+  - id: fresh
+    type: data.dedupe
+    with: { from: "{{waiting.threads}}", key: message.messageId, againstCollection: follow-ups }
+  # The five waiting longest, each proposed once (a dry run keeps nothing).
+  - id: next
+    type: data.map
+    with: { from: "{{fresh.items}}", expression: "$[[0..4]]" }
+  - id: seen
+    type: data.map
+    with:
+      from: "{{next.items}}"
+      expression: '$map($, function($t) { { "message": { "messageId": $t.message.messageId }, "threadId": $t.threadId, "to": $t.to, "subject": $t.subject } })'
+  - id: proposed
+    type: data.save
+    with: { items: "{{seen.items}}", collection: follow-ups, key: message.messageId }
   - id: draft
     type: email.draftFollowUp
-    forEach: "{{waiting.threads}}"
+    forEach: "{{next.items}}"
     with:
       message: "{{item.message}}"
       daysWaiting: "{{item.daysWaiting}}"
       instruction: A short, friendly nudge in two or three sentences.
   - id: send
     type: email.send
-    forEach: "{{waiting.threads}}"
+    forEach: "{{next.items}}"
     with:
       to: "{{item.to}}"
       subject: "{{draft.subject}}"

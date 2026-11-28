@@ -128,7 +128,7 @@ describe("examples/apps/follow-ups.yaml", () => {
 
   it("lists the unanswered emails, a nudge each in one batch; the approved ones sent in their thread, the unticked one snoozed", async () => {
     const runId = await weekly();
-    expect(awaiting.calls[0]).toMatchObject({ remember: false, maxFollowUps: 2 });
+    expect(awaiting.calls[0]).toMatchObject({ maxFollowUps: 2 });
     expect(await rows()).toEqual({ "<thread-1@mail.example>": "waiting", "<thread-2@mail.example>": "waiting", "<thread-3@mail.example>": "waiting" });
     expect(send.calls).toEqual([]);
 

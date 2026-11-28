@@ -459,7 +459,7 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       }
     }
     const awaiting = (dryRun = false, input: Record<string, unknown> = {}) =>
-      new EmailAwaitingStep(connector, db.client).execute(
+      new EmailAwaitingStep(connector).execute(
         { afterDays: 5, lookbackDays: 30, mailbox: "INBOX", maxFollowUps: 1, limit: 5, ...input },
         { ...baseContext(userId, randomUUID()), runId: randomUUID(), dryRun },
       ) as Promise<{
@@ -491,36 +491,22 @@ describe("mail (IMAP/SMTP against GreenMail)", () => {
       });
     });
 
-    afterEach(async () => {
-      await db.client.followUp.deleteMany();
-    });
-
     // M22-I1, M22-I2
-    it("finds only the user's unanswered emails, waiting long enough, once ever; a dry run doesn't remember", async () => {
+    it("finds only the user's unanswered emails, waiting long enough; every run, remembering none (M71)", async () => {
       const dry = await awaiting(true);
       expect(dry.threads.map((t) => [t.to, t.subject, t.daysWaiting, t.followUps])).toEqual([["ana@acme.test", "Contract proposal", 6, 0]]);
       expect(dry.threads[0]?.references).toEqual(["<a1@storm.test>"]);
 
+      // Listed again each run: keeping track is the pipeline's (email-follow-ups.yaml, an App's rows).
       expect((await awaiting()).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
-      expect(await db.client.followUp.findMany({ select: { messageId: true, to: true } })).toEqual([
-        { messageId: "<a1@storm.test>", to: "ana@acme.test" },
-      ]);
-      // Proposed once: rejected or not, it doesn't come back.
-      expect((await awaiting()).threads).toEqual([]);
+      expect((await awaiting()).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
 
-      // Two follow-ups in a row allowed: E's second is due.
+      // Two follow-ups in a row allowed: E's second is due too, waiting longer than A.
       const more = await awaiting(true, { maxFollowUps: 2 });
       expect(more.threads.map((t) => [t.subject, t.followUps, t.references])).toEqual([
         ["Re: Quote", 1, ["<e1@storm.test>", "<e2@storm.test>"]],
+        ["Contract proposal", 0, ["<a1@storm.test>"]],
       ]);
-    });
-
-    // M58-T3: an App's rows keep track instead
-    it("remember: false lists every unanswered thread each time, even one listed before, and remembers none", async () => {
-      await awaiting();
-      expect((await awaiting(false, { remember: false })).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
-      expect((await awaiting(false, { remember: false })).threads.map((t) => t.message.messageId)).toEqual(["<a1@storm.test>"]);
-      expect(await db.client.followUp.count()).toBe(1);
     });
 
     // M42: topic upkeep reads the user's sent mail too

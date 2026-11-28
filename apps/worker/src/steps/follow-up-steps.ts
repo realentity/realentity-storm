@@ -26,24 +26,19 @@ interface AwaitingInput {
   limit: number;
   /** M50-T7: an email slot, or an account's id; default: the default account. */
   account?: string;
-  /** M58-T3: false lists every unanswered thread each time and remembers none (the App's rows keep track). */
-  remember?: boolean;
 }
 
 /**
  * email.awaiting (M22): the user's emails nobody answered. A thread waits for an answer when its last message is
  * theirs, older
- * than afterDays, and nothing came back in it since (by Message-ID, In-Reply-To and References, not by subject). Each
- * email of the user's is listed once ever (FollowUp): rejecting the follow-up leaves the thread alone, and only another
- * message of theirs in it makes it come back. A dry run lists without remembering.
+ * than afterDays, and nothing came back in it since (by Message-ID, In-Reply-To and References, not by subject). It
+ * remembers nothing (M71): every such thread each run; the pipeline keeps track (an App's rows, data.dedupe against a
+ * collection).
  */
 export class EmailAwaitingStep implements StepExecutor {
   readonly type = "email.awaiting";
 
-  constructor(
-    private readonly mail: MailConnector,
-    private readonly prisma: PrismaClient,
-  ) {}
+  constructor(private readonly mail: MailConnector) {}
 
   async execute(input: Record<string, unknown>, context: StepContext): Promise<unknown> {
     const {
@@ -54,7 +49,6 @@ export class EmailAwaitingStep implements StepExecutor {
       maxFollowUps,
       limit,
       account,
-      remember = true,
     } = input as unknown as AwaitingInput;
     const who = mailWho(context, account);
     const now = Date.now();
@@ -64,22 +58,12 @@ export class EmailAwaitingStep implements StepExecutor {
       this.mail.recent(who, { mailbox, since, limit: READ_LIMIT }),
     ]);
     const mine = new Set(sent.map((m) => m.messageId));
-    const told = new Set(
-      !remember
-        ? []
-        : (
-            await this.prisma.followUp.findMany({
-              where: { userId: context.userId, messageId: { in: [...mine] } },
-              select: { messageId: true },
-            })
-          ).map((f) => f.messageId),
-    );
 
     const threads = [...groupBy(sent, (m) => m.threadId).values()].flatMap((emails) => {
       const ordered = [...emails].sort((a, b) => time(a) - time(b));
       const last = ordered.at(-1)!;
       const to = last.to[0];
-      if (!to || NOBODY.test(to) || told.has(last.messageId)) return [];
+      if (!to || NOBODY.test(to)) return [];
       if (now - time(last) < afterDays * DAY_MS) return [];
       const ids = new Set(ordered.flatMap((m) => [m.messageId, ...m.references, ...(m.inReplyTo ? [m.inReplyTo] : [])]));
       const answers = received.filter((m) => !mine.has(m.messageId) && inThread(m, ids));
@@ -103,19 +87,6 @@ export class EmailAwaitingStep implements StepExecutor {
     });
     // The longest waiting first.
     const listed = threads.sort((a, b) => b.daysWaiting - a.daysWaiting).slice(0, limit);
-    if (remember && !context.dryRun && listed.length > 0) {
-      await this.prisma.followUp.createMany({
-        data: listed.map((t) => ({
-          userId: context.userId,
-          messageId: t.message.messageId,
-          threadId: t.threadId,
-          to: t.to,
-          subject: t.subject,
-          runId: context.runId,
-        })),
-        skipDuplicates: true,
-      });
-    }
     return { threads: listed };
   }
 }

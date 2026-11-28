@@ -32,7 +32,7 @@ import {
   type EntityListView,
   type EntityQuery,
 } from "@realentity/storm-shared";
-import { diffApps, draftField, draftType, leafValues, PipelineCompiler, StepCatalog, type CompileContext } from "@realentity/storm-steps";
+import { diffApps, draftField, draftType, leafValues, PipelineCompiler, type CompileContext } from "@realentity/storm-steps";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { parse as parseYaml, parseDocument, stringify } from "yaml";
 import { PrismaService } from "../database/prisma.service";
@@ -55,7 +55,6 @@ export class AppsService {
     private readonly prisma: PrismaService,
     private readonly compiler: PipelineCompiler,
     private readonly imports: AppImportsService,
-    private readonly catalog: StepCatalog,
     private readonly files: AppFilesService,
     private readonly bindings: BindingsService,
     private readonly keys: SealKeys,
@@ -361,7 +360,6 @@ export class AppsService {
         return version ? [{ ...p, definition: version.definition as unknown as CompiledDefinition }] : [];
       }),
       entities,
-      (type) => this.catalog.get(type)?.entities ?? [],
       // M66-T4: its uses, each by the App and type chosen for it.
       Object.fromEntries((await this.uses.of(userId, appId)).map((u) => [u.name, u.source ? `${u.source.app} › ${u.source.type}` : null])),
     );

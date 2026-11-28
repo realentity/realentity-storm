@@ -157,8 +157,8 @@
   {
     "name": "Email follow-ups",
     "file": "pipelines/email-follow-ups.yaml",
-    "description": "On weekdays at 9:00, look through the emails I sent in the last 30 days and find the ones nobody answered in 5 days, at most 5 at a time. For each, draft a short, friendly nudge of two or three sentences and send it as a reply in the same thread, to the person I wrote to and from the account I sent the original from. Each follow-up waits for my approval. No more than 10 follow-ups a day.",
-    "notes": "Rejecting a follow-up leaves that thread alone until I write in it again; that behaviour comes from the step, not from anything the description asks for."
+    "description": "On weekdays at 9:00, look through the emails I sent in the last 30 days and find the ones nobody answered in 5 days, the five waiting longest at a time. Each email gets a nudge proposed only once, even when I reject it: keep the ones proposed in a list of mine. For each, draft a short, friendly nudge of two or three sentences and send it as a reply in the same thread, to the person I wrote to and from the account I sent the original from. Each follow-up waits for my approval. No more than 10 follow-ups a day.",
+    "notes": "email.awaiting remembers nothing (M71): the pipeline keeps the proposed emails in a collection (data.save) and leaves them out with data.dedupe against it. Writing in a thread again is a new email, so it can be nudged again."
   },
   {
     "name": "Interview invites",

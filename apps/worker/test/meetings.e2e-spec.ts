@@ -189,7 +189,7 @@ describe("examples/apps/meetings.yaml", () => {
     runner = new PipelineRunner(db.client, defaultCatalog(), new ExecutorRegistry([new ReadStep(db.client), new SaveStep(db.client), new MapStep(), ...Object.values(steps)]));
     const runId = await start("meeting-nudge");
     expect(await runner.advance(runId)).toBe("WAITING_FOR_USER");
-    expect(steps.awaiting.calls[0]).toMatchObject({ afterDays: 3, maxFollowUps: 1, remember: false });
+    expect(steps.awaiting.calls[0]).toMatchObject({ afterDays: 3, maxFollowUps: 1 });
     expect(steps.nudge.calls).toHaveLength(1);
     await approveAll(runId);
     await finish(runId);
